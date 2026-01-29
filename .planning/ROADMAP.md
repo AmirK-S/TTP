@@ -45,13 +45,13 @@ Plans:
   3. Self-corrections in speech are handled ("Tuesday no wait Wednesday" becomes "Wednesday")
   4. Polished text is auto-pasted into active application
   5. When auto-paste fails, text goes to clipboard with notification
-**Plans**: TBD (estimated 2-3 plans)
-**Research flag**: Needs research - paste simulation APIs and accessibility permissions vary by platform
+**Plans**: 3 plans in 2 waves (2 parallel, 1 sequential)
+**Research flag**: Complete - see 02-RESEARCH.md
 
 Plans:
-- [ ] 02-01: Whisper API transcription
-- [ ] 02-02: GPT-4o-mini polish
-- [ ] 02-03: Auto-paste with clipboard fallback
+- [ ] 02-01-PLAN.md — Transcription and polish backend (Whisper + GPT-4o-mini API clients)
+- [ ] 02-02-PLAN.md — Paste simulation and clipboard management (enigo + clipboard plugin)
+- [ ] 02-03-PLAN.md — Pipeline integration and UI (wire everything, frontend progress)
 
 ### Phase 3: Learning + Settings
 **Goal**: App learns from user corrections and provides full configurability
@@ -94,7 +94,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation + Recording | 3/3 | ✓ Complete | 2026-01-29 |
-| 2. Transcription Pipeline | 0/3 | Not started | - |
+| 2. Transcription Pipeline | 0/3 | Planned | - |
 | 3. Learning + Settings | 0/3 | Not started | - |
 | 4. Platform Parity | 0/2 | Not started | - |
 
