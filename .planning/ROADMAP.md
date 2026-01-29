@@ -56,20 +56,20 @@ Plans:
 ### Phase 3: Learning + Settings
 **Goal**: App learns from user corrections and provides full configurability
 **Depends on**: Phase 2
-**Requirements**: POL-05, LRN-01, LRN-02, LRN-03, LRN-04, CFG-03, CFG-04, CFG-05, HST-01, HST-02, HST-03
+**Requirements**: POL-05, LRN-01, LRN-02, LRN-03, LRN-04, CFG-03, CFG-05, HST-01, HST-02, HST-03
 **Success Criteria** (what must be TRUE):
   1. User corrections after paste are detected and stored as dictionary entries
   2. Future transcriptions use learned dictionary for improved AI polish
   3. User can view and edit learned corrections in settings
-  4. User can customize global shortcut and toggle AI polish on/off
+  4. User can toggle AI polish on/off (shortcut customization deferred to Phase 4)
   5. User can view recent transcription history and copy past transcriptions
-**Plans**: TBD (estimated 2-3 plans)
+**Plans**: 3 plans in 2 waves
 **Research flag**: Skip - standard CRUD and settings patterns
 
 Plans:
-- [ ] 03-01: Dictionary system and correction detection
-- [ ] 03-02: Settings UI and shortcut customization
-- [ ] 03-03: Transcription history
+- [ ] 03-01-PLAN.md — Dictionary system backend and correction detection
+- [ ] 03-02-PLAN.md — Settings UI with AI polish toggle and dictionary management
+- [ ] 03-03-PLAN.md — Transcription history storage and UI
 
 ### Phase 4: Platform Parity
 **Goal**: Consistent, polished experience across macOS and Windows
