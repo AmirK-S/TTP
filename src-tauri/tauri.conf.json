@@ -35,6 +35,15 @@
         "visible": false,
         "resizable": false,
         "center": true
+      },
+      {
+        "label": "setup",
+        "title": "TTP Setup",
+        "width": 400,
+        "height": 380,
+        "resizable": false,
+        "visible": false,
+        "center": true
       }
     ],
     "security": {

@@ -6,12 +6,14 @@ import ReactDOM from 'react-dom/client';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import App from './App';
 import FloatingBar from './windows/FloatingBar';
+import ApiKeySetup from './windows/ApiKeySetup';
 import './index.css';
 
 /**
  * Get the current window and render the appropriate component.
  * - floating-bar: Renders the transparent recording indicator
- * - main (or others): Renders the main App component
+ * - setup: Renders the first-run API key setup window
+ * - main (or others): Renders the main App component (hidden for tray app)
  */
 async function main() {
   const currentWindow = getCurrentWebviewWindow();
@@ -26,8 +28,15 @@ async function main() {
         <FloatingBar />
       </React.StrictMode>
     );
+  } else if (windowLabel === 'setup') {
+    // Setup window - first-run API key configuration
+    ReactDOM.createRoot(rootElement).render(
+      <React.StrictMode>
+        <ApiKeySetup />
+      </React.StrictMode>
+    );
   } else {
-    // Main window or any other window
+    // Main window or any other window (hidden for tray-only app)
     ReactDOM.createRoot(rootElement).render(
       <React.StrictMode>
         <App />
