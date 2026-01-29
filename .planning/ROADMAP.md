@@ -27,13 +27,13 @@ TTP delivers voice-to-text transcription in four phases: establishing the founda
   3. User can double-tap shortcut to toggle persistent recording
   4. User sees visual indicator when recording is active
   5. User is prompted for API key on first run and key is stored securely
-**Plans**: TBD (estimated 2-3 plans)
+**Plans**: 3 plans in 3 waves (sequential)
 **Research flag**: Skip - standard Tauri patterns
 
 Plans:
-- [ ] 01-01: Project scaffolding and CI/CD
-- [ ] 01-02: Tray app with global shortcuts and recording state
-- [ ] 01-03: Audio capture and API key setup
+- [ ] 01-01-PLAN.md — Project scaffolding with Tauri 2.x, React, and CI/CD
+- [ ] 01-02-PLAN.md — Tray app with global shortcuts and recording state machine
+- [ ] 01-03-PLAN.md — Audio capture and API key setup
 
 ### Phase 2: Transcription Pipeline
 **Goal**: User speaks and polished transcription appears in active text field
@@ -93,7 +93,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation + Recording | 0/3 | Not started | - |
+| 1. Foundation + Recording | 0/3 | Planned | - |
 | 2. Transcription Pipeline | 0/3 | Not started | - |
 | 3. Learning + Settings | 0/3 | Not started | - |
 | 4. Platform Parity | 0/2 | Not started | - |
