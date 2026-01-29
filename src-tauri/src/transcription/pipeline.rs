@@ -161,3 +161,12 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     set_state(app, RecordingState::Idle);
     Ok(polished_text)
 }
+
+/// Tauri command to process a completed recording
+///
+/// Called by frontend after mic-recorder stops and returns the file path.
+/// Runs the full transcription pipeline asynchronously.
+#[tauri::command]
+pub async fn process_audio(app: AppHandle, audio_path: String) -> Result<String, String> {
+    process_recording(&app, audio_path).await
+}

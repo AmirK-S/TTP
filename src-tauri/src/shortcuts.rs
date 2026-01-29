@@ -107,9 +107,11 @@ fn start_recording(state: &mut AppState, app: &AppHandle) {
     play_start_sound(app);
 }
 
-/// Stop recording: update state, play sound
+/// Stop recording: update state to Processing, play sound
+/// The frontend will stop mic recording and call process_audio command
+/// Pipeline will set state back to Idle when complete
 fn stop_recording(state: &mut AppState, app: &AppHandle) {
-    state.set_state(RecordingState::Idle, app);
+    state.set_state(RecordingState::Processing, app);
 
     // Update tray icon
     set_recording_icon(app, false);

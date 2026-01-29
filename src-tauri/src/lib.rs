@@ -12,6 +12,7 @@ mod tray;
 
 use credentials::{delete_api_key, get_api_key, has_api_key, set_api_key};
 use recording::{get_recordings_dir, RecordingContext};
+use transcription::process_audio;
 use state::AppState;
 use std::sync::Mutex;
 use tauri::Manager;
@@ -83,7 +84,8 @@ pub fn run() {
             set_api_key,
             has_api_key,
             delete_api_key,
-            get_recordings_dir
+            get_recordings_dir,
+            process_audio
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
