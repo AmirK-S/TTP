@@ -22,3 +22,16 @@
     background-color: #1a1a1a;
   }
 }
+
+/* Floating bar window needs transparent background */
+html.floating-bar,
+html.floating-bar body,
+html.floating-bar #root {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Also handle case where body might have background from Tailwind */
+body.bg-transparent {
+  background: transparent !important;
+}
