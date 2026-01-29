@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window, floating bar, and tray",
-  "windows": ["main", "floating-bar"],
+  "description": "Capability for the main window, floating bar, setup window, and tray",
+  "windows": ["main", "floating-bar", "setup"],
   "permissions": [
     "core:default",
     "core:event:default",
@@ -14,10 +14,15 @@
     "core:window:allow-show",
     "core:window:allow-hide",
     "core:window:allow-set-focus",
+    "core:window:allow-close",
     "opener:default",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-is-registered",
-    "positioner:default"
+    "positioner:default",
+    "keyring:default",
+    "keyring:allow-get-password",
+    "keyring:allow-set-password",
+    "keyring:allow-delete-password"
   ]
 }
