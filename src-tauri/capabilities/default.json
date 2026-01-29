@@ -23,6 +23,9 @@
     "keyring:default",
     "keyring:allow-get-password",
     "keyring:allow-set-password",
-    "keyring:allow-delete-password"
+    "keyring:allow-delete-password",
+    "mic-recorder:default",
+    "mic-recorder:allow-start-recording",
+    "mic-recorder:allow-stop-recording"
   ]
 }

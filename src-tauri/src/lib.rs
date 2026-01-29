@@ -2,12 +2,14 @@
 // Main Tauri application entry point
 
 mod credentials;
+mod recording;
 mod shortcuts;
 mod sounds;
 mod state;
 mod tray;
 
 use credentials::{delete_api_key, get_api_key, has_api_key, set_api_key};
+use recording::{get_recordings_dir, RecordingContext};
 use state::AppState;
 use std::sync::Mutex;
 
@@ -18,7 +20,9 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_keyring::init())
+        .plugin(tauri_plugin_mic_recorder::init())
         .manage(Mutex::new(AppState::default()))
+        .manage(Mutex::new(RecordingContext::default()))
         .setup(|app| {
             // Set up system tray
             tray::setup_tray(app.handle())?;
@@ -32,7 +36,8 @@ pub fn run() {
             get_api_key,
             set_api_key,
             has_api_key,
-            delete_api_key
+            delete_api_key,
+            get_recordings_dir
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
