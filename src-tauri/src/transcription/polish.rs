@@ -1,6 +1,7 @@
 // TTP - Talk To Paste
 // GPT-4o-mini text polish API client
 
+use crate::dictionary::{get_dictionary, DictionaryEntry};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::time::sleep;
@@ -27,6 +28,25 @@ RULES:
 6. Self-corrections only: "Tuesday no wait Wednesday" → "Wednesday"
 
 Output the FULL cleaned transcription, nothing else."#;
+
+/// Build the polish system prompt, optionally including dictionary terms
+///
+/// If dictionary contains entries, appends a PERSONAL DICTIONARY section
+/// instructing the AI to use those exact spellings.
+pub fn build_polish_prompt(dictionary: &[DictionaryEntry]) -> String {
+    if dictionary.is_empty() {
+        return POLISH_SYSTEM_PROMPT.to_string();
+    }
+
+    let mut prompt = POLISH_SYSTEM_PROMPT.to_string();
+    prompt.push_str("\n\nPERSONAL DICTIONARY (use these exact spellings):\n");
+
+    for entry in dictionary {
+        prompt.push_str(&format!("- {} -> {}\n", entry.original, entry.correction));
+    }
+
+    prompt
+}
 
 /// Chat completion request body
 #[derive(Debug, Serialize)]
@@ -75,6 +95,14 @@ struct ChatMessageResponse {
 /// * `Ok(String)` - Polished text on success
 /// * `Err(String)` - Error message on failure
 pub async fn polish_text(api_key: &str, raw_text: &str) -> Result<String, String> {
+    // Load dictionary for personalized corrections
+    let dictionary = get_dictionary();
+    let system_prompt = build_polish_prompt(&dictionary);
+
+    if !dictionary.is_empty() {
+        println!("[Polish] Using {} dictionary entries", dictionary.len());
+    }
+
     // Create HTTP client with timeout
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
@@ -87,7 +115,7 @@ pub async fn polish_text(api_key: &str, raw_text: &str) -> Result<String, String
         messages: vec![
             ChatMessage {
                 role: "system".to_string(),
-                content: POLISH_SYSTEM_PROMPT.to_string(),
+                content: system_prompt,
             },
             ChatMessage {
                 role: "user".to_string(),
