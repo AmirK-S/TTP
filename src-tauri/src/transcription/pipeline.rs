@@ -6,6 +6,7 @@
 
 use crate::credentials::get_api_key_internal;
 use crate::dictionary::detection::start_correction_window;
+use crate::history::add_history_entry;
 use crate::paste::{check_accessibility, simulate_paste, ClipboardGuard};
 use crate::settings::get_settings;
 use crate::state::{AppState, RecordingState};
@@ -190,6 +191,19 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         false
     };
     println!("[Pipeline] Paste stage complete, success={}", paste_success);
+
+    // Save to history (before completing)
+    // Store both polished and raw text for user reference
+    let raw_for_history = if settings.ai_polish_enabled {
+        Some(raw_text.as_str())
+    } else {
+        None // No raw text if polish was disabled (they're the same)
+    };
+
+    if let Err(e) = add_history_entry(&polished_text, raw_for_history) {
+        eprintln!("[Pipeline] Failed to save to history: {}", e);
+        // Non-critical error, continue with completion
+    }
 
     // Complete with appropriate message
     println!("[Pipeline] Completing...");
