@@ -2,7 +2,6 @@
 // Floating bar component - transparent recording indicator overlay
 
 import { useEffect, useCallback } from 'react';
-import { Mic } from 'lucide-react';
 import { useRecordingState } from '../hooks/useRecordingState';
 import { useRecordingControl } from '../hooks/useRecordingControl';
 
@@ -54,15 +53,13 @@ export function FloatingBar() {
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-transparent">
       {isRecording && (
-        <div className="flex items-center gap-2 rounded-full bg-black/80 px-4 py-2 text-white backdrop-blur-sm shadow-lg">
-          {/* Pulsing red recording indicator */}
-          <span className="h-3 w-3 animate-pulse rounded-full bg-red-500" />
-
-          {/* Microphone icon */}
-          <Mic className="h-4 w-4" />
-
-          {/* Status text */}
-          <span className="text-sm font-medium">Recording...</span>
+        <div className="flex items-center justify-center gap-1 rounded-full bg-black/90 px-3 py-1.5 shadow-lg">
+          {/* Minimal pulsing dots indicator like Wispr Flow */}
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/80" style={{ animationDelay: '0ms' }} />
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/80" style={{ animationDelay: '150ms' }} />
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/80" style={{ animationDelay: '300ms' }} />
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/80" style={{ animationDelay: '450ms' }} />
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/80" style={{ animationDelay: '600ms' }} />
         </div>
       )}
     </div>

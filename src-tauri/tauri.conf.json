@@ -26,15 +26,16 @@
       {
         "label": "floating-bar",
         "title": "",
-        "width": 200,
-        "height": 50,
+        "width": 80,
+        "height": 28,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "visible": false,
         "resizable": false,
-        "center": true
+        "x": 0,
+        "y": 0
       },
       {
         "label": "setup",

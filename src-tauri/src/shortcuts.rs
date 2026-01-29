@@ -103,10 +103,24 @@ fn start_recording(state: &mut AppState, app: &AppHandle) {
     // Update tray icon
     set_recording_icon(app, true);
 
-    // Show floating bar window
+    // Show floating bar window positioned above the dock
     if let Some(window) = app.get_webview_window("floating-bar") {
+        // Position window at bottom center, just above the dock
+        if let Ok(Some(monitor)) = window.primary_monitor() {
+            let screen_size = monitor.size();
+            let window_width = 80.0;
+            let window_height = 28.0;
+            let dock_offset = 90.0; // Distance from bottom to clear the dock
+
+            let x = (screen_size.width as f64 / 2.0) - (window_width / 2.0);
+            let y = screen_size.height as f64 - dock_offset - window_height;
+
+            let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
+                x: x as i32,
+                y: y as i32,
+            }));
+        }
         let _ = window.show();
-        let _ = window.set_focus();
     }
 
     // Play start sound
