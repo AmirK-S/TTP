@@ -9,12 +9,12 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Core Recording
 
-- [ ] **REC-01**: App runs as menu bar icon (macOS) / system tray icon (Windows)
-- [ ] **REC-02**: User can trigger recording via global keyboard shortcut
-- [ ] **REC-03**: Push-to-talk mode: hold shortcut = record, release = stop and transcribe
-- [ ] **REC-04**: Double-tap shortcut toggles persistent recording (tap again to stop)
-- [ ] **REC-05**: Visual indicator shows recording state (icon change + optional overlay)
-- [ ] **REC-06**: Audio captured from system default microphone
+- [x] **REC-01**: App runs as menu bar icon (macOS) / system tray icon (Windows)
+- [x] **REC-02**: User can trigger recording via global keyboard shortcut
+- [x] **REC-03**: Push-to-talk mode: hold shortcut = record, release = stop and transcribe
+- [x] **REC-04**: Double-tap shortcut toggles persistent recording (tap again to stop)
+- [x] **REC-05**: Visual indicator shows recording state (icon change + optional overlay)
+- [x] **REC-06**: Audio captured from system default microphone
 
 ### Transcription
 
@@ -45,16 +45,16 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Configuration
 
-- [ ] **CFG-01**: First-run setup prompts for OpenAI API key
-- [ ] **CFG-02**: API key stored securely in system keychain/credential store
+- [x] **CFG-01**: First-run setup prompts for OpenAI API key
+- [x] **CFG-02**: API key stored securely in system keychain/credential store
 - [ ] **CFG-03**: Settings UI accessible from menu bar/tray menu
 - [ ] **CFG-04**: User can customize global shortcut
 - [ ] **CFG-05**: User can enable/disable AI polish (raw transcription option)
 
 ### Platform Support
 
-- [ ] **PLT-01**: Native macOS app (menu bar, accessibility permissions)
-- [ ] **PLT-02**: Native Windows app (system tray, no special permissions needed)
+- [x] **PLT-01**: Native macOS app (menu bar, accessibility permissions)
+- [x] **PLT-02**: Native Windows app (system tray, no special permissions needed)
 - [ ] **PLT-03**: Consistent feature parity across platforms
 
 ### Transcription History
@@ -101,12 +101,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| REC-01 | Phase 1 | Pending |
-| REC-02 | Phase 1 | Pending |
-| REC-03 | Phase 1 | Pending |
-| REC-04 | Phase 1 | Pending |
-| REC-05 | Phase 1 | Pending |
-| REC-06 | Phase 1 | Pending |
+| REC-01 | Phase 1 | Complete |
+| REC-02 | Phase 1 | Complete |
+| REC-03 | Phase 1 | Complete |
+| REC-04 | Phase 1 | Complete |
+| REC-05 | Phase 1 | Complete |
+| REC-06 | Phase 1 | Complete |
 | TRX-01 | Phase 2 | Pending |
 | TRX-02 | Phase 2 | Pending |
 | TRX-03 | Phase 2 | Pending |
@@ -122,13 +122,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LRN-02 | Phase 3 | Pending |
 | LRN-03 | Phase 3 | Pending |
 | LRN-04 | Phase 3 | Pending |
-| CFG-01 | Phase 1 | Pending |
-| CFG-02 | Phase 1 | Pending |
+| CFG-01 | Phase 1 | Complete |
+| CFG-02 | Phase 1 | Complete |
 | CFG-03 | Phase 3 | Pending |
 | CFG-04 | Phase 3 | Pending |
 | CFG-05 | Phase 3 | Pending |
-| PLT-01 | Phase 1 | Pending |
-| PLT-02 | Phase 1 | Pending |
+| PLT-01 | Phase 1 | Complete |
+| PLT-02 | Phase 1 | Complete |
 | PLT-03 | Phase 4 | Pending |
 | HST-01 | Phase 3 | Pending |
 | HST-02 | Phase 3 | Pending |

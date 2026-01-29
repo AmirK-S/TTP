@@ -10,7 +10,7 @@ TTP delivers voice-to-text transcription in four phases: establishing the founda
 - Integer phases (1, 2, 3, 4): Planned milestone work
 - Decimal phases (e.g., 2.1): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 1: Foundation + Recording** - Menu bar app with audio capture and global shortcuts
+- [x] **Phase 1: Foundation + Recording** - Menu bar app with audio capture and global shortcuts
 - [ ] **Phase 2: Transcription Pipeline** - Whisper API, AI polish, and auto-paste to active app
 - [ ] **Phase 3: Learning + Settings** - Dictionary learning, history, and user configuration
 - [ ] **Phase 4: Platform Parity** - Cross-platform consistency and final polish
@@ -32,8 +32,8 @@ TTP delivers voice-to-text transcription in four phases: establishing the founda
 
 Plans:
 - [x] 01-01-PLAN.md — Project scaffolding with Tauri 2.x, React, and CI/CD
-- [ ] 01-02-PLAN.md — Tray app with global shortcuts and recording state machine
-- [ ] 01-03-PLAN.md — Audio capture and API key setup
+- [x] 01-02-PLAN.md — Tray app with global shortcuts and recording state machine
+- [x] 01-03-PLAN.md — Audio capture and API key setup
 
 ### Phase 2: Transcription Pipeline
 **Goal**: User speaks and polished transcription appears in active text field
@@ -93,7 +93,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation + Recording | 1/3 | In progress | - |
+| 1. Foundation + Recording | 3/3 | ✓ Complete | 2026-01-29 |
 | 2. Transcription Pipeline | 0/3 | Not started | - |
 | 3. Learning + Settings | 0/3 | Not started | - |
 | 4. Platform Parity | 0/2 | Not started | - |
