@@ -4,6 +4,7 @@
 // starts/stops the mic recording plugin accordingly.
 
 import { startRecording, stopRecording } from 'tauri-plugin-mic-recorder-api';
+import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useEffect, useRef, useCallback } from 'react';
 
@@ -66,6 +67,17 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
         filePath,
         duration,
       });
+
+      // Trigger transcription pipeline
+      console.log('[Recording] Starting transcription pipeline...');
+      invoke('process_audio', { audioPath: filePath })
+        .then((result) => {
+          console.log('[Recording] Transcription complete:', result);
+        })
+        .catch((error) => {
+          console.error('[Recording] Transcription failed:', error);
+          onError?.(String(error));
+        });
     } catch (error) {
       console.error('[Recording] Failed to stop recording:', error);
       recordingStartTime.current = null;
@@ -80,7 +92,8 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
 
       if (state === 'Recording' && !isRecordingRef.current) {
         await handleStartRecording();
-      } else if (state === 'Idle' && isRecordingRef.current) {
+      } else if (state === 'Processing' && isRecordingRef.current) {
+        // Recording stopped, now processing - stop mic and trigger pipeline
         await handleStopRecording();
       }
     });
