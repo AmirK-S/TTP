@@ -74,17 +74,17 @@ Plans:
 ### Phase 4: Platform Parity
 **Goal**: Consistent, polished experience across macOS and Windows
 **Depends on**: Phase 3
-**Requirements**: PLT-03
+**Requirements**: CFG-04, PLT-03
 **Success Criteria** (what must be TRUE):
   1. All features work identically on macOS and Windows
   2. Platform-specific edge cases are handled (permission flows, paste behavior)
   3. App is ready for distribution (signed, notarized where required)
-**Plans**: TBD (estimated 1-2 plans)
-**Research flag**: Needs research - notarization workflow and Windows installer options
+**Plans**: 2 plans in 2 waves (sequential)
+**Research flag**: Complete - see 04-RESEARCH.md
 
 Plans:
-- [ ] 04-01: Cross-platform testing and fixes
-- [ ] 04-02: Distribution preparation
+- [ ] 04-01-PLAN.md — Cross-platform paste (enigo) and customizable shortcuts
+- [ ] 04-02-PLAN.md — Distribution preparation (Entitlements, signing, release workflow)
 
 ## Progress
 
