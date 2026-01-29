@@ -11,6 +11,13 @@ export interface DictionaryEntry {
   created_at: number;
 }
 
+/** History entry structure matching Rust backend */
+export interface HistoryEntry {
+  text: string;
+  timestamp: number;
+  raw_text?: string;
+}
+
 /** Settings structure matching Rust backend */
 export interface Settings {
   ai_polish_enabled: boolean;
@@ -20,6 +27,7 @@ interface SettingsStore {
   // State
   aiPolishEnabled: boolean;
   dictionary: DictionaryEntry[];
+  history: HistoryEntry[];
   loading: boolean;
 
   // Actions
@@ -29,12 +37,15 @@ interface SettingsStore {
   loadDictionary: () => Promise<void>;
   deleteEntry: (original: string) => Promise<void>;
   clearDictionary: () => Promise<void>;
+  loadHistory: () => Promise<void>;
+  clearHistory: () => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
   // Initial state
   aiPolishEnabled: true,
   dictionary: [],
+  history: [],
   loading: false,
 
   // Load settings from backend
@@ -113,6 +124,28 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       set({ dictionary: [] });
     } catch (error) {
       console.error('Failed to clear dictionary:', error);
+      throw error;
+    }
+  },
+
+  // Load history entries
+  loadHistory: async () => {
+    try {
+      const entries = await invoke<HistoryEntry[]>('get_history');
+      set({ history: entries });
+    } catch (error) {
+      console.error('Failed to load history:', error);
+      set({ history: [] });
+    }
+  },
+
+  // Clear all history entries
+  clearHistory: async () => {
+    try {
+      await invoke('clear_history');
+      set({ history: [] });
+    } catch (error) {
+      console.error('Failed to clear history:', error);
       throw error;
     }
   },
