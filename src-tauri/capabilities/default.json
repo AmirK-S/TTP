@@ -26,6 +26,15 @@
     "keyring:allow-delete-password",
     "mic-recorder:default",
     "mic-recorder:allow-start-recording",
-    "mic-recorder:allow-stop-recording"
+    "mic-recorder:allow-stop-recording",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
+    "notification:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://api.openai.com/*" }
+      ]
+    }
   ]
 }

@@ -2,10 +2,12 @@
 // Main Tauri application entry point
 
 mod credentials;
+mod paste;
 mod recording;
 mod shortcuts;
 mod sounds;
 mod state;
+mod transcription;
 mod tray;
 
 use credentials::{delete_api_key, get_api_key, has_api_key, set_api_key};
@@ -26,6 +28,9 @@ pub fn run() {
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_keyring::init())
         .plugin(tauri_plugin_mic_recorder::init())
+        .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(Mutex::new(AppState::default()))
         .manage(Mutex::new(RecordingContext::default()))
         .setup(|app| {
