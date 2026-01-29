@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { Copy, Check } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 import { useSettingsStore, DictionaryEntry, HistoryEntry } from '../stores/settings-store';
 
 /**
@@ -183,6 +184,7 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
 export function Settings() {
   const {
     aiPolishEnabled,
+    shortcut,
     dictionary,
     history,
     loading,
@@ -199,6 +201,9 @@ export function Settings() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showClearHistoryConfirm, setShowClearHistoryConfirm] = useState(false);
+  const [shortcutInput, setShortcutInput] = useState('');
+  const [shortcutError, setShortcutError] = useState('');
+  const [shortcutSuccess, setShortcutSuccess] = useState(false);
 
   // Load settings, dictionary, and history on mount
   useEffect(() => {
@@ -207,12 +212,37 @@ export function Settings() {
     loadHistory();
   }, [loadSettings, loadDictionary, loadHistory]);
 
+  // Sync shortcut input with store value
+  useEffect(() => {
+    setShortcutInput(shortcut);
+  }, [shortcut]);
+
   // Handle AI polish toggle
   const handlePolishToggle = async (enabled: boolean) => {
     try {
       await saveSettings({ ai_polish_enabled: enabled });
     } catch (error) {
       console.error('Failed to save AI polish setting:', error);
+    }
+  };
+
+  // Handle shortcut update
+  const handleShortcutApply = async () => {
+    setShortcutError('');
+    setShortcutSuccess(false);
+
+    try {
+      // First try to update the active shortcut
+      await invoke('update_shortcut_cmd', { shortcut: shortcutInput });
+
+      // If successful, save to settings
+      await saveSettings({ shortcut: shortcutInput });
+
+      setShortcutSuccess(true);
+      setTimeout(() => setShortcutSuccess(false), 3000);
+    } catch (error) {
+      console.error('Failed to update shortcut:', error);
+      setShortcutError(String(error));
     }
   };
 
@@ -263,6 +293,51 @@ export function Settings() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
           Settings
         </h1>
+
+        {/* Keyboard Shortcut Section */}
+        <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Keyboard Shortcut
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Press and hold to record (push-to-talk), or double-tap to toggle recording
+          </p>
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <input
+                type="text"
+                value={shortcutInput}
+                onChange={(e) => setShortcutInput(e.target.value)}
+                placeholder="Alt+Space"
+                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+              />
+              <button
+                onClick={handleShortcutApply}
+                disabled={loading || shortcutInput === shortcut}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md transition-colors"
+              >
+                Apply
+              </button>
+            </div>
+
+            {shortcutError && (
+              <p className="text-sm text-red-600 dark:text-red-400">
+                {shortcutError}
+              </p>
+            )}
+
+            {shortcutSuccess && (
+              <p className="text-sm text-green-600 dark:text-green-400">
+                Shortcut updated successfully!
+              </p>
+            )}
+
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Format: Alt+Space, Ctrl+Shift+R, CmdOrCtrl+Space
+            </p>
+          </div>
+        </section>
 
         {/* Transcription Section */}
         <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">

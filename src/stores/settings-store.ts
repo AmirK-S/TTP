@@ -21,11 +21,13 @@ export interface HistoryEntry {
 /** Settings structure matching Rust backend */
 export interface Settings {
   ai_polish_enabled: boolean;
+  shortcut: string;
 }
 
 interface SettingsStore {
   // State
   aiPolishEnabled: boolean;
+  shortcut: string;
   dictionary: DictionaryEntry[];
   history: HistoryEntry[];
   loading: boolean;
@@ -44,6 +46,7 @@ interface SettingsStore {
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
   // Initial state
   aiPolishEnabled: true,
+  shortcut: 'Alt+Space',
   dictionary: [],
   history: [],
   loading: false,
@@ -53,7 +56,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ loading: true });
     try {
       const settings = await invoke<Settings>('get_settings');
-      set({ aiPolishEnabled: settings.ai_polish_enabled });
+      set({
+        aiPolishEnabled: settings.ai_polish_enabled,
+        shortcut: settings.shortcut || 'Alt+Space',
+      });
     } catch (error) {
       console.error('Failed to load settings:', error);
     } finally {
@@ -66,6 +72,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     try {
       const currentSettings: Settings = {
         ai_polish_enabled: get().aiPolishEnabled,
+        shortcut: get().shortcut,
       };
 
       const newSettings: Settings = {
@@ -74,7 +81,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       };
 
       await invoke('set_settings', { settings: newSettings });
-      set({ aiPolishEnabled: newSettings.ai_polish_enabled });
+      set({
+        aiPolishEnabled: newSettings.ai_polish_enabled,
+        shortcut: newSettings.shortcut,
+      });
     } catch (error) {
       console.error('Failed to save settings:', error);
       throw error;
@@ -85,7 +95,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   resetSettings: async () => {
     try {
       await invoke('reset_settings');
-      set({ aiPolishEnabled: true }); // Default value
+      set({
+        aiPolishEnabled: true,
+        shortcut: 'Alt+Space',
+      }); // Default values
     } catch (error) {
       console.error('Failed to reset settings:', error);
       throw error;
