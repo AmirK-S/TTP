@@ -1,31 +1,37 @@
 // TTP - Keyboard simulation
-// Simulates Cmd+V paste keystroke
+// Simulates Cmd+V paste keystroke on macOS, Ctrl+V on Windows
 //
-// Uses AppleScript on macOS for reliability (avoids enigo FFI crashes)
+// Uses enigo for cross-platform keyboard simulation
 
-use std::process::Command;
+use enigo::{Direction::{Click, Press, Release}, Enigo, Key, Keyboard, Settings};
 use std::thread;
 use std::time::Duration;
 
-/// Simulate a paste keystroke (Cmd+V on macOS)
+/// Simulate a paste keystroke (Cmd+V on macOS, Ctrl+V on Windows)
 ///
-/// Uses AppleScript to send keystroke, which is more reliable than
-/// direct keyboard simulation and doesn't require Accessibility permission.
+/// Uses enigo for cross-platform keyboard simulation.
+/// Note: On macOS, the system will automatically prompt for Accessibility
+/// permission the first time this runs.
 pub fn simulate_paste() -> Result<(), String> {
     // Small delay to ensure target app has focus
     thread::sleep(Duration::from_millis(100));
 
-    // Use AppleScript to simulate Cmd+V
-    let output = Command::new("osascript")
-        .arg("-e")
-        .arg("tell application \"System Events\" to keystroke \"v\" using command down")
-        .output()
-        .map_err(|e| format!("Failed to run osascript: {}", e))?;
+    let mut enigo = Enigo::new(&Settings::default())
+        .map_err(|e| format!("Failed to create Enigo: {}", e))?;
 
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(format!("osascript failed: {}", stderr))
+    #[cfg(target_os = "macos")]
+    {
+        enigo.key(Key::Meta, Press).map_err(|e| e.to_string())?;
+        enigo.key(Key::Unicode('v'), Click).map_err(|e| e.to_string())?;
+        enigo.key(Key::Meta, Release).map_err(|e| e.to_string())?;
     }
+
+    #[cfg(target_os = "windows")]
+    {
+        enigo.key(Key::Control, Press).map_err(|e| e.to_string())?;
+        enigo.key(Key::Unicode('v'), Click).map_err(|e| e.to_string())?;
+        enigo.key(Key::Control, Release).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
 }
