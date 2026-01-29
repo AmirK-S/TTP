@@ -31,7 +31,7 @@ TTP delivers voice-to-text transcription in four phases: establishing the founda
 **Research flag**: Skip - standard Tauri patterns
 
 Plans:
-- [ ] 01-01-PLAN.md — Project scaffolding with Tauri 2.x, React, and CI/CD
+- [x] 01-01-PLAN.md — Project scaffolding with Tauri 2.x, React, and CI/CD
 - [ ] 01-02-PLAN.md — Tray app with global shortcuts and recording state machine
 - [ ] 01-03-PLAN.md — Audio capture and API key setup
 
@@ -93,7 +93,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation + Recording | 0/3 | Planned | - |
+| 1. Foundation + Recording | 1/3 | In progress | - |
 | 2. Transcription Pipeline | 0/3 | Not started | - |
 | 3. Learning + Settings | 0/3 | Not started | - |
 | 4. Platform Parity | 0/2 | Not started | - |
