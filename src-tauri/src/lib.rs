@@ -1,6 +1,8 @@
 // TTP - Talk To Paste
 // Main Tauri application entry point
 
+mod shortcuts;
+mod sounds;
 mod state;
 mod tray;
 
@@ -22,6 +24,10 @@ pub fn run() {
         .setup(|app| {
             // Set up system tray
             tray::setup_tray(app.handle())?;
+
+            // Set up global keyboard shortcuts
+            shortcuts::setup_shortcuts(app.handle())?;
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![greet])
