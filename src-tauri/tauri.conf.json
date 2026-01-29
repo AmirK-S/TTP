@@ -22,6 +22,19 @@
         "height": 600,
         "visible": false,
         "skipTaskbar": true
+      },
+      {
+        "label": "floating-bar",
+        "title": "",
+        "width": 200,
+        "height": 50,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "resizable": false,
+        "center": true
       }
     ],
     "security": {
