@@ -74,16 +74,21 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "entitlements": null,
+      "entitlements": "./Entitlements.plist",
       "exceptionDomain": null,
       "frameworks": [],
       "providerShortName": null,
-      "signingIdentity": null
+      "signingIdentity": null,
+      "hardenedRuntime": true,
+      "minimumSystemVersion": "10.15"
     },
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
-      "timestampUrl": null
+      "timestampUrl": "http://timestamp.comodoca.com",
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      }
     }
   }
 }
