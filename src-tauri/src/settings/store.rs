@@ -10,12 +10,20 @@ use std::path::PathBuf;
 pub struct Settings {
     /// Whether to run AI polish on transcriptions (removes filler words, fixes grammar)
     pub ai_polish_enabled: bool,
+    /// Global keyboard shortcut for recording (e.g., "Alt+Space", "Ctrl+Shift+R")
+    #[serde(default = "default_shortcut")]
+    pub shortcut: String,
+}
+
+fn default_shortcut() -> String {
+    "Alt+Space".to_string()
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
             ai_polish_enabled: true,
+            shortcut: default_shortcut(),
         }
     }
 }

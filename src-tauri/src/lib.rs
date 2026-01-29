@@ -21,8 +21,14 @@ use settings::{get_settings, reset_settings, set_settings};
 use transcription::process_audio;
 use state::AppState;
 use std::sync::Mutex;
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_keyring::KeyringExt;
+
+/// Tauri command to update the global shortcut at runtime
+#[tauri::command]
+fn update_shortcut_cmd(app: AppHandle, shortcut: String) -> Result<(), String> {
+    shortcuts::update_shortcut(&app, &shortcut)
+}
 
 const SERVICE_NAME: &str = "TTP";
 const API_KEY_USER: &str = "openai-api-key";
@@ -106,7 +112,8 @@ pub fn run() {
             delete_dictionary_entry,
             clear_dictionary,
             get_history,
-            clear_history
+            clear_history,
+            update_shortcut_cmd
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
