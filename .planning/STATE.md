@@ -53,6 +53,9 @@ Recent decisions affecting current work:
 | 02-03 | AppleScript for paste | enigo FFI was crashing, osascript is stable |
 | 02-03 | OPENAI_API_KEY env var fallback | Avoids keychain prompts in development |
 | 02-03 | Whisper prompt for multi-language | Preserves French/English mixed speech |
+| 03-01 | 10-second detection window | Enough time for correction, not too long for clipboard changes |
+| 03-01 | Single-word corrections only | Multiple changes likely unrelated clipboard content |
+| 03-01 | Dictionary at ~/.config/ttp/dictionary.json | Cross-platform via dirs crate |
 | 03-02 | Settings in ~/.config/ttp/settings.json | Cross-platform via dirs crate |
 | 03-02 | Single-page settings layout | Simpler than tabs (CONTEXT.md discretion) |
 | 03-02 | AI polish enabled by default | Users can disable in settings |
