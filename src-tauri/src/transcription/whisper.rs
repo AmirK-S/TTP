@@ -65,6 +65,7 @@ pub async fn transcribe_audio(api_key: &str, audio_path: &str) -> Result<String,
         let form = Form::new()
             .text("model", "gpt-4o-transcribe")
             .text("response_format", "text")
+            .text("prompt", "Transcribe exactly what is spoken, preserving all languages (English, French, etc.) without translating.")
             .part("file", file_part);
 
         // Make the request

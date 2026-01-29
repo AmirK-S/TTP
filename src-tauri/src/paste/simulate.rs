@@ -1,40 +1,31 @@
 // TTP - Keyboard simulation
-// Simulates Cmd+V paste keystroke using enigo
+// Simulates Cmd+V paste keystroke
 //
-// Requires macOS accessibility permission to function.
-// If permission is not granted, this will fail silently or return an error.
+// Uses AppleScript on macOS for reliability (avoids enigo FFI crashes)
 
-use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
 /// Simulate a paste keystroke (Cmd+V on macOS)
 ///
-/// This uses the enigo crate to simulate keyboard input.
-/// On macOS, this requires Accessibility permission to be granted in
-/// System Settings > Privacy & Security > Accessibility.
+/// Uses AppleScript to send keystroke, which is more reliable than
+/// direct keyboard simulation and doesn't require Accessibility permission.
 pub fn simulate_paste() -> Result<(), String> {
-    let mut enigo = Enigo::new(&Settings::default())
-        .map_err(|e| format!("Failed to create enigo: {}", e))?;
-
     // Small delay to ensure target app has focus
-    // This helps when the floating bar was just hidden
-    thread::sleep(Duration::from_millis(50));
+    thread::sleep(Duration::from_millis(100));
 
-    // Press Cmd (Meta) key
-    enigo
-        .key(Key::Meta, Direction::Press)
-        .map_err(|e| format!("Failed to press Meta: {}", e))?;
+    // Use AppleScript to simulate Cmd+V
+    let output = Command::new("osascript")
+        .arg("-e")
+        .arg("tell application \"System Events\" to keystroke \"v\" using command down")
+        .output()
+        .map_err(|e| format!("Failed to run osascript: {}", e))?;
 
-    // Press and release V while Cmd is held
-    enigo
-        .key(Key::Unicode('v'), Direction::Click)
-        .map_err(|e| format!("Failed to click V: {}", e))?;
-
-    // Release Cmd key
-    enigo
-        .key(Key::Meta, Direction::Release)
-        .map_err(|e| format!("Failed to release Meta: {}", e))?;
-
-    Ok(())
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("osascript failed: {}", stderr))
+    }
 }

@@ -59,12 +59,21 @@ pub fn run() {
                 }
             }
 
-            // Check if API key exists, show setup window if not
-            let has_key = app
-                .keyring()
-                .get_password(SERVICE_NAME, API_KEY_USER)
-                .map(|k| k.is_some())
-                .unwrap_or(false);
+            // Check if API key exists (env var first, then keychain), show setup window if not
+            let has_key = if std::env::var("OPENAI_API_KEY").map(|k| !k.is_empty()).unwrap_or(false) {
+                println!("API key found in environment variable");
+                true
+            } else {
+                let from_keyring = app
+                    .keyring()
+                    .get_password(SERVICE_NAME, API_KEY_USER)
+                    .map(|k| k.is_some())
+                    .unwrap_or(false);
+                if from_keyring {
+                    println!("API key found in keychain");
+                }
+                from_keyring
+            };
 
             if !has_key {
                 // Show setup window for first-run experience
@@ -73,8 +82,6 @@ pub fn run() {
                     let _ = window.set_focus();
                     println!("First run: showing API key setup window");
                 }
-            } else {
-                println!("API key found in keychain");
             }
 
             Ok(())

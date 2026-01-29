@@ -16,17 +16,17 @@ const REQUEST_TIMEOUT_SECS: u64 = 15;
 
 /// System prompt for transcription polishing
 /// Based on CONTEXT.md decisions for filler removal, self-correction, and tone preservation
-pub const POLISH_SYSTEM_PROMPT: &str = r#"You are a transcription editor. Your job is to clean up voice transcriptions while preserving the speaker's voice and intent.
+pub const POLISH_SYSTEM_PROMPT: &str = r#"Clean up this voice transcription. Output the COMPLETE cleaned text.
 
-Rules:
-1. Remove ALL filler words: um, uh, like (when used as filler), you know, sort of, kind of, basically, literally (when meaningless)
-2. Fix obvious grammar errors but preserve casual speech patterns — do NOT make casual speech formal
-3. Add proper punctuation and capitalization (periods, commas, question marks)
-4. Handle self-corrections: when someone says "Tuesday no wait Wednesday" or "Send it Monday. Actually make that Tuesday", keep ONLY the final corrected version
-5. Preserve the speaker's exact tone — don't elevate formality
-6. If uncertain whether something is a correction, preserve the original verbatim
+RULES:
+1. Keep ALL content - do NOT remove or shorten anything
+2. NEVER translate - keep original language(s) exactly (French stays French, English stays English, mixed stays mixed)
+3. Remove only filler words: um, uh, like (as filler), you know, basically
+4. Fix grammar but keep casual tone
+5. Add punctuation
+6. Self-corrections only: "Tuesday no wait Wednesday" → "Wednesday"
 
-Return ONLY the cleaned text, nothing else."#;
+Output the FULL cleaned transcription, nothing else."#;
 
 /// Chat completion request body
 #[derive(Debug, Serialize)]
@@ -94,8 +94,8 @@ pub async fn polish_text(api_key: &str, raw_text: &str) -> Result<String, String
                 content: raw_text.to_string(),
             },
         ],
-        temperature: 0.3, // Low temperature for consistency
-        max_tokens: 1024,
+        temperature: 0.1, // Very low for consistency
+        max_tokens: 4096, // Ensure full output
     };
 
     // Retry loop with exponential backoff

@@ -1,27 +1,27 @@
 // TTP - Accessibility permissions
 // Checks if accessibility permission is granted for keyboard simulation
 //
-// Note: tauri-plugin-macos-permissions is NOT available as a Cargo crate
-// (it's JavaScript-only). We check permission via enigo's behavior instead.
-// If enigo can be initialized, accessibility permission is granted.
+// We use AppleScript with System Events which requires Accessibility permission.
 
-use enigo::{Enigo, Settings};
+use std::process::Command;
 
 /// Check if accessibility permission is granted
 ///
-/// This works by attempting to create an Enigo instance.
-/// On macOS, if accessibility permission is not granted,
-/// enigo will fail to initialize.
+/// Tests by running a simple AppleScript System Events command.
+/// System Events requires Accessibility permission to automate keystrokes.
 ///
 /// Returns:
-/// - `true` if permission is granted (enigo initialized successfully)
-/// - `false` if permission is denied (enigo failed to initialize)
-///
-/// Note: This is a practical approach since enigo needs accessibility
-/// permission to function. The actual permission prompt appears when
-/// the user first tries to use keyboard simulation, not when we check.
+/// - `true` if permission is granted
+/// - `false` if permission is denied or check fails
 pub fn check_accessibility() -> bool {
-    // Try to create an Enigo instance
-    // If this succeeds, we have accessibility permission
-    Enigo::new(&Settings::default()).is_ok()
+    // Try a simple System Events command
+    let output = Command::new("osascript")
+        .arg("-e")
+        .arg("tell application \"System Events\" to return 1")
+        .output();
+
+    match output {
+        Ok(o) => o.status.success(),
+        Err(_) => false,
+    }
 }

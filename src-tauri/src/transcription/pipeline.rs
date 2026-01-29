@@ -8,10 +8,10 @@ use crate::credentials::get_api_key_internal;
 use crate::paste::{check_accessibility, simulate_paste, ClipboardGuard};
 use crate::state::{AppState, RecordingState};
 use std::sync::Mutex;
-use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
+use tokio::time::sleep;
 
 use super::{polish_text, transcribe_audio};
 
@@ -111,26 +111,45 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     println!("[Pipeline] Polished text: {}", polished_text);
 
     // Stage 3: Paste into active app
+    println!("[Pipeline] Stage 3: Starting paste...");
     emit_progress(app, "pasting", "");
 
     // Create clipboard guard to save original content
+    println!("[Pipeline] Creating clipboard guard...");
     let clipboard_guard = ClipboardGuard::new(app);
 
     // ALWAYS write to clipboard first (per CONTEXT.md: backup for manual paste)
+    println!("[Pipeline] Writing to clipboard...");
     if let Err(e) = clipboard_guard.write_text(&polished_text) {
         emit_progress(app, "error", "Failed to write to clipboard");
         notify(app, "Failed to copy text to clipboard");
         set_state(app, RecordingState::Idle);
         return Err(e);
     }
+    println!("[Pipeline] Clipboard write OK");
 
     // Check accessibility permission and try to paste
-    let paste_success = if check_accessibility() {
-        match simulate_paste() {
-            Ok(()) => {
-                // Wait a bit for paste to complete before restoring clipboard
-                thread::sleep(Duration::from_millis(150));
+    println!("[Pipeline] Checking accessibility...");
+    let has_accessibility = check_accessibility();
+    println!("[Pipeline] Accessibility: {}", has_accessibility);
 
+    // Use spawn_blocking to run sync paste code safely in async context
+    let paste_success = if has_accessibility {
+        println!("[Pipeline] Attempting paste simulation...");
+        let paste_result = tokio::task::spawn_blocking(|| {
+            println!("[Pipeline] In spawn_blocking, calling simulate_paste...");
+            std::panic::catch_unwind(|| simulate_paste())
+        })
+        .await;
+        println!("[Pipeline] spawn_blocking returned");
+
+        match paste_result {
+            Ok(Ok(Ok(()))) => {
+                println!("[Pipeline] Paste OK, waiting 150ms...");
+                // Wait a bit for paste to complete before restoring clipboard
+                sleep(Duration::from_millis(150)).await;
+
+                println!("[Pipeline] Restoring clipboard...");
                 // Restore original clipboard content
                 if let Err(e) = clipboard_guard.restore() {
                     eprintln!("[Pipeline] Failed to restore clipboard: {}", e);
@@ -139,8 +158,16 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
                 true
             }
-            Err(e) => {
+            Ok(Ok(Err(e))) => {
                 eprintln!("[Pipeline] Paste simulation failed: {}", e);
+                false
+            }
+            Ok(Err(_)) => {
+                eprintln!("[Pipeline] Paste simulation panicked");
+                false
+            }
+            Err(e) => {
+                eprintln!("[Pipeline] Paste task failed: {}", e);
                 false
             }
         }
@@ -148,17 +175,23 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         eprintln!("[Pipeline] No accessibility permission - using clipboard fallback");
         false
     };
+    println!("[Pipeline] Paste stage complete, success={}", paste_success);
 
     // Complete with appropriate message
+    println!("[Pipeline] Completing...");
     if paste_success {
+        println!("[Pipeline] Emitting complete (paste succeeded)");
         emit_progress(app, "complete", "");
     } else {
         // Clipboard fallback - notify user
+        println!("[Pipeline] Paste failed, showing notification...");
         notify(app, "Text copied - paste with Cmd+V");
         emit_progress(app, "complete", "");
     }
 
+    println!("[Pipeline] Setting state to Idle...");
     set_state(app, RecordingState::Idle);
+    println!("[Pipeline] Done!");
     Ok(polished_text)
 }
 
