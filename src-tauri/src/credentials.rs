@@ -1,10 +1,18 @@
 // TTP - Talk To Paste
 // Secure API key storage using system keychain
 
+use tauri::AppHandle;
 use tauri_plugin_keyring::KeyringExt;
 
 const SERVICE_NAME: &str = "TTP";
 const API_KEY_USER: &str = "openai-api-key";
+
+/// Internal function to get API key (for use within Rust code, not as a command)
+pub fn get_api_key_internal(app: &AppHandle) -> Result<Option<String>, String> {
+    app.keyring()
+        .get_password(SERVICE_NAME, API_KEY_USER)
+        .map_err(|e| e.to_string())
+}
 
 /// Get the stored API key from the system keychain
 #[tauri::command]
