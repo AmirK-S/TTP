@@ -3,6 +3,7 @@
   "productName": "TTP",
   "version": "0.1.0",
   "identifier": "com.ttp.desktop",
+  "macOSPrivateApi": true,
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -26,14 +27,15 @@
       {
         "label": "floating-bar",
         "title": "",
-        "width": 80,
-        "height": 28,
+        "width": 100,
+        "height": 32,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
         "skipTaskbar": true,
-        "visible": false,
+        "visible": true,
         "resizable": false,
+        "focus": false,
         "x": 0,
         "y": 0
       },

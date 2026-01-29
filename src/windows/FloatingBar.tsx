@@ -46,21 +46,22 @@ export function FloatingBar() {
     document.body.style.background = 'transparent';
   }, []);
 
-  // Only show content when recording
-  // (though the window visibility is controlled by Rust)
   const isRecording = recordingState === 'Recording';
 
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-transparent">
-      {isRecording && (
+      {isRecording ? (
+        // Recording state: black pill with pulsing dots
         <div className="flex items-center justify-center gap-1 rounded-full bg-black/90 px-3 py-1.5 shadow-lg">
-          {/* Minimal pulsing dots indicator like Wispr Flow */}
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/80" style={{ animationDelay: '0ms' }} />
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/80" style={{ animationDelay: '150ms' }} />
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/80" style={{ animationDelay: '300ms' }} />
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/80" style={{ animationDelay: '450ms' }} />
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/80" style={{ animationDelay: '600ms' }} />
         </div>
+      ) : (
+        // Idle state: small subtle grey pill
+        <div className="h-5 w-12 rounded-full bg-gray-400/60 shadow-sm" />
       )}
     </div>
   );

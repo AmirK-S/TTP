@@ -35,6 +35,24 @@ pub fn run() {
             // Set up global keyboard shortcuts
             shortcuts::setup_shortcuts(app.handle())?;
 
+            // Position floating bar above the dock
+            if let Some(window) = app.get_webview_window("floating-bar") {
+                if let Ok(Some(monitor)) = window.primary_monitor() {
+                    let screen_size = monitor.size();
+                    let window_width = 100.0;
+                    let window_height = 32.0;
+                    let dock_offset = 200.0;
+
+                    let x = (screen_size.width as f64 / 2.0) - (window_width / 2.0);
+                    let y = screen_size.height as f64 - dock_offset - window_height;
+
+                    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
+                        x: x as i32,
+                        y: y as i32,
+                    }));
+                }
+            }
+
             // Check if API key exists, show setup window if not
             let has_key = app
                 .keyring()
