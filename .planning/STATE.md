@@ -10,27 +10,28 @@ See: .planning/PROJECT.md (updated 2026-01-29)
 ## Current Position
 
 Phase: 2 of 4 (Transcription Pipeline)
-Plan: 0 of 3 in current phase
-Status: Ready to plan
-Last activity: 2026-01-29 — Phase 1 complete
+Plan: 2 of 3 in current phase
+Status: In progress
+Last activity: 2026-01-29 — Completed 02-02-PLAN.md
 
-Progress: [███░░░░░░░] 25%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 10 min
-- Total execution time: 0.5 hours
+- Total plans completed: 5
+- Average duration: 8.4 min
+- Total execution time: 42 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1 | 3/3 | 30 min | 10 min |
+| 2 | 2/3 | 13 min | 6.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (9min), 01-02 (5min), 01-03 (15min)
+- Last 5 plans: 01-01 (9min), 01-02 (5min), 01-03 (15min), 02-01 (8min), 02-02 (5min)
 - Trend: stable
 
 *Updated after each plan completion*
@@ -52,6 +53,8 @@ Recent decisions affecting current work:
 | 01-03 | Option+Space as shortcut | fn key requires native code (Phase 4) |
 | 01-03 | macOSPrivateApi enabled | Required for proper transparency |
 | 01-03 | Volume-reactive animation deferred | Web Audio couldn't share mic with plugin |
+| 02-02 | Permission check via enigo init | tauri-plugin-macos-permissions is JS-only |
+| 02-02 | Clipboard guard save-write-restore | Ensures clipboard always has transcription |
 
 ### Pending Todos
 
@@ -61,11 +64,11 @@ Recent decisions affecting current work:
 ### Blockers/Concerns
 
 **Research flags from roadmap:**
-- Phase 2: Paste simulation APIs and accessibility permissions need research
+- Phase 2: Paste simulation implemented with enigo (accessibility permission required)
 - Phase 4: Notarization and Windows installer workflows need research
 
 ## Session Continuity
 
 Last session: 2026-01-29
-Stopped at: Phase 1 complete, ready to plan Phase 2
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None
