@@ -27,7 +27,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **POL-01**: Transcription processed by GPT-4o-mini for cleanup
 - [ ] **POL-02**: Filler words removed (um, uh, like, you know)
 - [ ] **POL-03**: Grammar corrected while preserving meaning
-- [ ] **POL-04**: Self-corrections handled ("Tuesday, no wait, Wednesday" → "Wednesday")
+- [ ] **POL-04**: Self-corrections handled ("Tuesday, no wait, Wednesday" -> "Wednesday")
 - [ ] **POL-05**: User dictionary terms injected as context for correct spelling
 
 ### Output
@@ -137,8 +137,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 **Coverage:**
 - v1 requirements: 30 total
 - Mapped to phases: 30
-- Unmapped: 0 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2025-01-29*
-*Last updated: 2025-01-29 after initial definition*
+*Last updated: 2026-01-29 after roadmap creation*
