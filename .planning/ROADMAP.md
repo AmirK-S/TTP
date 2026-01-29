@@ -49,8 +49,8 @@ Plans:
 **Research flag**: Complete - see 02-RESEARCH.md
 
 Plans:
-- [ ] 02-01-PLAN.md — Transcription and polish backend (Whisper + GPT-4o-mini API clients)
-- [ ] 02-02-PLAN.md — Paste simulation and clipboard management (enigo + clipboard plugin)
+- [x] 02-01-PLAN.md — Transcription and polish backend (Whisper + GPT-4o-mini API clients)
+- [x] 02-02-PLAN.md — Paste simulation and clipboard management (enigo + clipboard plugin)
 - [ ] 02-03-PLAN.md — Pipeline integration and UI (wire everything, frontend progress)
 
 ### Phase 3: Learning + Settings
@@ -94,7 +94,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation + Recording | 3/3 | ✓ Complete | 2026-01-29 |
-| 2. Transcription Pipeline | 0/3 | Planned | - |
+| 2. Transcription Pipeline | 2/3 | In progress | - |
 | 3. Learning + Settings | 0/3 | Not started | - |
 | 4. Platform Parity | 0/2 | Not started | - |
 
