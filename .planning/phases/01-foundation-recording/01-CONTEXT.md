@@ -19,8 +19,8 @@ Menu bar/tray app with global shortcuts for voice recording control. User can tr
 - Similar visual feedback approach
 
 ### Keyboard Shortcuts
-- Mac default: `fn` key (hold to talk, release to stop)
-- Windows default: `Ctrl + Win` (hold to talk)
+- Default: `Ctrl+Shift+Space` (cross-platform, works on both macOS and Windows)
+- Note: `fn` key (Wispr Flow's default) cannot be captured on macOS — Apple intercepts it at system level for emoji picker/dictation. Using modifier combo instead.
 - Double-tap shortcut to enter hands-free mode (stays listening until pressed again)
 - Shortcuts will be customizable in Phase 3 settings
 
