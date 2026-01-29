@@ -7,6 +7,7 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import App from './App';
 import FloatingBar from './windows/FloatingBar';
 import ApiKeySetup from './windows/ApiKeySetup';
+import Settings from './windows/Settings';
 import './index.css';
 
 /**
@@ -33,6 +34,13 @@ async function main() {
     ReactDOM.createRoot(rootElement).render(
       <React.StrictMode>
         <ApiKeySetup />
+      </React.StrictMode>
+    );
+  } else if (windowLabel === 'settings') {
+    // Settings window - app configuration and dictionary management
+    ReactDOM.createRoot(rootElement).render(
+      <React.StrictMode>
+        <Settings />
       </React.StrictMode>
     );
   } else {

@@ -36,6 +36,7 @@ fn get_dictionary_path() -> Result<PathBuf, String> {
 
 /// Load all dictionary entries from file
 /// Returns empty Vec if file doesn't exist or is empty
+#[tauri::command]
 pub fn get_dictionary() -> Vec<DictionaryEntry> {
     let path = match get_dictionary_path() {
         Ok(p) => p,
@@ -115,7 +116,13 @@ pub fn add_entry(original: &str, correction: &str) -> Result<(), String> {
 }
 
 /// Delete an entry from the dictionary by its original text
-pub fn delete_entry(original: &str) -> Result<(), String> {
+#[tauri::command]
+pub fn delete_dictionary_entry(original: String) -> Result<(), String> {
+    delete_entry_internal(&original)
+}
+
+/// Internal function to delete an entry
+fn delete_entry_internal(original: &str) -> Result<(), String> {
     let path = get_dictionary_path()?;
 
     // Load existing entries
@@ -151,6 +158,7 @@ pub fn delete_entry(original: &str) -> Result<(), String> {
 }
 
 /// Clear all dictionary entries (delete file)
+#[tauri::command]
 pub fn clear_dictionary() -> Result<(), String> {
     let path = get_dictionary_path()?;
 

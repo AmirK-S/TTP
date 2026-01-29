@@ -7,4 +7,4 @@
 pub mod detection;
 pub mod store;
 
-pub use store::{add_entry, clear_dictionary, delete_entry, get_dictionary, DictionaryEntry};
+pub use store::{add_entry, clear_dictionary, delete_dictionary_entry, get_dictionary, DictionaryEntry};

@@ -47,6 +47,16 @@
         "resizable": false,
         "visible": false,
         "center": true
+      },
+      {
+        "label": "settings",
+        "title": "TTP Settings",
+        "width": 500,
+        "height": 600,
+        "resizable": true,
+        "visible": false,
+        "center": true,
+        "decorations": true
       }
     ],
     "security": {

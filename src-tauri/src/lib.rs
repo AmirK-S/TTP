@@ -13,6 +13,7 @@ mod transcription;
 mod tray;
 
 use credentials::{delete_api_key, get_api_key, has_api_key, set_api_key};
+use dictionary::{clear_dictionary, delete_dictionary_entry, get_dictionary};
 use recording::{get_recordings_dir, RecordingContext};
 use settings::{get_settings, reset_settings, set_settings};
 use transcription::process_audio;
@@ -98,7 +99,10 @@ pub fn run() {
             process_audio,
             get_settings,
             set_settings,
-            reset_settings
+            reset_settings,
+            get_dictionary,
+            delete_dictionary_entry,
+            clear_dictionary
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
