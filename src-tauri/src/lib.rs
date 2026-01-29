@@ -41,7 +41,7 @@ pub fn run() {
                     let screen_size = monitor.size();
                     let window_width = 100.0;
                     let window_height = 32.0;
-                    let dock_offset = 200.0;
+                    let dock_offset = 220.0;
 
                     let x = (screen_size.width as f64 / 2.0) - (window_width / 2.0);
                     let y = screen_size.height as f64 - dock_offset - window_height;

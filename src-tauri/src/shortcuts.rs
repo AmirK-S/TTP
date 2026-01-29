@@ -14,15 +14,15 @@ const DOUBLE_TAP_THRESHOLD_MS: u128 = 300;
 
 /// Set up global keyboard shortcuts for recording control
 pub fn setup_shortcuts(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    // Register Ctrl+Shift+Space as the global shortcut
-    let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space);
+    // Register Option+Space as the global shortcut
+    let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::Space);
 
     let app_handle = app.clone();
     app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {
         handle_shortcut_event(&app_handle, event.state);
     })?;
 
-    println!("Global shortcut Ctrl+Shift+Space registered");
+    println!("Global shortcut Option+Space registered");
     Ok(())
 }
 

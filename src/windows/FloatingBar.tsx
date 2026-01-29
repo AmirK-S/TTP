@@ -1,7 +1,7 @@
 // TTP - Talk To Paste
 // Floating bar component - transparent recording indicator overlay
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useRecordingState } from '../hooks/useRecordingState';
 import { useRecordingControl } from '../hooks/useRecordingControl';
 
@@ -47,22 +47,50 @@ export function FloatingBar() {
   }, []);
 
   const isRecording = recordingState === 'Recording';
+  const [wavePhase, setWavePhase] = useState(0);
+
+  // Smooth flowing wave animation when recording
+  useEffect(() => {
+    if (!isRecording) return;
+
+    let animationId: number;
+    const animate = () => {
+      setWavePhase(p => p + 0.12);
+      animationId = requestAnimationFrame(animate);
+    };
+    animationId = requestAnimationFrame(animate);
+
+    return () => cancelAnimationFrame(animationId);
+  }, [isRecording]);
+
+  // Smooth flowing wave
+  const audioLevels = [0, 1, 2, 3, 4].map(i => {
+    const wave = Math.sin(wavePhase + i * 0.6);
+    return 0.5 + wave * 0.35;
+  });
 
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-transparent">
-      {isRecording ? (
-        // Recording state: black pill with pulsing dots
-        <div className="flex items-center justify-center gap-1 rounded-full bg-black/90 px-3 py-1.5 shadow-lg">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/80" style={{ animationDelay: '0ms' }} />
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/80" style={{ animationDelay: '150ms' }} />
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/80" style={{ animationDelay: '300ms' }} />
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/80" style={{ animationDelay: '450ms' }} />
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/80" style={{ animationDelay: '600ms' }} />
-        </div>
-      ) : (
-        // Idle state: small subtle grey pill
-        <div className="h-5 w-12 rounded-full bg-gray-400/60 shadow-sm" />
-      )}
+      <div
+        className={`flex items-center justify-center rounded-full shadow-lg transition-all duration-150 ease-out ${
+          isRecording
+            ? 'gap-0.5 bg-black/90 px-2.5 py-1.5'
+            : 'bg-gray-400/60 px-5 py-2'
+        }`}
+        style={{ minHeight: isRecording ? '28px' : '16px', minWidth: isRecording ? '50px' : '40px' }}
+      >
+        {isRecording && (
+          <>
+            {audioLevels.map((level, i) => (
+              <span
+                key={i}
+                className="w-1 rounded-full bg-white/80 transition-all duration-75"
+                style={{ height: `${level * 14}px` }}
+              />
+            ))}
+          </>
+        )}
+      </div>
     </div>
   );
 }
