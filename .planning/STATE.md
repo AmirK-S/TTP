@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-29)
 ## Current Position
 
 Phase: 3 of 4 (Learning + Settings)
-Plan: 0 of 3 in current phase
-Status: Ready to plan
-Last activity: 2026-01-29 — Phase 2 complete
+Plan: 2 of 3 in current phase
+Status: In progress
+Last activity: 2026-01-29 — Completed 03-02-PLAN.md
 
-Progress: [██████░░░░] 50%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 10 min
-- Total execution time: 60 min
+- Total plans completed: 8
+- Average duration: 8 min
+- Total execution time: 68 min
 
 **By Phase:**
 
@@ -29,10 +29,11 @@ Progress: [██████░░░░] 50%
 |-------|-------|-------|----------|
 | 1 | 3/3 | 30 min | 10 min |
 | 2 | 3/3 | 30 min | 10 min |
+| 3 | 2/3 | 8 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-02 (5min), 01-03 (15min), 02-01 (8min), 02-02 (5min), 02-03 (25min)
-- Trend: stable
+- Last 5 plans: 02-01 (8min), 02-02 (5min), 02-03 (25min), 03-01 (~5min), 03-02 (4min)
+- Trend: accelerating
 
 *Updated after each plan completion*
 
@@ -52,6 +53,9 @@ Recent decisions affecting current work:
 | 02-03 | AppleScript for paste | enigo FFI was crashing, osascript is stable |
 | 02-03 | OPENAI_API_KEY env var fallback | Avoids keychain prompts in development |
 | 02-03 | Whisper prompt for multi-language | Preserves French/English mixed speech |
+| 03-02 | Settings in ~/.config/ttp/settings.json | Cross-platform via dirs crate |
+| 03-02 | Single-page settings layout | Simpler than tabs (CONTEXT.md discretion) |
+| 03-02 | AI polish enabled by default | Users can disable in settings |
 
 ### Pending Todos
 
@@ -66,5 +70,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-01-29
-Stopped at: Phase 2 complete, ready to plan Phase 3
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
