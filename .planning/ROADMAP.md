@@ -11,7 +11,7 @@ TTP delivers voice-to-text transcription in four phases: establishing the founda
 - Decimal phases (e.g., 2.1): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 1: Foundation + Recording** - Menu bar app with audio capture and global shortcuts
-- [ ] **Phase 2: Transcription Pipeline** - Whisper API, AI polish, and auto-paste to active app
+- [x] **Phase 2: Transcription Pipeline** - Whisper API, AI polish, and auto-paste to active app
 - [ ] **Phase 3: Learning + Settings** - Dictionary learning, history, and user configuration
 - [ ] **Phase 4: Platform Parity** - Cross-platform consistency and final polish
 
@@ -50,8 +50,8 @@ Plans:
 
 Plans:
 - [x] 02-01-PLAN.md — Transcription and polish backend (Whisper + GPT-4o-mini API clients)
-- [x] 02-02-PLAN.md — Paste simulation and clipboard management (enigo + clipboard plugin)
-- [ ] 02-03-PLAN.md — Pipeline integration and UI (wire everything, frontend progress)
+- [x] 02-02-PLAN.md — Paste simulation and clipboard management (AppleScript + clipboard plugin)
+- [x] 02-03-PLAN.md — Pipeline integration and UI (wire everything, frontend progress)
 
 ### Phase 3: Learning + Settings
 **Goal**: App learns from user corrections and provides full configurability
@@ -94,7 +94,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation + Recording | 3/3 | ✓ Complete | 2026-01-29 |
-| 2. Transcription Pipeline | 2/3 | In progress | - |
+| 2. Transcription Pipeline | 3/3 | ✓ Complete | 2026-01-29 |
 | 3. Learning + Settings | 0/3 | Not started | - |
 | 4. Platform Parity | 0/2 | Not started | - |
 

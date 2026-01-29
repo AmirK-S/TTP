@@ -18,23 +18,23 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Transcription
 
-- [ ] **TRX-01**: Audio sent to OpenAI Whisper API for transcription
-- [ ] **TRX-02**: Transcription includes proper punctuation
-- [ ] **TRX-03**: Multi-language support (Whisper handles 100+ languages)
+- [x] **TRX-01**: Audio sent to OpenAI Whisper API for transcription
+- [x] **TRX-02**: Transcription includes proper punctuation
+- [x] **TRX-03**: Multi-language support (Whisper handles 100+ languages)
 
 ### AI Polish
 
-- [ ] **POL-01**: Transcription processed by GPT-4o-mini for cleanup
-- [ ] **POL-02**: Filler words removed (um, uh, like, you know)
-- [ ] **POL-03**: Grammar corrected while preserving meaning
-- [ ] **POL-04**: Self-corrections handled ("Tuesday, no wait, Wednesday" -> "Wednesday")
+- [x] **POL-01**: Transcription processed by GPT-4o-mini for cleanup
+- [x] **POL-02**: Filler words removed (um, uh, like, you know)
+- [x] **POL-03**: Grammar corrected while preserving meaning
+- [x] **POL-04**: Self-corrections handled ("Tuesday, no wait, Wednesday" -> "Wednesday")
 - [ ] **POL-05**: User dictionary terms injected as context for correct spelling
 
 ### Output
 
-- [ ] **OUT-01**: Polished text auto-pasted into active text field
-- [ ] **OUT-02**: Fallback to clipboard + notification when auto-paste impossible
-- [ ] **OUT-03**: Original clipboard content preserved (not overwritten permanently)
+- [x] **OUT-01**: Polished text auto-pasted into active text field
+- [x] **OUT-02**: Fallback to clipboard + notification when auto-paste impossible
+- [x] **OUT-03**: Original clipboard content preserved (not overwritten permanently)
 
 ### Learning System
 
