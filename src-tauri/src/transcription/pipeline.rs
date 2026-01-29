@@ -5,6 +5,7 @@
 // text polishing, and auto-paste functionality.
 
 use crate::credentials::get_api_key_internal;
+use crate::dictionary::detection::start_correction_window;
 use crate::paste::{check_accessibility, simulate_paste, ClipboardGuard};
 use crate::settings::get_settings;
 use crate::state::{AppState, RecordingState};
@@ -165,6 +166,9 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                     eprintln!("[Pipeline] Failed to restore clipboard: {}", e);
                     // Not a critical error - paste succeeded
                 }
+
+                // Start correction detection window (10 seconds to detect user corrections)
+                start_correction_window(app, polished_text.clone());
 
                 true
             }

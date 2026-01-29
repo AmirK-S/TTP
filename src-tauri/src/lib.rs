@@ -2,6 +2,7 @@
 // Main Tauri application entry point
 
 mod credentials;
+mod dictionary;
 mod paste;
 mod recording;
 mod settings;
