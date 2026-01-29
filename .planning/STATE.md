@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-01-29)
 ## Current Position
 
 Phase: 1 of 4 (Foundation + Recording)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In progress
-Last activity: 2026-01-29 - Completed 01-01-PLAN.md
+Last activity: 2026-01-29 - Completed 01-02-PLAN.md
 
-Progress: [█░░░░░░░░░] 9%
+Progress: [██░░░░░░░░] 18%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 9 min
-- Total execution time: 0.15 hours
+- Total plans completed: 2
+- Average duration: 7 min
+- Total execution time: 0.23 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1 | 1/3 | 9 min | 9 min |
+| 1 | 2/3 | 14 min | 7 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (9min)
-- Trend: baseline
+- Last 5 plans: 01-01 (9min), 01-02 (5min)
+- Trend: improving
 
 *Updated after each plan completion*
 
@@ -47,6 +47,9 @@ Recent decisions affecting current work:
 | 01-01 | Tailwind 4.x via Vite plugin | Tailwind 4 changed setup pattern |
 | 01-01 | Bundle ID: com.ttp.desktop | Avoids macOS .app suffix conflict |
 | 01-01 | Main window hidden by default | Tray-only app pattern |
+| 01-02 | Ctrl+Shift+Space as shortcut | fn key cannot be captured on macOS |
+| 01-02 | 300ms double-tap threshold | Standard UX threshold for toggle mode |
+| 01-02 | Embedded sounds via include_bytes! | Avoids runtime file loading issues |
 
 ### Pending Todos
 
@@ -60,6 +63,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-29T13:32:37Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-01-29T13:41:29Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
