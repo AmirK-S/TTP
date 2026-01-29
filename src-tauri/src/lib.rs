@@ -4,6 +4,7 @@
 mod credentials;
 mod paste;
 mod recording;
+mod settings;
 mod shortcuts;
 mod sounds;
 mod state;
@@ -12,6 +13,7 @@ mod tray;
 
 use credentials::{delete_api_key, get_api_key, has_api_key, set_api_key};
 use recording::{get_recordings_dir, RecordingContext};
+use settings::{get_settings, reset_settings, set_settings};
 use transcription::process_audio;
 use state::AppState;
 use std::sync::Mutex;
@@ -92,7 +94,10 @@ pub fn run() {
             has_api_key,
             delete_api_key,
             get_recordings_dir,
-            process_audio
+            process_audio,
+            get_settings,
+            set_settings,
+            reset_settings
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -6,6 +6,7 @@
 
 use crate::credentials::get_api_key_internal;
 use crate::paste::{check_accessibility, simulate_paste, ClipboardGuard};
+use crate::settings::get_settings;
 use crate::state::{AppState, RecordingState};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -96,19 +97,28 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
     println!("[Pipeline] Raw transcription: {}", raw_text);
 
-    // Stage 2: Polish text
-    emit_progress(app, "polishing", "Processing...");
+    // Load settings to check if AI polish is enabled
+    let settings = get_settings();
 
-    let polished_text = match polish_text(&api_key, &raw_text).await {
-        Ok(text) => text,
-        Err(e) => {
-            // Per CONTEXT.md: Use raw text as fallback if polish fails
-            eprintln!("[Pipeline] Polish failed, using raw text: {}", e);
-            raw_text.clone()
+    // Stage 2: Polish text (if enabled)
+    let polished_text = if settings.ai_polish_enabled {
+        emit_progress(app, "polishing", "Processing...");
+
+        match polish_text(&api_key, &raw_text).await {
+            Ok(text) => text,
+            Err(e) => {
+                // Per CONTEXT.md: Use raw text as fallback if polish fails
+                eprintln!("[Pipeline] Polish failed, using raw text: {}", e);
+                raw_text.clone()
+            }
         }
+    } else {
+        // AI polish disabled - use raw transcription
+        println!("[Pipeline] AI polish disabled, using raw transcription");
+        raw_text.clone()
     };
 
-    println!("[Pipeline] Polished text: {}", polished_text);
+    println!("[Pipeline] Final text: {}", polished_text);
 
     // Stage 3: Paste into active app
     println!("[Pipeline] Stage 3: Starting paste...");
