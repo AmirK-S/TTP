@@ -28,7 +28,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **POL-02**: Filler words removed (um, uh, like, you know)
 - [x] **POL-03**: Grammar corrected while preserving meaning
 - [x] **POL-04**: Self-corrections handled ("Tuesday, no wait, Wednesday" -> "Wednesday")
-- [ ] **POL-05**: User dictionary terms injected as context for correct spelling
+- [x] **POL-05**: User dictionary terms injected as context for correct spelling
 
 ### Output
 
@@ -38,18 +38,18 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Learning System
 
-- [ ] **LRN-01**: System detects user corrections after auto-paste
-- [ ] **LRN-02**: Corrections stored locally as dictionary entries
-- [ ] **LRN-03**: Future transcriptions use learned corrections for AI polish context
-- [ ] **LRN-04**: User can view/edit learned corrections in settings
+- [x] **LRN-01**: System detects user corrections after auto-paste
+- [x] **LRN-02**: Corrections stored locally as dictionary entries
+- [x] **LRN-03**: Future transcriptions use learned corrections for AI polish context
+- [x] **LRN-04**: User can view/edit learned corrections in settings
 
 ### Configuration
 
 - [x] **CFG-01**: First-run setup prompts for OpenAI API key
 - [x] **CFG-02**: API key stored securely in system keychain/credential store
-- [ ] **CFG-03**: Settings UI accessible from menu bar/tray menu
+- [x] **CFG-03**: Settings UI accessible from menu bar/tray menu
 - [ ] **CFG-04**: User can customize global shortcut
-- [ ] **CFG-05**: User can enable/disable AI polish (raw transcription option)
+- [x] **CFG-05**: User can enable/disable AI polish (raw transcription option)
 
 ### Platform Support
 
@@ -59,9 +59,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Transcription History
 
-- [ ] **HST-01**: All transcriptions saved locally with timestamps
-- [ ] **HST-02**: User can view recent transcription history
-- [ ] **HST-03**: User can copy any past transcription
+- [x] **HST-01**: All transcriptions saved locally with timestamps
+- [x] **HST-02**: User can view recent transcription history
+- [x] **HST-03**: User can copy any past transcription
 
 ## v2 Requirements
 
@@ -107,32 +107,32 @@ Which phases cover which requirements. Updated during roadmap creation.
 | REC-04 | Phase 1 | Complete |
 | REC-05 | Phase 1 | Complete |
 | REC-06 | Phase 1 | Complete |
-| TRX-01 | Phase 2 | Pending |
-| TRX-02 | Phase 2 | Pending |
-| TRX-03 | Phase 2 | Pending |
-| POL-01 | Phase 2 | Pending |
-| POL-02 | Phase 2 | Pending |
-| POL-03 | Phase 2 | Pending |
-| POL-04 | Phase 2 | Pending |
-| POL-05 | Phase 3 | Pending |
-| OUT-01 | Phase 2 | Pending |
-| OUT-02 | Phase 2 | Pending |
-| OUT-03 | Phase 2 | Pending |
-| LRN-01 | Phase 3 | Pending |
-| LRN-02 | Phase 3 | Pending |
-| LRN-03 | Phase 3 | Pending |
-| LRN-04 | Phase 3 | Pending |
+| TRX-01 | Phase 2 | Complete |
+| TRX-02 | Phase 2 | Complete |
+| TRX-03 | Phase 2 | Complete |
+| POL-01 | Phase 2 | Complete |
+| POL-02 | Phase 2 | Complete |
+| POL-03 | Phase 2 | Complete |
+| POL-04 | Phase 2 | Complete |
+| POL-05 | Phase 3 | Complete |
+| OUT-01 | Phase 2 | Complete |
+| OUT-02 | Phase 2 | Complete |
+| OUT-03 | Phase 2 | Complete |
+| LRN-01 | Phase 3 | Complete |
+| LRN-02 | Phase 3 | Complete |
+| LRN-03 | Phase 3 | Complete |
+| LRN-04 | Phase 3 | Complete |
 | CFG-01 | Phase 1 | Complete |
 | CFG-02 | Phase 1 | Complete |
-| CFG-03 | Phase 3 | Pending |
-| CFG-04 | Phase 3 | Pending |
-| CFG-05 | Phase 3 | Pending |
+| CFG-03 | Phase 3 | Complete |
+| CFG-04 | Phase 4 | Pending |
+| CFG-05 | Phase 3 | Complete |
 | PLT-01 | Phase 1 | Complete |
 | PLT-02 | Phase 1 | Complete |
 | PLT-03 | Phase 4 | Pending |
-| HST-01 | Phase 3 | Pending |
-| HST-02 | Phase 3 | Pending |
-| HST-03 | Phase 3 | Pending |
+| HST-01 | Phase 3 | Complete |
+| HST-02 | Phase 3 | Complete |
+| HST-03 | Phase 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 30 total

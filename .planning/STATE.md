@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-29)
 
 **Core value:** One shortcut to turn speech into text, anywhere.
-**Current focus:** Phase 3 - Learning + Settings (COMPLETE)
+**Current focus:** Phase 4 - Platform Parity (Next)
 
 ## Current Position
 
-Phase: 3 of 4 (Learning + Settings)
-Plan: 3 of 3 in current phase (PHASE COMPLETE)
-Status: Phase 3 complete
-Last activity: 2026-01-29 — Completed 03-03-PLAN.md
+Phase: 4 of 4 (Platform Parity)
+Plan: 0 of 2 in current phase
+Status: Ready to plan
+Last activity: 2026-01-29 — Phase 3 complete
 
-Progress: [█████████░] 90%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 

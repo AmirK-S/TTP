@@ -12,7 +12,7 @@ TTP delivers voice-to-text transcription in four phases: establishing the founda
 
 - [x] **Phase 1: Foundation + Recording** - Menu bar app with audio capture and global shortcuts
 - [x] **Phase 2: Transcription Pipeline** - Whisper API, AI polish, and auto-paste to active app
-- [ ] **Phase 3: Learning + Settings** - Dictionary learning, history, and user configuration
+- [x] **Phase 3: Learning + Settings** - Dictionary learning, history, and user configuration
 - [ ] **Phase 4: Platform Parity** - Cross-platform consistency and final polish
 
 ## Phase Details
@@ -67,9 +67,9 @@ Plans:
 **Research flag**: Skip - standard CRUD and settings patterns
 
 Plans:
-- [ ] 03-01-PLAN.md — Dictionary system backend and correction detection
-- [ ] 03-02-PLAN.md — Settings UI with AI polish toggle and dictionary management
-- [ ] 03-03-PLAN.md — Transcription history storage and UI
+- [x] 03-01-PLAN.md — Dictionary system backend and correction detection
+- [x] 03-02-PLAN.md — Settings UI with AI polish toggle and dictionary management
+- [x] 03-03-PLAN.md — Transcription history storage and UI
 
 ### Phase 4: Platform Parity
 **Goal**: Consistent, polished experience across macOS and Windows
@@ -95,7 +95,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 |-------|----------------|--------|-----------|
 | 1. Foundation + Recording | 3/3 | ✓ Complete | 2026-01-29 |
 | 2. Transcription Pipeline | 3/3 | ✓ Complete | 2026-01-29 |
-| 3. Learning + Settings | 0/3 | Not started | - |
+| 3. Learning + Settings | 3/3 | ✓ Complete | 2026-01-29 |
 | 4. Platform Parity | 0/2 | Not started | - |
 
 ---
