@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-29)
 
 **Core value:** One shortcut to turn speech into text, anywhere.
-**Current focus:** Phase 3 - Learning + Settings
+**Current focus:** Phase 3 - Learning + Settings (COMPLETE)
 
 ## Current Position
 
 Phase: 3 of 4 (Learning + Settings)
-Plan: 2 of 3 in current phase
-Status: In progress
-Last activity: 2026-01-29 — Completed 03-02-PLAN.md
+Plan: 3 of 3 in current phase (PHASE COMPLETE)
+Status: Phase 3 complete
+Last activity: 2026-01-29 — Completed 03-03-PLAN.md
 
-Progress: [████████░░] 80%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: 8 min
-- Total execution time: 68 min
+- Total execution time: 72 min
 
 **By Phase:**
 
@@ -29,10 +29,10 @@ Progress: [████████░░] 80%
 |-------|-------|-------|----------|
 | 1 | 3/3 | 30 min | 10 min |
 | 2 | 3/3 | 30 min | 10 min |
-| 3 | 2/3 | 8 min | 4 min |
+| 3 | 3/3 | 12 min | 4 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-01 (8min), 02-02 (5min), 02-03 (25min), 03-01 (~5min), 03-02 (4min)
+- Last 5 plans: 02-02 (5min), 02-03 (25min), 03-01 (~5min), 03-02 (4min), 03-03 (4min)
 - Trend: accelerating
 
 *Updated after each plan completion*
@@ -59,6 +59,8 @@ Recent decisions affecting current work:
 | 03-02 | Settings in ~/.config/ttp/settings.json | Cross-platform via dirs crate |
 | 03-02 | Single-page settings layout | Simpler than tabs (CONTEXT.md discretion) |
 | 03-02 | AI polish enabled by default | Users can disable in settings |
+| 03-03 | Store raw_text only when polish enabled | Avoids duplication when they're the same |
+| 03-03 | Unlimited history | Per CONTEXT.md guidance |
 
 ### Pending Todos
 
@@ -73,5 +75,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-01-29
-Stopped at: Completed 03-02-PLAN.md
+Stopped at: Completed 03-03-PLAN.md (Phase 3 complete)
 Resume file: None
