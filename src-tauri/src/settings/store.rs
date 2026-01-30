@@ -5,6 +5,20 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+/// Transcription provider options
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum TranscriptionProvider {
+    Groq,
+    OpenAI,
+}
+
+impl Default for TranscriptionProvider {
+    fn default() -> Self {
+        TranscriptionProvider::Groq // Groq is faster by default
+    }
+}
+
 /// Application settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
@@ -13,6 +27,9 @@ pub struct Settings {
     /// Global keyboard shortcut for recording (e.g., "Alt+Space", "Ctrl+Shift+R")
     #[serde(default = "default_shortcut")]
     pub shortcut: String,
+    /// Transcription provider (groq or openai)
+    #[serde(default)]
+    pub transcription_provider: TranscriptionProvider,
 }
 
 fn default_shortcut() -> String {
@@ -24,6 +41,7 @@ impl Default for Settings {
         Self {
             ai_polish_enabled: true,
             shortcut: default_shortcut(),
+            transcription_provider: TranscriptionProvider::default(),
         }
     }
 }

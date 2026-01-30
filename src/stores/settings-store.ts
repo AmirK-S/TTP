@@ -18,16 +18,21 @@ export interface HistoryEntry {
   raw_text?: string;
 }
 
+/** Transcription provider options */
+export type TranscriptionProvider = 'groq' | 'openai';
+
 /** Settings structure matching Rust backend */
 export interface Settings {
   ai_polish_enabled: boolean;
   shortcut: string;
+  transcription_provider: TranscriptionProvider;
 }
 
 interface SettingsStore {
   // State
   aiPolishEnabled: boolean;
   shortcut: string;
+  transcriptionProvider: TranscriptionProvider;
   dictionary: DictionaryEntry[];
   history: HistoryEntry[];
   loading: boolean;
@@ -47,6 +52,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   // Initial state
   aiPolishEnabled: true,
   shortcut: 'Alt+Space',
+  transcriptionProvider: 'groq',
   dictionary: [],
   history: [],
   loading: false,
@@ -59,6 +65,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       set({
         aiPolishEnabled: settings.ai_polish_enabled,
         shortcut: settings.shortcut || 'Alt+Space',
+        transcriptionProvider: settings.transcription_provider || 'groq',
       });
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -73,6 +80,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       const currentSettings: Settings = {
         ai_polish_enabled: get().aiPolishEnabled,
         shortcut: get().shortcut,
+        transcription_provider: get().transcriptionProvider,
       };
 
       const newSettings: Settings = {
@@ -84,6 +92,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       set({
         aiPolishEnabled: newSettings.ai_polish_enabled,
         shortcut: newSettings.shortcut,
+        transcriptionProvider: newSettings.transcription_provider,
       });
     } catch (error) {
       console.error('Failed to save settings:', error);
@@ -98,6 +107,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       set({
         aiPolishEnabled: true,
         shortcut: 'Alt+Space',
+        transcriptionProvider: 'groq',
       }); // Default values
     } catch (error) {
       console.error('Failed to reset settings:', error);

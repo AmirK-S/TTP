@@ -13,7 +13,10 @@ mod state;
 mod transcription;
 mod tray;
 
-use credentials::{delete_api_key, get_api_key, has_api_key, set_api_key};
+use credentials::{
+    delete_api_key, delete_groq_api_key, get_api_key, get_groq_api_key, has_api_key,
+    has_groq_api_key, set_api_key, set_groq_api_key,
+};
 use dictionary::{clear_dictionary, delete_dictionary_entry, get_dictionary};
 use history::{clear_history, get_history};
 use recording::{get_recordings_dir, RecordingContext};
@@ -103,6 +106,10 @@ pub fn run() {
             set_api_key,
             has_api_key,
             delete_api_key,
+            get_groq_api_key,
+            set_groq_api_key,
+            has_groq_api_key,
+            delete_groq_api_key,
             get_recordings_dir,
             process_audio,
             get_settings,

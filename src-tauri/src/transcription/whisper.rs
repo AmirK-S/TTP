@@ -1,14 +1,18 @@
 // TTP - Talk To Paste
-// Whisper transcription API client - OpenAI gpt-4o-transcribe
+// Whisper transcription API client - supports Groq and OpenAI
 
+use crate::settings::{get_settings, TranscriptionProvider};
 use reqwest::multipart::{Form, Part};
 use std::path::Path;
 use std::time::Duration;
 use tokio::fs;
 use tokio::time::sleep;
 
+/// Groq transcription API endpoint (faster, uses whisper-large-v3)
+const GROQ_TRANSCRIPTION_URL: &str = "https://api.groq.com/openai/v1/audio/transcriptions";
+
 /// OpenAI transcription API endpoint
-const TRANSCRIPTION_URL: &str = "https://api.openai.com/v1/audio/transcriptions";
+const OPENAI_TRANSCRIPTION_URL: &str = "https://api.openai.com/v1/audio/transcriptions";
 
 /// Maximum number of retry attempts
 const MAX_RETRIES: u32 = 3;
@@ -16,19 +20,30 @@ const MAX_RETRIES: u32 = 3;
 /// Request timeout in seconds
 const REQUEST_TIMEOUT_SECS: u64 = 30;
 
-/// Transcribe audio file using OpenAI gpt-4o-transcribe API
+/// Get the transcription URL and model based on provider setting
+fn get_provider_config() -> (&'static str, &'static str) {
+    let settings = get_settings();
+    match settings.transcription_provider {
+        TranscriptionProvider::Groq => (GROQ_TRANSCRIPTION_URL, "whisper-large-v3"),
+        TranscriptionProvider::OpenAI => (OPENAI_TRANSCRIPTION_URL, "gpt-4o-transcribe"),
+    }
+}
+
+/// Transcribe audio file using configured provider (Groq or OpenAI)
 ///
-/// Uses the gpt-4o-transcribe model which provides better accuracy than whisper-1.
+/// Uses Groq by default (faster) or OpenAI based on settings.
 /// Implements retry logic with exponential backoff (500ms, 1000ms, 1500ms).
 ///
 /// # Arguments
-/// * `api_key` - OpenAI API key
+/// * `api_key` - API key for the configured provider
 /// * `audio_path` - Path to the audio file (WAV format)
 ///
 /// # Returns
 /// * `Ok(String)` - Transcription text on success
 /// * `Err(String)` - Error message on failure
 pub async fn transcribe_audio(api_key: &str, audio_path: &str) -> Result<String, String> {
+    let (transcription_url, model) = get_provider_config();
+    println!("[Whisper] Using provider URL: {}, model: {}", transcription_url, model);
     // Read audio file bytes
     let audio_bytes = fs::read(audio_path)
         .await
@@ -63,14 +78,14 @@ pub async fn transcribe_audio(api_key: &str, audio_path: &str) -> Result<String,
             .map_err(|e| format!("Failed to set MIME type: {}", e))?;
 
         let form = Form::new()
-            .text("model", "gpt-4o-transcribe")
+            .text("model", model)
             .text("response_format", "text")
             .text("prompt", "Transcribe exactly what is spoken, preserving all languages (English, French, etc.) without translating.")
             .part("file", file_part);
 
         // Make the request
         match client
-            .post(TRANSCRIPTION_URL)
+            .post(transcription_url)
             .header("Authorization", format!("Bearer {}", api_key))
             .multipart(form)
             .send()

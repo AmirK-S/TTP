@@ -3,4 +3,4 @@
 
 pub mod store;
 
-pub use store::{get_settings, reset_settings, set_settings, Settings};
+pub use store::{get_settings, reset_settings, set_settings, Settings, TranscriptionProvider};

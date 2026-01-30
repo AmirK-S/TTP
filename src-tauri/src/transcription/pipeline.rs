@@ -4,11 +4,11 @@
 // This module ties together the recording completion with transcription,
 // text polishing, and auto-paste functionality.
 
-use crate::credentials::get_api_key_internal;
+use crate::credentials::{get_api_key_internal, get_groq_api_key_internal};
 use crate::dictionary::detection::start_correction_window;
 use crate::history::add_history_entry;
 use crate::paste::{check_accessibility, simulate_paste, ClipboardGuard};
-use crate::settings::get_settings;
+use crate::settings::{get_settings, TranscriptionProvider};
 use crate::state::{AppState, RecordingState};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -65,21 +65,47 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // Set state to Processing
     set_state(app, RecordingState::Processing);
 
-    // Get API key from credentials
-    let api_key = match get_api_key_internal(app)? {
-        Some(key) => key,
-        None => {
-            emit_progress(app, "error", "No API key configured");
-            notify(app, "Please set your OpenAI API key in settings");
-            set_state(app, RecordingState::Idle);
-            return Err("No API key configured".to_string());
+    // Load settings to check provider
+    let settings = get_settings();
+
+    // Get API key based on provider
+    let (transcription_key, provider_name) = match settings.transcription_provider {
+        TranscriptionProvider::Groq => {
+            let key = get_groq_api_key_internal(app)?;
+            (key, "Groq")
+        }
+        TranscriptionProvider::OpenAI => {
+            let key = get_api_key_internal(app)?;
+            (key, "OpenAI")
         }
     };
 
-    // Stage 1: Transcribe audio
-    emit_progress(app, "transcribing", "Transcribing...");
+    let transcription_api_key = match transcription_key {
+        Some(key) => key,
+        None => {
+            emit_progress(app, "error", &format!("No {} API key configured", provider_name));
+            notify(app, &format!("Please set your {} API key in settings", provider_name));
+            set_state(app, RecordingState::Idle);
+            return Err(format!("No {} API key configured", provider_name));
+        }
+    };
 
-    let raw_text = match transcribe_audio(&api_key, &audio_path).await {
+    // OpenAI key is always needed for polish (GPT-4o-mini)
+    let openai_api_key = match get_api_key_internal(app)? {
+        Some(key) => key,
+        None if settings.ai_polish_enabled => {
+            emit_progress(app, "error", "No OpenAI API key for AI polish");
+            notify(app, "Please set your OpenAI API key for AI polish");
+            set_state(app, RecordingState::Idle);
+            return Err("No OpenAI API key configured for polish".to_string());
+        }
+        None => String::new(), // Polish disabled, no key needed
+    };
+
+    // Stage 1: Transcribe audio
+    emit_progress(app, "transcribing", &format!("Transcribing via {}...", provider_name));
+
+    let raw_text = match transcribe_audio(&transcription_api_key, &audio_path).await {
         Ok(text) => text,
         Err(e) => {
             emit_progress(app, "error", &format!("Transcription failed: {}", e));
@@ -99,14 +125,11 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
     println!("[Pipeline] Raw transcription: {}", raw_text);
 
-    // Load settings to check if AI polish is enabled
-    let settings = get_settings();
-
     // Stage 2: Polish text (if enabled)
     let polished_text = if settings.ai_polish_enabled {
         emit_progress(app, "polishing", "Processing...");
 
-        match polish_text(&api_key, &raw_text).await {
+        match polish_text(&openai_api_key, &raw_text).await {
             Ok(text) => text,
             Err(e) => {
                 // Per CONTEXT.md: Use raw text as fallback if polish fails
