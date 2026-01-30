@@ -13,7 +13,8 @@ TTP delivers voice-to-text transcription in four phases: establishing the founda
 - [x] **Phase 1: Foundation + Recording** - Menu bar app with audio capture and global shortcuts
 - [x] **Phase 2: Transcription Pipeline** - Whisper API, AI polish, and auto-paste to active app
 - [x] **Phase 3: Learning + Settings** - Dictionary learning, history, and user configuration
-- [ ] **Phase 4: Platform Parity** - Cross-platform consistency and final polish
+- [x] **Phase 4: Platform Parity** - Cross-platform consistency and final polish
+- [ ] **Phase 5: Ensemble Transcription** - Send audio to multiple providers in parallel, use LLM to fuse results into highest-accuracy transcription
 
 ## Phase Details
 
@@ -86,10 +87,27 @@ Plans:
 - [x] 04-01-PLAN.md — Cross-platform paste (enigo) and customizable shortcuts
 - [x] 04-02-PLAN.md — Distribution preparation (Entitlements, signing, release workflow)
 
+### Phase 5: Ensemble Transcription
+**Goal**: Send audio to multiple providers in parallel, use LLM to fuse results into highest-accuracy transcription
+**Depends on**: Phase 4
+**Requirements**: TRX-04 (new)
+**Success Criteria** (what must be TRUE):
+  1. Audio is sent to multiple transcription providers simultaneously (Groq, Gladia, OpenAI)
+  2. LLM receives all transcription results and produces a fused, highest-accuracy output
+  3. User can enable/disable ensemble mode in settings (fallback to single provider)
+  4. Latency is acceptable (parallel calls minimize wait time)
+**Plans**: 3 plans in 2 waves
+**Research flag**: Complete - see 05-RESEARCH.md
+
+Plans:
+- [ ] 05-01-PLAN.md — Backend settings + parallel provider execution
+- [ ] 05-02-PLAN.md — LLM fusion + pipeline integration
+- [ ] 05-03-PLAN.md — Frontend ensemble toggle UI
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -97,6 +115,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | 2. Transcription Pipeline | 3/3 | ✓ Complete | 2026-01-29 |
 | 3. Learning + Settings | 3/3 | ✓ Complete | 2026-01-29 |
 | 4. Platform Parity | 2/2 | ✓ Complete | 2026-01-30 |
+| 5. Ensemble Transcription | 0/3 | ○ Not Started | — |
 
 ---
 *Roadmap created: 2026-01-29*
