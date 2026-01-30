@@ -55,11 +55,25 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
 
     try {
       isRecordingRef.current = false;
-      const filePath = await stopRecording();
       const duration = recordingStartTime.current
         ? (Date.now() - recordingStartTime.current) / 1000
-        : undefined;
+        : 0;
       recordingStartTime.current = null;
+
+      // Skip very short recordings (< 0.3s) - likely accidental
+      if (duration < 0.3) {
+        console.log('[Recording] Too short, skipping:', duration.toFixed(2), 's');
+        try {
+          await stopRecording(); // Still need to stop the recorder
+        } catch {
+          // Ignore stop errors for short recordings
+        }
+        // Reset state to Idle so user can record again
+        await invoke('reset_to_idle');
+        return;
+      }
+
+      const filePath = await stopRecording();
 
       console.log('[Recording] Saved to:', filePath, 'Duration:', duration?.toFixed(1), 's');
 

@@ -12,9 +12,29 @@ use crate::settings::{get_settings, TranscriptionProvider};
 use crate::state::{AppState, RecordingState};
 use std::sync::Mutex;
 use std::time::Duration;
+use std::path::Path;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 use tokio::time::sleep;
+
+/// Minimum audio file size in bytes (< 10KB is likely too short/silent)
+const MIN_AUDIO_SIZE: u64 = 10_000;
+
+/// Common Whisper hallucinations on silent/empty audio
+const HALLUCINATIONS: &[&str] = &[
+    "thank you",
+    "thanks for watching",
+    "thanks for listening",
+    "bye",
+    "goodbye",
+    "see you",
+    "subscribe",
+    "like and subscribe",
+    "you",
+    "the end",
+    ".",
+    "",
+];
 
 use super::{polish_text, transcribe_audio};
 
@@ -64,6 +84,24 @@ fn set_state(app: &AppHandle, state: RecordingState) {
 pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<String, String> {
     // Set state to Processing
     set_state(app, RecordingState::Processing);
+
+    // Check if audio file exists and has minimum size
+    let audio_file = Path::new(&audio_path);
+    let file_size = match std::fs::metadata(audio_file) {
+        Ok(meta) => meta.len(),
+        Err(e) => {
+            emit_progress(app, "error", "Audio file not found");
+            set_state(app, RecordingState::Idle);
+            return Err(format!("Audio file error: {}", e));
+        }
+    };
+
+    if file_size < MIN_AUDIO_SIZE {
+        println!("[Pipeline] Audio too short: {} bytes < {} minimum", file_size, MIN_AUDIO_SIZE);
+        emit_progress(app, "error", "Recording too short");
+        set_state(app, RecordingState::Idle);
+        return Err("Recording too short".to_string());
+    }
 
     // Load settings to check provider
     let settings = get_settings();
@@ -121,6 +159,15 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         notify(app, "No speech detected");
         set_state(app, RecordingState::Idle);
         return Err("No speech detected".to_string());
+    }
+
+    // Filter out common Whisper hallucinations on silent audio
+    let raw_lower = raw_text.trim().to_lowercase();
+    if HALLUCINATIONS.iter().any(|h| raw_lower == *h || raw_lower.trim_end_matches('.') == *h) {
+        println!("[Pipeline] Filtered hallucination: '{}'", raw_text);
+        emit_progress(app, "error", "No speech detected");
+        set_state(app, RecordingState::Idle);
+        return Err("No speech detected (filtered)".to_string());
     }
 
     println!("[Pipeline] Raw transcription: {}", raw_text);

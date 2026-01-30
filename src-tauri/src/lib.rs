@@ -33,6 +33,18 @@ fn update_shortcut_cmd(app: AppHandle, shortcut: String) -> Result<(), String> {
     shortcuts::update_shortcut(&app, &shortcut)
 }
 
+/// Tauri command to reset state to Idle (used when skipping short recordings)
+#[tauri::command]
+fn reset_to_idle(app: AppHandle) {
+    if let Some(state) = app.try_state::<Mutex<AppState>>() {
+        if let Ok(mut guard) = state.try_lock() {
+            guard.set_state(state::RecordingState::Idle, &app);
+            // Also reset tray icon
+            tray::set_recording_icon(&app, false);
+        }
+    }
+}
+
 const SERVICE_NAME: &str = "TTP";
 const API_KEY_USER: &str = "openai-api-key";
 
@@ -120,7 +132,8 @@ pub fn run() {
             clear_dictionary,
             get_history,
             clear_history,
-            update_shortcut_cmd
+            update_shortcut_cmd,
+            reset_to_idle
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
