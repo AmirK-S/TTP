@@ -137,8 +137,6 @@ async fn transcribe_with_provider(
         let form = Form::new()
             .text("model", model.clone())
             .text("response_format", "text")
-            .text("language", "en")  // Primary language hint
-            .text("prompt", "This is a bilingual speaker mixing English and French. Transcribe exactly what is said. Common English words: error, actually, basically, feature, bug, code, update, issue, test, check.")
             .part("file", file_part);
 
         // Make the request

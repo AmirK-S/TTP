@@ -30,8 +30,10 @@ impl Default for AppState {
 
 impl AppState {
     pub fn set_state(&mut self, state: RecordingState, app: &AppHandle) {
+        println!("[State] Changing to: {:?}", state);
         self.recording_state = state.clone();
-        app.emit("recording-state-changed", &state).ok();
+        let result = app.emit("recording-state-changed", &state);
+        println!("[State] Event emitted: {:?}", result);
     }
 
     pub fn is_recording(&self) -> bool {

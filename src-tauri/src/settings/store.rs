@@ -16,7 +16,7 @@ pub enum TranscriptionProvider {
 
 impl Default for TranscriptionProvider {
     fn default() -> Self {
-        TranscriptionProvider::Gladia // Gladia is best for multilingual
+        TranscriptionProvider::Groq // Groq is fastest
     }
 }
 
