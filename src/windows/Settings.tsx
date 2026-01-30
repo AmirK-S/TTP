@@ -186,6 +186,7 @@ export function Settings() {
     aiPolishEnabled,
     shortcut,
     transcriptionProvider,
+    ensembleEnabled,
     dictionary,
     history,
     loading,
@@ -213,6 +214,7 @@ export function Settings() {
   const [hasGladiaKey, setHasGladiaKey] = useState(false);
   const [gladiaKeySaving, setGladiaKeySaving] = useState(false);
   const [gladiaKeySuccess, setGladiaKeySuccess] = useState(false);
+  const [hasOpenAIKey, setHasOpenAIKey] = useState(false);
 
   // Load settings, dictionary, and history on mount
   useEffect(() => {
@@ -222,7 +224,16 @@ export function Settings() {
     // Check if API keys exist
     invoke<boolean>('has_groq_api_key').then(setHasGroqKey).catch(console.error);
     invoke<boolean>('has_gladia_api_key').then(setHasGladiaKey).catch(console.error);
+    invoke<boolean>('has_api_key').then(setHasOpenAIKey).catch(console.error);
   }, [loadSettings, loadDictionary, loadHistory]);
+
+  // Compute available providers for ensemble mode
+  const availableProviders: string[] = [];
+  if (hasOpenAIKey) availableProviders.push('OpenAI');
+  if (hasGroqKey) availableProviders.push('Groq');
+  if (hasGladiaKey) availableProviders.push('Gladia');
+  // OpenAI is required for ensemble because fusion uses GPT-4o-mini
+  const canEnableEnsemble = availableProviders.length >= 2 && hasOpenAIKey;
 
   // Sync shortcut input with store value
   useEffect(() => {
@@ -244,6 +255,15 @@ export function Settings() {
       await saveSettings({ transcription_provider: provider });
     } catch (error) {
       console.error('Failed to save provider setting:', error);
+    }
+  };
+
+  // Handle ensemble toggle
+  const handleEnsembleToggle = async (enabled: boolean) => {
+    try {
+      await saveSettings({ ensemble_enabled: enabled });
+    } catch (error) {
+      console.error('Failed to save ensemble setting:', error);
     }
   };
 
@@ -575,6 +595,45 @@ export function Settings() {
               onChange={handlePolishToggle}
               disabled={loading}
             />
+          </div>
+
+          {/* Ensemble Mode Toggle */}
+          <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between">
+              <div className="flex-1 pr-4">
+                <p className="text-gray-900 dark:text-white font-medium">
+                  Ensemble Mode
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Use multiple providers for higher accuracy (requires OpenAI + 1 other)
+                </p>
+              </div>
+              <Toggle
+                enabled={ensembleEnabled}
+                onChange={handleEnsembleToggle}
+                disabled={loading || !canEnableEnsemble}
+              />
+            </div>
+
+            {/* Warning when requirements not met */}
+            {!canEnableEnsemble && (
+              <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  {!hasOpenAIKey
+                    ? 'OpenAI API key required for ensemble mode (used for fusion)'
+                    : 'Configure at least 2 API keys to enable ensemble mode'}
+                </p>
+              </div>
+            )}
+
+            {/* Active providers when enabled */}
+            {ensembleEnabled && canEnableEnsemble && (
+              <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <p className="text-sm text-blue-700 dark:text-blue-400">
+                  Active providers: {availableProviders.join(', ')}
+                </p>
+              </div>
+            )}
           </div>
         </section>
 
