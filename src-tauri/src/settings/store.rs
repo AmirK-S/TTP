@@ -31,6 +31,9 @@ pub struct Settings {
     /// Transcription provider (groq or openai)
     #[serde(default)]
     pub transcription_provider: TranscriptionProvider,
+    /// Whether to use ensemble mode (parallel transcription with multiple providers)
+    #[serde(default)]
+    pub ensemble_enabled: bool,
 }
 
 fn default_shortcut() -> String {
@@ -43,6 +46,7 @@ impl Default for Settings {
             ai_polish_enabled: true,
             shortcut: default_shortcut(),
             transcription_provider: TranscriptionProvider::default(),
+            ensemble_enabled: false,
         }
     }
 }
