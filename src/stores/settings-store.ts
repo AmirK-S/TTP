@@ -26,6 +26,7 @@ export interface Settings {
   ai_polish_enabled: boolean;
   shortcut: string;
   transcription_provider: TranscriptionProvider;
+  ensemble_enabled: boolean;
 }
 
 interface SettingsStore {
@@ -33,6 +34,7 @@ interface SettingsStore {
   aiPolishEnabled: boolean;
   shortcut: string;
   transcriptionProvider: TranscriptionProvider;
+  ensembleEnabled: boolean;
   dictionary: DictionaryEntry[];
   history: HistoryEntry[];
   loading: boolean;
@@ -53,6 +55,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   aiPolishEnabled: true,
   shortcut: 'Alt+Space',
   transcriptionProvider: 'gladia',
+  ensembleEnabled: false,
   dictionary: [],
   history: [],
   loading: false,
@@ -66,6 +69,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         aiPolishEnabled: settings.ai_polish_enabled,
         shortcut: settings.shortcut || 'Alt+Space',
         transcriptionProvider: settings.transcription_provider || 'groq',
+        ensembleEnabled: settings.ensemble_enabled ?? false,
       });
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -81,6 +85,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         ai_polish_enabled: get().aiPolishEnabled,
         shortcut: get().shortcut,
         transcription_provider: get().transcriptionProvider,
+        ensemble_enabled: get().ensembleEnabled,
       };
 
       const newSettings: Settings = {
@@ -93,6 +98,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         aiPolishEnabled: newSettings.ai_polish_enabled,
         shortcut: newSettings.shortcut,
         transcriptionProvider: newSettings.transcription_provider,
+        ensembleEnabled: newSettings.ensemble_enabled,
       });
     } catch (error) {
       console.error('Failed to save settings:', error);
@@ -108,6 +114,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         aiPolishEnabled: true,
         shortcut: 'Alt+Space',
         transcriptionProvider: 'gladia',
+        ensembleEnabled: false,
       }); // Default values
     } catch (error) {
       console.error('Failed to reset settings:', error);
