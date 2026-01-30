@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-29)
 
 **Core value:** One shortcut to turn speech into text, anywhere.
-**Current focus:** Phase 5 - Ensemble Transcription
+**Current focus:** Milestone complete — all 5 phases done
 
 ## Current Position
 
 Phase: 5 of 5 (Ensemble Transcription)
-Plan: 2 of 3 in current phase
-Status: In progress
-Last activity: 2026-01-30 - Completed 05-02-PLAN.md
+Plan: 3 of 3 in current phase
+Status: COMPLETE
+Last activity: 2026-01-30 - Completed Phase 5
 
-Progress: [█████████░] 13/14 plans
+Progress: [██████████] 14/14 plans
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
-- Average duration: 8.0 min
-- Total execution time: 104 min
+- Total plans completed: 14
+- Average duration: 7.8 min
+- Total execution time: 109 min
 
 **By Phase:**
 
@@ -31,10 +31,10 @@ Progress: [█████████░] 13/14 plans
 | 2 | 3/3 | 30 min | 10 min |
 | 3 | 3/3 | 12 min | 4 min |
 | 4 | 2/2 | 13 min | 6.5 min |
-| 5 | 2/3 | 11 min | 5.5 min |
+| 5 | 3/3 | 15 min | 5 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-03 (4min), 04-01 (8min), 04-02 (5min), 05-01 (8min), 05-02 (3min)
+- Last 5 plans: 04-01 (8min), 04-02 (5min), 05-01 (8min), 05-02 (3min), 05-03 (4min)
 - Trend: consistent
 
 *Updated after each plan completion*
@@ -71,6 +71,8 @@ Recent decisions affecting current work:
 | 05-02 | 20-second fusion timeout | Slightly longer than polish for multi-transcription analysis |
 | 05-02 | Require 2+ providers for ensemble | Ensemble only makes sense with multiple transcriptions |
 | 05-02 | Fallback to polish on 1 result | When only 1 provider succeeds, use normal polish |
+| 05-03 | OpenAI required for ensemble | Fusion uses GPT-4o-mini, so OpenAI key is mandatory |
+| 05-03 | Disable toggle when requirements unmet | Prevents enabling ensemble without sufficient providers |
 
 ### Pending Todos
 
@@ -89,14 +91,17 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-01-30
-Stopped at: Completed 05-02-PLAN.md (LLM fusion + pipeline integration)
+Stopped at: All phases complete — milestone ready for audit
 Resume file: None
 
 ### Next Steps
-1. Execute 05-03-PLAN.md (frontend ensemble toggle)
+1. Run `/gsd:audit-milestone` to verify requirements and cross-phase integration
+2. Or run `/gsd:complete-milestone` to archive directly
 
 ### Recent Work
 - Added ensemble_enabled setting field (05-01)
 - Created ensemble.rs with parallel provider execution (05-01)
 - Created fusion.rs with LLM fusion logic (05-02)
 - Integrated ensemble mode into transcription pipeline (05-02)
+- Added frontend ensemble toggle UI with provider validation (05-03)
+- Phase 5 verified: All 4 success criteria met

@@ -14,7 +14,7 @@ TTP delivers voice-to-text transcription in four phases: establishing the founda
 - [x] **Phase 2: Transcription Pipeline** - Whisper API, AI polish, and auto-paste to active app
 - [x] **Phase 3: Learning + Settings** - Dictionary learning, history, and user configuration
 - [x] **Phase 4: Platform Parity** - Cross-platform consistency and final polish
-- [ ] **Phase 5: Ensemble Transcription** - Send audio to multiple providers in parallel, use LLM to fuse results into highest-accuracy transcription
+- [x] **Phase 5: Ensemble Transcription** - Send audio to multiple providers in parallel, use LLM to fuse results into highest-accuracy transcription
 
 ## Phase Details
 
@@ -100,9 +100,9 @@ Plans:
 **Research flag**: Complete - see 05-RESEARCH.md
 
 Plans:
-- [ ] 05-01-PLAN.md — Backend settings + parallel provider execution
-- [ ] 05-02-PLAN.md — LLM fusion + pipeline integration
-- [ ] 05-03-PLAN.md — Frontend ensemble toggle UI
+- [x] 05-01-PLAN.md — Backend settings + parallel provider execution
+- [x] 05-02-PLAN.md — LLM fusion + pipeline integration
+- [x] 05-03-PLAN.md — Frontend ensemble toggle UI
 
 ## Progress
 
@@ -115,7 +115,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 2. Transcription Pipeline | 3/3 | ✓ Complete | 2026-01-29 |
 | 3. Learning + Settings | 3/3 | ✓ Complete | 2026-01-29 |
 | 4. Platform Parity | 2/2 | ✓ Complete | 2026-01-30 |
-| 5. Ensemble Transcription | 0/3 | ○ Not Started | — |
+| 5. Ensemble Transcription | 3/3 | ✓ Complete | 2026-01-30 |
 
 ---
 *Roadmap created: 2026-01-29*
