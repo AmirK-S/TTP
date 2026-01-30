@@ -209,14 +209,19 @@ export function Settings() {
   const [hasGroqKey, setHasGroqKey] = useState(false);
   const [groqKeySaving, setGroqKeySaving] = useState(false);
   const [groqKeySuccess, setGroqKeySuccess] = useState(false);
+  const [gladiaApiKey, setGladiaApiKey] = useState('');
+  const [hasGladiaKey, setHasGladiaKey] = useState(false);
+  const [gladiaKeySaving, setGladiaKeySaving] = useState(false);
+  const [gladiaKeySuccess, setGladiaKeySuccess] = useState(false);
 
   // Load settings, dictionary, and history on mount
   useEffect(() => {
     loadSettings();
     loadDictionary();
     loadHistory();
-    // Check if Groq API key exists
+    // Check if API keys exist
     invoke<boolean>('has_groq_api_key').then(setHasGroqKey).catch(console.error);
+    invoke<boolean>('has_gladia_api_key').then(setHasGladiaKey).catch(console.error);
   }, [loadSettings, loadDictionary, loadHistory]);
 
   // Sync shortcut input with store value
@@ -256,6 +261,23 @@ export function Settings() {
       console.error('Failed to save Groq API key:', error);
     } finally {
       setGroqKeySaving(false);
+    }
+  };
+
+  // Handle Gladia API key save
+  const handleGladiaKeySave = async () => {
+    if (!gladiaApiKey.trim()) return;
+    setGladiaKeySaving(true);
+    try {
+      await invoke('set_gladia_api_key', { key: gladiaApiKey });
+      setHasGladiaKey(true);
+      setGladiaApiKey('');
+      setGladiaKeySuccess(true);
+      setTimeout(() => setGladiaKeySuccess(false), 3000);
+    } catch (error) {
+      console.error('Failed to save Gladia API key:', error);
+    } finally {
+      setGladiaKeySaving(false);
     }
   };
 
@@ -383,35 +405,105 @@ export function Settings() {
             <p className="text-gray-900 dark:text-white font-medium mb-2">
               Provider
             </p>
-            <div className="flex gap-3">
+            <div className="flex flex-col gap-2">
               <button
-                onClick={() => handleProviderChange('groq')}
-                className={`flex-1 px-4 py-3 rounded-lg border-2 transition-colors ${
-                  transcriptionProvider === 'groq'
+                onClick={() => handleProviderChange('gladia')}
+                className={`w-full px-4 py-3 rounded-lg border-2 transition-colors text-left ${
+                  transcriptionProvider === 'gladia'
                     ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                     : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                 }`}
               >
-                <p className="font-medium text-gray-900 dark:text-white">Groq</p>
+                <p className="font-medium text-gray-900 dark:text-white">Gladia ⭐</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Fast (~0.3s) • Free tier
+                  Best for FR/EN mix • 10h free/month • No hallucinations
                 </p>
               </button>
-              <button
-                onClick={() => handleProviderChange('openai')}
-                className={`flex-1 px-4 py-3 rounded-lg border-2 transition-colors ${
-                  transcriptionProvider === 'openai'
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                }`}
-              >
-                <p className="font-medium text-gray-900 dark:text-white">OpenAI</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Accurate (~2-5s) • Paid
-                </p>
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleProviderChange('groq')}
+                  className={`flex-1 px-4 py-3 rounded-lg border-2 transition-colors ${
+                    transcriptionProvider === 'groq'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                  }`}
+                >
+                  <p className="font-medium text-gray-900 dark:text-white">Groq</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Fast • Free tier
+                  </p>
+                </button>
+                <button
+                  onClick={() => handleProviderChange('openai')}
+                  className={`flex-1 px-4 py-3 rounded-lg border-2 transition-colors ${
+                    transcriptionProvider === 'openai'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                  }`}
+                >
+                  <p className="font-medium text-gray-900 dark:text-white">OpenAI</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Accurate • Paid
+                  </p>
+                </button>
+              </div>
             </div>
           </div>
+
+          {/* Gladia API Key */}
+          {transcriptionProvider === 'gladia' && (
+            <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+              <p className="text-gray-900 dark:text-white font-medium mb-2">
+                Gladia API Key
+              </p>
+              {hasGladiaKey ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-green-600 dark:text-green-400">✓ Key configured</span>
+                  <button
+                    onClick={() => setHasGladiaKey(false)}
+                    className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  >
+                    Change
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      value={gladiaApiKey}
+                      onChange={(e) => setGladiaApiKey(e.target.value)}
+                      placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                    <button
+                      onClick={handleGladiaKeySave}
+                      disabled={gladiaKeySaving || !gladiaApiKey.trim()}
+                      className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md transition-colors"
+                    >
+                      Save
+                    </button>
+                  </div>
+                  {gladiaKeySuccess && (
+                    <p className="text-sm text-green-600 dark:text-green-400">
+                      API key saved!
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Get your free key (10h/month) at{' '}
+                    <a
+                      href="https://app.gladia.io/auth/signup"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-500 hover:underline"
+                    >
+                      app.gladia.io
+                    </a>
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Groq API Key */}
           {transcriptionProvider === 'groq' && (

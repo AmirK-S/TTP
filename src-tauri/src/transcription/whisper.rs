@@ -24,6 +24,11 @@ const REQUEST_TIMEOUT_SECS: u64 = 30;
 fn get_provider_config() -> (&'static str, &'static str) {
     let settings = get_settings();
     match settings.transcription_provider {
+        TranscriptionProvider::Gladia => {
+            // Gladia uses its own API, this shouldn't be called
+            // Fallback to Groq if somehow called
+            (GROQ_TRANSCRIPTION_URL, "whisper-large-v3")
+        }
         TranscriptionProvider::Groq => (GROQ_TRANSCRIPTION_URL, "whisper-large-v3"),
         TranscriptionProvider::OpenAI => (OPENAI_TRANSCRIPTION_URL, "gpt-4o-transcribe"),
     }
@@ -80,7 +85,8 @@ pub async fn transcribe_audio(api_key: &str, audio_path: &str) -> Result<String,
         let form = Form::new()
             .text("model", model)
             .text("response_format", "text")
-            .text("prompt", "Transcribe exactly what is spoken, preserving all languages (English, French, etc.) without translating.")
+            .text("language", "en")  // Primary language hint
+            .text("prompt", "This is a bilingual speaker mixing English and French. Transcribe exactly what is said. Common English words: error, actually, basically, feature, bug, code, update, issue, test, check.")
             .part("file", file_part);
 
         // Make the request

@@ -19,7 +19,7 @@ export interface HistoryEntry {
 }
 
 /** Transcription provider options */
-export type TranscriptionProvider = 'groq' | 'openai';
+export type TranscriptionProvider = 'gladia' | 'groq' | 'openai';
 
 /** Settings structure matching Rust backend */
 export interface Settings {
@@ -52,7 +52,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   // Initial state
   aiPolishEnabled: true,
   shortcut: 'Alt+Space',
-  transcriptionProvider: 'groq',
+  transcriptionProvider: 'gladia',
   dictionary: [],
   history: [],
   loading: false,
@@ -107,7 +107,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       set({
         aiPolishEnabled: true,
         shortcut: 'Alt+Space',
-        transcriptionProvider: 'groq',
+        transcriptionProvider: 'gladia',
       }); // Default values
     } catch (error) {
       console.error('Failed to reset settings:', error);

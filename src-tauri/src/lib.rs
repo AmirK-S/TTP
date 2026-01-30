@@ -14,8 +14,9 @@ mod transcription;
 mod tray;
 
 use credentials::{
-    delete_api_key, delete_groq_api_key, get_api_key, get_groq_api_key, has_api_key,
-    has_groq_api_key, set_api_key, set_groq_api_key,
+    delete_api_key, delete_gladia_api_key, delete_groq_api_key, get_api_key, get_gladia_api_key,
+    get_groq_api_key, has_api_key, has_gladia_api_key, has_groq_api_key, set_api_key,
+    set_gladia_api_key, set_groq_api_key,
 };
 use dictionary::{clear_dictionary, delete_dictionary_entry, get_dictionary};
 use history::{clear_history, get_history};
@@ -122,6 +123,10 @@ pub fn run() {
             set_groq_api_key,
             has_groq_api_key,
             delete_groq_api_key,
+            get_gladia_api_key,
+            set_gladia_api_key,
+            has_gladia_api_key,
+            delete_gladia_api_key,
             get_recordings_dir,
             process_audio,
             get_settings,

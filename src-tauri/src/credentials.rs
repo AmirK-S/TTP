@@ -7,6 +7,7 @@ use tauri_plugin_keyring::KeyringExt;
 const SERVICE_NAME: &str = "TTP";
 const OPENAI_API_KEY_USER: &str = "openai-api-key";
 const GROQ_API_KEY_USER: &str = "groq-api-key";
+const GLADIA_API_KEY_USER: &str = "gladia-api-key";
 
 /// Internal function to get OpenAI API key (for use within Rust code, not as a command)
 /// Priority: 1. Environment variable OPENAI_API_KEY, 2. System keychain
@@ -143,5 +144,74 @@ pub async fn has_groq_api_key(app: tauri::AppHandle) -> Result<bool, String> {
 pub async fn delete_groq_api_key(app: tauri::AppHandle) -> Result<(), String> {
     app.keyring()
         .delete_password(SERVICE_NAME, GROQ_API_KEY_USER)
+        .map_err(|e| e.to_string())
+}
+
+/// Internal function to get Gladia API key (for use within Rust code, not as a command)
+/// Priority: 1. Environment variable GLADIA_API_KEY, 2. System keychain
+pub fn get_gladia_api_key_internal(app: &AppHandle) -> Result<Option<String>, String> {
+    // Check environment variable first (useful for development)
+    if let Ok(key) = std::env::var("GLADIA_API_KEY") {
+        if !key.is_empty() {
+            println!("Gladia API key found in environment variable");
+            return Ok(Some(key));
+        }
+    }
+
+    // Fall back to keychain
+    app.keyring()
+        .get_password(SERVICE_NAME, GLADIA_API_KEY_USER)
+        .map_err(|e| e.to_string())
+}
+
+/// Get the stored Gladia API key
+/// Priority: 1. Environment variable GLADIA_API_KEY, 2. System keychain
+#[tauri::command]
+pub async fn get_gladia_api_key(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    // Check environment variable first
+    if let Ok(key) = std::env::var("GLADIA_API_KEY") {
+        if !key.is_empty() {
+            return Ok(Some(key));
+        }
+    }
+
+    // Fall back to keychain
+    app.keyring()
+        .get_password(SERVICE_NAME, GLADIA_API_KEY_USER)
+        .map_err(|e| e.to_string())
+}
+
+/// Store a Gladia API key in the system keychain
+#[tauri::command]
+pub async fn set_gladia_api_key(app: tauri::AppHandle, key: String) -> Result<(), String> {
+    app.keyring()
+        .set_password(SERVICE_NAME, GLADIA_API_KEY_USER, &key)
+        .map_err(|e| e.to_string())
+}
+
+/// Check if a Gladia API key exists
+/// Priority: 1. Environment variable GLADIA_API_KEY, 2. System keychain
+#[tauri::command]
+pub async fn has_gladia_api_key(app: tauri::AppHandle) -> Result<bool, String> {
+    // Check environment variable first
+    if let Ok(key) = std::env::var("GLADIA_API_KEY") {
+        if !key.is_empty() {
+            return Ok(true);
+        }
+    }
+
+    // Fall back to keychain
+    let result = app
+        .keyring()
+        .get_password(SERVICE_NAME, GLADIA_API_KEY_USER)
+        .map_err(|e| e.to_string())?;
+    Ok(result.is_some())
+}
+
+/// Delete the Gladia API key from the system keychain
+#[tauri::command]
+pub async fn delete_gladia_api_key(app: tauri::AppHandle) -> Result<(), String> {
+    app.keyring()
+        .delete_password(SERVICE_NAME, GLADIA_API_KEY_USER)
         .map_err(|e| e.to_string())
 }

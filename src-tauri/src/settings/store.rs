@@ -9,13 +9,14 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum TranscriptionProvider {
+    Gladia,  // Best for code-switching FR/EN
     Groq,
     OpenAI,
 }
 
 impl Default for TranscriptionProvider {
     fn default() -> Self {
-        TranscriptionProvider::Groq // Groq is faster by default
+        TranscriptionProvider::Gladia // Gladia is best for multilingual
     }
 }
 

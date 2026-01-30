@@ -4,7 +4,7 @@
 // This module ties together the recording completion with transcription,
 // text polishing, and auto-paste functionality.
 
-use crate::credentials::{get_api_key_internal, get_groq_api_key_internal};
+use crate::credentials::{get_api_key_internal, get_gladia_api_key_internal, get_groq_api_key_internal};
 use crate::dictionary::detection::start_correction_window;
 use crate::history::add_history_entry;
 use crate::paste::{check_accessibility, simulate_paste, ClipboardGuard};
@@ -36,7 +36,7 @@ const HALLUCINATIONS: &[&str] = &[
     "",
 ];
 
-use super::{polish_text, transcribe_audio};
+use super::{polish_text, transcribe_audio, transcribe_audio_gladia};
 
 /// Progress event sent to frontend during transcription pipeline
 #[derive(Clone, serde::Serialize)]
@@ -108,6 +108,10 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
     // Get API key based on provider
     let (transcription_key, provider_name) = match settings.transcription_provider {
+        TranscriptionProvider::Gladia => {
+            let key = get_gladia_api_key_internal(app)?;
+            (key, "Gladia")
+        }
         TranscriptionProvider::Groq => {
             let key = get_groq_api_key_internal(app)?;
             (key, "Groq")
@@ -143,7 +147,16 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // Stage 1: Transcribe audio
     emit_progress(app, "transcribing", &format!("Transcribing via {}...", provider_name));
 
-    let raw_text = match transcribe_audio(&transcription_api_key, &audio_path).await {
+    let raw_text = match settings.transcription_provider {
+        TranscriptionProvider::Gladia => {
+            transcribe_audio_gladia(&transcription_api_key, &audio_path).await
+        }
+        _ => {
+            transcribe_audio(&transcription_api_key, &audio_path).await
+        }
+    };
+
+    let raw_text = match raw_text {
         Ok(text) => text,
         Err(e) => {
             emit_progress(app, "error", &format!("Transcription failed: {}", e));
