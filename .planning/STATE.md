@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-01-29)
 ## Current Position
 
 Phase: 5 of 5 (Ensemble Transcription)
-Plan: 3 of 3 in current phase
-Status: Phase complete
-Last activity: 2026-01-30 - Completed 05-03-PLAN.md
+Plan: 2 of 3 in current phase
+Status: In progress
+Last activity: 2026-01-30 - Completed 05-02-PLAN.md
 
-Progress: [██████████] 14/14 plans
+Progress: [█████████░] 13/14 plans
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14
-- Average duration: 7.9 min
-- Total execution time: 111 min
+- Total plans completed: 13
+- Average duration: 8.0 min
+- Total execution time: 104 min
 
 **By Phase:**
 
@@ -31,10 +31,10 @@ Progress: [██████████] 14/14 plans
 | 2 | 3/3 | 30 min | 10 min |
 | 3 | 3/3 | 12 min | 4 min |
 | 4 | 2/2 | 13 min | 6.5 min |
-| 5 | 3/3 | 16 min | 5.3 min |
+| 5 | 2/3 | 11 min | 5.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-03 (4min), 04-01 (8min), 04-02 (5min), 05-01 (8min), 05-03 (4min)
+- Last 5 plans: 03-03 (4min), 04-01 (8min), 04-02 (5min), 05-01 (8min), 05-02 (3min)
 - Trend: consistent
 
 *Updated after each plan completion*
@@ -68,7 +68,9 @@ Recent decisions affecting current work:
 | 05-01 | 30-second provider timeout | Gladia polling can take 5-30s |
 | 05-01 | tokio::join! over join_all | Fixed provider set makes static join! cleaner |
 | 05-01 | Refactor whisper.rs | transcribe_with_provider for code reuse |
-| 05-03 | OpenAI required for ensemble | Fusion uses GPT-4o-mini which requires OpenAI API |
+| 05-02 | 20-second fusion timeout | Slightly longer than polish for multi-transcription analysis |
+| 05-02 | Require 2+ providers for ensemble | Ensemble only makes sense with multiple transcriptions |
+| 05-02 | Fallback to polish on 1 result | When only 1 provider succeeds, use normal polish |
 
 ### Pending Todos
 
@@ -87,18 +89,14 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-01-30
-Stopped at: Completed 05-03-PLAN.md (frontend ensemble toggle)
+Stopped at: Completed 05-02-PLAN.md (LLM fusion + pipeline integration)
 Resume file: None
 
 ### Next Steps
-All phases complete. Project ready for:
-1. User testing of ensemble mode
-2. Prompt tuning for LLM fusion
-3. Performance optimization if needed
+1. Execute 05-03-PLAN.md (frontend ensemble toggle)
 
 ### Recent Work
 - Added ensemble_enabled setting field (05-01)
 - Created ensemble.rs with parallel provider execution (05-01)
 - Created fusion.rs with LLM fusion logic (05-02)
-- Added ensembleEnabled state to settings store (05-03)
-- Added Ensemble Mode toggle UI with validation (05-03)
+- Integrated ensemble mode into transcription pipeline (05-02)
