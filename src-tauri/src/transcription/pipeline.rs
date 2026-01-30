@@ -36,6 +36,8 @@ const HALLUCINATIONS: &[&str] = &[
     "",
 ];
 
+use super::ensemble::{transcribe_ensemble, ProviderResult};
+use super::fusion::fuse_and_polish;
 use super::{polish_text, transcribe_audio, transcribe_audio_gladia};
 
 /// Progress event sent to frontend during transcription pipeline
@@ -73,11 +75,102 @@ fn set_state(app: &AppHandle, state: RecordingState) {
     }
 }
 
+/// Process audio using ensemble mode (parallel transcription + LLM fusion)
+///
+/// Returns the final text and raw text (for history).
+async fn process_ensemble(
+    app: &AppHandle,
+    audio_path: &str,
+    openai_key: Option<String>,
+    groq_key: Option<String>,
+    gladia_key: Option<String>,
+) -> Result<(String, String), String> {
+    // Count available providers
+    let provider_count = [openai_key.is_some(), groq_key.is_some(), gladia_key.is_some()]
+        .iter()
+        .filter(|&&x| x)
+        .count();
+
+    if provider_count < 2 {
+        return Err(format!(
+            "Ensemble mode requires at least 2 providers configured (found {})",
+            provider_count
+        ));
+    }
+
+    println!("[Pipeline] Ensemble mode with {} providers", provider_count);
+    emit_progress(app, "transcribing", "Transcribing (ensemble)...");
+
+    // Run all providers in parallel
+    let results = transcribe_ensemble(
+        audio_path,
+        openai_key.as_deref(),
+        groq_key.as_deref(),
+        gladia_key.as_deref(),
+    )
+    .await?;
+
+    // Check for empty results (all providers failed validation)
+    if results.is_empty() {
+        return Err("All providers failed or returned empty results".to_string());
+    }
+
+    // Build raw text from all provider results (for history)
+    let raw_text = results
+        .iter()
+        .map(|r| format!("[{}]: {}", r.provider, r.text))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    // If only 1 provider succeeded, fall back to normal polish
+    if results.len() == 1 {
+        println!("[Pipeline] Only 1 provider succeeded, using normal polish");
+        let single_text = results[0].text.clone();
+
+        // Get OpenAI key for polish (required)
+        let polish_key = openai_key.ok_or("OpenAI API key required for polish")?;
+
+        emit_progress(app, "polishing", "Processing...");
+        let polished = match super::polish_text(&polish_key, &single_text).await {
+            Ok(text) => text,
+            Err(e) => {
+                eprintln!("[Pipeline] Polish failed, using raw text: {}", e);
+                single_text
+            }
+        };
+
+        return Ok((polished, raw_text));
+    }
+
+    // Multiple results - fuse with LLM
+    emit_progress(app, "polishing", "Fusing transcriptions...");
+
+    // Get OpenAI key for fusion (required)
+    let fusion_key = openai_key.ok_or("OpenAI API key required for fusion")?;
+
+    let fused = fuse_and_polish(&fusion_key, &results).await.map_err(|e| {
+        eprintln!("[Pipeline] Fusion failed: {}", e);
+        // Fall back to first result if fusion fails
+        format!("Fusion failed: {}", e)
+    })?;
+
+    println!("[Pipeline] Ensemble fusion complete: {} chars", fused.len());
+    Ok((fused, raw_text))
+}
+
+/// Filter out common Whisper hallucinations
+fn is_hallucination(text: &str) -> bool {
+    let lower = text.trim().to_lowercase();
+    HALLUCINATIONS
+        .iter()
+        .any(|h| lower == *h || lower.trim_end_matches('.') == *h)
+}
+
 /// Main pipeline function: process a completed recording
 ///
 /// Orchestrates the flow:
-/// 1. Transcribe audio via Whisper API
-/// 2. Polish text via GPT-4o-mini
+/// 1. Transcribe audio (single provider or ensemble)
+/// 2. Polish/fuse text via GPT-4o-mini
 /// 3. Paste into active app (or clipboard fallback)
 ///
 /// Emits progress events throughout for frontend updates.
@@ -97,113 +190,160 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     };
 
     if file_size < MIN_AUDIO_SIZE {
-        println!("[Pipeline] Audio too short: {} bytes < {} minimum", file_size, MIN_AUDIO_SIZE);
+        println!(
+            "[Pipeline] Audio too short: {} bytes < {} minimum",
+            file_size, MIN_AUDIO_SIZE
+        );
         emit_progress(app, "error", "Recording too short");
         set_state(app, RecordingState::Idle);
         return Err("Recording too short".to_string());
     }
 
-    // Load settings to check provider
+    // Load settings
     let settings = get_settings();
 
-    // Get API key based on provider
-    let (transcription_key, provider_name) = match settings.transcription_provider {
-        TranscriptionProvider::Gladia => {
-            let key = get_gladia_api_key_internal(app)?;
-            (key, "Gladia")
-        }
-        TranscriptionProvider::Groq => {
-            let key = get_groq_api_key_internal(app)?;
-            (key, "Groq")
-        }
-        TranscriptionProvider::OpenAI => {
-            let key = get_api_key_internal(app)?;
-            (key, "OpenAI")
-        }
+    // Get all available API keys for potential ensemble use
+    let openai_key = get_api_key_internal(app)?.filter(|k| !k.is_empty());
+    let groq_key = get_groq_api_key_internal(app)?.filter(|k| !k.is_empty());
+    let gladia_key = get_gladia_api_key_internal(app)?.filter(|k| !k.is_empty());
+
+    // Check if ensemble mode is enabled and we have enough providers
+    let use_ensemble = settings.ensemble_enabled && {
+        let count = [openai_key.is_some(), groq_key.is_some(), gladia_key.is_some()]
+            .iter()
+            .filter(|&&x| x)
+            .count();
+        count >= 2
     };
 
-    let transcription_api_key = match transcription_key {
-        Some(key) => key,
-        None => {
-            emit_progress(app, "error", &format!("No {} API key configured", provider_name));
-            notify(app, &format!("Please set your {} API key in settings", provider_name));
-            set_state(app, RecordingState::Idle);
-            return Err(format!("No {} API key configured", provider_name));
+    // Process based on mode
+    let (final_text, raw_text) = if use_ensemble {
+        // Ensemble mode: parallel transcription + LLM fusion
+        match process_ensemble(
+            app,
+            &audio_path,
+            openai_key.clone(),
+            groq_key.clone(),
+            gladia_key.clone(),
+        )
+        .await
+        {
+            Ok((final_text, raw_text)) => {
+                // Check for hallucinations in fused result
+                if is_hallucination(&final_text) {
+                    println!("[Pipeline] Filtered hallucination: '{}'", final_text);
+                    emit_progress(app, "error", "No speech detected");
+                    set_state(app, RecordingState::Idle);
+                    return Err("No speech detected (filtered)".to_string());
+                }
+                (final_text, raw_text)
+            }
+            Err(e) => {
+                emit_progress(app, "error", &format!("Ensemble transcription failed: {}", e));
+                notify(app, "Transcription failed");
+                set_state(app, RecordingState::Idle);
+                return Err(e);
+            }
         }
-    };
+    } else {
+        // Single provider mode (existing flow)
 
-    // OpenAI key is always needed for polish (GPT-4o-mini)
-    let openai_api_key = match get_api_key_internal(app)? {
-        Some(key) => key,
-        None if settings.ai_polish_enabled => {
+        // Get API key based on provider
+        let (transcription_key, provider_name) = match settings.transcription_provider {
+            TranscriptionProvider::Gladia => (gladia_key.clone(), "Gladia"),
+            TranscriptionProvider::Groq => (groq_key.clone(), "Groq"),
+            TranscriptionProvider::OpenAI => (openai_key.clone(), "OpenAI"),
+        };
+
+        let transcription_api_key = match transcription_key {
+            Some(key) => key,
+            None => {
+                emit_progress(
+                    app,
+                    "error",
+                    &format!("No {} API key configured", provider_name),
+                );
+                notify(
+                    app,
+                    &format!("Please set your {} API key in settings", provider_name),
+                );
+                set_state(app, RecordingState::Idle);
+                return Err(format!("No {} API key configured", provider_name));
+            }
+        };
+
+        // OpenAI key is needed for polish (if enabled)
+        if settings.ai_polish_enabled && openai_key.is_none() {
             emit_progress(app, "error", "No OpenAI API key for AI polish");
             notify(app, "Please set your OpenAI API key for AI polish");
             set_state(app, RecordingState::Idle);
             return Err("No OpenAI API key configured for polish".to_string());
         }
-        None => String::new(), // Polish disabled, no key needed
-    };
 
-    // Stage 1: Transcribe audio
-    emit_progress(app, "transcribing", &format!("Transcribing via {}...", provider_name));
+        // Stage 1: Transcribe audio
+        emit_progress(
+            app,
+            "transcribing",
+            &format!("Transcribing via {}...", provider_name),
+        );
 
-    let raw_text = match settings.transcription_provider {
-        TranscriptionProvider::Gladia => {
-            transcribe_audio_gladia(&transcription_api_key, &audio_path).await
-        }
-        _ => {
-            transcribe_audio(&transcription_api_key, &audio_path).await
-        }
-    };
+        let raw_text = match settings.transcription_provider {
+            TranscriptionProvider::Gladia => {
+                transcribe_audio_gladia(&transcription_api_key, &audio_path).await
+            }
+            _ => transcribe_audio(&transcription_api_key, &audio_path).await,
+        };
 
-    let raw_text = match raw_text {
-        Ok(text) => text,
-        Err(e) => {
-            emit_progress(app, "error", &format!("Transcription failed: {}", e));
-            notify(app, "Transcription failed");
-            set_state(app, RecordingState::Idle);
-            return Err(e);
-        }
-    };
-
-    // Check for empty transcription (no speech detected)
-    if raw_text.trim().is_empty() {
-        emit_progress(app, "error", "No speech detected");
-        notify(app, "No speech detected");
-        set_state(app, RecordingState::Idle);
-        return Err("No speech detected".to_string());
-    }
-
-    // Filter out common Whisper hallucinations on silent audio
-    let raw_lower = raw_text.trim().to_lowercase();
-    if HALLUCINATIONS.iter().any(|h| raw_lower == *h || raw_lower.trim_end_matches('.') == *h) {
-        println!("[Pipeline] Filtered hallucination: '{}'", raw_text);
-        emit_progress(app, "error", "No speech detected");
-        set_state(app, RecordingState::Idle);
-        return Err("No speech detected (filtered)".to_string());
-    }
-
-    println!("[Pipeline] Raw transcription: {}", raw_text);
-
-    // Stage 2: Polish text (if enabled)
-    let polished_text = if settings.ai_polish_enabled {
-        emit_progress(app, "polishing", "Processing...");
-
-        match polish_text(&openai_api_key, &raw_text).await {
+        let raw_text = match raw_text {
             Ok(text) => text,
             Err(e) => {
-                // Per CONTEXT.md: Use raw text as fallback if polish fails
-                eprintln!("[Pipeline] Polish failed, using raw text: {}", e);
-                raw_text.clone()
+                emit_progress(app, "error", &format!("Transcription failed: {}", e));
+                notify(app, "Transcription failed");
+                set_state(app, RecordingState::Idle);
+                return Err(e);
             }
+        };
+
+        // Check for empty transcription (no speech detected)
+        if raw_text.trim().is_empty() {
+            emit_progress(app, "error", "No speech detected");
+            notify(app, "No speech detected");
+            set_state(app, RecordingState::Idle);
+            return Err("No speech detected".to_string());
         }
-    } else {
-        // AI polish disabled - use raw transcription
-        println!("[Pipeline] AI polish disabled, using raw transcription");
-        raw_text.clone()
+
+        // Filter out common Whisper hallucinations on silent audio
+        if is_hallucination(&raw_text) {
+            println!("[Pipeline] Filtered hallucination: '{}'", raw_text);
+            emit_progress(app, "error", "No speech detected");
+            set_state(app, RecordingState::Idle);
+            return Err("No speech detected (filtered)".to_string());
+        }
+
+        println!("[Pipeline] Raw transcription: {}", raw_text);
+
+        // Stage 2: Polish text (if enabled)
+        let polished_text = if settings.ai_polish_enabled {
+            emit_progress(app, "polishing", "Processing...");
+
+            match polish_text(openai_key.as_ref().unwrap(), &raw_text).await {
+                Ok(text) => text,
+                Err(e) => {
+                    // Per CONTEXT.md: Use raw text as fallback if polish fails
+                    eprintln!("[Pipeline] Polish failed, using raw text: {}", e);
+                    raw_text.clone()
+                }
+            }
+        } else {
+            // AI polish disabled - use raw transcription
+            println!("[Pipeline] AI polish disabled, using raw transcription");
+            raw_text.clone()
+        };
+
+        (polished_text, raw_text)
     };
 
-    println!("[Pipeline] Final text: {}", polished_text);
+    println!("[Pipeline] Final text: {}", final_text);
 
     // Stage 3: Paste into active app
     println!("[Pipeline] Stage 3: Starting paste...");
@@ -215,7 +355,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
     // ALWAYS write to clipboard first (per CONTEXT.md: backup for manual paste)
     println!("[Pipeline] Writing to clipboard...");
-    if let Err(e) = clipboard_guard.write_text(&polished_text) {
+    if let Err(e) = clipboard_guard.write_text(&final_text) {
         emit_progress(app, "error", "Failed to write to clipboard");
         notify(app, "Failed to copy text to clipboard");
         set_state(app, RecordingState::Idle);
@@ -252,7 +392,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 }
 
                 // Start correction detection window (10 seconds to detect user corrections)
-                start_correction_window(app, polished_text.clone());
+                start_correction_window(app, final_text.clone());
 
                 true
             }
@@ -276,14 +416,16 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     println!("[Pipeline] Paste stage complete, success={}", paste_success);
 
     // Save to history (before completing)
-    // Store both polished and raw text for user reference
-    let raw_for_history = if settings.ai_polish_enabled {
+    // Store both final and raw text for user reference
+    // For ensemble mode, raw_text contains all provider results
+    // For single mode, raw_text is the unpolished transcription
+    let raw_for_history = if settings.ai_polish_enabled || settings.ensemble_enabled {
         Some(raw_text.as_str())
     } else {
         None // No raw text if polish was disabled (they're the same)
     };
 
-    if let Err(e) = add_history_entry(&polished_text, raw_for_history) {
+    if let Err(e) = add_history_entry(&final_text, raw_for_history) {
         eprintln!("[Pipeline] Failed to save to history: {}", e);
         // Non-critical error, continue with completion
     }
@@ -303,7 +445,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     println!("[Pipeline] Setting state to Idle...");
     set_state(app, RecordingState::Idle);
     println!("[Pipeline] Done!");
-    Ok(polished_text)
+    Ok(final_text)
 }
 
 /// Tauri command to process a completed recording
