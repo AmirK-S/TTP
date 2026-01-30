@@ -34,6 +34,36 @@ fn get_provider_config() -> (&'static str, &'static str) {
     }
 }
 
+/// Transcribe audio file using OpenAI (gpt-4o-transcribe model)
+///
+/// Used by ensemble mode for explicit OpenAI provider calls.
+///
+/// # Arguments
+/// * `api_key` - OpenAI API key
+/// * `audio_path` - Path to the audio file (WAV format)
+///
+/// # Returns
+/// * `Ok(String)` - Transcription text on success
+/// * `Err(String)` - Error message on failure
+pub async fn transcribe_audio_openai(api_key: &str, audio_path: &str) -> Result<String, String> {
+    transcribe_with_provider(api_key, audio_path, OPENAI_TRANSCRIPTION_URL, "gpt-4o-transcribe", "OpenAI").await
+}
+
+/// Transcribe audio file using Groq (whisper-large-v3 model)
+///
+/// Used by ensemble mode for explicit Groq provider calls.
+///
+/// # Arguments
+/// * `api_key` - Groq API key
+/// * `audio_path` - Path to the audio file (WAV format)
+///
+/// # Returns
+/// * `Ok(String)` - Transcription text on success
+/// * `Err(String)` - Error message on failure
+pub async fn transcribe_audio_groq(api_key: &str, audio_path: &str) -> Result<String, String> {
+    transcribe_with_provider(api_key, audio_path, GROQ_TRANSCRIPTION_URL, "whisper-large-v3", "Groq").await
+}
+
 /// Transcribe audio file using configured provider (Groq or OpenAI)
 ///
 /// Uses Groq by default (faster) or OpenAI based on settings.
@@ -48,7 +78,29 @@ fn get_provider_config() -> (&'static str, &'static str) {
 /// * `Err(String)` - Error message on failure
 pub async fn transcribe_audio(api_key: &str, audio_path: &str) -> Result<String, String> {
     let (transcription_url, model) = get_provider_config();
-    println!("[Whisper] Using provider URL: {}, model: {}", transcription_url, model);
+    let provider_name = match get_settings().transcription_provider {
+        TranscriptionProvider::Gladia => "Groq",
+        TranscriptionProvider::Groq => "Groq",
+        TranscriptionProvider::OpenAI => "OpenAI",
+    };
+    transcribe_with_provider(api_key, audio_path, transcription_url, model, provider_name).await
+}
+
+/// Internal function to transcribe audio with a specific provider
+///
+/// Implements retry logic with exponential backoff (500ms, 1000ms, 1500ms).
+async fn transcribe_with_provider(
+    api_key: &str,
+    audio_path: &str,
+    transcription_url: &str,
+    model: &str,
+    provider_name: &str,
+) -> Result<String, String> {
+    println!("[{}] Using URL: {}, model: {}", provider_name, transcription_url, model);
+
+    // Convert model to owned String for Form::text (requires 'static)
+    let model = model.to_string();
+
     // Read audio file bytes
     let audio_bytes = fs::read(audio_path)
         .await
@@ -83,7 +135,7 @@ pub async fn transcribe_audio(api_key: &str, audio_path: &str) -> Result<String,
             .map_err(|e| format!("Failed to set MIME type: {}", e))?;
 
         let form = Form::new()
-            .text("model", model)
+            .text("model", model.clone())
             .text("response_format", "text")
             .text("language", "en")  // Primary language hint
             .text("prompt", "This is a bilingual speaker mixing English and French. Transcribe exactly what is said. Common English words: error, actually, basically, feature, bug, code, update, issue, test, check.")
