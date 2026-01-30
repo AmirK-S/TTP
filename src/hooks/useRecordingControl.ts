@@ -20,11 +20,6 @@ interface UseRecordingControlOptions {
   onError?: (error: string) => void;
 }
 
-// Debug helper to log to terminal
-const debugLog = (message: string) => {
-  invoke('debug_log', { message }).catch(() => {});
-};
-
 /**
  * Hook that connects Rust recording state events to the mic-recorder plugin.
  * When Rust emits 'Recording' state (from shortcut press), we start mic recording.
@@ -36,20 +31,15 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
   const recordingStartTime = useRef<number | null>(null);
 
   const handleStartRecording = useCallback(async () => {
-    debugLog('handleStartRecording called, isRecording=' + isRecordingRef.current);
     if (isRecordingRef.current) {
-      debugLog('Already recording, skipping');
       return; // Already recording
     }
 
     try {
       isRecordingRef.current = true;
       recordingStartTime.current = Date.now();
-      debugLog('Calling startRecording()...');
       await startRecording();
-      debugLog('startRecording() succeeded');
     } catch (error) {
-      debugLog('startRecording() FAILED: ' + String(error));
       isRecordingRef.current = false;
       recordingStartTime.current = null;
       onError?.(String(error));
@@ -57,9 +47,7 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
   }, [onError]);
 
   const handleStopRecording = useCallback(async () => {
-    debugLog('handleStopRecording called, isRecording=' + isRecordingRef.current);
     if (!isRecordingRef.current) {
-      debugLog('Not recording, skipping stop');
       return; // Not recording
     }
 
@@ -69,11 +57,9 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
         ? (Date.now() - recordingStartTime.current) / 1000
         : 0;
       recordingStartTime.current = null;
-      debugLog('Recording duration: ' + duration.toFixed(2) + 's');
 
       // Skip very short recordings (< 0.3s) - likely accidental
       if (duration < 0.3) {
-        debugLog('Too short (<0.3s), skipping and resetting');
         try {
           await stopRecording(); // Still need to stop the recorder
         } catch {
@@ -84,9 +70,7 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
         return;
       }
 
-      debugLog('Calling stopRecording()...');
       const filePath = await stopRecording();
-      debugLog('stopRecording() returned: ' + filePath);
 
       onRecordingComplete?.({
         filePath,
@@ -94,28 +78,20 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
       });
 
       // Trigger transcription pipeline
-      debugLog('Starting transcription pipeline with: ' + filePath);
       invoke('process_audio', { audioPath: filePath })
-        .then((result) => {
-          debugLog('Transcription complete: ' + String(result));
-        })
         .catch((error) => {
-          debugLog('Transcription FAILED: ' + String(error));
           onError?.(String(error));
         });
     } catch (error) {
-      debugLog('handleStopRecording FAILED: ' + String(error));
       recordingStartTime.current = null;
       onError?.(String(error));
     }
   }, [onRecordingComplete, onError]);
 
   useEffect(() => {
-    debugLog('useRecordingControl: Setting up event listener');
     // Listen for recording state changes from Rust
     const unlisten = listen<RecordingState>('recording-state-changed', async (event) => {
       const state = event.payload;
-      debugLog('Event received: ' + state + ', isRecording=' + isRecordingRef.current);
 
       if (state === 'Recording' && !isRecordingRef.current) {
         await handleStartRecording();

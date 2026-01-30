@@ -37,7 +37,6 @@ fn update_shortcut_cmd(app: AppHandle, shortcut: String) -> Result<(), String> {
 /// Tauri command to reset state to Idle (used when skipping short recordings)
 #[tauri::command]
 fn reset_to_idle(app: AppHandle) {
-    println!("[reset_to_idle] Called - recording was too short or mic failed");
     if let Some(state) = app.try_state::<Mutex<AppState>>() {
         if let Ok(mut guard) = state.try_lock() {
             guard.set_state(state::RecordingState::Idle, &app);
@@ -45,12 +44,6 @@ fn reset_to_idle(app: AppHandle) {
             tray::set_recording_icon(&app, false);
         }
     }
-}
-
-/// Debug command to log messages from frontend to terminal
-#[tauri::command]
-fn debug_log(message: String) {
-    println!("[Frontend] {}", message);
 }
 
 const SERVICE_NAME: &str = "TTP";
@@ -145,8 +138,7 @@ pub fn run() {
             get_history,
             clear_history,
             update_shortcut_cmd,
-            reset_to_idle,
-            debug_log
+            reset_to_idle
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

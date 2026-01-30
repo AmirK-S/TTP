@@ -48,14 +48,14 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **CFG-01**: First-run setup prompts for OpenAI API key
 - [x] **CFG-02**: API key stored securely in system keychain/credential store
 - [x] **CFG-03**: Settings UI accessible from menu bar/tray menu
-- [ ] **CFG-04**: User can customize global shortcut
+- [x] **CFG-04**: User can customize global shortcut
 - [x] **CFG-05**: User can enable/disable AI polish (raw transcription option)
 
 ### Platform Support
 
 - [x] **PLT-01**: Native macOS app (menu bar, accessibility permissions)
 - [x] **PLT-02**: Native Windows app (system tray, no special permissions needed)
-- [ ] **PLT-03**: Consistent feature parity across platforms
+- [x] **PLT-03**: Consistent feature parity across platforms
 
 ### Transcription History
 
@@ -125,11 +125,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CFG-01 | Phase 1 | Complete |
 | CFG-02 | Phase 1 | Complete |
 | CFG-03 | Phase 3 | Complete |
-| CFG-04 | Phase 4 | Pending |
+| CFG-04 | Phase 4 | Complete |
 | CFG-05 | Phase 3 | Complete |
 | PLT-01 | Phase 1 | Complete |
 | PLT-02 | Phase 1 | Complete |
-| PLT-03 | Phase 4 | Pending |
+| PLT-03 | Phase 4 | Complete |
 | HST-01 | Phase 3 | Complete |
 | HST-02 | Phase 3 | Complete |
 | HST-03 | Phase 3 | Complete |
