@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-29)
 
 **Core value:** One shortcut to turn speech into text, anywhere.
-**Current focus:** Phase 4 - Platform Parity
+**Current focus:** Phase 5 - Ensemble Transcription
 
 ## Current Position
 
-Phase: 4 of 4 (Platform Parity)
-Plan: 2 of 2 in current phase
-Status: COMPLETE
-Last activity: 2026-01-30 — Completed 04-02-PLAN.md
+Phase: 5 of 5 (Ensemble Transcription)
+Plan: 1 of 3 in current phase
+Status: In progress
+Last activity: 2026-01-30 - Completed 05-01-PLAN.md
 
-Progress: [██████████] 100%
+Progress: [████████░░] 12/14 plans
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
-- Average duration: 8.5 min
-- Total execution time: 93 min
+- Total plans completed: 12
+- Average duration: 8.4 min
+- Total execution time: 101 min
 
 **By Phase:**
 
@@ -31,9 +31,10 @@ Progress: [██████████] 100%
 | 2 | 3/3 | 30 min | 10 min |
 | 3 | 3/3 | 12 min | 4 min |
 | 4 | 2/2 | 13 min | 6.5 min |
+| 5 | 1/3 | 8 min | 8 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-01 (~5min), 03-02 (4min), 03-03 (4min), 04-01 (8min), 04-02 (5min)
+- Last 5 plans: 03-02 (4min), 03-03 (4min), 04-01 (8min), 04-02 (5min), 05-01 (8min)
 - Trend: consistent
 
 *Updated after each plan completion*
@@ -64,6 +65,9 @@ Recent decisions affecting current work:
 | 03-03 | Unlimited history | Per CONTEXT.md guidance |
 | 04-01 | enigo for cross-platform paste | Already in deps, unified macOS/Windows API |
 | 04-01 | Unregister-all before new shortcut | Simpler than tracking old; only one shortcut used |
+| 05-01 | 30-second provider timeout | Gladia polling can take 5-30s |
+| 05-01 | tokio::join! over join_all | Fixed provider set makes static join! cleaner |
+| 05-01 | Refactor whisper.rs | transcribe_with_provider for code reuse |
 
 ### Pending Todos
 
@@ -73,22 +77,24 @@ Recent decisions affecting current work:
 ### Blockers/Concerns
 
 **Research flags from roadmap:**
-- Phase 4: Notarization and Windows installer workflows need research (04-02)
+- Phase 5: Optimal LLM fusion prompt needs empirical tuning
+
+### Roadmap Evolution
+
+- Phase 5 added: Ensemble Transcription — multi-provider parallel transcription with LLM fusion
 
 ## Session Continuity
 
 Last session: 2026-01-30
-Stopped at: Post-Phase 4 improvements - Added Gladia provider for FR/EN code-switching
+Stopped at: Completed 05-01-PLAN.md (ensemble foundation)
 Resume file: None
 
 ### Next Steps
-1. User needs to get Gladia API key from app.gladia.io
-2. Test Gladia transcription with FR/EN mixed speech
-3. If working well, create Homebrew tap for distribution
-4. Complete milestone
+1. Execute 05-02-PLAN.md (pipeline integration)
+2. Execute 05-03-PLAN.md (LLM fusion)
+3. Add ensemble mode toggle to settings UI
 
-### Recent Post-Phase Work
-- Added Groq as fast transcription provider
-- Fixed short recording crashes and Whisper hallucinations
-- Added Gladia for better multilingual (FR/EN code-switching) support
-- Gladia is now the default provider (10h free/month)
+### Recent Work
+- Added ensemble_enabled setting field
+- Created ensemble.rs with parallel provider execution
+- Added provider-specific transcription functions
