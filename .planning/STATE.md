@@ -78,5 +78,17 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-01-30
-Stopped at: Phase 4 complete - Milestone ready for completion
+Stopped at: Post-Phase 4 improvements - Added Gladia provider for FR/EN code-switching
 Resume file: None
+
+### Next Steps
+1. User needs to get Gladia API key from app.gladia.io
+2. Test Gladia transcription with FR/EN mixed speech
+3. If working well, create Homebrew tap for distribution
+4. Complete milestone
+
+### Recent Post-Phase Work
+- Added Groq as fast transcription provider
+- Fixed short recording crashes and Whisper hallucinations
+- Added Gladia for better multilingual (FR/EN code-switching) support
+- Gladia is now the default provider (10h free/month)
