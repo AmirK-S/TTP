@@ -83,8 +83,8 @@ Plans:
 **Research flag**: Complete - see 04-RESEARCH.md
 
 Plans:
-- [ ] 04-01-PLAN.md — Cross-platform paste (enigo) and customizable shortcuts
-- [ ] 04-02-PLAN.md — Distribution preparation (Entitlements, signing, release workflow)
+- [x] 04-01-PLAN.md — Cross-platform paste (enigo) and customizable shortcuts
+- [x] 04-02-PLAN.md — Distribution preparation (Entitlements, signing, release workflow)
 
 ## Progress
 
@@ -96,7 +96,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | 1. Foundation + Recording | 3/3 | ✓ Complete | 2026-01-29 |
 | 2. Transcription Pipeline | 3/3 | ✓ Complete | 2026-01-29 |
 | 3. Learning + Settings | 3/3 | ✓ Complete | 2026-01-29 |
-| 4. Platform Parity | 0/2 | Not started | - |
+| 4. Platform Parity | 2/2 | ✓ Complete | 2026-01-30 |
 
 ---
 *Roadmap created: 2026-01-29*
