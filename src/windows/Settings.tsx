@@ -2,8 +2,9 @@
 // Settings window - configure app behavior and manage dictionary
 
 import { useEffect, useState } from 'react';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, Download, RefreshCw } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { useUpdater } from '../hooks/useUpdater';
 import { useSettingsStore, DictionaryEntry, HistoryEntry, TranscriptionProvider } from '../stores/settings-store';
 
 /**
@@ -175,6 +176,117 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
         )}
       </button>
     </div>
+  );
+}
+
+/**
+ * Update section component
+ */
+function UpdateSection() {
+  const {
+    status,
+    updateInfo,
+    progress,
+    error,
+    checkForUpdates,
+    downloadAndInstall,
+    restartApp,
+  } = useUpdater();
+
+  return (
+    <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        Updates
+      </h2>
+
+      <div className="space-y-3">
+        {status === 'idle' && (
+          <button
+            onClick={checkForUpdates}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Check for Updates
+          </button>
+        )}
+
+        {status === 'checking' && (
+          <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+            <RefreshCw className="w-4 h-4 animate-spin" />
+            Checking for updates...
+          </div>
+        )}
+
+        {status === 'available' && updateInfo && (
+          <div className="space-y-3">
+            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+              <p className="text-sm font-medium text-blue-700 dark:text-blue-400">
+                Update available: v{updateInfo.version}
+              </p>
+              {updateInfo.body && (
+                <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">
+                  {updateInfo.body}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={downloadAndInstall}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Download and Install
+            </button>
+          </div>
+        )}
+
+        {status === 'downloading' && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+              <Download className="w-4 h-4 animate-pulse" />
+              Downloading... {Math.round(progress)}%
+            </div>
+            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {status === 'ready' && (
+          <div className="space-y-3">
+            <p className="text-sm text-green-600 dark:text-green-400">
+              Update downloaded! Restart to apply.
+            </p>
+            <button
+              onClick={restartApp}
+              className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors"
+            >
+              Restart Now
+            </button>
+          </div>
+        )}
+
+        {status === 'error' && (
+          <div className="space-y-2">
+            <p className="text-sm text-red-600 dark:text-red-400">
+              {error || 'Failed to check for updates'}
+            </p>
+            <button
+              onClick={checkForUpdates}
+              className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        <p className="text-xs text-gray-400 dark:text-gray-500">
+          Current version: v0.1.0
+        </p>
+      </div>
+    </section>
   );
 }
 
@@ -713,6 +825,9 @@ export function Settings() {
             </div>
           )}
         </section>
+
+        {/* Updates Section */}
+        <UpdateSection />
 
         {/* Reset Section */}
         <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">

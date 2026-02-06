@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-01-29)
 
 ## Current Position
 
-Phase: 5 of 5 (Ensemble Transcription)
-Plan: 3 of 3 in current phase
-Status: COMPLETE
-Last activity: 2026-01-30 - Completed Phase 5
+Phase: 6 of 6 (Auto-Update)
+Plan: 0 of 2 in current phase
+Status: IN PROGRESS
+Last activity: 2026-02-06 - Started Phase 6
 
-Progress: [██████████] 14/14 plans
+Progress: [██████████░░] 14/16 plans
 
 ## Performance Metrics
 
@@ -87,6 +87,7 @@ Recent decisions affecting current work:
 ### Roadmap Evolution
 
 - Phase 5 added: Ensemble Transcription — multi-provider parallel transcription with LLM fusion
+- Phase 6 added: Auto-Update — GitHub Releases integration with tauri-plugin-updater
 
 ## Session Continuity
 

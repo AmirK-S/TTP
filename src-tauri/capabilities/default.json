@@ -26,12 +26,16 @@
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text",
     "notification:default",
+    "updater:default",
+    "process:allow-restart",
     {
       "identifier": "http:default",
       "allow": [
         { "url": "https://api.openai.com/*" },
         { "url": "https://api.groq.com/*" },
-        { "url": "https://api.gladia.io/*" }
+        { "url": "https://api.gladia.io/*" },
+        { "url": "https://github.com/*" },
+        { "url": "https://api.github.com/*" }
       ]
     }
   ]

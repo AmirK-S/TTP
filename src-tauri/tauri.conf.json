@@ -3,6 +3,14 @@
   "productName": "TTP",
   "version": "0.1.0",
   "identifier": "com.ttp.desktop",
+  "plugins": {
+    "updater": {
+      "pubkey": "RWQXGZgaAZafbecaDTvc95pE2DWoVgNIHQC6eoFesY0vIwax4W6wuhBb",
+      "endpoints": [
+        "https://github.com/AmirK-S/TTP/releases/latest/download/latest.json"
+      ]
+    }
+  },
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -60,6 +68,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

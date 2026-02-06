@@ -15,6 +15,7 @@ TTP delivers voice-to-text transcription in four phases: establishing the founda
 - [x] **Phase 3: Learning + Settings** - Dictionary learning, history, and user configuration
 - [x] **Phase 4: Platform Parity** - Cross-platform consistency and final polish
 - [x] **Phase 5: Ensemble Transcription** - Send audio to multiple providers in parallel, use LLM to fuse results into highest-accuracy transcription
+- [ ] **Phase 6: Auto-Update** - GitHub Releases integration with tauri-plugin-updater for seamless app updates
 
 ## Phase Details
 
@@ -104,6 +105,23 @@ Plans:
 - [x] 05-02-PLAN.md — LLM fusion + pipeline integration
 - [x] 05-03-PLAN.md — Frontend ensemble toggle UI
 
+### Phase 6: Auto-Update
+**Goal**: App checks for updates and installs them automatically via GitHub Releases
+**Depends on**: Phase 5
+**Requirements**: UPD-01 (new)
+**Success Criteria** (what must be TRUE):
+  1. User can check for updates from Settings
+  2. App downloads and installs updates with progress indicator
+  3. App restarts after update installation
+  4. Updates are signed with Tauri signing key (prevents tampering)
+  5. GitHub Actions builds and publishes releases automatically
+**Plans**: 2 plans in 1 wave
+**Research flag**: Skip - standard tauri-plugin-updater patterns
+
+Plans:
+- [ ] 06-01-PLAN.md — Signing key setup + GitHub Actions release workflow
+- [ ] 06-02-PLAN.md — Frontend update UI + auto-check on startup
+
 ## Progress
 
 **Execution Order:**
@@ -116,6 +134,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 3. Learning + Settings | 3/3 | ✓ Complete | 2026-01-29 |
 | 4. Platform Parity | 2/2 | ✓ Complete | 2026-01-30 |
 | 5. Ensemble Transcription | 3/3 | ✓ Complete | 2026-01-30 |
+| 6. Auto-Update | 0/2 | In Progress | - |
 
 ---
 *Roadmap created: 2026-01-29*
