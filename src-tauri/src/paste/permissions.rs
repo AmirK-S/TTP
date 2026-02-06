@@ -1,27 +1,27 @@
 // TTP - Accessibility permissions
 // Checks if accessibility permission is granted for keyboard simulation
-//
-// We use AppleScript with System Events which requires Accessibility permission.
-
-use std::process::Command;
 
 /// Check if accessibility permission is granted
 ///
-/// Tests by running a simple AppleScript System Events command.
-/// System Events requires Accessibility permission to automate keystrokes.
+/// Uses macOS Accessibility API to check if the app has permission.
 ///
 /// Returns:
 /// - `true` if permission is granted
-/// - `false` if permission is denied or check fails
+/// - `false` if permission is denied
 pub fn check_accessibility() -> bool {
-    // Try a simple System Events command
-    let output = Command::new("osascript")
-        .arg("-e")
-        .arg("tell application \"System Events\" to return 1")
-        .output();
+    #[cfg(target_os = "macos")]
+    {
+        // Use ApplicationServices framework to check accessibility
+        #[link(name = "ApplicationServices", kind = "framework")]
+        extern "C" {
+            fn AXIsProcessTrusted() -> bool;
+        }
 
-    match output {
-        Ok(o) => o.status.success(),
-        Err(_) => false,
+        unsafe { AXIsProcessTrusted() }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        true // No accessibility check needed on other platforms
     }
 }

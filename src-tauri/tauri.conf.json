@@ -11,10 +11,6 @@
   },
   "app": {
     "macOSPrivateApi": true,
-    "trayIcon": {
-      "iconPath": "icons/32x32.png",
-      "iconAsTemplate": true
-    },
     "windows": [
       {
         "label": "main",
@@ -23,21 +19,6 @@
         "height": 600,
         "visible": false,
         "skipTaskbar": true
-      },
-      {
-        "label": "floating-bar",
-        "title": "",
-        "width": 100,
-        "height": 32,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "visible": true,
-        "resizable": false,
-        "focus": false,
-        "x": 0,
-        "y": 0
       },
       {
         "label": "setup",
@@ -54,9 +35,22 @@
         "width": 500,
         "height": 600,
         "resizable": true,
-        "visible": false,
+        "visible": true,
         "center": true,
         "decorations": true
+      },
+      {
+        "label": "pill",
+        "title": "",
+        "width": 160,
+        "height": 40,
+        "resizable": false,
+        "visible": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "focus": false
       }
     ],
     "security": {
@@ -80,7 +74,8 @@
       "providerShortName": null,
       "signingIdentity": null,
       "hardenedRuntime": true,
-      "minimumSystemVersion": "10.15"
+      "minimumSystemVersion": "10.15",
+      "infoPlist": "./Info.plist"
     },
     "windows": {
       "certificateThumbprint": null,

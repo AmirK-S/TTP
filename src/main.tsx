@@ -22,8 +22,8 @@ async function main() {
 
   const rootElement = document.getElementById('root') as HTMLElement;
 
-  if (windowLabel === 'floating-bar') {
-    // Floating bar window - transparent recording indicator
+  if (windowLabel === 'floating-bar' || windowLabel === 'pill') {
+    // Floating bar / pill window - transparent recording indicator
     ReactDOM.createRoot(rootElement).render(
       <React.StrictMode>
         <FloatingBar />

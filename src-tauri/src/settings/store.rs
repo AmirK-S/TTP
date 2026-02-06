@@ -37,6 +37,7 @@ pub struct Settings {
 }
 
 fn default_shortcut() -> String {
+    // Option+Space on macOS
     "Alt+Space".to_string()
 }
 

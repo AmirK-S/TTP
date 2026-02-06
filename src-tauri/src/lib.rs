@@ -26,7 +26,6 @@ use transcription::process_audio;
 use state::AppState;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
-use tauri_plugin_keyring::KeyringExt;
 
 /// Tauri command to update the global shortcut at runtime
 #[tauri::command]
@@ -40,22 +39,24 @@ fn reset_to_idle(app: AppHandle) {
     if let Some(state) = app.try_state::<Mutex<AppState>>() {
         if let Ok(mut guard) = state.try_lock() {
             guard.set_state(state::RecordingState::Idle, &app);
-            // Also reset tray icon
             tray::set_recording_icon(&app, false);
         }
     }
 }
 
-const SERVICE_NAME: &str = "TTP";
-const API_KEY_USER: &str = "openai-api-key";
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(move |app, _shortcut, event| {
+                    println!("[Shortcut] Event: {:?}", event.state());
+                    shortcuts::handle_shortcut_event_public(app, event.state());
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_positioner::init())
-        .plugin(tauri_plugin_keyring::init())
         .plugin(tauri_plugin_mic_recorder::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -66,42 +67,29 @@ pub fn run() {
             // Set up system tray
             tray::setup_tray(app.handle())?;
 
-            // Set up global keyboard shortcuts
-            shortcuts::setup_shortcuts(app.handle())?;
-
-            // Position floating bar above the dock
-            if let Some(window) = app.get_webview_window("floating-bar") {
-                if let Ok(Some(monitor)) = window.primary_monitor() {
-                    let screen_size = monitor.size();
-                    let window_width = 100.0;
-                    let window_height = 32.0;
-                    let dock_offset = 220.0;
-
-                    let x = (screen_size.width as f64 / 2.0) - (window_width / 2.0);
-                    let y = screen_size.height as f64 - dock_offset - window_height;
-
-                    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-                        x: x as i32,
-                        y: y as i32,
-                    }));
+            // Check accessibility permission (needed for paste simulation on macOS)
+            #[cfg(target_os = "macos")]
+            {
+                if !paste::check_accessibility() {
+                    println!("Accessibility permission not granted");
+                    let _ = std::process::Command::new("open")
+                        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+                        .spawn();
+                } else {
+                    println!("Accessibility permission granted");
                 }
             }
 
-            // Check if API key exists (env var first, then keychain), show setup window if not
-            let has_key = if std::env::var("OPENAI_API_KEY").map(|k| !k.is_empty()).unwrap_or(false) {
-                println!("API key found in environment variable");
-                true
-            } else {
-                let from_keyring = app
-                    .keyring()
-                    .get_password(SERVICE_NAME, API_KEY_USER)
-                    .map(|k| k.is_some())
-                    .unwrap_or(false);
-                if from_keyring {
-                    println!("API key found in keychain");
-                }
-                from_keyring
-            };
+            // Set up global keyboard shortcuts
+            shortcuts::setup_shortcuts(app.handle())?;
+
+            // Show pill window (always visible)
+            tray::show_pill(app.handle());
+
+            // Check if API key exists, show setup window if not
+            let has_key = std::env::var("OPENAI_API_KEY")
+                .map(|k| !k.is_empty())
+                .unwrap_or(false);
 
             if !has_key {
                 // Show setup window for first-run experience
@@ -110,6 +98,8 @@ pub fn run() {
                     let _ = window.set_focus();
                     println!("First run: showing API key setup window");
                 }
+            } else {
+                println!("API key found in environment");
             }
 
             Ok(())
