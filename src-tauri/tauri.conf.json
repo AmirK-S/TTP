@@ -77,12 +77,12 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "entitlements": "./Entitlements.plist",
+      "entitlements": null,
       "exceptionDomain": null,
       "frameworks": [],
       "providerShortName": null,
-      "signingIdentity": null,
-      "hardenedRuntime": true,
+      "signingIdentity": "-",
+      "hardenedRuntime": false,
       "minimumSystemVersion": "10.15",
       "infoPlist": "./Info.plist"
     },
