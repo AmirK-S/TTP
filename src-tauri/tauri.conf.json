@@ -5,7 +5,7 @@
   "identifier": "com.ttp.desktop",
   "plugins": {
     "updater": {
-      "pubkey": "RWTKHt6+oR1PFLgtwO5ZPKDh0+LUYjlkaLkaUxs3lO+loZDcH78JtoFZ",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE0NEYxREExQkVERTFFQ0EKUldUS0h0NitvUjFQRkxndHdPNVpQS0RoMCtMVVlqbGthTGthVXhzM2xPK2xvWkRjSDc4SnRvRloK",
       "endpoints": [
         "https://github.com/AmirK-S/TTP/releases/latest/download/latest.json"
       ]
