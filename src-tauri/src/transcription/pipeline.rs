@@ -8,6 +8,7 @@ use crate::credentials::{get_api_key_internal, get_gladia_api_key_internal, get_
 use crate::dictionary::detection::start_correction_window;
 use crate::history::add_history_entry;
 use crate::paste::{check_accessibility, simulate_paste, ClipboardGuard};
+// Pill stays visible - no hide needed
 use crate::settings::{get_settings, TranscriptionProvider};
 use crate::state::{AppState, RecordingState};
 use std::sync::Mutex;
@@ -58,12 +59,29 @@ fn emit_progress(app: &AppHandle, stage: &str, message: &str) {
 
 /// Show a system notification
 fn notify(app: &AppHandle, message: &str) {
-    app.notification()
+    println!("[Pipeline] Showing notification: {}", message);
+
+    // Try Tauri notification first
+    let result = app.notification()
         .builder()
         .title("TTP")
         .body(message)
-        .show()
-        .ok();
+        .show();
+
+    if result.is_err() {
+        println!("[Pipeline] Tauri notification failed, trying osascript");
+        // Fallback to osascript
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("osascript")
+                .arg("-e")
+                .arg(format!(
+                    "display notification \"{}\" with title \"TTP\"",
+                    message.replace("\"", "\\\"")
+                ))
+                .spawn();
+        }
+    }
 }
 
 /// Set the app state (updates frontend via event)
@@ -215,7 +233,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             .count();
         count >= 2
     };
-
     // Process based on mode
     let (final_text, raw_text) = if use_ensemble {
         // Ensemble mode: parallel transcription + LLM fusion
@@ -297,8 +314,10 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         let raw_text = match raw_text {
             Ok(text) => text,
             Err(e) => {
+                eprintln!("[Pipeline] Transcription error: {}", e);
                 emit_progress(app, "error", &format!("Transcription failed: {}", e));
                 notify(app, "Transcription failed");
+                // Don't hide pill - it stays visible
                 set_state(app, RecordingState::Idle);
                 return Err(e);
             }
@@ -320,6 +339,15 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             return Err("No speech detected (filtered)".to_string());
         }
 
+        // Check minimum meaningful content (at least 10 chars after trimming)
+        // This prevents GPT from responding with help messages on near-empty input
+        if raw_text.trim().len() < 10 {
+            println!("[Pipeline] Transcription too short: '{}' ({} chars)", raw_text, raw_text.trim().len());
+            emit_progress(app, "error", "Recording too short");
+            set_state(app, RecordingState::Idle);
+            return Err("Recording too short".to_string());
+        }
+
         println!("[Pipeline] Raw transcription: {}", raw_text);
 
         // Stage 2: Polish text (if enabled)
@@ -327,15 +355,37 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             emit_progress(app, "polishing", "Processing...");
 
             match polish_text(openai_key.as_ref().unwrap(), &raw_text).await {
-                Ok(text) => text,
+                Ok(text) => {
+                    // Detect GPT help responses (happens when input is too minimal)
+                    let lower = text.to_lowercase();
+                    let is_gpt_help = lower.contains("i'm here to help")
+                        || lower.contains("please provide")
+                        || lower.contains("i can help")
+                        || lower.contains("could you please")
+                        || lower.contains("i'm sorry")
+                        || lower.contains("i can only process")
+                        || lower.contains("feel free to share")
+                        || lower.contains("if you have a")
+                        || lower.contains("transcription you'd like");
+
+                    // Also suspect if output is much longer than input (GPT adding content)
+                    let length_ratio = text.len() as f32 / raw_text.len().max(1) as f32;
+                    let is_too_long = length_ratio > 3.0 && text.len() > 50;
+
+                    if is_gpt_help || is_too_long {
+                        eprintln!("[Pipeline] GPT returned suspicious response (help={}, ratio={:.1}): '{}', using raw text",
+                            is_gpt_help, length_ratio, text);
+                        raw_text.clone()
+                    } else {
+                        text
+                    }
+                }
                 Err(e) => {
-                    // Per CONTEXT.md: Use raw text as fallback if polish fails
                     eprintln!("[Pipeline] Polish failed, using raw text: {}", e);
                     raw_text.clone()
                 }
             }
         } else {
-            // AI polish disabled - use raw transcription
             println!("[Pipeline] AI polish disabled, using raw transcription");
             raw_text.clone()
         };
@@ -411,6 +461,15 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         }
     } else {
         eprintln!("[Pipeline] No accessibility permission - using clipboard fallback");
+
+        // Open System Settings to Accessibility pane to help user grant permission
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("open")
+                .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+                .spawn();
+        }
+
         false
     };
     println!("[Pipeline] Paste stage complete, success={}", paste_success);
@@ -436,13 +495,18 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         println!("[Pipeline] Emitting complete (paste succeeded)");
         emit_progress(app, "complete", "");
     } else {
-        // Clipboard fallback - notify user
+        // Clipboard fallback - notify user with helpful message
         println!("[Pipeline] Paste failed, showing notification...");
-        notify(app, "Text copied - paste with Cmd+V");
+        if !has_accessibility {
+            notify(app, "Add TTP to Accessibility in Settings, then paste with Cmd+V");
+        } else {
+            notify(app, "Text copied - paste with Cmd+V");
+        }
         emit_progress(app, "complete", "");
     }
 
     println!("[Pipeline] Setting state to Idle...");
+    // Don't hide pill - it stays visible, just changes appearance
     set_state(app, RecordingState::Idle);
     println!("[Pipeline] Done!");
     Ok(final_text)

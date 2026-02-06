@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window, floating bar, setup window, and tray",
-  "windows": ["main", "floating-bar", "setup"],
+  "description": "Capability for all windows",
+  "windows": ["main", "setup", "settings", "pill"],
   "permissions": [
     "core:default",
     "core:event:default",
@@ -20,10 +20,6 @@
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-is-registered",
     "positioner:default",
-    "keyring:default",
-    "keyring:allow-get-password",
-    "keyring:allow-set-password",
-    "keyring:allow-delete-password",
     "mic-recorder:default",
     "mic-recorder:allow-start-recording",
     "mic-recorder:allow-stop-recording",
@@ -33,7 +29,9 @@
     {
       "identifier": "http:default",
       "allow": [
-        { "url": "https://api.openai.com/*" }
+        { "url": "https://api.openai.com/*" },
+        { "url": "https://api.groq.com/*" },
+        { "url": "https://api.gladia.io/*" }
       ]
     }
   ]
