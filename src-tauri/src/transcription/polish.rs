@@ -26,6 +26,7 @@ RULES:
 4. Fix grammar but keep casual tone
 5. Add punctuation
 6. Self-corrections only: "Tuesday no wait Wednesday" → "Wednesday"
+7. Format lists: when the speaker enumerates items (point 1, first, second, etc.), format as a numbered or bulleted list with line breaks
 
 Output the FULL cleaned transcription, nothing else."#;
 

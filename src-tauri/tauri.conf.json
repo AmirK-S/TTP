@@ -31,8 +31,8 @@
       {
         "label": "setup",
         "title": "TTP Setup",
-        "width": 400,
-        "height": 380,
+        "width": 420,
+        "height": 520,
         "resizable": false,
         "visible": false,
         "center": true

@@ -88,12 +88,12 @@ pub fn run() {
             // Show pill window (always visible)
             tray::show_pill(app.handle());
 
-            // Check if API key exists, show setup window if not
-            let has_key = std::env::var("OPENAI_API_KEY")
-                .map(|k| !k.is_empty())
+            // Check if Groq API key exists, show setup window if not
+            let has_groq = credentials::get_groq_api_key_internal(app.handle())
+                .map(|k| k.is_some())
                 .unwrap_or(false);
 
-            if !has_key {
+            if !has_groq {
                 // Show setup window for first-run experience
                 if let Some(window) = app.get_webview_window("setup") {
                     let _ = window.show();
@@ -101,10 +101,18 @@ pub fn run() {
                     println!("First run: showing API key setup window");
                 }
             } else {
-                println!("API key found in environment");
+                println!("Groq API key found, skipping setup");
             }
 
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Prevent app from quitting when setup/settings windows close
+            // TTP is a tray app — it should keep running in background
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             get_api_key,

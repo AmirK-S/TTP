@@ -78,6 +78,11 @@ Recent decisions affecting current work:
 
 - [ ] fn key capture (requires native macOS code) — Future enhancement
 - [ ] Volume-reactive floating bar animation — Future enhancement
+- [ ] Replace OpenAI polish API with a 100% free & fast alternative (Groq, local LLM, etc.)
+- [ ] Verify dictionary feature works end-to-end (add/edit/delete terms, correction applies)
+- [ ] Fresh install test on macOS — simulate brand new user, fix any UX issues
+- [ ] Fresh install test on Windows — simulate brand new user, fix any UX issues
+- [ ] Pre-release QA pass — troubleshoot and fix all issues before v0.2.0
 
 ### Blockers/Concerns
 

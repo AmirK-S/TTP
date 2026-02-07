@@ -6,7 +6,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 
 /**
  * ApiKeySetup is the first-run experience window.
- * It prompts users to enter their OpenAI API key before they can use TTP.
+ * Prompts users for Groq (required) and OpenAI (optional) API keys.
  * After successful setup, the window closes automatically.
  */
 export function ApiKeySetup() {
@@ -24,8 +24,8 @@ export function ApiKeySetup() {
             Welcome to TTP
           </h1>
           <p className="mt-2 text-gray-600 dark:text-gray-400">
-            Talk To Paste uses OpenAI's Whisper API for transcription.
-            Enter your API key to get started.
+            Talk To Paste needs an API key for voice transcription.
+            Groq is free and fast.
           </p>
         </div>
 
@@ -33,9 +33,9 @@ export function ApiKeySetup() {
           <ApiKeyForm onSuccess={handleSuccess} />
         </div>
 
-        <div className="mt-6 text-center">
+        <div className="mt-4 text-center">
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            You only pay for what you use. No subscription required.
+            Your keys are stored locally on your machine.
           </p>
         </div>
       </div>

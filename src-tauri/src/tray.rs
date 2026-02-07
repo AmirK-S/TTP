@@ -108,14 +108,15 @@ pub fn set_recording_icon(app: &AppHandle, _recording: bool) {
 /// Show the pill window (floating recording indicator)
 pub fn show_pill(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("pill") {
-        // Center horizontally, well above the dock (300px from bottom)
+        // Center horizontally, just above the dock
         if let Ok(Some(monitor)) = window.primary_monitor() {
-            let screen_width = monitor.size().width as i32;
-            let screen_height = monitor.size().height as i32;
-            let window_width = 160;
-            let x = (screen_width - window_width) / 2;
-            let y = screen_height - 350; // Well above the dock
-            let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+            let scale = monitor.scale_factor();
+            let screen_width = monitor.size().width as f64 / scale;
+            let screen_height = monitor.size().height as f64 / scale;
+            let window_width = 160.0;
+            let x = (screen_width - window_width) / 2.0;
+            let y = screen_height - 120.0; // Just above the dock
+            let _ = window.set_position(tauri::LogicalPosition::new(x, y));
         }
         let _ = window.show();
         let _ = window.set_always_on_top(true);

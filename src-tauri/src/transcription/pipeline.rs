@@ -280,10 +280,11 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                     "error",
                     &format!("No {} API key configured", provider_name),
                 );
-                notify(
-                    app,
-                    &format!("Please set your {} API key in settings", provider_name),
-                );
+                // Reopen setup window so user can enter their key
+                if let Some(window) = app.get_webview_window("setup") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
                 set_state(app, RecordingState::Idle);
                 return Err(format!("No {} API key configured", provider_name));
             }
