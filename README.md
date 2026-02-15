@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://ttp.amirk.eu">Website</a> &middot;
+  <a href="https://ttp.amirks.eu">Website</a> &middot;
   <a href="https://github.com/AmirK-S/TTP/releases">Download</a> &middot;
   <a href="https://github.com/AmirK-S/TTP/releases">Changelog</a>
 </p>
@@ -108,7 +108,7 @@ TTP/
 │       ├── dictionary/     # Smart dictionary with auto-detection
 │       ├── paste/          # Clipboard + accessibility paste
 │       └── fnkey.rs        # macOS Fn key listener
-└── landing/              # Astro landing page (ttp.amirk.eu)
+└── landing/              # Astro landing page (amirks.eu)
 ```
 
 ## Author
@@ -116,7 +116,7 @@ TTP/
 **Amir Kellou-Sidhoum** — AI Engineer / Builder / Consultant
 
 - [LinkedIn](https://www.linkedin.com/in/amirks/)
-- [Website](https://ttp.amirk.eu)
+- [Website](https://amirks.eu)
 
 ---
 
