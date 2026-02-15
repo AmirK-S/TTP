@@ -1,0 +1,24 @@
+---
+import { languages } from '@/i18n/ui';
+import { getLangFromUrl } from '@/i18n/utils';
+
+const lang = getLangFromUrl(Astro.url);
+const otherLang = lang === 'en' ? 'fr' : 'en';
+const otherPath = lang === 'en' ? '/fr/' : '/';
+---
+
+<a
+  href={otherPath}
+  class="text-sm text-slate-400 transition-colors hover:text-white"
+  data-lang-switch={otherLang}
+>
+  {languages[otherLang]}
+</a>
+
+<script is:inline>
+  document.querySelectorAll('[data-lang-switch]').forEach(function(el) {
+    el.addEventListener('click', function() {
+      localStorage.setItem('lang', el.dataset.langSwitch);
+    });
+  });
+</script>

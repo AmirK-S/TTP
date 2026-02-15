@@ -1,0 +1,45 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for all windows",
+  "windows": ["main", "setup", "settings", "pill"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:webview:default",
+    "core:webview:allow-webview-position",
+    "core:window:default",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-set-focus",
+    "core:window:allow-close",
+    "opener:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-is-registered",
+    "positioner:default",
+    "mic-recorder:default",
+    "mic-recorder:allow-start-recording",
+    "mic-recorder:allow-stop-recording",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
+    "notification:default",
+    "updater:default",
+    "process:allow-restart",
+    "sentry:default",
+    "aptabase:allow-track-event",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://api.groq.com/*" },
+        { "url": "https://github.com/*" },
+        { "url": "https://api.github.com/*" },
+        { "url": "https://*.ingest.sentry.io/*" },
+        { "url": "https://*.ingest.de.sentry.io/*" },
+        { "url": "https://*.aptabase.com/*" }
+      ]
+    }
+  ]
+}

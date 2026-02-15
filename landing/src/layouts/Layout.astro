@@ -1,0 +1,179 @@
+---
+import '@/styles/globals.css';
+import { getLangFromUrl } from '@/i18n/utils';
+import interWoff2 from '@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url';
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+const lang = getLangFromUrl(Astro.url);
+
+const description = lang === 'fr'
+  ? "TTP (Talk To Paste) - Transformez la parole en texte, partout. Appuyez sur un raccourci, parlez, et vos mots apparaissent l\u00e0 o\u00f9 vous tapez. Gratuit, open source, disponible sur macOS et Windows."
+  : "TTP (Talk To Paste) - Turn speech into text anywhere. Press a shortcut, speak, and your words appear wherever you're typing. Free, open source, works on macOS and Windows.";
+---
+
+<!doctype html>
+<html lang={lang} class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <link rel="preload" as="font" type="font/woff2" href={interWoff2} crossorigin="anonymous" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="alternate" hreflang="en" href="/" />
+    <link rel="alternate" hreflang="fr" href="/fr/" />
+    <title>{title}</title>
+    <script is:inline>
+    (function(){
+      if(location.pathname!=='/'&&location.pathname!=='/index.html')return;
+      var s=localStorage.getItem('lang');
+      if(s==='en')return;
+      if(s==='fr'){location.replace('/fr/'+location.hash);return}
+      var langs=navigator.languages||[navigator.language||''];
+      for(var i=0;i<langs.length;i++){if(langs[i].startsWith('fr')){location.replace('/fr/'+location.hash);return}}
+    })();
+    </script>
+  </head>
+  <body class="min-h-screen bg-slate-950 text-white antialiased">
+    <slot />
+    <script>
+      import Lenis from "lenis";
+      // lenis/snap removed — custom snap below
+      import gsap from "gsap";
+      import { ScrollTrigger } from "gsap/ScrollTrigger";
+      import { SplitText } from "gsap/SplitText";
+
+      // Register GSAP plugins (must happen before any animation code)
+      gsap.registerPlugin(ScrollTrigger, SplitText);
+
+      // Mobile address bar resize fix -- prevents ScrollTrigger jumps when address bar hides/shows
+      ScrollTrigger.config({ ignoreMobileResize: true });
+
+      // Check reduced-motion preference
+      const prefersReducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)"
+      ).matches;
+
+      // Initialize Lenis smooth scroll
+      // lerp: 1 = instant interpolation (no momentum) for reduced-motion users
+      // lerp: 0.1 = smooth momentum for standard users
+      // anchors: true = smooth scroll to hash links (#features, #download, etc.)
+      const lenis = new Lenis({
+        lerp: prefersReducedMotion ? 1 : 0.1,
+        smoothWheel: true,
+        anchors: true,
+      });
+
+      // Sync Lenis scroll position with ScrollTrigger
+      // Without this, ScrollTrigger doesn't know about Lenis's virtual scroll position
+      lenis.on("scroll", ScrollTrigger.update);
+
+      // Drive Lenis from GSAP's ticker (single RAF loop)
+      // Do NOT set autoRaf: true on Lenis -- that would create a double RAF loop
+      gsap.ticker.add((time) => {
+        lenis.raf(time * 1000);
+      });
+
+      // Disable GSAP lag smoothing to prevent jump-catching after tab backgrounding
+      gsap.ticker.lagSmoothing(0);
+
+      // Expose lenis globally for Navbar scroll lock and future scripts
+      (window as any).__lenis = lenis;
+
+      // Custom scroll snap: desktop only, respects reduced-motion
+      // Snaps to nearest section top when user stops scrolling near a boundary.
+      // Middle of tall sections = no snap, free scroll.
+      const mm = gsap.matchMedia();
+
+      mm.add("(min-width: 768px) and (prefers-reduced-motion: no-preference)", () => {
+        const sections = [...document.querySelectorAll("[data-snap-section]")] as HTMLElement[];
+        const THRESHOLD = 350;
+        let snapTimer: ReturnType<typeof setTimeout> | null = null;
+        let isSnapping = false;
+        let snapEnabled = true;
+
+        (window as any).__snap = {
+          stop: () => { snapEnabled = false; },
+          start: () => { snapEnabled = true; },
+        };
+
+        const onScroll = () => {
+          if (isSnapping || !snapEnabled) return;
+          if (snapTimer) clearTimeout(snapTimer);
+
+          snapTimer = setTimeout(() => {
+            if (!snapEnabled) return;
+            const scrollY = lenis.scroll;
+            let nearest: HTMLElement | null = null;
+            let minDist = Infinity;
+
+            for (const section of sections) {
+              const dist = Math.abs(scrollY - section.offsetTop);
+              if (dist < minDist) {
+                minDist = dist;
+                nearest = section;
+              }
+            }
+
+            if (nearest && minDist > 2 && minDist < THRESHOLD) {
+              isSnapping = true;
+              lenis.scrollTo(nearest, {
+                duration: 0.6,
+                onComplete: () => { isSnapping = false; },
+              });
+            }
+          }, 150);
+        };
+
+        lenis.on("scroll", onScroll);
+
+        return () => {
+          if (snapTimer) clearTimeout(snapTimer);
+          lenis.off("scroll", onScroll);
+          (window as any).__snap = null;
+        };
+      });
+
+      // Mouse-follow spotlight -- desktop pointer devices only
+      if (window.matchMedia("(hover: hover)").matches) {
+        const spotlightContainers = document.querySelectorAll("[data-spotlight]");
+
+        spotlightContainers.forEach((container) => {
+          const cards = [...container.querySelectorAll("[data-spotlight-card]")];
+          let ticking = false;
+
+          container.addEventListener("pointermove", (e) => {
+            if (ticking) return;
+            ticking = true;
+
+            requestAnimationFrame(() => {
+              const rect = container.getBoundingClientRect();
+              const mouseX = (e as PointerEvent).clientX - rect.left;
+              const mouseY = (e as PointerEvent).clientY - rect.top;
+
+              for (const card of cards) {
+                const cardRect = card.getBoundingClientRect();
+                const x = mouseX - (cardRect.left - rect.left);
+                const y = mouseY - (cardRect.top - rect.top);
+                (card as HTMLElement).style.setProperty("--spotlight-x", `${x}px`);
+                (card as HTMLElement).style.setProperty("--spotlight-y", `${y}px`);
+              }
+              ticking = false;
+            });
+          });
+
+          container.addEventListener("pointerleave", () => {
+            for (const card of cards) {
+              (card as HTMLElement).style.removeProperty("--spotlight-x");
+              (card as HTMLElement).style.removeProperty("--spotlight-y");
+            }
+          });
+        });
+      }
+
+    </script>
+  </body>
+</html>

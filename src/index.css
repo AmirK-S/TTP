@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+:root {
+  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+
+  color: #0f0f0f;
+  background-color: #f6f6f6;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #f6f6f6;
+    background-color: #1a1a1a;
+  }
+}
+
+/* Floating bar window needs transparent background */
+html.floating-bar,
+html.floating-bar body,
+html.floating-bar #root {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Also handle case where body might have background from Tailwind */
+body.bg-transparent {
+  background: transparent !important;
+}
+
+/* Processing pill pulse */
+@keyframes pill-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+.pill-pulse {
+  animation: pill-pulse 1.5s ease-in-out infinite;
+}
+
+/* Tutorial fade-in */
+@keyframes tutorial-fade-in {
+  0% { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.tutorial-enter {
+  animation: tutorial-fade-in 0.5s ease-out forwards;
+}

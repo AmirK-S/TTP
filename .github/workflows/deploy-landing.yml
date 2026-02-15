@@ -1,0 +1,28 @@
+# Trigger Coolify redeploy for TTP Landing Page
+#
+# Coolify handles building and deploying the Astro site automatically on push.
+# This workflow triggers a rebuild on release publish so the landing page
+# picks up new download links and changelog entries from the GitHub Releases API.
+#
+# Required GitHub repository secrets:
+#   COOLIFY_WEBHOOK_URL - Coolify deploy webhook URL for the landing page resource
+#   COOLIFY_API_TOKEN   - Coolify API token (Settings > API Tokens in Coolify dashboard)
+
+name: Deploy Landing Page
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  trigger-coolify-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Coolify redeploy
+        run: |
+          curl -sf "${{ secrets.COOLIFY_WEBHOOK_URL }}" \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}" \
+            && echo "Coolify redeploy triggered successfully" \
+            || echo "Warning: Failed to trigger Coolify redeploy"

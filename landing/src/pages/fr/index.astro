@@ -1,0 +1,84 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import Navbar from '@/components/Navbar.astro';
+import HeroSection from '@/components/HeroSection.astro';
+import { DownloadSection } from '@/components/DownloadSection';
+import { InstallGuide } from '@/components/InstallGuide';
+import HowItWorks from '@/components/HowItWorks.astro';
+import FeaturesGrid from '@/components/FeaturesGrid.astro';
+import PortfolioSection from '@/components/PortfolioSection.astro';
+import { Changelog } from '@/components/Changelog';
+import Footer from '@/components/Footer.astro';
+import { getLangFromUrl, useTranslations } from '@/i18n/utils';
+import { fetchGitHubData } from '@/lib/github';
+
+const lang = getLangFromUrl(Astro.url);
+const t = useTranslations(lang);
+
+const { downloadLinks, totalDownloads, changelog } = await fetchGitHubData();
+
+const downloadTranslations = {
+  heading: t('download.heading'),
+  subheading: t('download.subheading'),
+  downloads: t('download.downloads'),
+  downloadFor: t('download.downloadFor'),
+};
+
+const installTranslations = {
+  heading: t('install.heading'),
+  subheading: t('install.subheading'),
+  whyTitle: t('install.whyTitle'),
+  whyText: t('install.whyText'),
+  macTab: t('install.macTab'),
+  winTab: t('install.winTab'),
+  macAlreadyTitle: t('install.macAlreadyTitle'),
+  macAlreadyDesc: t('install.macAlreadyDesc'),
+  macOneLineTitle: t('install.macOneLineTitle'),
+  macOneLineDesc: t('install.macOneLineDesc'),
+  macAltTitle: t('install.macAltTitle'),
+  macAltStep1: t('install.macAltStep1'),
+  macAltStep2: t('install.macAltStep2'),
+  macAltStep3: t('install.macAltStep3'),
+  winDesc: t('install.winDesc'),
+  winStep1: t('install.winStep1'),
+  winStep2: t('install.winStep2'),
+  copied: t('install.copied'),
+  clickToCopy: t('install.clickToCopy'),
+};
+
+const changelogTranslations = {
+  heading: t('changelog.heading'),
+  subheading: t('changelog.subheading'),
+  empty: t('changelog.empty'),
+  emptyLink: t('changelog.emptyLink'),
+  viewAll: t('changelog.viewAll'),
+};
+---
+
+<Layout title="TTP - Talk To Paste | Transformez la parole en texte, partout">
+  <Navbar />
+  <main>
+    <HeroSection macDownload={downloadLinks.mac} windowsDownload={downloadLinks.windows} />
+
+    <!-- Section de telechargement avec detection OS et API GitHub -->
+    <DownloadSection client:visible downloadLinks={downloadLinks} totalDownloads={totalDownloads} translations={downloadTranslations} locale={lang} />
+
+    <!-- Guide d'installation : instructions premier lancement macOS/Windows -->
+    <InstallGuide client:visible translations={installTranslations} />
+
+    <!-- Comment ca marche : guide visuel en 3 etapes -->
+    <HowItWorks />
+
+    <!-- Fonctionnalites : grille Bento -->
+    <FeaturesGrid />
+
+    <!-- Portfolio : Le Concepteur -->
+    <PortfolioSection />
+
+    <!-- Changelog : timeline des releases GitHub -->
+    <Changelog client:visible releases={changelog} translations={changelogTranslations} locale={lang} />
+  </main>
+
+  <!-- Pied de page -->
+  <Footer />
+</Layout>

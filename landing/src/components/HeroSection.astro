@@ -1,0 +1,139 @@
+---
+import { Meteors } from '@/components/aceternity/meteors';
+import { ShimmerButton } from '@/components/magicui/shimmer-button';
+import ScreenshotMockup from '@/components/ScreenshotMockup.astro';
+import { getLangFromUrl, useTranslations, getLocalizedPath } from '@/i18n/utils';
+
+interface Props {
+  macDownload?: string;
+  windowsDownload?: string;
+}
+
+const { macDownload = '', windowsDownload = '' } = Astro.props;
+const lang = getLangFromUrl(Astro.url);
+const t = useTranslations(lang);
+---
+
+<section data-snap-section class="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-6 pt-20">
+  <!-- Meteor background -->
+  <Meteors client:load number={25} />
+
+  <!-- Radial gradient glow behind headline -->
+  <div class="pointer-events-none absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[600px] w-[800px] rounded-full bg-gradient-radial opacity-20"></div>
+
+  <!-- Content -->
+  <div class="relative z-10 mx-auto flex max-w-4xl flex-col items-center text-center">
+    <!-- Headline -->
+    <h1 class="text-display font-extrabold tracking-tighter text-white">
+      <span data-hero-line1>{t('hero.headline')}</span><br />
+      <span data-hero-line2 class="text-slate-300">{t('hero.headlineAccent')}</span>
+    </h1>
+
+    <!-- Subheadline -->
+    <p class="mt-6 max-w-2xl text-body-lg text-slate-400">
+      {t('hero.subheadline')}
+    </p>
+
+    <!-- CTA -->
+    <div class="mt-10">
+      <a
+        id="hero-cta"
+        href={getLocalizedPath(lang, '#download')}
+        data-mac={macDownload}
+        data-win={windowsDownload}
+      >
+        <ShimmerButton
+          client:load
+          className="shadow-2xl px-8 py-4"
+          shimmerColor="#a78bfa"
+          background="rgba(17, 24, 39, 0.8)"
+        >
+          <span class="whitespace-pre-wrap text-center text-base font-semibold leading-none tracking-tight text-white sm:text-lg">
+            {t('hero.cta')}
+          </span>
+        </ShimmerButton>
+      </a>
+    </div>
+
+    <!-- Social proof line -->
+    <p class="mt-4 text-caption text-slate-500">
+      {t('hero.socialProof')}
+    </p>
+
+    <!-- Whisper note -->
+    <p class="mt-1.5 text-xs italic text-slate-600">
+      {t('hero.whisperNote')}
+    </p>
+
+    <!-- Screenshot Mockup -->
+    <div class="mt-16 w-full">
+      <ScreenshotMockup />
+    </div>
+  </div>
+</section>
+
+<script is:inline>
+(function(){
+  var cta=document.getElementById('hero-cta');
+  if(!cta)return;
+  var ua=navigator.userAgent||navigator.platform||'';
+  var mac=cta.getAttribute('data-mac');
+  var win=cta.getAttribute('data-win');
+  var url='';
+  if(/Mac/i.test(ua)&&mac){url=mac}
+  else if(/Win/i.test(ua)&&win){url=win}
+  if(url){
+    cta.href=url;
+    document.querySelectorAll('[data-download-link]').forEach(function(el){el.href=url});
+  }
+})();
+</script>
+
+<script>
+  import gsap from "gsap";
+  import { SplitText } from "gsap/SplitText";
+  gsap.registerPlugin(SplitText);
+
+  const line1 = document.querySelector("[data-hero-line1]");
+  const line2 = document.querySelector("[data-hero-line2]");
+
+  if (line1 && line2) {
+    const mm = gsap.matchMedia();
+
+    mm.add("(prefers-reduced-motion: no-preference)", () => {
+      // SplitText with autoSplit handles Inter Variable font loading race condition
+      SplitText.create(line1, {
+        type: "words,chars",
+        autoSplit: true,
+        onSplit(self) {
+          self.words.forEach((w: HTMLElement) => w.style.whiteSpace = "nowrap");
+          return gsap.from(self.chars, {
+            opacity: 0,
+            y: 30,
+            stagger: 0.03,
+            duration: 0.8,
+            ease: "power3.out",
+            delay: 0.2,
+          });
+        },
+      });
+
+      SplitText.create(line2, {
+        type: "words,chars",
+        autoSplit: true,
+        onSplit(self) {
+          self.words.forEach((w: HTMLElement) => w.style.whiteSpace = "nowrap");
+          return gsap.from(self.chars, {
+            opacity: 0,
+            y: 30,
+            stagger: 0.03,
+            duration: 0.8,
+            ease: "power3.out",
+            delay: 0.6,
+          });
+        },
+      });
+    });
+    // Reduced motion: text stays visible as rendered in HTML (no animation, no opacity:0)
+  }
+</script>

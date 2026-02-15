@@ -1,0 +1,82 @@
+---
+import { getLangFromUrl, useTranslations, getLocalizedPath } from '@/i18n/utils';
+
+const lang = getLangFromUrl(Astro.url);
+const t = useTranslations(lang);
+const currentYear = new Date().getFullYear();
+---
+
+<footer data-snap-section data-section-footer class="border-t border-white/10 bg-black px-6 py-12">
+  <div class="mx-auto flex max-w-5xl flex-col items-center gap-8 md:flex-row md:justify-between">
+    <!-- Brand -->
+    <div class="text-center md:text-left">
+      <span class="text-lg font-bold tracking-tight text-white">TTP</span>
+      <span class="ml-1.5 text-caption text-slate-500">&mdash; {t('footer.tagline')}</span>
+    </div>
+
+    <!-- Navigation links -->
+    <nav class="flex items-center gap-6">
+      <a
+        href="https://github.com/AmirK-S/TTP"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-sm text-slate-400 transition-colors hover:text-white"
+      >
+        {t('footer.github')}
+      </a>
+      <a
+        href={getLocalizedPath(lang, '#download')}
+        class="text-sm text-slate-400 transition-colors hover:text-white"
+      >
+        {t('footer.download')}
+      </a>
+      <a
+        href={getLocalizedPath(lang, '#changelog')}
+        class="text-sm text-slate-400 transition-colors hover:text-white"
+      >
+        {t('footer.changelog')}
+      </a>
+    </nav>
+  </div>
+
+  <!-- Attribution -->
+  <div class="mx-auto mt-8 max-w-5xl border-t border-white/5 pt-6 text-center">
+    <p class="text-caption text-slate-600">
+      &copy; {currentYear}
+      <a
+        href="https://github.com/AmirK-S"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-slate-500 transition-colors hover:text-slate-300"
+      >
+        AmirKS
+      </a>
+      &middot; {t('footer.madeWith')}
+    </p>
+  </div>
+</footer>
+
+<script>
+  import gsap from "gsap";
+  import { ScrollTrigger } from "gsap/ScrollTrigger";
+  gsap.registerPlugin(ScrollTrigger);
+
+  const footer = document.querySelector("[data-section-footer]");
+  if (footer) {
+    const mm = gsap.matchMedia();
+
+    mm.add("(prefers-reduced-motion: no-preference)", () => {
+      // Clip-path wipe from center outward -- unique among all section entrances
+      gsap.from(footer, {
+        clipPath: "inset(0 50% 0 50%)",
+        duration: 1,
+        ease: "power3.inOut",
+        scrollTrigger: {
+          trigger: footer,
+          start: "top 90%",
+          toggleActions: "play none none none",
+        },
+      });
+    });
+  }
+</script>

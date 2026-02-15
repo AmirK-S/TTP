@@ -1,0 +1,137 @@
+---
+import { getLangFromUrl, useTranslations, getLocalizedPath } from '@/i18n/utils';
+import LanguagePicker from '@/components/LanguagePicker.astro';
+
+const lang = getLangFromUrl(Astro.url);
+const t = useTranslations(lang);
+---
+
+<nav class="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-slate-950/80 backdrop-blur-lg">
+  <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+    <!-- Logo -->
+    <a href={getLocalizedPath(lang)} class="text-xl font-bold tracking-tight text-white">
+      TTP
+    </a>
+
+    <!-- Desktop navigation -->
+    <div class="hidden items-center gap-8 md:flex">
+      <a href={getLocalizedPath(lang, '#features')} class="text-sm text-slate-400 transition-colors hover:text-white">
+        {t('nav.features')}
+      </a>
+      <a href={getLocalizedPath(lang, '#how-it-works')} class="text-sm text-slate-400 transition-colors hover:text-white">
+        {t('nav.howItWorks')}
+      </a>
+      <a href={getLocalizedPath(lang, '#changelog')} class="text-sm text-slate-400 transition-colors hover:text-white">
+        {t('nav.changelog')}
+      </a>
+      <a href={getLocalizedPath(lang, '#about')} class="text-sm text-slate-400 transition-colors hover:text-white">
+        {t('nav.about')}
+      </a>
+      <LanguagePicker />
+      <a
+        href={getLocalizedPath(lang, '#download')}
+        data-download-link
+        class="rounded-full border border-white/10 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/5"
+      >
+        {t('nav.download')}
+      </a>
+    </div>
+
+    <!-- Mobile hamburger button -->
+    <button
+      id="mobile-menu-btn"
+      class="md:hidden p-2 text-white"
+      aria-label="Toggle menu"
+      aria-expanded="false"
+      aria-controls="mobile-menu"
+    >
+      <svg id="menu-icon-open" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="3" y1="6" x2="21" y2="6" />
+        <line x1="3" y1="12" x2="21" y2="12" />
+        <line x1="3" y1="18" x2="21" y2="18" />
+      </svg>
+      <svg id="menu-icon-close" class="hidden h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
+      </svg>
+    </button>
+  </div>
+</nav>
+
+<!-- Mobile overlay menu -->
+<div
+  id="mobile-menu"
+  class="fixed inset-0 z-40 hidden flex-col items-center justify-center gap-8 bg-slate-950/95 backdrop-blur-lg md:hidden"
+  aria-hidden="true"
+>
+  <a href={getLocalizedPath(lang, '#features')} class="mobile-nav-link text-2xl font-medium text-white transition-colors hover:text-slate-300">
+    {t('nav.features')}
+  </a>
+  <a href={getLocalizedPath(lang, '#how-it-works')} class="mobile-nav-link text-2xl font-medium text-white transition-colors hover:text-slate-300">
+    {t('nav.howItWorks')}
+  </a>
+  <a href={getLocalizedPath(lang, '#changelog')} class="mobile-nav-link text-2xl font-medium text-white transition-colors hover:text-slate-300">
+    {t('nav.changelog')}
+  </a>
+  <a href={getLocalizedPath(lang, '#about')} class="mobile-nav-link text-2xl font-medium text-white transition-colors hover:text-slate-300">
+    {t('nav.about')}
+  </a>
+  <LanguagePicker />
+  <a
+    href={getLocalizedPath(lang, '#download')}
+    data-download-link
+    class="mobile-nav-link rounded-full border border-white/10 px-6 py-2.5 text-lg font-medium text-white transition-colors hover:bg-white/5"
+  >
+    {t('nav.download')}
+  </a>
+</div>
+
+<script>
+  const menuBtn = document.getElementById('mobile-menu-btn');
+  const mobileMenu = document.getElementById('mobile-menu');
+  const iconOpen = document.getElementById('menu-icon-open');
+  const iconClose = document.getElementById('menu-icon-close');
+
+  if (menuBtn && mobileMenu && iconOpen && iconClose) {
+    let isOpen = false;
+
+    function openMenu() {
+      isOpen = true;
+      mobileMenu.classList.remove('hidden');
+      mobileMenu.classList.add('flex');
+      menuBtn.setAttribute('aria-expanded', 'true');
+      mobileMenu.setAttribute('aria-hidden', 'false');
+      iconOpen.classList.add('hidden');
+      iconClose.classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+      if ((window as any).__lenis) (window as any).__lenis.stop();
+    }
+
+    function closeMenu() {
+      isOpen = false;
+      mobileMenu.classList.add('hidden');
+      mobileMenu.classList.remove('flex');
+      menuBtn.setAttribute('aria-expanded', 'false');
+      mobileMenu.setAttribute('aria-hidden', 'true');
+      iconClose.classList.add('hidden');
+      iconOpen.classList.remove('hidden');
+      document.body.style.overflow = '';
+      if ((window as any).__lenis) (window as any).__lenis.start();
+    }
+
+    menuBtn.addEventListener('click', () => {
+      if (isOpen) {
+        closeMenu();
+      } else {
+        openMenu();
+      }
+    });
+
+    // Close menu when any link inside the overlay is clicked
+    mobileMenu.querySelectorAll('a').forEach((link) => {
+      link.addEventListener('click', () => {
+        closeMenu();
+      });
+    });
+  }
+</script>

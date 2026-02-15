@@ -1,0 +1,184 @@
+---
+import { getLangFromUrl, useTranslations } from '@/i18n/utils';
+
+const lang = getLangFromUrl(Astro.url);
+const t = useTranslations(lang);
+---
+
+<section id="how-it-works" data-snap-section data-section-hiw class="relative px-6 py-16 md:py-24">
+  <div class="mx-auto max-w-5xl">
+    <!-- Section heading -->
+    <div data-hiw-heading class="mb-10 md:mb-14 text-center">
+      <h2 class="text-heading font-bold tracking-tight">
+        <span class="inline-block bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+          {t('howItWorks.heading')}
+        </span>
+      </h2>
+      <p class="mt-4 text-body-lg text-slate-400">
+        {t('howItWorks.subheading')}
+      </p>
+    </div>
+
+    <!-- Steps container -->
+    <div class="relative grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-6" data-spotlight>
+      <!-- Connecting line (desktop only) -->
+      <div class="absolute top-[5.5rem] left-[16.67%] right-[16.67%] hidden h-px bg-gradient-to-r from-white/5 via-white/10 to-white/5 md:block" aria-hidden="true"></div>
+
+      <!-- Step 1: Hold Your Shortcut -->
+      <div data-hiw-step data-spotlight-card class="group relative overflow-hidden flex flex-col items-center rounded-2xl border border-white/10 bg-white/[0.05] backdrop-blur-sm p-8 transition-colors hover:border-white/20 hover:bg-white/[0.07]">
+        <!-- Step number -->
+        <span class="mb-4 text-5xl font-extrabold text-white/10">1</span>
+
+        <!-- Icon -->
+        <div class="mb-5 flex h-14 w-14 items-center justify-center rounded-xl border border-white/10 bg-white/5">
+          <svg class="h-7 w-7 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="4" width="20" height="16" rx="2" />
+            <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10" />
+          </svg>
+        </div>
+
+        <!-- Title -->
+        <h3 class="mb-2 text-body-lg font-semibold text-white">
+          {t('howItWorks.step1Title')}
+        </h3>
+
+        <!-- Description -->
+        <p class="text-center text-sm leading-relaxed text-slate-400">
+          {t('howItWorks.step1Desc')}
+        </p>
+      </div>
+
+      <!-- Step 2: Speak -->
+      <div data-hiw-step data-spotlight-card class="group relative overflow-hidden flex flex-col items-center rounded-2xl border border-white/10 bg-white/[0.05] backdrop-blur-sm p-8 transition-colors hover:border-white/20 hover:bg-white/[0.07]">
+        <!-- Step number -->
+        <span class="mb-4 text-5xl font-extrabold text-white/10">2</span>
+
+        <!-- Icon -->
+        <div class="mb-5 flex h-14 w-14 items-center justify-center rounded-xl border border-white/10 bg-white/5">
+          <svg class="h-7 w-7 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="2" width="6" height="12" rx="3" />
+            <path d="M5 10a7 7 0 0 0 14 0" />
+            <line x1="12" y1="19" x2="12" y2="22" />
+          </svg>
+        </div>
+
+        <!-- Title -->
+        <h3 class="mb-2 text-body-lg font-semibold text-white">
+          {t('howItWorks.step2Title')}
+        </h3>
+
+        <!-- Description -->
+        <p class="text-center text-sm leading-relaxed text-slate-400">
+          {t('howItWorks.step2Desc')}
+        </p>
+      </div>
+
+      <!-- Step 3: Text Appears -->
+      <div data-hiw-step data-spotlight-card class="group relative overflow-hidden flex flex-col items-center rounded-2xl border border-white/10 bg-white/[0.05] backdrop-blur-sm p-8 transition-colors hover:border-white/20 hover:bg-white/[0.07]">
+        <!-- Step number -->
+        <span class="mb-4 text-5xl font-extrabold text-white/10">3</span>
+
+        <!-- Icon -->
+        <div class="mb-5 flex h-14 w-14 items-center justify-center rounded-xl border border-white/10 bg-white/5">
+          <svg class="h-7 w-7 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.375 2.625a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z" />
+          </svg>
+        </div>
+
+        <!-- Title -->
+        <h3 class="mb-2 text-body-lg font-semibold text-white">
+          {t('howItWorks.step3Title')}
+        </h3>
+
+        <!-- Description -->
+        <p class="text-center text-sm leading-relaxed text-slate-400">
+          {t('howItWorks.step3Desc')}
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  import gsap from "gsap";
+  import { ScrollTrigger } from "gsap/ScrollTrigger";
+  gsap.registerPlugin(ScrollTrigger);
+
+  const section = document.querySelector("[data-section-hiw]");
+  if (section) {
+    const mm = gsap.matchMedia();
+
+    mm.add({
+      isDesktop: "(min-width: 768px) and (prefers-reduced-motion: no-preference)",
+      isMobile: "(max-width: 767px) and (prefers-reduced-motion: no-preference)",
+      reduceMotion: "(prefers-reduced-motion: reduce)",
+    }, (context) => {
+      const { isDesktop, isMobile, reduceMotion } = context.conditions;
+      if (reduceMotion) return;
+
+      const heading = section.querySelector("[data-hiw-heading]");
+      const steps = gsap.utils.toArray("[data-hiw-step]");
+
+      if (isDesktop) {
+        // Heading fades in
+        gsap.from(heading, {
+          opacity: 0,
+          y: 30,
+          duration: 0.8,
+          ease: "power3.out",
+          scrollTrigger: {
+            trigger: heading,
+            start: "top 80%",
+            once: true,
+          },
+        });
+
+        // All 3 steps appear together with a stagger when section enters
+        gsap.from(steps, {
+          opacity: 0,
+          x: -60,
+          duration: 0.8,
+          ease: "power2.out",
+          stagger: 0.15,
+          scrollTrigger: {
+            trigger: section,
+            start: "top 60%",
+            once: true,
+          },
+        });
+
+        // Heading parallax: subtle upward drift creates depth as user scrolls
+        gsap.to(heading, {
+          y: -30,
+          ease: "none",
+          scrollTrigger: {
+            trigger: section,
+            start: "top bottom",
+            end: "bottom top",
+            scrub: true,
+          },
+        });
+      }
+
+      if (isMobile) {
+        // Simple staggered entrance on mobile (no pin)
+        gsap.from(heading, {
+          opacity: 0,
+          y: 20,
+          duration: 0.6,
+          scrollTrigger: { trigger: heading, start: "top 85%", once: true },
+        });
+
+        gsap.from(steps, {
+          opacity: 0,
+          y: 30,
+          stagger: 0.15,
+          duration: 0.6,
+          ease: "power2.out",
+          scrollTrigger: { trigger: steps[0], start: "top 85%", once: true },
+        });
+      }
+    });
+  }
+</script>

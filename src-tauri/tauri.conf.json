@@ -1,0 +1,99 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "TTP by AmirKS",
+  "version": "1.2.0",
+  "identifier": "com.ttp.desktop",
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEREM0FENkU3RTczMDRGNUQKUldSZFR6RG41OVk2M1dzS2hZM0xGcnhNUUE4ZkNtbWIxajJBWU42YllrUDhXUjFFNlZQRXlJWXoK",
+      "endpoints": [
+        "https://github.com/AmirK-S/TTP/releases/latest/download/latest.json"
+      ]
+    }
+  },
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "TTP",
+        "width": 800,
+        "height": 600,
+        "visible": false,
+        "skipTaskbar": true
+      },
+      {
+        "label": "setup",
+        "title": "TTP by AmirKS — Setup",
+        "width": 420,
+        "height": 520,
+        "resizable": false,
+        "visible": false,
+        "center": true
+      },
+      {
+        "label": "settings",
+        "title": "TTP by AmirKS — Settings",
+        "width": 500,
+        "height": 600,
+        "resizable": true,
+        "visible": false,
+        "center": true,
+        "decorations": true
+      },
+      {
+        "label": "pill",
+        "title": "",
+        "width": 380,
+        "height": 100,
+        "resizable": false,
+        "visible": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "focus": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "entitlements": null,
+      "exceptionDomain": null,
+      "frameworks": [],
+      "providerShortName": null,
+      "signingIdentity": "-",
+      "hardenedRuntime": false,
+      "minimumSystemVersion": "10.15",
+      "infoPlist": "./Info.plist"
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.comodoca.com",
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      }
+    }
+  }
+}
