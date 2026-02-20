@@ -8,7 +8,9 @@ mod dictionary;
 mod fnkey;
 mod history;
 pub mod logging;
+mod onboarding;
 mod paste;
+mod permissions;
 mod recording;
 mod settings;
 mod shortcuts;
@@ -23,10 +25,15 @@ use credentials::{
 };
 use dictionary::{add_dictionary_entry, clear_dictionary, delete_dictionary_entry, get_dictionary};
 use history::{clear_history, get_history};
+use onboarding::{close_onboarding, show_onboarding};
+use paste::check_accessibility;
+use permissions::{
+    check_microphone_permission, is_first_launch_cmd, mark_first_launch_complete_cmd, PermissionStatus,
+};
 use recording::{get_recordings_dir, RecordingContext};
 use settings::{get_settings, reset_settings, set_settings};
-use transcription::process_audio;
 use state::AppState;
+use transcription::process_audio;
 use std::sync::Mutex;
 #[cfg(target_os = "macos")]
 use tauri::ActivationPolicy;
@@ -251,7 +258,12 @@ pub fn run() {
             unregister_shortcuts_cmd,
             set_fn_key_enabled,
             check_input_monitoring,
-            reset_to_idle
+            reset_to_idle,
+            check_microphone_permission,
+            is_first_launch_cmd,
+            show_onboarding,
+            close_onboarding,
+            mark_first_launch_complete_cmd
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
