@@ -32,11 +32,31 @@ pub fn show_onboarding(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Close the onboarding window
+use crate::credentials;
+
+/// Close the onboarding window and show setup if needed
 #[command]
 pub fn close_onboarding(app: AppHandle) -> Result<(), String> {
+    // Close the onboarding window
     if let Some(window) = app.get_webview_window("onboarding") {
         window.close().map_err(|e| format!("Failed to close onboarding window: {}", e))?;
     }
+    
+    // Mark first launch as complete
+    crate::permissions::mark_first_launch_complete();
+    
+    // Check if API key exists, show setup if not
+    let has_groq = credentials::get_groq_api_key_internal(&app)
+        .map(|k| k.is_some())
+        .unwrap_or(false);
+    
+    if !has_groq {
+        // Show setup window
+        if let Some(window) = app.get_webview_window("setup") {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }
+    
     Ok(())
 }
