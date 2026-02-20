@@ -7,12 +7,14 @@ import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import App from './App';
 import FloatingBar from './windows/FloatingBar';
 import ApiKeySetup from './windows/ApiKeySetup';
+import Onboarding from './windows/Onboarding';
 import Settings from './windows/Settings';
 import './index.css';
 
 /**
  * Get the current window and render the appropriate component.
  * - floating-bar: Renders the transparent recording indicator
+ * - onboarding: Renders the first-launch permission onboarding
  * - setup: Renders the first-run API key setup window
  * - main (or others): Renders the main App component (hidden for tray app)
  */
@@ -27,6 +29,13 @@ async function main() {
     ReactDOM.createRoot(rootElement).render(
       <React.StrictMode>
         <FloatingBar />
+      </React.StrictMode>
+    );
+  } else if (windowLabel === 'onboarding') {
+    // Onboarding window - first-launch permission setup
+    ReactDOM.createRoot(rootElement).render(
+      <React.StrictMode>
+        <Onboarding />
       </React.StrictMode>
     );
   } else if (windowLabel === 'setup') {
