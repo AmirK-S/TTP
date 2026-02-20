@@ -215,16 +215,26 @@ pub fn run() {
             // Show pill window (always visible)
             tray::show_pill(app.handle());
 
-            // Check if Groq API key exists, show setup window if not
-            let has_groq = credentials::get_groq_api_key_internal(app.handle())
-                .map(|k| k.is_some())
-                .unwrap_or(false);
+            // Check if this is the first launch - show onboarding for permissions
+            let is_first = permissions::is_first_launch();
+            if is_first {
+                // Show onboarding window first for permission setup
+                let app_handle = app.handle().clone();
+                if let Err(e) = onboarding::show_onboarding(app_handle) {
+                    logging::log_warn(&format!("Failed to show onboarding window: {}", e));
+                }
+            } else {
+                // Not first launch - check if Groq API key exists, show setup window if not
+                let has_groq = credentials::get_groq_api_key_internal(app.handle())
+                    .map(|k| k.is_some())
+                    .unwrap_or(false);
 
-            if !has_groq {
-                // Show setup window for first-run experience
-                if let Some(window) = app.get_webview_window("setup") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
+                if !has_groq {
+                    // Show setup window for first-run experience
+                    if let Some(window) = app.get_webview_window("setup") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
                 }
             }
 
