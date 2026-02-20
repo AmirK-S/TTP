@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-02-20)
 
 ## Current Position
 
-Phase: Phase 25 (Shortcuts, Modes & Pill Visibility)
-Plan: 04 completed
+Phase: 26-onboarding-settings-ux
+Plan: 02 completed
 Status: In progress
-Last activity: 2026-02-20 — Plan 25-04 completed
+Last activity: 2026-02-20 — Plan 26-02 completed
 
-Progress (v1.3.0): [█████████████████████████████░░░░░] 100% (2/2 plans)
+Progress (v1.3.0): [████████░░░░░░░░░░░░░░░░░░░░░] 40% (2/5 plans)
 
 ## Performance Metrics
 
@@ -101,10 +101,9 @@ v1.3.0 decisions (from Phase 25-02 execution):
 - Mode preference persists via settings when toggled via double-tap
 - FN key is default shortcut on macOS (cfg-specific defaults)
 
-v1.3.0 decisions (from Phase 25-04 execution):
-- Rust emits settings-changed event after set_settings for backend components
-- JS emits settings-changed event after saveSettings for frontend components
-- Tray.rs has settings listener for pill visibility updates
+v1.3.0 decisions (from Phase 26-01 execution):
+- Show onboarding before setup window on first launch
+- Use system_profiler and TCC database for macOS permission detection
 
 ### Pending Todos
 
@@ -113,23 +112,22 @@ v1.3.0 decisions (from Phase 25-04 execution):
 - [x] Phase 25-02: Load persisted mode, FN default -- COMPLETED
 - [x] Phase 25-03: Pill visibility based on settings -- COMPLETED
 - [x] Phase 25-04: Settings event sync -- COMPLETED
-- [ ] Phase 26: Onboarding & Settings UX
-- [ ] Phase 25-04: Settings/Rust state sync
-- [ ] Phase 26: Onboarding & Settings UX
+- [x] Phase 26-01: Onboarding flow with permission check -- COMPLETED
+- [x] Phase 26-02: Settings UX improvements -- COMPLETED
 
 ### Blockers/Concerns
 
 - Windows long audio data loss bug at pipeline.rs line 195 -- RESOLVED in Phase 23
 - Aptabase exact version compatibility needs verification during Phase 22 -- RESOLVED in 22-01
 - Sentry before_send Rust API lifetime annotations -- RESOLVED in 21-01
-- Settings/Rust state desync (UX-3) -- TO BE ADDRESSED in Phase 25
-- Permission re-check flow (UX-2) -- TO BE ADDRESSED in Phase 26
+- Settings/Rust state desync (UX-3) -- RESOLVED in Phase 25-04
+- Permission re-check flow (UX-2) -- RESOLVED in Phase 26-01
 
 ## Session Continuity
 
 Last session: 2026-02-20
-Stopped at: Completed 25-02-PLAN.md (load persisted mode, FN default)
-Next action: Continue with Phase 25-03
+Stopped at: Completed 26-02-PLAN.md (settings UX)
+Next action: Continue with remaining Phase 26 plans
 
 ---
 
