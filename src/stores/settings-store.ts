@@ -24,6 +24,8 @@ export interface Settings {
   shortcut: string;
   fn_key_enabled: boolean;
   telemetry_enabled: boolean;
+  hands_free_mode: boolean;
+  hide_pill_when_inactive: boolean;
 }
 
 interface SettingsStore {
@@ -32,6 +34,8 @@ interface SettingsStore {
   shortcut: string;
   fnKeyEnabled: boolean;
   telemetryEnabled: boolean;
+  handsFreeMode: boolean;
+  hidePillWhenInactive: boolean;
   dictionary: DictionaryEntry[];
   history: HistoryEntry[];
   loading: boolean;
@@ -53,6 +57,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   shortcut: 'Alt+Space',
   fnKeyEnabled: false,
   telemetryEnabled: false,
+  handsFreeMode: false,
+  hidePillWhenInactive: false,
   dictionary: [],
   history: [],
   loading: false,
@@ -67,6 +73,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         shortcut: settings.shortcut || 'Alt+Space',
         fnKeyEnabled: settings.fn_key_enabled ?? false,
         telemetryEnabled: settings.telemetry_enabled ?? false,
+        handsFreeMode: settings.hands_free_mode ?? false,
+        hidePillWhenInactive: settings.hide_pill_when_inactive ?? false,
       });
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -83,6 +91,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         shortcut: get().shortcut,
         fn_key_enabled: get().fnKeyEnabled,
         telemetry_enabled: get().telemetryEnabled,
+        hands_free_mode: get().handsFreeMode,
+        hide_pill_when_inactive: get().hidePillWhenInactive,
       };
 
       const newSettings: Settings = {
@@ -96,6 +106,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         shortcut: newSettings.shortcut,
         fnKeyEnabled: newSettings.fn_key_enabled,
         telemetryEnabled: newSettings.telemetry_enabled,
+        handsFreeMode: newSettings.hands_free_mode,
+        hidePillWhenInactive: newSettings.hide_pill_when_inactive,
       });
     } catch (error) {
       console.error('Failed to save settings:', error);
@@ -112,6 +124,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         shortcut: 'Alt+Space',
         fnKeyEnabled: false,
         telemetryEnabled: false,
+        handsFreeMode: false,
+        hidePillWhenInactive: false,
       }); // Default values
     } catch (error) {
       console.error('Failed to reset settings:', error);
