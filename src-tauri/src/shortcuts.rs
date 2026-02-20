@@ -4,7 +4,7 @@
 use crate::settings::{get_settings, set_settings};
 use crate::sounds::{play_start_sound, play_stop_sound};
 use crate::state::{AppState, RecordingState};
-use crate::tray::{set_recording_icon, should_show_pill, show_pill, hide_pill};
+use crate::tray::{set_recording_icon, show_pill, hide_pill};
 use std::sync::Mutex;
 use std::time::Instant;
 use tauri::{AppHandle, Manager};
