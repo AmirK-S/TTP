@@ -76,7 +76,7 @@
 <summary>v1.3.0 User Experience Polish (Phases 25-26)</summary>
 
 - [x] **Phase 25-01: Settings for hands_free_mode and hide_pill_when_inactive** — completed 2026-02-20
-- [ ] **Phase 25: Shortcuts, Modes & Pill Visibility** — In progress (1/2 plans)
+- [x] **Phase 25: Shortcuts, Modes & Pill Visibility** — In progress (1/2 plans) (completed 2026-02-20)
 - [ ] **Phase 26: Onboarding & Settings UX** — Not started
 
 </details>
@@ -139,7 +139,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 25. Shortcuts, Modes & Pill Visibility | 0/4 | Planning | - |
+| 25. Shortcuts, Modes & Pill Visibility | 0/4 | Complete    | 2026-02-20 |
 | 26. Onboarding & Settings UX | 0/0 | Not started | - |
 
 ---
