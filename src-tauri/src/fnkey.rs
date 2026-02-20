@@ -39,11 +39,17 @@ static FN_RECORDING_ACTIVE: AtomicBool = AtomicBool::new(false);
 /// Timestamp (ms since epoch) when Fn was first pressed (for debounce)
 static FN_PRESS_TIME_MS: AtomicU64 = AtomicU64::new(0);
 
+/// Timestamp (ms since epoch) of last Fn press for double-tap detection
+static LAST_FN_PRESS_TIME_MS: AtomicU64 = AtomicU64::new(0);
+
 /// Global app handle
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
 /// Whether Fn key monitoring is active
 static FN_MONITORING_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Double-tap detection threshold in milliseconds
+const DOUBLE_TAP_THRESHOLD_MS: u64 = 300;
 
 /// NSEventModifierFlagFunction = 1 << 23 = 0x800000
 const NS_EVENT_MODIFIER_FLAG_FUNCTION: u64 = 0x800000;
@@ -128,9 +134,25 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
 
             if fn_held && !was_held {
                 // Fn just pressed — note the time, but don't start recording yet
+                let now = now_ms();
                 FN_KEY_DOWN.store(true, Ordering::Relaxed);
-                FN_PRESS_TIME_MS.store(now_ms(), Ordering::Relaxed);
-                fnlog!("[FnKey] Fn key DOWN (flags=0x{:X}, debouncing {}ms...)", flags, FN_DEBOUNCE_MS);
+                FN_PRESS_TIME_MS.store(now, Ordering::Relaxed);
+                
+                // Check for double-tap (within 300ms of last press)
+                let last_press = LAST_FN_PRESS_TIME_MS.load(Ordering::Relaxed);
+                let is_double_tap = last_press > 0 && (now - last_press) < DOUBLE_TAP_THRESHOLD_MS;
+                
+                if is_double_tap {
+                    fnlog!("[FnKey] Fn key DOUBLE-TAP detected ({}ms since last press)", now - last_press);
+                    // Reset the last press time to prevent triple-tap detection
+                    LAST_FN_PRESS_TIME_MS.store(0, Ordering::Relaxed);
+                    // Handle double-tap - toggle mode
+                    if let Some(app) = APP_HANDLE.get() {
+                        crate::shortcuts::handle_fn_double_tap(app);
+                    }
+                } else {
+                    fnlog!("[FnKey] Fn key DOWN (flags=0x{:X}, debouncing {}ms...)", flags, FN_DEBOUNCE_MS);
+                }
             } else if fn_held && was_held && !recording_active {
                 // Fn still held — check if debounce period has passed
                 let press_time = FN_PRESS_TIME_MS.load(Ordering::Relaxed);
@@ -156,8 +178,13 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
                     }
                 } else {
                     // Released before debounce — ignore (system emoji tap)
+                    // But track this as a potential double-tap candidate
                     let press_time = FN_PRESS_TIME_MS.load(Ordering::Relaxed);
                     let elapsed = now_ms() - press_time;
+                    if elapsed >= FN_DEBOUNCE_MS && elapsed < 500 {
+                        // Valid press (not too short, not too long) — track for double-tap
+                        LAST_FN_PRESS_TIME_MS.store(press_time, Ordering::Relaxed);
+                    }
                     fnlog!("[FnKey] Fn key UP ({}ms, flags=0x{:X}, ignored — too short)", elapsed, flags);
                 }
             }
