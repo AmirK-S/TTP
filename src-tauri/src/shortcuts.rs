@@ -1,10 +1,10 @@
 // TTP - Talk To Paste
 // Global keyboard shortcut handling with push-to-talk and double-tap toggle
 
-use crate::settings::get_settings;
+use crate::settings::{get_settings, set_settings};
 use crate::sounds::{play_start_sound, play_stop_sound};
 use crate::state::{AppState, RecordingState};
-use crate::tray::{set_recording_icon, show_pill};
+use crate::tray::{set_recording_icon, should_show_pill, show_pill, hide_pill};
 use std::sync::Mutex;
 use std::time::Instant;
 use tauri::{AppHandle, Manager};
@@ -12,6 +12,13 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 /// Double-tap detection threshold in milliseconds
 const DOUBLE_TAP_THRESHOLD_MS: u128 = 300;
+
+/// Persist hands_free_mode to settings when it changes
+fn persist_hands_free_mode(app: &AppHandle, hands_free_mode: bool) {
+    let mut settings = get_settings();
+    settings.hands_free_mode = hands_free_mode;
+    let _ = set_settings(settings, app.clone());
+}
 
 /// Set up global keyboard shortcuts for recording control
 pub fn setup_shortcuts(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
@@ -61,6 +68,27 @@ pub fn handle_shortcut_event_public(app: &AppHandle, shortcut_state: ShortcutSta
     }
 }
 
+/// Handle FN key double-tap event - toggles hands-free mode
+pub fn handle_fn_double_tap(app: &AppHandle) {
+    let state = app.state::<Mutex<AppState>>();
+
+    let Ok(mut app_state) = state.try_lock() else {
+        return;
+    };
+
+    match app_state.recording_state {
+        RecordingState::Idle => {
+            app_state.hands_free_mode = true;
+            start_recording(&mut app_state, app);
+        }
+        RecordingState::Recording if app_state.hands_free_mode => {
+            stop_recording(&mut app_state, app);
+            app_state.hands_free_mode = false;
+        }
+        _ => {}
+    }
+}
+
 /// Handle shortcut key press - implements double-tap detection
 fn handle_shortcut_pressed(state: &mut AppState, app: &AppHandle) {
     let now = Instant::now();
@@ -76,17 +104,20 @@ fn handle_shortcut_pressed(state: &mut AppState, app: &AppHandle) {
         match state.recording_state {
             RecordingState::Idle => {
                 state.hands_free_mode = true;
+                persist_hands_free_mode(app, true);
                 start_recording(state, app);
             }
             RecordingState::Recording if state.hands_free_mode => {
                 stop_recording(state, app);
                 state.hands_free_mode = false;
+                persist_hands_free_mode(app, false);
             }
             _ => {}
         }
     } else {
         if state.is_idle() {
             state.hands_free_mode = false;
+            persist_hands_free_mode(app, false);
             start_recording(state, app);
         }
     }
