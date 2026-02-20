@@ -143,7 +143,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 25. Shortcuts, Modes & Pill Visibility | 4/4 | Complete    | 2026-02-20 |
-| 26. Onboarding & Settings UX | 2/2 | Complete | 2026-02-20 |
+| 26. Onboarding & Settings UX | 2/2 | Complete    | 2026-02-20 |
 
 ---
 
