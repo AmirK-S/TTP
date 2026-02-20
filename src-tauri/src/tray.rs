@@ -1,6 +1,7 @@
 // TTP - Talk To Paste
 // System tray setup and management
 
+use crate::settings::get_settings;
 use crate::sounds::{play_start_sound, play_stop_sound};
 use crate::state::{AppState, RecordingState};
 use std::sync::Mutex;
@@ -139,4 +140,33 @@ pub fn hide_pill(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("pill") {
         let _ = window.hide();
     }
+}
+
+/// Determine if the pill should be visible based on recording state and settings
+/// - Shows during active recording regardless of setting
+/// - Shows during processing (including errors) regardless of setting
+/// - Shows during idle if hide_pill_when_inactive is false
+/// - Hides during idle if hide_pill_when_inactive is true
+pub fn should_show_pill(app: &AppHandle) -> bool {
+    let state = match app.try_state::<Mutex<AppState>>() {
+        Some(s) => s,
+        None => return true, // Default to showing if state unavailable
+    };
+
+    let Ok(app_state) = state.try_lock() else {
+        return true;
+    };
+
+    // Show during recording and processing (including errors)
+    if app_state.is_recording() || app_state.recording_state == RecordingState::Processing {
+        return true;
+    }
+
+    // Check setting for idle state
+    let settings = get_settings();
+    if settings.hide_pill_when_inactive {
+        return false;
+    }
+
+    true
 }
