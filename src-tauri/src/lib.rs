@@ -194,6 +194,14 @@ pub fn run() {
                 fnkey::set_fn_key_enabled(fn_enabled);
             }
 
+            // Load persisted hands_free_mode from settings
+            let hands_free_mode = settings::get_settings().hands_free_mode;
+            if let Some(state) = app.try_state::<Mutex<AppState>>() {
+                if let Ok(mut app_state) = state.try_lock() {
+                    app_state.hands_free_mode = hands_free_mode;
+                }
+            }
+
             // Show pill window (always visible)
             tray::show_pill(app.handle());
 
