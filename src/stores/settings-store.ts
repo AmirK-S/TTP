@@ -3,6 +3,7 @@
 
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
+import { emit } from '@tauri-apps/api/event';
 
 /** Dictionary entry structure matching Rust backend */
 export interface DictionaryEntry {
@@ -101,6 +102,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       };
 
       await invoke('set_settings', { settings: newSettings });
+      // Emit event so other components (like pill, other windows) can react to settings changes
+      emit('settings-changed', newSettings);
       set({
         aiPolishEnabled: newSettings.ai_polish_enabled,
         shortcut: newSettings.shortcut,

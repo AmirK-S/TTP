@@ -9,7 +9,7 @@ use tauri::{
     image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Manager,
+    AppHandle, Listener, Manager,
 };
 
 pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
@@ -169,4 +169,15 @@ pub fn should_show_pill(app: &AppHandle) -> bool {
     }
 
     true
+}
+
+/// Set up listener for settings changes to update pill visibility
+pub fn setup_settings_listener(app: &AppHandle) {
+    app.listen("settings-changed", move |event| {
+        // Settings changed - the pill visibility will be re-evaluated
+        // when should_show_pill() is called next
+        // This ensures we can react to settings changes in the future
+        // if needed for more complex visibility logic
+        let _ = event;
+    });
 }

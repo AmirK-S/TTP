@@ -168,6 +168,9 @@ pub fn run() {
             // Set up system tray
             tray::setup_tray(app.handle())?;
 
+            // Set up settings change listener for pill visibility updates
+            tray::setup_settings_listener(app.handle());
+
             // Check accessibility permission (needed for paste simulation on macOS)
             #[cfg(target_os = "macos")]
             {
