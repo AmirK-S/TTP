@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use tauri::{AppHandle, Emitter};
 
 /// Application settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,11 +21,25 @@ pub struct Settings {
     /// Default is OFF -- user must explicitly enable
     #[serde(default)]
     pub telemetry_enabled: bool,
+    /// Hands-free mode (double-tap to toggle) - persists across app restarts
+    #[serde(default)]
+    pub hands_free_mode: bool,
+    /// Hide the recording indicator pill when not recording
+    #[serde(default)]
+    pub hide_pill_when_inactive: bool,
 }
 
 fn default_shortcut() -> String {
-    // Option+Space on macOS
-    "Alt+Space".to_string()
+    #[cfg(target_os = "macos")]
+    {
+        // Fn key is default on macOS
+        "FnKey".to_string()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        // Option+Space on other platforms
+        "Alt+Space".to_string()
+    }
 }
 
 impl Default for Settings {
@@ -32,8 +47,13 @@ impl Default for Settings {
         Self {
             ai_polish_enabled: true,
             shortcut: default_shortcut(),
+            #[cfg(target_os = "macos")]
+            fn_key_enabled: true,
+            #[cfg(not(target_os = "macos"))]
             fn_key_enabled: false,
             telemetry_enabled: false,
+            hands_free_mode: false,
+            hide_pill_when_inactive: false,
         }
     }
 }
@@ -62,7 +82,7 @@ pub fn get_settings() -> Settings {
 
 /// Save settings to file
 #[tauri::command]
-pub fn set_settings(settings: Settings) -> Result<(), String> {
+pub fn set_settings(settings: Settings, app: AppHandle) -> Result<(), String> {
     let path = get_settings_path().ok_or("Could not determine config directory")?;
 
     // Ensure parent directory exists
@@ -74,6 +94,9 @@ pub fn set_settings(settings: Settings) -> Result<(), String> {
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
 
     fs::write(&path, json).map_err(|e| format!("Failed to write settings file: {}", e))?;
+
+    // Emit event to notify all windows of settings change
+    app.emit("settings-changed", &settings).ok();
 
     Ok(())
 }
