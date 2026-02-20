@@ -326,6 +326,8 @@ export function Settings() {
     aiPolishEnabled,
     telemetryEnabled,
     shortcut,
+    handsFreeMode,
+    hidePillWhenInactive,
     dictionary,
     history,
     loading,
@@ -429,6 +431,26 @@ export function Settings() {
       setShowRestartBanner(true);
     } catch (error) {
       console.error('Failed to save telemetry setting:', error);
+    }
+  };
+
+  // Handle hands-free mode toggle
+  const handleHandsFreeModeToggle = async (enabled: boolean) => {
+    try {
+      await saveSettings({ hands_free_mode: enabled });
+      trackEvent("setting_changed", { setting_name: "hands_free_mode", new_value: String(enabled) });
+    } catch (error) {
+      console.error('Failed to save hands-free mode setting:', error);
+    }
+  };
+
+  // Handle hide pill when inactive toggle
+  const handleHidePillWhenInactiveToggle = async (enabled: boolean) => {
+    try {
+      await saveSettings({ hide_pill_when_inactive: enabled });
+      trackEvent("setting_changed", { setting_name: "hide_pill_when_inactive", new_value: String(enabled) });
+    } catch (error) {
+      console.error('Failed to save hide pill when inactive setting:', error);
     }
   };
 
@@ -672,6 +694,47 @@ export function Settings() {
               Shortcut updated!
             </p>
           )}
+        </section>
+
+        {/* Recording Mode Section */}
+        <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Recording Mode
+          </h2>
+
+          {/* Hands-free mode toggle */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex-1 pr-4">
+              <p className="text-gray-900 dark:text-white font-medium">
+                Hands-free mode (Toggle)
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                When enabled, press once to start recording, press again to stop
+              </p>
+            </div>
+            <Toggle
+              enabled={handsFreeMode}
+              onChange={handleHandsFreeModeToggle}
+              disabled={loading}
+            />
+          </div>
+
+          {/* Hide pill when inactive toggle */}
+          <div className="flex items-center justify-between">
+            <div className="flex-1 pr-4">
+              <p className="text-gray-900 dark:text-white font-medium">
+                Hide pill when inactive
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Hide the recording indicator when not recording
+              </p>
+            </div>
+            <Toggle
+              enabled={hidePillWhenInactive}
+              onChange={handleHidePillWhenInactiveToggle}
+              disabled={loading}
+            />
+          </div>
         </section>
 
         {/* Transcription Section */}
