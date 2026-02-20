@@ -4,7 +4,7 @@
 use crate::settings::{get_settings, set_settings};
 use crate::sounds::{play_start_sound, play_stop_sound};
 use crate::state::{AppState, RecordingState};
-use crate::tray::{set_recording_icon, show_pill, hide_pill};
+use crate::tray::{set_recording_icon, should_show_pill, show_pill, hide_pill};
 use std::sync::Mutex;
 use std::time::Instant;
 use tauri::{AppHandle, Manager};
@@ -139,8 +139,15 @@ fn start_recording(state: &mut AppState, app: &AppHandle) {
 }
 
 /// Stop recording: update state to Processing, play sound
+/// Pill visibility is determined by should_show_pill() during Processing state
 fn stop_recording(state: &mut AppState, app: &AppHandle) {
     state.set_state(RecordingState::Processing, app);
     set_recording_icon(app, false);
     play_stop_sound(app);
+    // During Processing, show pill if setting allows (shows during processing regardless of hide setting)
+    if should_show_pill(app) {
+        show_pill(app);
+    } else {
+        hide_pill(app);
+    }
 }

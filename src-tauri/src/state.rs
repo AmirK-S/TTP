@@ -30,12 +30,21 @@ impl Default for AppState {
 
 impl AppState {
     pub fn set_state(&mut self, state: RecordingState, app: &AppHandle) {
+        let old_state = self.recording_state.clone();
         self.recording_state = state.clone();
 
         // Start/stop audio level monitoring for pill wave visualization
         match &state {
             RecordingState::Recording => crate::audio_monitor::start(app.clone()),
             _ => crate::audio_monitor::stop(),
+        }
+
+        // Handle pill visibility when transitioning to Idle
+        // When going from Processing/Recording to Idle, respect hide_pill_when_inactive setting
+        if old_state != RecordingState::Idle && state == RecordingState::Idle {
+            if !crate::tray::should_show_pill(app) {
+                crate::tray::hide_pill(app);
+            }
         }
 
         app.emit("recording-state-changed", &state).ok();
