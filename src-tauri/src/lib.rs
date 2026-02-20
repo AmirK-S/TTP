@@ -31,7 +31,7 @@ use permissions::{
     check_microphone_permission, is_first_launch_cmd, mark_first_launch_complete_cmd, PermissionStatus,
 };
 use recording::{get_recordings_dir, RecordingContext};
-use settings::{get_settings, reset_settings, set_settings};
+use settings::{get_settings, reset_settings, set_settings, open_settings_window};
 use state::AppState;
 use transcription::process_audio;
 use std::sync::Mutex;
@@ -258,6 +258,7 @@ pub fn run() {
             get_settings,
             set_settings,
             reset_settings,
+            open_settings_window,
             get_dictionary,
             add_dictionary_entry,
             delete_dictionary_entry,

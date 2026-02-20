@@ -3,15 +3,23 @@
 
 import { ApiKeyForm } from '../components/ApiKeyForm';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { invoke } from '@tauri-apps/api/core';
 
 /**
  * ApiKeySetup is the first-run experience window.
  * Prompts users for their Groq API key (free, used for transcription + polish).
- * After successful setup, the window closes automatically.
+ * After successful setup, opens settings window and closes itself.
  */
 export function ApiKeySetup() {
   const handleSuccess = async () => {
-    // Close setup window after successful save
+    // Open settings window after successful save
+    try {
+      await invoke('open_settings_window');
+    } catch (e) {
+      console.error('Failed to open settings window:', e);
+    }
+    
+    // Close setup window
     const window = getCurrentWindow();
     await window.close();
   };
