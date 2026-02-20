@@ -131,7 +131,10 @@
 6. Settings window appears in foreground (not behind other windows)
 7. Tutorial pill shows correct shortcut (FN) on first launch
 
-**Plans**: TBD
+**Plans**: 2 plans
+
+- [ ] 26-01-PLAN.md — Onboarding flow (permissions check, guidance, re-check)
+- [ ] 26-02-PLAN.md — Settings UX (auto-open, foreground, tutorial pill)
 
 ---
 
@@ -140,7 +143,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 25. Shortcuts, Modes & Pill Visibility | 0/4 | Complete    | 2026-02-20 |
-| 26. Onboarding & Settings UX | 0/0 | Not started | - |
+| 26. Onboarding & Settings UX | 0/2 | In progress | - |
 
 ---
 
