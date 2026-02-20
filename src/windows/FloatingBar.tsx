@@ -3,10 +3,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import { useRecordingState } from '../hooks/useRecordingState';
 import { useTranscription } from '../hooks/useTranscription';
+import { TutorialPill } from '../components/TutorialPill';
 
-const TUTORIAL_SHOWN_KEY = 'ttp_tutorial_shown';
+const TUTORIAL_DISMISSED_KEY = 'tutorial_pill_dismissed';
 
 // Wave bar configuration — Whisper-style flowing waveform
 const BAR_COUNT = 12;
@@ -29,17 +31,28 @@ export function FloatingBar() {
   const isError = stage === 'error';
   const isIdle = !isRecording && !isProcessing;
 
-  // First-launch tutorial
-  const [showTutorial, setShowTutorial] = useState(() => {
-    return !localStorage.getItem(TUTORIAL_SHOWN_KEY);
-  });
+  // First-launch tutorial - check both first launch flag and localStorage dismissal
+  const [showTutorial, setShowTutorial] = useState(false);
 
   useEffect(() => {
-    if (isRecording && showTutorial) {
-      localStorage.setItem(TUTORIAL_SHOWN_KEY, '1');
-      setShowTutorial(false);
-    }
-  }, [isRecording, showTutorial]);
+    // Check if this is first launch and tutorial not dismissed
+    const checkFirstLaunch = async () => {
+      try {
+        const isFirst = await invoke<boolean>('is_first_launch_cmd');
+        const dismissed = localStorage.getItem(TUTORIAL_DISMISSED_KEY) === 'true';
+        setShowTutorial(isFirst && !dismissed);
+      } catch (e) {
+        // Fallback: check localStorage only
+        const dismissed = localStorage.getItem(TUTORIAL_DISMISSED_KEY) === 'true';
+        setShowTutorial(!dismissed);
+      }
+    };
+    checkFirstLaunch();
+  }, []);
+
+  const handleTutorialDismiss = () => {
+    setShowTutorial(false);
+  };
 
   // Voice-reactive bars: driven by audio-level events from Rust
   const barRefs = useRef<(HTMLSpanElement | null)[]>([]);
@@ -96,17 +109,12 @@ export function FloatingBar() {
   return (
     <div className="flex h-screen w-screen flex-col items-center justify-end pb-1 bg-transparent pointer-events-none">
 
-      {/* Tutorial popup — first launch only */}
+      {/* Tutorial pill — first launch only */}
       {showTutorial && isIdle && (
-        <div className="tutorial-enter mb-2 flex items-center gap-2 rounded-2xl bg-black/90 px-4 py-2 shadow-xl backdrop-blur-sm">
-          <span className="text-[13px] font-medium text-white/80 select-none">
-            Maintiens{' '}
-            <span className="inline-flex items-center justify-center rounded bg-white/20 px-1.5 py-0.5 text-[11px] font-bold text-white leading-none">
-              fn
-            </span>
-            {' '}pour dicter
-          </span>
-        </div>
+        <TutorialPill 
+          shortcutText="FN" 
+          onDismiss={handleTutorialDismiss} 
+        />
       )}
 
       {/* Pill */}
