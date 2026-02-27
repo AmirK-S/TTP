@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 interface InstallGuideProps {
+  version?: string;
   translations?: {
     heading: string;
     subheading: string;
@@ -25,7 +26,8 @@ interface InstallGuideProps {
 }
 
 const MAC_XATTR_CMD = `xattr -cr "/Applications/TTP by AmirKS.app"`;
-const MAC_ONE_LINER = `curl -sL "https://github.com/AmirK-S/TTP/releases/latest/download/TTP.by.AmirKS_1.2.0_$(uname -m | sed 's/arm64/aarch64/').dmg" -o /tmp/TTP.dmg && hdiutil attach /tmp/TTP.dmg -quiet && cp -R "/Volumes/TTP by AmirKS/TTP by AmirKS.app" /Applications/ && hdiutil detach "/Volumes/TTP by AmirKS" -quiet && rm /tmp/TTP.dmg && xattr -cr "/Applications/TTP by AmirKS.app" && open "/Applications/TTP by AmirKS.app"`;
+const makeMacOneLiner = (version: string) =>
+  `curl -sL "https://github.com/AmirK-S/TTP/releases/latest/download/TTP.by.AmirKS_${version}_$(uname -m | sed 's/arm64/aarch64/').dmg" -o /tmp/TTP.dmg && hdiutil attach /tmp/TTP.dmg -quiet && cp -R "/Volumes/TTP by AmirKS/TTP by AmirKS.app" /Applications/ && hdiutil detach "/Volumes/TTP by AmirKS" -quiet && rm /tmp/TTP.dmg && xattr -cr "/Applications/TTP by AmirKS.app" && open "/Applications/TTP by AmirKS.app"`;
 
 function CopyButton({ text, copiedLabel, copyLabel }: { text: string; copiedLabel: string; copyLabel: string }) {
   const [copied, setCopied] = useState(false);
@@ -46,7 +48,8 @@ function CopyButton({ text, copiedLabel, copyLabel }: { text: string; copiedLabe
   );
 }
 
-export function InstallGuide({ translations }: InstallGuideProps) {
+export function InstallGuide({ version = "1.2.0", translations }: InstallGuideProps) {
+  const MAC_ONE_LINER = makeMacOneLiner(version);
   const t = {
     heading: translations?.heading ?? "Installation",
     subheading: translations?.subheading ?? "First launch requires one extra step on macOS and Windows.",
