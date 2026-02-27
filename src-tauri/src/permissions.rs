@@ -66,16 +66,18 @@ pub fn mark_first_launch_complete_cmd() -> Result<(), String> {
 }
 
 /// Request microphone permission - opens System Settings
-#[cfg(target_os = "macos")]
 #[command]
 pub fn request_microphone_permission() -> Result<PermissionStatus, String> {
-    use std::process::Command;
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
 
-    // Open System Settings > Privacy & Security > Microphone
-    Command::new("open")
-        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
-        .spawn()
-        .map_err(|e| format!("Failed to open microphone settings: {}", e))?;
+        // Open System Settings > Privacy & Security > Microphone
+        Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+            .spawn()
+            .map_err(|e| format!("Failed to open microphone settings: {}", e))?;
+    }
 
     // Return current status
     Ok(check_microphone_permission())
