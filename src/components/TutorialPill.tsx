@@ -1,46 +1,33 @@
 // TTP - Talk To Paste
-// Tutorial pill component - shows keyboard shortcut hint on first launch
+// Tutorial pill component - old simple style: "Maintiens fn pour dicter"
 
 import { useState, useEffect } from 'react';
 
 interface TutorialPillProps {
-  /** The shortcut text to display (default: "FN") */
   shortcutText?: string;
-  /** Callback when the pill is dismissed */
-  onDismiss?: () => void;
+  _onDismiss?: () => void;
 }
 
 /** LocalStorage key for tutorial dismissal */
 const TUTORIAL_DISMISSED_KEY = 'tutorial_pill_dismissed';
 
 /**
- * Tutorial pill component that shows on first launch.
- * Displays a dismissible tooltip explaining the keyboard shortcut.
- * Position: bottom-center of the screen.
+ * Tutorial pill - simple dark pill showing keyboard shortcut hint
+ * Old style: "Maintiens fn pour dicter"
  */
-export function TutorialPill({ shortcutText = 'FN', onDismiss }: TutorialPillProps) {
+export function TutorialPill({ shortcutText = 'fn' }: TutorialPillProps) {
   const [isVisible, setIsVisible] = useState(false);
-  const [isDismissed, setIsDismissed] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(true); // Start dismissed, check on mount
 
   useEffect(() => {
-    // Check if tutorial was previously dismissed
     const dismissed = localStorage.getItem(TUTORIAL_DISMISSED_KEY) === 'true';
     setIsDismissed(dismissed);
-    
-    // Only show if not dismissed
+
     if (!dismissed) {
-      // Small delay to let the pill render first
       const timer = setTimeout(() => setIsVisible(true), 100);
       return () => clearTimeout(timer);
     }
   }, []);
-
-  const handleDismiss = () => {
-    setIsVisible(false);
-    localStorage.setItem(TUTORIAL_DISMISSED_KEY, 'true');
-    setIsDismissed(true);
-    onDismiss?.();
-  };
 
   if (isDismissed) {
     return null;
@@ -48,34 +35,37 @@ export function TutorialPill({ shortcutText = 'FN', onDismiss }: TutorialPillPro
 
   return (
     <div
-      className={`
-        fixed bottom-4 left-1/2 -translate-x-1/2 z-50
-        transition-all duration-300 ease-out
-        ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}
-      `}
+      className="mb-2 flex items-center gap-2 rounded-2xl bg-black/90 px-4 py-2 shadow-xl backdrop-blur-sm"
+      style={{
+        opacity: isVisible ? 1 : 0,
+        transform: isVisible ? 'translateY(0)' : 'translateY(8px)',
+        transition: 'all 0.3s ease-out',
+        pointerEvents: isVisible ? 'auto' : 'none',
+      }}
     >
-      <div className="bg-gray-900 dark:bg-gray-800 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-3">
-        {/* Shortcut indicator */}
-        <span className="bg-blue-600-2 py-0.5 rounded px text-xs font-mono font-semibold">
-          {shortcutText}
+      <span style={{
+        fontSize: '13px',
+        fontWeight: '500',
+        color: 'rgba(255,255,255,0.8)',
+        userSelect: 'none',
+      }}>
+        Maintiens{' '}
+        <span style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: '4px',
+          backgroundColor: 'rgba(255,255,255,0.2)',
+          padding: '2px 6px',
+          fontSize: '11px',
+          fontWeight: '700',
+          color: '#fff',
+          lineHeight: 1,
+        }}>
+          {shortcutText.toUpperCase()}
         </span>
-        
-        {/* Instruction text */}
-        <span className="text-sm text-gray-200">
-          Press to start recording
-        </span>
-        
-        {/* Dismiss button */}
-        <button
-          onClick={handleDismiss}
-          className="ml-1 text-gray-400 hover:text-white transition-colors"
-          aria-label="Dismiss tutorial"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
+        {' '}pour dicter
+      </span>
     </div>
   );
 }

@@ -3,9 +3,9 @@
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri::command;
+use crate::credentials;
 
-/// Show the onboarding window
-/// Creates a new centered window for the onboarding flow
+/// Show the onboarding window - triggers native macOS permission dialog
 #[command]
 pub fn show_onboarding(app: AppHandle) -> Result<(), String> {
     // Check if onboarding window already exists
@@ -32,31 +32,16 @@ pub fn show_onboarding(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-use crate::credentials;
-
-/// Close the onboarding window and show setup if needed
+/// Close onboarding and mark first launch complete (no setup window needed)
 #[command]
 pub fn close_onboarding(app: AppHandle) -> Result<(), String> {
-    // Close the onboarding window
+    // Close onboarding window
     if let Some(window) = app.get_webview_window("onboarding") {
-        window.close().map_err(|e| format!("Failed to close onboarding window: {}", e))?;
+        let _ = window.close();
     }
-    
-    // Mark first launch as complete
-    crate::permissions::mark_first_launch_complete();
-    
-    // Check if API key exists, show setup if not
-    let has_groq = credentials::get_groq_api_key_internal(&app)
-        .map(|k| k.is_some())
-        .unwrap_or(false);
-    
-    if !has_groq {
-        // Show setup window
-        if let Some(window) = app.get_webview_window("setup") {
-            let _ = window.show();
-            let _ = window.set_focus();
-        }
-    }
-    
+
+    // Mark first launch complete
+    let _ = crate::permissions::mark_first_launch_complete();
+
     Ok(())
 }

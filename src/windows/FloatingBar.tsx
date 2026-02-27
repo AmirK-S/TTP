@@ -50,10 +50,6 @@ export function FloatingBar() {
     checkFirstLaunch();
   }, []);
 
-  const handleTutorialDismiss = () => {
-    setShowTutorial(false);
-  };
-
   // Voice-reactive bars: driven by audio-level events from Rust
   const barRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const levelRef = useRef(0);
@@ -111,10 +107,7 @@ export function FloatingBar() {
 
       {/* Tutorial pill — first launch only */}
       {showTutorial && isIdle && (
-        <TutorialPill 
-          shortcutText="FN" 
-          onDismiss={handleTutorialDismiss} 
-        />
+        <TutorialPill shortcutText="FN" />
       )}
 
       {/* Pill */}

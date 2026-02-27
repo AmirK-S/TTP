@@ -65,6 +65,22 @@ pub fn mark_first_launch_complete_cmd() -> Result<(), String> {
     mark_first_launch_complete()
 }
 
+/// Request microphone permission - opens System Settings
+#[cfg(target_os = "macos")]
+#[command]
+pub fn request_microphone_permission() -> Result<PermissionStatus, String> {
+    use std::process::Command;
+
+    // Open System Settings > Privacy & Security > Microphone
+    Command::new("open")
+        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+        .spawn()
+        .map_err(|e| format!("Failed to open microphone settings: {}", e))?;
+
+    // Return current status
+    Ok(check_microphone_permission())
+}
+
 /// Check the current microphone permission status
 /// On macOS, uses AVFoundation to check the microphone authorization status
 #[cfg(target_os = "macos")]
@@ -118,7 +134,7 @@ fn check_tcc_microphone_permission_impl() -> PermissionStatus {
     use std::process::Command;
     
     // Query TCC database for microphone access for our app
-    let bundle_id = "com.talktopaste.app";
+    let bundle_id = "com.ttp.desktop";
     
     let output = Command::new("sqlite3")
         .args([
@@ -217,5 +233,42 @@ pub fn get_permission_instructions(status: &PermissionStatus) -> String {
         PermissionStatus::Undetermined => {
             "1. Open System Settings\n2. Go to Privacy & Security\n3. Click on Microphone\n4. Enable TTP to allow microphone access".to_string()
         }
+    }
+}
+
+// ============================================================================
+// Accessibility Permission
+// ============================================================================
+
+/// Check accessibility permission status
+#[command]
+pub fn check_accessibility_permission() -> PermissionStatus {
+    let granted = crate::paste::check_accessibility();
+    if granted {
+        PermissionStatus::Granted
+    } else {
+        PermissionStatus::Denied
+    }
+}
+
+/// Request accessibility permission - opens System Settings
+#[command]
+pub fn request_accessibility_permission() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+
+        // Open System Settings > Privacy & Security > Accessibility
+        Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+            .spawn()
+            .map_err(|e| format!("Failed to open accessibility settings: {}", e))?;
+
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(()) // No action needed on other platforms
     }
 }

@@ -1,5 +1,5 @@
 // TTP - Talk To Paste
-// Onboarding component - permission check and guidance flow
+// Onboarding component - checklist flow for permissions and setup
 
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -7,95 +7,90 @@ import { invoke } from '@tauri-apps/api/core';
 /** Permission status from the Rust backend */
 type PermissionStatus = 'Granted' | 'Denied' | 'Undetermined';
 
-interface PermissionInfo {
-  status: PermissionStatus;
-  message: string;
-  instructions: string;
-}
-
 /**
  * Onboarding window component - shown on first launch
- * Guides user through microphone permission setup
+ * Guides user through all setup steps as a checklist
  */
 export default function Onboarding() {
-  const [permission, setPermission] = useState<PermissionInfo | null>(null);
-  const [isChecking, setIsChecking] = useState(false);
-  const [canContinue, setCanContinue] = useState(false);
+  const [checklist, setChecklist] = useState<Record<string, boolean>>({});
+  const [checking, setChecking] = useState<string | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [isSavingKey, setIsSavingKey] = useState(false);
+  const [apiKeyError, setApiKeyError] = useState('');
 
-  // Check permission status on mount
+  // Check all permissions/status on mount
   useEffect(() => {
-    checkPermission();
+    checkAllItems();
   }, []);
 
-  // Check microphone permission status
-  const checkPermission = async () => {
-    setIsChecking(true);
+  const checkAllItems = async () => {
     try {
-      const status = await invoke<PermissionStatus>('check_microphone_permission');
-      
-      let message = '';
-      let instructions = '';
-      
-      switch (status) {
-        case 'Granted':
-          message = 'Microphone access is granted. You\'re all set!';
-          instructions = '';
-          setCanContinue(true);
-          break;
-        case 'Denied':
-          message = 'Microphone access is denied. Please enable it in System Settings.';
-          instructions = '1. Open System Settings\n2. Go to Privacy & Security\n3. Click on Microphone\n4. Enable TTP (Talk To Paste)';
-          setCanContinue(false);
-          break;
-        case 'Undetermined':
-          message = 'Microphone permission has not been requested yet.';
-          instructions = '1. Open System Settings\n2. Go to Privacy & Security\n3. Click on Microphone\n4. Enable TTP to allow microphone access';
-          setCanContinue(false);
-          break;
-      }
-      
-      setPermission({ status, message, instructions });
-    } catch (error) {
-      console.error('Failed to check permission:', error);
-      setPermission({
-        status: 'Undetermined',
-        message: 'Failed to check microphone permission',
-        instructions: 'Please check System Settings manually'
+      const [micStatus, hasApiKey, accessibilityStatus] = await Promise.all([
+        invoke<PermissionStatus>('check_microphone_permission'),
+        invoke<boolean>('has_groq_api_key'),
+        invoke<PermissionStatus>('check_accessibility_permission'),
+      ]);
+
+      setChecklist({
+        microphone: micStatus === 'Granted',
+        apikey: hasApiKey,
+        accessibility: accessibilityStatus === 'Granted',
       });
-    } finally {
-      setIsChecking(false);
-    }
-  };
-
-  // Handle continue button - mark first launch complete and close window
-  const handleContinue = async () => {
-    try {
-      await invoke('mark_first_launch_complete');
-      await invoke('close_onboarding');
     } catch (error) {
-      console.error('Failed to complete onboarding:', error);
+      console.error('Failed to check items:', error);
     }
   };
 
-  // Get status indicator color
-  const getStatusColor = () => {
-    if (!permission) return '#666';
-    switch (permission.status) {
-      case 'Granted': return '#22c55e';
-      case 'Denied': return '#ef4444';
-      case 'Undetermined': return '#f59e0b';
+  // Request microphone permission - opens System Settings
+  const requestMicrophone = async () => {
+    setChecking('microphone');
+    try {
+      await invoke('request_microphone_permission');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      await checkAllItems();
+    } catch (e) {
+      console.log('Microphone permission result:', e);
+    } finally {
+      setChecking(null);
     }
   };
 
-  // Get status icon
-  const getStatusIcon = () => {
-    if (!permission) return '⏳';
-    switch (permission.status) {
-      case 'Granted': return '✓';
-      case 'Denied': return '✕';
-      case 'Undetermined': return '?';
+  // Request accessibility permission - opens System Settings
+  const requestAccessibility = async () => {
+    setChecking('accessibility');
+    try {
+      await invoke('request_accessibility_permission');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      await checkAllItems();
+    } catch (e) {
+      console.log('Accessibility permission result:', e);
+    } finally {
+      setChecking(null);
     }
   };
+
+  // Save API key directly
+  const saveApiKey = async () => {
+    if (!apiKeyInput.trim()) {
+      setApiKeyError('Enter a valid key');
+      return;
+    }
+
+    setIsSavingKey(true);
+    setApiKeyError('');
+
+    try {
+      await invoke('set_groq_api_key', { key: apiKeyInput.trim() });
+      setChecklist(prev => ({ ...prev, apikey: true }));
+      setApiKeyInput('');
+    } catch (e) {
+      setApiKeyError('Failed to save');
+    } finally {
+      setIsSavingKey(false);
+    }
+  };
+
+  const allChecked = checklist.microphone && checklist.apikey && checklist.accessibility;
 
   return (
     <div style={styles.container}>
@@ -103,60 +98,119 @@ export default function Onboarding() {
         {/* Header */}
         <div style={styles.header}>
           <h1 style={styles.title}>Welcome to Talk To Paste</h1>
-          <p style={styles.subtitle}>
-            Voice-powered clipboard - just speak and paste
-          </p>
+          <p style={styles.subtitle}>Let's get you set up</p>
         </div>
 
-        {/* Permission Status Card */}
-        <div style={styles.card}>
-          <div style={styles.cardHeader}>
-            <span style={styles.cardIcon}>🎤</span>
-            <h2 style={styles.cardTitle}>Microphone Access</h2>
-          </div>
-          
-          <div style={styles.statusContainer}>
-            <div 
-              style={{
-                ...styles.statusIndicator,
-                backgroundColor: getStatusColor()
-              }}
-            >
-              {getStatusIcon()}
+        {/* Checklist */}
+        <div style={styles.checklist}>
+          {/* Microphone */}
+          <div style={styles.checkItem}>
+            <div style={{
+              ...styles.statusDot,
+              backgroundColor: checklist.microphone ? '#22c55e' : '#ef4444',
+            }} />
+            <div style={styles.checkContent}>
+              <div style={styles.checkLabel}>Microphone</div>
+              <div style={{
+                ...styles.checkDesc,
+                color: checklist.microphone ? '#22c55e' : '#ef4444',
+              }}>
+                {checklist.microphone ? '✓ Enabled' : '✕ Not enabled'}
+              </div>
             </div>
-            <div style={styles.statusText}>
-              {permission ? permission.message : 'Checking...'}
-            </div>
+            {!checklist.microphone && (
+              <button
+                style={{
+                  ...styles.actionButton,
+                  opacity: checking === 'microphone' ? 0.5 : 1,
+                }}
+                onClick={requestMicrophone}
+                disabled={checking === 'microphone'}
+              >
+                {checking === 'microphone' ? '...' : 'Enable'}
+              </button>
+            )}
           </div>
 
-          {/* Instructions for denied/undetermined */}
-          {permission && permission.instructions && (
-            <div style={styles.instructions}>
-              <p style={styles.instructionsTitle}>How to enable:</p>
-              <pre style={styles.instructionsText}>{permission.instructions}</pre>
+          {/* Accessibility */}
+          <div style={styles.checkItem}>
+            <div style={{
+              ...styles.statusDot,
+              backgroundColor: checklist.accessibility ? '#22c55e' : '#ef4444',
+            }} />
+            <div style={styles.checkContent}>
+              <div style={styles.checkLabel}>Accessibility</div>
+              <div style={{
+                ...styles.checkDesc,
+                color: checklist.accessibility ? '#22c55e' : '#ef4444',
+              }}>
+                {checklist.accessibility ? '✓ Enabled' : '✕ Not enabled'}
+              </div>
             </div>
-          )}
+            {!checklist.accessibility && (
+              <button
+                style={{
+                  ...styles.actionButton,
+                  opacity: checking === 'accessibility' ? 0.5 : 1,
+                }}
+                onClick={requestAccessibility}
+                disabled={checking === 'accessibility'}
+              >
+                {checking === 'accessibility' ? '...' : 'Enable'}
+              </button>
+            )}
+          </div>
 
-          {/* Re-check button */}
-          <button 
-            style={styles.checkButton}
-            onClick={checkPermission}
-            disabled={isChecking}
-          >
-            {isChecking ? 'Checking...' : 'Check Again'}
-          </button>
+          {/* API Key */}
+          <div style={styles.checkItemColumn}>
+            <div style={styles.checkItemTop}>
+              <div style={{
+                ...styles.statusDot,
+                backgroundColor: checklist.apikey ? '#22c55e' : '#ef4444',
+              }} />
+              <div style={styles.checkContent}>
+                <div style={styles.checkLabel}>Groq API Key</div>
+                <div style={{
+                  ...styles.checkDesc,
+                  color: checklist.apikey ? '#22c55e' : '#ef4444',
+                }}>
+                  {checklist.apikey ? '✓ Key saved' : '✕ No key'}
+                </div>
+              </div>
+            </div>
+
+            {!checklist.apikey && (
+              <div style={styles.apiKeyInput}>
+                <input
+                  type="password"
+                  placeholder="gsk_..."
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && saveApiKey()}
+                  style={styles.input}
+                />
+                <button
+                  style={styles.saveButton}
+                  onClick={saveApiKey}
+                  disabled={isSavingKey}
+                >
+                  {isSavingKey ? '...' : 'Save'}
+                </button>
+              </div>
+            )}
+            {apiKeyError && <div style={styles.error}>{apiKeyError}</div>}
+          </div>
         </div>
 
         {/* Continue button */}
         <button
           style={{
             ...styles.continueButton,
-            ...(canContinue ? {} : styles.continueButtonDisabled)
+            ...(allChecked ? {} : styles.continueButtonDisabled)
           }}
-          onClick={handleContinue}
-          disabled={!canContinue}
+          disabled={!allChecked}
         >
-          Continue
+          {allChecked ? 'Get Started' : 'Complete all steps'}
         </button>
       </div>
     </div>
@@ -166,123 +220,133 @@ export default function Onboarding() {
 const styles: Record<string, React.CSSProperties> = {
   container: {
     minHeight: '100vh',
-    backgroundColor: '#1a1a2e',
+    backgroundColor: '#0a0a0a',
     color: '#fff',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '20px',
+    padding: '16px',
   },
   content: {
     width: '100%',
-    maxWidth: '420px',
+    maxWidth: '380px',
   },
   header: {
     textAlign: 'center',
-    marginBottom: '24px',
+    marginBottom: '20px',
   },
   title: {
-    fontSize: '24px',
-    fontWeight: '600',
-    margin: '0 0 8px 0',
+    fontSize: '22px',
+    fontWeight: '700',
+    margin: '0 0 4px 0',
     color: '#fff',
   },
   subtitle: {
-    fontSize: '14px',
-    color: '#9ca3af',
+    fontSize: '13px',
+    color: '#666',
     margin: 0,
   },
-  card: {
-    backgroundColor: '#16213e',
-    borderRadius: '12px',
-    padding: '20px',
+  checklist: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
     marginBottom: '20px',
   },
-  cardHeader: {
+  checkItem: {
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
-    marginBottom: '16px',
+    backgroundColor: '#141414',
+    borderRadius: '10px',
+    padding: '14px 16px',
+    border: '1px solid #222',
   },
-  cardIcon: {
-    fontSize: '24px',
+  checkItemColumn: {
+    backgroundColor: '#141414',
+    borderRadius: '10px',
+    padding: '14px 16px',
+    border: '1px solid #222',
   },
-  cardTitle: {
-    fontSize: '18px',
-    fontWeight: '600',
-    margin: 0,
-  },
-  statusContainer: {
+  checkItemTop: {
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
-    padding: '12px',
-    backgroundColor: '#0f3460',
-    borderRadius: '8px',
-    marginBottom: '16px',
   },
-  statusIndicator: {
-    width: '32px',
-    height: '32px',
+  statusDot: {
+    width: '10px',
+    height: '10px',
     borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '16px',
-    fontWeight: 'bold',
-    color: '#fff',
+    flexShrink: 0,
   },
-  statusText: {
+  checkContent: {
     flex: 1,
+  },
+  checkLabel: {
     fontSize: '14px',
-    lineHeight: '1.4',
-  },
-  instructions: {
-    marginBottom: '16px',
-  },
-  instructionsTitle: {
-    fontSize: '13px',
     fontWeight: '600',
-    color: '#9ca3af',
-    margin: '0 0 8px 0',
+    color: '#fff',
+    marginBottom: '2px',
   },
-  instructionsText: {
+  checkDesc: {
     fontSize: '12px',
-    color: '#d1d5db',
-    backgroundColor: '#0f3460',
-    padding: '12px',
-    borderRadius: '8px',
-    margin: 0,
-    whiteSpace: 'pre-line',
-    lineHeight: '1.5',
+    fontWeight: '500',
   },
-  checkButton: {
-    width: '100%',
-    padding: '10px 16px',
-    backgroundColor: 'transparent',
-    border: '1px solid #4b5563',
-    borderRadius: '8px',
-    color: '#9ca3af',
-    fontSize: '14px',
+  actionButton: {
+    padding: '8px 16px',
+    backgroundColor: '#2563eb',
+    border: 'none',
+    borderRadius: '6px',
+    color: '#fff',
+    fontSize: '12px',
+    fontWeight: '600',
     cursor: 'pointer',
-    transition: 'all 0.2s',
+  },
+  apiKeyInput: {
+    display: 'flex',
+    gap: '8px',
+    marginTop: '12px',
+  },
+  input: {
+    flex: 1,
+    padding: '10px 12px',
+    backgroundColor: '#0a0a0a',
+    border: '1px solid #333',
+    borderRadius: '6px',
+    color: '#fff',
+    fontSize: '12px',
+    outline: 'none',
+  },
+  saveButton: {
+    padding: '10px 16px',
+    backgroundColor: '#2563eb',
+    border: 'none',
+    borderRadius: '6px',
+    color: '#fff',
+    fontSize: '12px',
+    fontWeight: '600',
+    cursor: 'pointer',
+  },
+  error: {
+    color: '#ef4444',
+    fontSize: '11px',
+    marginTop: '6px',
   },
   continueButton: {
     width: '100%',
-    padding: '14px 24px',
-    backgroundColor: '#3b82f6',
+    padding: '16px 20px',
+    backgroundColor: '#2563eb',
     border: 'none',
-    borderRadius: '8px',
+    borderRadius: '10px',
     color: '#fff',
-    fontSize: '16px',
+    fontSize: '14px',
     fontWeight: '600',
     cursor: 'pointer',
     transition: 'all 0.2s',
   },
   continueButtonDisabled: {
-    backgroundColor: '#374151',
-    color: '#6b7280',
+    backgroundColor: '#222',
+    color: '#555',
     cursor: 'not-allowed',
   },
 };

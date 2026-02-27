@@ -38,6 +38,16 @@
         "center": true
       },
       {
+        "label": "onboarding",
+        "title": "Welcome to Talk To Paste",
+        "width": 420,
+        "height": 560,
+        "resizable": false,
+        "visible": false,
+        "center": true,
+        "alwaysOnTop": true
+      },
+      {
         "label": "settings",
         "title": "TTP by AmirKS — Settings",
         "width": 500,

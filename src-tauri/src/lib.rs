@@ -28,7 +28,8 @@ use history::{clear_history, get_history};
 use onboarding::{close_onboarding, show_onboarding};
 use paste::check_accessibility;
 use permissions::{
-    check_microphone_permission, is_first_launch_cmd, mark_first_launch_complete_cmd, PermissionStatus,
+    check_microphone_permission, is_first_launch_cmd, mark_first_launch_complete_cmd,
+    check_accessibility_permission, request_accessibility_permission, PermissionStatus,
 };
 use recording::{get_recordings_dir, RecordingContext};
 use settings::{get_settings, reset_settings, set_settings, open_settings_window};
@@ -215,14 +216,11 @@ pub fn run() {
             // Show pill window (always visible)
             tray::show_pill(app.handle());
 
-            // Check if this is the first launch - show onboarding for permissions
+            // Check if this is the first launch
             let is_first = permissions::is_first_launch();
             if is_first {
-                // Show onboarding window first for permission setup
-                let app_handle = app.handle().clone();
-                if let Err(e) = onboarding::show_onboarding(app_handle) {
-                    logging::log_warn(&format!("Failed to show onboarding window: {}", e));
-                }
+                // Show onboarding window (permission check flow)
+                let _ = onboarding::show_onboarding(app.handle().clone());
             } else {
                 // Not first launch - check if Groq API key exists, show setup window if not
                 let has_groq = credentials::get_groq_api_key_internal(app.handle())
@@ -272,9 +270,12 @@ pub fn run() {
             reset_to_idle,
             check_microphone_permission,
             is_first_launch_cmd,
+            mark_first_launch_complete_cmd,
+            permissions::request_microphone_permission,
+            check_accessibility_permission,
+            request_accessibility_permission,
             show_onboarding,
             close_onboarding,
-            mark_first_launch_complete_cmd
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
