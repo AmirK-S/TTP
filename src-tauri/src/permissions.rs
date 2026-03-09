@@ -19,11 +19,11 @@ fn get_config_dir() -> PathBuf {
     let config_dir = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("ttp");
-    
+
     if !config_dir.exists() {
         let _ = fs::create_dir_all(&config_dir);
     }
-    
+
     config_dir
 }
 
@@ -48,13 +48,13 @@ pub fn is_first_launch_cmd() -> bool {
 /// This should be called after onboarding successfully completes
 pub fn mark_first_launch_complete() -> Result<(), String> {
     let file_path = get_first_launch_file();
-    
+
     // Create the marker file with a timestamp
     let content = format!(
         "first_launch_complete={}",
         chrono::Utc::now().to_rfc3339()
     );
-    
+
     fs::write(&file_path, content)
         .map_err(|e| format!("Failed to mark first launch complete: {}", e))
 }
@@ -65,7 +65,7 @@ pub fn mark_first_launch_complete_cmd() -> Result<(), String> {
     mark_first_launch_complete()
 }
 
-/// Request microphone permission - opens System Settings
+/// Request microphone permission - opens System Settings for the user to grant access
 #[command]
 pub fn request_microphone_permission() -> Result<PermissionStatus, String> {
     #[cfg(target_os = "macos")]
@@ -84,109 +84,27 @@ pub fn request_microphone_permission() -> Result<PermissionStatus, String> {
 }
 
 /// Check the current microphone permission status
-/// On macOS, uses AVFoundation to check the microphone authorization status
+/// On macOS, uses AVCaptureDevice.authorizationStatus(for: .audio) via objc
 #[cfg(target_os = "macos")]
 pub fn check_microphone_permission_impl() -> PermissionStatus {
-    use std::process::Command;
-    
-    // Use macOS system_profiler to check microphone permission status
-    // Alternative: Use AppleScript to check System Preferences > Security & Privacy > Microphone
-    let output = Command::new("system_profiler")
-        .args(["SPMicrophoneDataType", "-json"])
-        .output();
-    
-    match output {
-        Ok(output) => {
-            if !output.status.success() {
-                return PermissionStatus::Undetermined;
-            }
-            
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            
-            // Parse JSON output to check if TTP has microphone access
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&stdout) {
-                if let Some(data) = json.get("SPMicrophoneDataType").and_then(|v| v.as_array()) {
-                    for item in data {
-                        if let Some(name) = item.get("_name").and_then(|v| v.as_str()) {
-                            if name.contains("TTP") || name.contains("Talk To Paste") {
-                                // Check if the app has access
-                                if let Some(media) = item.get("media").and_then(|v| v.as_array()) {
-                                    if !media.is_empty() {
-                                        return PermissionStatus::Granted;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // If we can't find TTP in the list, permission is either denied or undetermined
-            // For a more accurate check, we'd need to use CoreFoundation
-            // For now, we'll check the TCC database directly
-            check_tcc_microphone_permission_impl()
-        }
-        Err(_) => PermissionStatus::Undetermined,
-    }
-}
+    use objc::{class, msg_send, sel, sel_impl};
 
-/// Check TCC (Transparency, Control, and Consent) database directly for microphone access
-#[cfg(target_os = "macos")]
-fn check_tcc_microphone_permission_impl() -> PermissionStatus {
-    use std::process::Command;
-    
-    // Query TCC database for microphone access for our app
-    let bundle_id = "com.ttp.desktop";
-    
-    let output = Command::new("sqlite3")
-        .args([
-            "/Library/Application Support/com.apple.TCC/TCC.db",
-            &format!(
-                "SELECT allowed FROM access WHERE client='{}' AND service='com.apple.security.device.microphone'",
-                bundle_id
-            ),
-        ])
-        .output();
-    
-    match output {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            match stdout.as_str() {
-                "1" => PermissionStatus::Granted,
-                "0" => PermissionStatus::Denied,
-                _ => PermissionStatus::Undetermined,
-            }
-        }
-        Err(_) => {
-            // Try user TCC database
-            let home = dirs::home_dir().unwrap_or_default();
-            let tcc_db = home.join("Library/Application Support/com.apple.TCC/TCC.db");
-            
-            if tcc_db.exists() {
-                let output = Command::new("sqlite3")
-                    .args([
-                        tcc_db.to_str().unwrap_or(""),
-                        &format!(
-                            "SELECT allowed FROM access WHERE client='{}' AND service='com.apple.security.device.microphone'",
-                            bundle_id
-                        ),
-                    ])
-                    .output();
-                
-                match output {
-                    Ok(output) => {
-                        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                        match stdout.as_str() {
-                            "1" => PermissionStatus::Granted,
-                            "0" => PermissionStatus::Denied,
-                            _ => PermissionStatus::Undetermined,
-                        }
-                    }
-                    Err(_) => PermissionStatus::Undetermined,
-                }
-            } else {
-                PermissionStatus::Undetermined
-            }
+    #[link(name = "AVFoundation", kind = "framework")]
+    extern "C" {}
+
+    // AVAuthorizationStatus values:
+    // 0 = NotDetermined, 1 = Restricted, 2 = Denied, 3 = Authorized
+    // AVMediaType.audio = "soun" (FourCC)
+    unsafe {
+        let media_type_audio: cocoa::base::id =
+            msg_send![class!(NSString), stringWithUTF8String: b"soun\0".as_ptr()];
+        let status: i64 =
+            msg_send![class!(AVCaptureDevice), authorizationStatusForMediaType: media_type_audio];
+
+        match status {
+            3 => PermissionStatus::Granted,  // AVAuthorizationStatusAuthorized
+            2 | 1 => PermissionStatus::Denied, // Denied or Restricted
+            _ => PermissionStatus::Undetermined, // NotDetermined (0) or unknown
         }
     }
 }

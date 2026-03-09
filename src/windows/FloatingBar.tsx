@@ -50,6 +50,14 @@ export function FloatingBar() {
     checkFirstLaunch();
   }, []);
 
+  // Dismiss tutorial after first successful transcription
+  useEffect(() => {
+    if (stage === 'complete' && showTutorial) {
+      localStorage.setItem(TUTORIAL_DISMISSED_KEY, 'true');
+      setShowTutorial(false);
+    }
+  }, [stage, showTutorial]);
+
   // Voice-reactive bars: driven by audio-level events from Rust
   const barRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const levelRef = useRef(0);
