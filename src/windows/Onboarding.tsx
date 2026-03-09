@@ -1,8 +1,9 @@
 // TTP - Talk To Paste
 // Onboarding component - checklist flow for permissions and setup
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 /** Permission status from the Rust backend */
 type PermissionStatus = 'Granted' | 'Denied' | 'Undetermined';
@@ -18,12 +19,7 @@ export default function Onboarding() {
   const [isSavingKey, setIsSavingKey] = useState(false);
   const [apiKeyError, setApiKeyError] = useState('');
 
-  // Check all permissions/status on mount
-  useEffect(() => {
-    checkAllItems();
-  }, []);
-
-  const checkAllItems = async () => {
+  const checkAllItems = useCallback(async () => {
     try {
       const [micStatus, hasApiKey, accessibilityStatus] = await Promise.all([
         invoke<PermissionStatus>('check_microphone_permission'),
@@ -39,15 +35,34 @@ export default function Onboarding() {
     } catch (error) {
       console.error('Failed to check items:', error);
     }
-  };
+  }, []);
+
+  // Check all permissions/status on mount
+  useEffect(() => {
+    checkAllItems();
+  }, [checkAllItems]);
+
+  // Re-check permissions when window regains focus (user returns from System Settings)
+  useEffect(() => {
+    const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      if (focused) {
+        checkAllItems();
+      }
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, [checkAllItems]);
+
+  // Also poll every 2s while window is open (catches changes made in background)
+  useEffect(() => {
+    const interval = setInterval(checkAllItems, 2000);
+    return () => clearInterval(interval);
+  }, [checkAllItems]);
 
   // Request microphone permission - opens System Settings
   const requestMicrophone = async () => {
     setChecking('microphone');
     try {
       await invoke('request_microphone_permission');
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      await checkAllItems();
     } catch (e) {
       console.log('Microphone permission result:', e);
     } finally {
@@ -60,8 +75,6 @@ export default function Onboarding() {
     setChecking('accessibility');
     try {
       await invoke('request_accessibility_permission');
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      await checkAllItems();
     } catch (e) {
       console.log('Accessibility permission result:', e);
     } finally {
@@ -90,6 +103,15 @@ export default function Onboarding() {
     }
   };
 
+  // Close onboarding and mark first launch complete
+  const handleGetStarted = async () => {
+    try {
+      await invoke('close_onboarding');
+    } catch (e) {
+      console.error('Failed to close onboarding:', e);
+    }
+  };
+
   const allChecked = checklist.microphone && checklist.apikey && checklist.accessibility;
 
   return (
@@ -115,7 +137,7 @@ export default function Onboarding() {
                 ...styles.checkDesc,
                 color: checklist.microphone ? '#22c55e' : '#ef4444',
               }}>
-                {checklist.microphone ? '✓ Enabled' : '✕ Not enabled'}
+                {checklist.microphone ? 'Enabled' : 'Not enabled'}
               </div>
             </div>
             {!checklist.microphone && (
@@ -144,7 +166,7 @@ export default function Onboarding() {
                 ...styles.checkDesc,
                 color: checklist.accessibility ? '#22c55e' : '#ef4444',
               }}>
-                {checklist.accessibility ? '✓ Enabled' : '✕ Not enabled'}
+                {checklist.accessibility ? 'Enabled' : 'Not enabled'}
               </div>
             </div>
             {!checklist.accessibility && (
@@ -174,7 +196,7 @@ export default function Onboarding() {
                   ...styles.checkDesc,
                   color: checklist.apikey ? '#22c55e' : '#ef4444',
                 }}>
-                  {checklist.apikey ? '✓ Key saved' : '✕ No key'}
+                  {checklist.apikey ? 'Key saved' : 'No key'}
                 </div>
               </div>
             </div>
@@ -209,9 +231,15 @@ export default function Onboarding() {
             ...(allChecked ? {} : styles.continueButtonDisabled)
           }}
           disabled={!allChecked}
+          onClick={handleGetStarted}
         >
           {allChecked ? 'Get Started' : 'Complete all steps'}
         </button>
+
+        {/* Hint about settings access */}
+        <p style={styles.hint}>
+          You can reopen settings anytime by right-clicking the TTP icon in the menu bar.
+        </p>
       </div>
     </div>
   );
@@ -348,5 +376,11 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: '#222',
     color: '#555',
     cursor: 'not-allowed',
+  },
+  hint: {
+    textAlign: 'center',
+    fontSize: '11px',
+    color: '#555',
+    marginTop: '12px',
   },
 };
