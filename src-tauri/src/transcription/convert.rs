@@ -57,21 +57,29 @@ pub fn convert_to_mono_16khz(input_path: &str) -> Result<String, String> {
         samples
     };
 
-    // Resample to 16kHz using linear interpolation
+    // Anti-aliasing low-pass filter before downsampling
+    // Cutoff at Nyquist of target rate (8kHz) to prevent aliasing artifacts
+    let filtered = if sample_rate > TARGET_SAMPLE_RATE {
+        low_pass_filter(&mono_samples, sample_rate, TARGET_SAMPLE_RATE / 2)
+    } else {
+        mono_samples.clone()
+    };
+
+    // Resample to 16kHz using linear interpolation (safe after anti-aliasing filter)
     let ratio = TARGET_SAMPLE_RATE as f64 / sample_rate as f64;
-    let output_len = (mono_samples.len() as f64 * ratio) as usize;
+    let output_len = (filtered.len() as f64 * ratio) as usize;
     let resampled: Vec<i16> = (0..output_len)
         .map(|i| {
             let src_pos = i as f64 / ratio;
             let idx = src_pos as usize;
             let frac = src_pos - idx as f64;
 
-            if idx + 1 < mono_samples.len() {
-                let a = mono_samples[idx] as f64;
-                let b = mono_samples[idx + 1] as f64;
+            if idx + 1 < filtered.len() {
+                let a = filtered[idx] as f64;
+                let b = filtered[idx + 1] as f64;
                 (a + (b - a) * frac) as i16
-            } else if idx < mono_samples.len() {
-                mono_samples[idx]
+            } else if idx < filtered.len() {
+                filtered[idx]
             } else {
                 0
             }
@@ -105,4 +113,56 @@ pub fn convert_to_mono_16khz(input_path: &str) -> Result<String, String> {
         .map_err(|e| format!("Failed to finalize WAV: {}", e))?;
 
     Ok(output_path)
+}
+
+/// Simple windowed-sinc low-pass filter to prevent aliasing before downsampling.
+/// Uses a Kaiser-windowed sinc kernel for good stopband attenuation.
+fn low_pass_filter(samples: &[i16], sample_rate: u32, cutoff_hz: u32) -> Vec<i16> {
+    let fc = cutoff_hz as f64 / sample_rate as f64; // Normalized cutoff frequency
+    let kernel_size = 63; // Odd number for symmetric kernel
+    let half = kernel_size / 2;
+
+    // Build windowed-sinc kernel
+    let mut kernel: Vec<f64> = (0..kernel_size)
+        .map(|i| {
+            let n = i as f64 - half as f64;
+            let sinc = if n.abs() < 1e-10 {
+                2.0 * std::f64::consts::PI * fc
+            } else {
+                (2.0 * std::f64::consts::PI * fc * n).sin() / n
+            };
+            // Blackman window for good stopband attenuation
+            let window = 0.42
+                - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / (kernel_size - 1) as f64).cos()
+                + 0.08 * (4.0 * std::f64::consts::PI * i as f64 / (kernel_size - 1) as f64).cos();
+            sinc * window
+        })
+        .collect();
+
+    // Normalize kernel so sum = 1
+    let sum: f64 = kernel.iter().sum();
+    for k in &mut kernel {
+        *k /= sum;
+    }
+
+    // Apply convolution
+    let len = samples.len();
+    let mut output = Vec::with_capacity(len);
+    for i in 0..len {
+        let mut acc: f64 = 0.0;
+        for (j, &k) in kernel.iter().enumerate() {
+            let idx = i as isize + j as isize - half as isize;
+            let sample = if idx < 0 {
+                samples[0] as f64
+            } else if idx >= len as isize {
+                samples[len - 1] as f64
+            } else {
+                samples[idx as usize] as f64
+            };
+            acc += sample * k;
+        }
+        output.push(acc.clamp(-32768.0, 32767.0) as i16);
+    }
+
+    output
 }

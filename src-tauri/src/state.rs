@@ -41,8 +41,9 @@ impl AppState {
 
         // Handle pill visibility when transitioning to Idle
         // When going from Processing/Recording to Idle, respect hide_pill_when_inactive setting
+        // Uses should_show_pill_for_state() to avoid deadlock (mutex is already held here)
         if old_state != RecordingState::Idle && state == RecordingState::Idle {
-            if !crate::tray::should_show_pill(app) {
+            if !crate::tray::should_show_pill_for_state(&state) {
                 crate::tray::hide_pill(app);
             }
         }

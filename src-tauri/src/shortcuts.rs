@@ -89,9 +89,11 @@ pub fn handle_fn_double_tap(app: &AppHandle) {
     }
 }
 
-/// Handle shortcut key press - implements double-tap detection
+/// Handle shortcut key press - implements double-tap detection and settings-based toggle mode
 fn handle_shortcut_pressed(state: &mut AppState, app: &AppHandle) {
     let now = Instant::now();
+    let settings = get_settings();
+    let settings_hands_free = settings.hands_free_mode;
 
     let is_double_tap = state
         .last_shortcut_time
@@ -104,21 +106,29 @@ fn handle_shortcut_pressed(state: &mut AppState, app: &AppHandle) {
         match state.recording_state {
             RecordingState::Idle => {
                 state.hands_free_mode = true;
-                persist_hands_free_mode(app, true);
+                if !settings_hands_free {
+                    persist_hands_free_mode(app, true);
+                }
                 start_recording(state, app);
             }
             RecordingState::Recording if state.hands_free_mode => {
                 stop_recording(state, app);
-                state.hands_free_mode = false;
-                persist_hands_free_mode(app, false);
+                state.hands_free_mode = settings_hands_free;
+                if !settings_hands_free {
+                    persist_hands_free_mode(app, false);
+                }
             }
             _ => {}
         }
     } else {
         if state.is_idle() {
-            state.hands_free_mode = false;
-            persist_hands_free_mode(app, false);
+            // When settings has hands-free enabled, use toggle mode on single press
+            state.hands_free_mode = settings_hands_free;
             start_recording(state, app);
+        } else if state.is_recording() && state.hands_free_mode {
+            // Single press while recording in hands-free mode → stop
+            stop_recording(state, app);
+            state.hands_free_mode = settings_hands_free;
         }
     }
 }

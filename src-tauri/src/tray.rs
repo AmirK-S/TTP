@@ -150,34 +150,50 @@ pub fn hide_pill(app: &AppHandle) {
 pub fn should_show_pill(app: &AppHandle) -> bool {
     let state = match app.try_state::<Mutex<AppState>>() {
         Some(s) => s,
-        None => return true, // Default to showing if state unavailable
+        None => return true,
     };
 
     let Ok(app_state) = state.try_lock() else {
-        return true;
+        // Mutex already locked (called from set_state) — fall back to settings-only check
+        return should_show_pill_for_state(&RecordingState::Idle);
     };
 
+    should_show_pill_for_state(&app_state.recording_state)
+}
+
+/// Check pill visibility based on a known recording state (no mutex needed).
+/// Called from set_state() where the mutex is already held.
+pub fn should_show_pill_for_state(recording_state: &RecordingState) -> bool {
     // Show during recording and processing (including errors)
-    if app_state.is_recording() || app_state.recording_state == RecordingState::Processing {
+    if *recording_state == RecordingState::Recording || *recording_state == RecordingState::Processing {
         return true;
     }
 
     // Check setting for idle state
     let settings = get_settings();
-    if settings.hide_pill_when_inactive {
-        return false;
-    }
-
-    true
+    !settings.hide_pill_when_inactive
 }
 
-/// Set up listener for settings changes to update pill visibility
+/// Set up listener for settings changes to update pill visibility and hands-free mode
 pub fn setup_settings_listener(app: &AppHandle) {
-    app.listen("settings-changed", move |event| {
-        // Settings changed - the pill visibility will be re-evaluated
-        // when should_show_pill() is called next
-        // This ensures we can react to settings changes in the future
-        // if needed for more complex visibility logic
-        let _ = event;
+    let app_handle = app.clone();
+    app.listen("settings-changed", move |_event| {
+        // Update pill visibility based on new settings
+        if should_show_pill(&app_handle) {
+            show_pill(&app_handle);
+        } else {
+            hide_pill(&app_handle);
+        }
+
+        // Sync hands_free_mode from settings to AppState
+        let settings = get_settings();
+        if let Some(state) = app_handle.try_state::<Mutex<AppState>>() {
+            if let Ok(mut app_state) = state.try_lock() {
+                // Only update if not currently recording (avoid disrupting active session)
+                if app_state.is_idle() {
+                    app_state.hands_free_mode = settings.hands_free_mode;
+                }
+            }
+        }
     });
 }

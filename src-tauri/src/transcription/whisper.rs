@@ -84,6 +84,7 @@ async fn transcribe_with_provider(
         let form = Form::new()
             .text("model", model.clone())
             .text("response_format", "text")
+            .text("temperature", "0")
             .part("file", file_part);
 
         // Make the request
