@@ -26,8 +26,8 @@ interface InstallGuideProps {
 }
 
 const MAC_XATTR_CMD = `xattr -cr "/Applications/TTP by AmirKS.app"`;
-const makeMacOneLiner = (version: string) =>
-  `curl -sL "https://github.com/AmirK-S/TTP/releases/latest/download/TTP.by.AmirKS_${version}_$(uname -m | sed 's/arm64/aarch64/').dmg" -o /tmp/TTP.dmg && hdiutil attach /tmp/TTP.dmg -quiet && cp -R "/Volumes/TTP by AmirKS/TTP by AmirKS.app" /Applications/ && hdiutil detach "/Volumes/TTP by AmirKS" -quiet && rm /tmp/TTP.dmg && xattr -cr "/Applications/TTP by AmirKS.app" && open "/Applications/TTP by AmirKS.app"`;
+const makeMacOneLiner = (_version: string) =>
+  `curl -sL "https://github.com/AmirK-S/TTP/releases/latest/download/TTP-macOS-arm64.dmg" -o /tmp/TTP.dmg && hdiutil attach /tmp/TTP.dmg -quiet && cp -R "/Volumes/TTP by AmirKS/TTP by AmirKS.app" /Applications/ && hdiutil detach "/Volumes/TTP by AmirKS" -quiet && rm /tmp/TTP.dmg && open "/Applications/TTP by AmirKS.app"`;
 
 function CopyButton({ text, copiedLabel, copyLabel }: { text: string; copiedLabel: string; copyLabel: string }) {
   const [copied, setCopied] = useState(false);
