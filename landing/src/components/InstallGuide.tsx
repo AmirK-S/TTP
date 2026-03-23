@@ -25,9 +25,7 @@ interface InstallGuideProps {
   };
 }
 
-const MAC_XATTR_CMD = `xattr -cr "/Applications/TTP by AmirKS.app"`;
-const makeMacOneLiner = (_version: string) =>
-  `curl -sL ttp.amirks.eu/install.sh | sh`;
+const MAC_ONE_LINER = `curl -sL ttp.amirks.eu/install.sh | sh`;
 
 function CopyButton({ text, copiedLabel, copyLabel }: { text: string; copiedLabel: string; copyLabel: string }) {
   const [copied, setCopied] = useState(false);
@@ -48,18 +46,17 @@ function CopyButton({ text, copiedLabel, copyLabel }: { text: string; copiedLabe
   );
 }
 
-export function InstallGuide({ version = "1.2.0", translations }: InstallGuideProps) {
-  const MAC_ONE_LINER = makeMacOneLiner(version);
+export function InstallGuide({ translations }: InstallGuideProps) {
   const t = {
     heading: translations?.heading ?? "Installation",
-    subheading: translations?.subheading ?? "First launch requires one extra step on macOS and Windows.",
+    subheading: translations?.subheading ?? "Install TTP with a single command in your terminal.",
     whyTitle: translations?.whyTitle ?? "Why does this happen?",
     whyText: translations?.whyText ?? "TTP is free and open source. Apple and Microsoft charge developers hundreds of dollars per year for a certificate that removes security warnings. We chose to keep TTP free instead. The app is fully open source — you can inspect every line of code on GitHub.",
     macTab: translations?.macTab ?? "macOS",
     winTab: translations?.winTab ?? "Windows",
     macAlreadyTitle: translations?.macAlreadyTitle ?? "Already downloaded? Open Terminal and run:",
     macAlreadyDesc: translations?.macAlreadyDesc ?? "This removes Apple's quarantine flag. That's it — the app opens normally after this.",
-    macOneLineTitle: translations?.macOneLineTitle ?? "Or install everything in one command:",
+    macOneLineTitle: translations?.macOneLineTitle ?? "Install with one command:",
     macOneLineDesc: translations?.macOneLineDesc ?? "Downloads TTP, installs it, removes the quarantine flag, and launches it. Works on Apple Silicon and Intel.",
     macAltTitle: translations?.macAltTitle ?? "Alternative: no Terminal needed",
     macAltStep1: translations?.macAltStep1 ?? "Open the app once (it will be blocked)",
@@ -89,16 +86,6 @@ export function InstallGuide({ version = "1.2.0", translations }: InstallGuidePr
         {t.subheading}
       </p>
 
-      {/* Why explanation */}
-      <div className="mt-10 w-full max-w-2xl rounded-xl border border-white/10 bg-white/[0.02] p-6">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
-          {t.whyTitle}
-        </h3>
-        <p className="mt-2 text-sm leading-relaxed text-slate-400">
-          {t.whyText}
-        </p>
-      </div>
-
       {/* OS Tabs */}
       <div className="mt-8 flex gap-2">
         <button
@@ -126,20 +113,8 @@ export function InstallGuide({ version = "1.2.0", translations }: InstallGuidePr
       {/* macOS content */}
       {activeTab === "mac" && (
         <div className="mt-6 w-full max-w-2xl space-y-6">
-          {/* Option 1: xattr command */}
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
-            <h3 className="text-sm font-semibold text-white">{t.macAlreadyTitle}</h3>
-            <div className="mt-3 flex items-center gap-3 rounded-lg bg-black/40 px-4 py-3">
-              <code className="flex-1 overflow-x-auto text-sm text-emerald-400 whitespace-nowrap">
-                {MAC_XATTR_CMD}
-              </code>
-              <CopyButton text={MAC_XATTR_CMD} copiedLabel={t.copied} copyLabel={t.clickToCopy} />
-            </div>
-            <p className="mt-2 text-xs text-slate-500">{t.macAlreadyDesc}</p>
-          </div>
-
-          {/* Option 2: One-liner */}
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
+          {/* Primary: One-liner install */}
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.03] p-6">
             <h3 className="text-sm font-semibold text-white">{t.macOneLineTitle}</h3>
             <div className="mt-3 flex items-start gap-3 rounded-lg bg-black/40 px-4 py-3">
               <code className="flex-1 overflow-x-auto text-sm text-emerald-400 whitespace-nowrap">
@@ -150,7 +125,7 @@ export function InstallGuide({ version = "1.2.0", translations }: InstallGuidePr
             <p className="mt-2 text-xs text-slate-500">{t.macOneLineDesc}</p>
           </div>
 
-          {/* Option 3: No terminal */}
+          {/* Alternative: no terminal */}
           <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
             <h3 className="text-sm font-semibold text-white">{t.macAltTitle}</h3>
             <ol className="mt-3 space-y-2 text-sm text-slate-400">
@@ -167,6 +142,16 @@ export function InstallGuide({ version = "1.2.0", translations }: InstallGuidePr
                 {t.macAltStep3}
               </li>
             </ol>
+          </div>
+
+          {/* Why explanation */}
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
+              {t.whyTitle}
+            </h3>
+            <p className="mt-2 text-sm leading-relaxed text-slate-400">
+              {t.whyText}
+            </p>
           </div>
         </div>
       )}

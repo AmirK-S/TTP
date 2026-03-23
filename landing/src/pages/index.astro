@@ -2,7 +2,6 @@
 import Layout from '@/layouts/Layout.astro';
 import Navbar from '@/components/Navbar.astro';
 import HeroSection from '@/components/HeroSection.astro';
-import { DownloadSection } from '@/components/DownloadSection';
 import { InstallGuide } from '@/components/InstallGuide';
 import HowItWorks from '@/components/HowItWorks.astro';
 import FeaturesGrid from '@/components/FeaturesGrid.astro';
@@ -15,15 +14,8 @@ import { fetchGitHubData } from '@/lib/github';
 const lang = getLangFromUrl(Astro.url);
 const t = useTranslations(lang);
 
-const { downloadLinks, totalDownloads, changelog } = await fetchGitHubData();
+const { totalDownloads, changelog } = await fetchGitHubData();
 const latestVersion = changelog[0]?.tag_name?.replace(/^v/, '') ?? '1.2.0';
-
-const downloadTranslations = {
-  heading: t('download.heading'),
-  subheading: t('download.subheading'),
-  downloads: t('download.downloads'),
-  downloadFor: t('download.downloadFor'),
-};
 
 const installTranslations = {
   heading: t('install.heading'),
@@ -59,12 +51,9 @@ const changelogTranslations = {
 <Layout title="TTP - Talk To Paste | Turn Speech into Text Anywhere">
   <Navbar />
   <main>
-    <HeroSection macDownload={downloadLinks.mac} windowsDownload={downloadLinks.windows} />
+    <HeroSection />
 
-    <!-- Download section with OS detection and GitHub API integration -->
-    <DownloadSection client:visible downloadLinks={downloadLinks} totalDownloads={totalDownloads} translations={downloadTranslations} locale={lang} />
-
-    <!-- Install Guide: macOS/Windows first-launch instructions -->
+    <!-- Install Guide: terminal installation -->
     <InstallGuide client:visible version={latestVersion} translations={installTranslations} />
 
     <!-- How It Works: 3-step visual guide -->

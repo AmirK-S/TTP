@@ -79,14 +79,14 @@ export const ui = {
 
     // Install Guide
     'install.heading': 'Installation',
-    'install.subheading': 'First launch requires one extra step on macOS and Windows.',
+    'install.subheading': 'Install TTP with a single command in your terminal.',
     'install.whyTitle': 'Why does this happen?',
     'install.whyText': "TTP is free and open source. Apple and Microsoft charge developers hundreds of dollars per year for a certificate that removes security warnings. We chose to keep TTP free instead. The app is fully open source \u2014 you can inspect every line of code on GitHub.",
     'install.macTab': 'macOS',
     'install.winTab': 'Windows',
     'install.macAlreadyTitle': 'Already downloaded? Open Terminal and run:',
     'install.macAlreadyDesc': "This removes Apple's quarantine flag. That's it \u2014 the app opens normally after this.",
-    'install.macOneLineTitle': 'Or install everything in one command:',
+    'install.macOneLineTitle': 'Install with one command:',
     'install.macOneLineDesc': 'Downloads TTP, installs it, removes the quarantine flag, and launches it. Works on Apple Silicon and Intel.',
     'install.macAltTitle': 'Alternative: no Terminal needed',
     'install.macAltStep1': 'Open the app once (it will be blocked)',
@@ -224,14 +224,14 @@ export const ui = {
 
     // Install Guide
     'install.heading': 'Installation',
-    'install.subheading': 'Le premier lancement demande une petite \u00e9tape sur macOS et Windows.',
+    'install.subheading': 'Installez TTP avec une seule commande dans votre terminal.',
     'install.whyTitle': 'Pourquoi cette \u00e9tape ?',
     'install.whyText': "TTP est gratuit et open source. Apple et Microsoft facturent des centaines d'euros par an pour un certificat qui supprime les alertes de s\u00e9curit\u00e9. On a pr\u00e9f\u00e9r\u00e9 garder TTP gratuit. L'app est enti\u00e8rement open source \u2014 vous pouvez inspecter chaque ligne de code sur GitHub.",
     'install.macTab': 'macOS',
     'install.winTab': 'Windows',
     'install.macAlreadyTitle': 'D\u00e9j\u00e0 t\u00e9l\u00e9charg\u00e9 ? Ouvrez le Terminal et lancez :',
     'install.macAlreadyDesc': "Cela supprime le blocage d'Apple. C'est tout \u2014 l'app s'ouvre normalement apr\u00e8s \u00e7a.",
-    'install.macOneLineTitle': 'Ou installez tout en une commande :',
+    'install.macOneLineTitle': 'Installez en une commande :',
     'install.macOneLineDesc': 'T\u00e9l\u00e9charge TTP, l\'installe, supprime le blocage et le lance. Fonctionne sur Apple Silicon et Intel.',
     'install.macAltTitle': 'Alternative : sans Terminal',
     'install.macAltStep1': "Ouvrez l'app une premi\u00e8re fois (elle sera bloqu\u00e9e)",

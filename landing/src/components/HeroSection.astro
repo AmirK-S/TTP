@@ -4,12 +4,6 @@ import { ShimmerButton } from '@/components/magicui/shimmer-button';
 import ScreenshotMockup from '@/components/ScreenshotMockup.astro';
 import { getLangFromUrl, useTranslations, getLocalizedPath } from '@/i18n/utils';
 
-interface Props {
-  macDownload?: string;
-  windowsDownload?: string;
-}
-
-const { macDownload = '', windowsDownload = '' } = Astro.props;
 const lang = getLangFromUrl(Astro.url);
 const t = useTranslations(lang);
 ---
@@ -38,9 +32,7 @@ const t = useTranslations(lang);
     <div class="mt-10">
       <a
         id="hero-cta"
-        href={getLocalizedPath(lang, '#download')}
-        data-mac={macDownload}
-        data-win={windowsDownload}
+        href={getLocalizedPath(lang, '#install')}
       >
         <ShimmerButton
           client:load
@@ -72,22 +64,6 @@ const t = useTranslations(lang);
   </div>
 </section>
 
-<script is:inline>
-(function(){
-  var cta=document.getElementById('hero-cta');
-  if(!cta)return;
-  var ua=navigator.userAgent||navigator.platform||'';
-  var mac=cta.getAttribute('data-mac');
-  var win=cta.getAttribute('data-win');
-  var url='';
-  if(/Mac/i.test(ua)&&mac){url=mac}
-  else if(/Win/i.test(ua)&&win){url=win}
-  if(url){
-    cta.href=url;
-    document.querySelectorAll('[data-download-link]').forEach(function(el){el.href=url});
-  }
-})();
-</script>
 
 <script>
   import gsap from "gsap";
