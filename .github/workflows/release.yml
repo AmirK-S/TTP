@@ -51,6 +51,14 @@ jobs:
       - name: Install opus dependencies (macOS)
         if: matrix.platform == 'macos-latest'
         run: brew install cmake opus pkg-config
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+
+      - name: Set cross-compile env for x86_64 macOS
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: |
+          echo "OPUS_NO_PKG_CONFIG=1" >> $GITHUB_ENV
+          echo "CMAKE_POLICY_VERSION_MINIMUM=3.5" >> $GITHUB_ENV
 
       - name: Install frontend dependencies
         run: npm ci
