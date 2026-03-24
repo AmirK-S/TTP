@@ -42,7 +42,7 @@ const HALLUCINATIONS: &[&str] = &[
 ];
 
 use crate::logging::log_error;
-use super::{convert::convert_to_mono_16khz, polish_text, transcribe_audio};
+use super::{convert::{convert_to_mono_16khz, convert_to_ogg_opus}, polish_text, transcribe_audio};
 
 /// Progress event sent to frontend during transcription pipeline
 #[derive(Clone, serde::Serialize)]
@@ -106,6 +106,56 @@ fn is_hallucination(text: &str) -> bool {
         .any(|h| lower == *h || lower.trim_end_matches('.') == *h)
 }
 
+/// Strip LLM wrapper/comparison format from polish output
+///
+/// When the LLM returns something like:
+///   "Voici la version corrigée : texte nettoyé"
+///   "Original: ... → Corrected: ..."
+/// This function tries to extract just the cleaned text.
+fn strip_llm_wrapper(text: &str) -> String {
+    let text = text.trim();
+
+    // Pattern: "label: actual text" — take everything after the last colon-prefixed label
+    // Look for common prefixes and strip them
+    let prefixes = [
+        "voici la version corrigée :",
+        "voici la version corrigée:",
+        "voici le texte corrigé :",
+        "voici le texte corrigé:",
+        "voici le texte nettoyé :",
+        "voici le texte nettoyé:",
+        "corrected version:",
+        "cleaned version:",
+        "cleaned text:",
+        "corrected text:",
+        "corrected:",
+        "here is the cleaned version:",
+        "here is the corrected version:",
+    ];
+
+    let lower = text.to_lowercase();
+    for prefix in &prefixes {
+        if let Some(pos) = lower.find(prefix) {
+            let after = &text[pos + prefix.len()..].trim();
+            if !after.is_empty() {
+                // Strip surrounding quotes if present
+                let after = after.trim_matches('"').trim_matches('«').trim_matches('»').trim();
+                return after.to_string();
+            }
+        }
+    }
+
+    // Pattern: text wrapped in quotes — strip outer quotes
+    if (text.starts_with('"') && text.ends_with('"'))
+        || (text.starts_with('«') && text.ends_with('»'))
+    {
+        return text[1..text.len() - 1].trim().to_string();
+    }
+
+    // Fallback: return as-is
+    text.to_string()
+}
+
 /// Main pipeline function: process a completed recording
 ///
 /// Orchestrates the flow:
@@ -162,6 +212,21 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     };
     let use_converted = converted_path != audio_path;
 
+    // Compress to OGG Opus for smaller upload (graceful degradation: fall back to WAV)
+    let ogg_path = match convert_to_ogg_opus(&converted_path) {
+        Ok(path) => {
+            eprintln!("[Pipeline] OGG Opus encoding succeeded: {}", path);
+            Some(path)
+        }
+        Err(e) => {
+            eprintln!("[Pipeline] OGG Opus encoding failed, using WAV: {}", e);
+            None
+        }
+    };
+
+    // Use OGG if available, otherwise the converted WAV
+    let final_upload_path = ogg_path.clone().unwrap_or_else(|| converted_path.clone());
+
     // AUDI-05: If conversion failed and original exceeds 25MB, reject early
     if !use_converted && file_size > MAX_AUDIO_SIZE {
         let original_mb = file_size as f64 / 1_000_000.0;
@@ -182,16 +247,16 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     }
 
     // Check size AFTER conversion (raw WAV can be large but converts down)
-    let final_size = if use_converted {
-        std::fs::metadata(&converted_path).map(|m| m.len()).unwrap_or(file_size)
-    } else {
-        file_size
-    };
+    let final_size = std::fs::metadata(&final_upload_path)
+        .map(|m| m.len())
+        .unwrap_or(file_size);
     let final_mb = final_size as f64 / 1_000_000.0;
 
     if final_size > MAX_AUDIO_SIZE {
         let _ = std::fs::remove_file(&audio_path);
         if use_converted { let _ = std::fs::remove_file(&converted_path); }
+        if let Some(ref ogg) = ogg_path { let _ = std::fs::remove_file(ogg); }
+
         emit_progress(
             app,
             "error",
@@ -204,8 +269,8 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         return Err(format!("Audio too large: {:.1}MB exceeds API limit", final_mb));
     }
 
-    // Use converted path for transcription
-    let transcription_path = &converted_path;
+    // Use the converted mono 16kHz WAV for transcription
+    let transcription_path = &final_upload_path;
 
     // Load settings
     let settings = get_settings();
@@ -250,10 +315,52 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         }
     };
 
+    // Build Whisper prompt from dictionary corrections to bias transcription
+    let whisper_prompt = {
+        let entries = crate::dictionary::store::get_dictionary();
+        if entries.is_empty() {
+            None
+        } else {
+            // Collect unique correction values
+            let mut corrections: Vec<String> = entries
+                .iter()
+                .map(|e| e.correction.clone())
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .collect();
+            corrections.sort();
+
+            // Build prompt string, staying under ~200 tokens (~800 chars conservative estimate)
+            let prefix = "Glossary: ";
+            let mut prompt = prefix.to_string();
+            let mut first = true;
+            for word in &corrections {
+                let addition = if first {
+                    word.len()
+                } else {
+                    2 + word.len() // ", " + word
+                };
+                if prompt.len() + addition > 800 {
+                    break;
+                }
+                if !first {
+                    prompt.push_str(", ");
+                }
+                prompt.push_str(word);
+                first = false;
+            }
+            if prompt.len() > prefix.len() {
+                Some(prompt)
+            } else {
+                None
+            }
+        }
+    };
+
     // Stage 1: Transcribe audio via Groq Whisper
     emit_progress(app, "transcribing", "Transcribing...");
 
-    let raw_text = match transcribe_audio(&api_key, transcription_path).await {
+    let raw_text = match transcribe_audio(&api_key, transcription_path, whisper_prompt.as_deref()).await {
         Ok(text) => text,
         Err(e) => {
             // AUDI-02: Do NOT delete the original audio on API failure.
@@ -292,6 +399,8 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     if raw_text.trim().is_empty() {
         let _ = std::fs::remove_file(&audio_path);
         if use_converted { let _ = std::fs::remove_file(&converted_path); }
+        if let Some(ref ogg) = ogg_path { let _ = std::fs::remove_file(ogg); }
+
         if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
         emit_progress(app, "error", "No speech detected");
         notify(app, "No speech detected");
@@ -304,6 +413,8 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     if is_hallucination(&raw_text) {
         let _ = std::fs::remove_file(&audio_path);
         if use_converted { let _ = std::fs::remove_file(&converted_path); }
+        if let Some(ref ogg) = ogg_path { let _ = std::fs::remove_file(ogg); }
+
         if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
         emit_progress(app, "error", "No speech detected");
         crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
@@ -316,6 +427,8 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     if raw_text.trim().len() < 10 {
         let _ = std::fs::remove_file(&audio_path);
         if use_converted { let _ = std::fs::remove_file(&converted_path); }
+        if let Some(ref ogg) = ogg_path { let _ = std::fs::remove_file(ogg); }
+
         if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
         emit_progress(app, "error", "Recording too short");
         crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "too_short", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
@@ -343,6 +456,19 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                     || lower.contains("it seems like")
                     || lower.contains("i'd be happy to");
 
+                // Detect LLM showing "original → corrected" comparison format
+                let is_comparison = lower.contains("version corrigée")
+                    || lower.contains("corrected version")
+                    || lower.contains("cleaned version")
+                    || lower.contains("here is the")
+                    || lower.contains("voici la version")
+                    || lower.contains("voici le texte")
+                    || lower.contains("original:")
+                    || lower.contains("corrected:")
+                    || lower.contains("original text")
+                    || lower.contains("cleaned text")
+                    || (lower.contains("→") && lower.contains("\""));
+
                 // Also suspect if output is much longer than input (LLM adding content)
                 let length_ratio = text.len() as f32 / raw_text.len().max(1) as f32;
                 let is_too_long = length_ratio > 3.0 && text.len() > 50;
@@ -350,6 +476,12 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 if is_llm_help || is_too_long {
                     eprintln!("[Pipeline] LLM returned suspicious response, using raw text");
                     raw_text.clone()
+                } else if is_comparison {
+                    // LLM returned a comparison format — try to extract just the cleaned part
+                    // If the response starts with quotes or a label, strip it
+                    let cleaned = strip_llm_wrapper(&text);
+                    eprintln!("[Pipeline] LLM returned comparison format, extracted: {}", &cleaned[..cleaned.len().min(80)]);
+                    cleaned
                 } else {
                     text
                 }
@@ -470,6 +602,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // Clean up audio files after processing
     let _ = std::fs::remove_file(&audio_path);
     if use_converted { let _ = std::fs::remove_file(&converted_path); }
+    if let Some(ref ogg) = ogg_path { let _ = std::fs::remove_file(ogg); }
 
     // AUDI-02: Delete backup only after successful transcription
     if let Some(ref bp) = backup_path {

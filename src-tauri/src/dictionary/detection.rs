@@ -4,7 +4,9 @@
 // After pasting, waits 10 seconds then reads back the focused text field
 // using macOS Accessibility API. Compares with original to detect corrections.
 
+use super::classify::classify_correction;
 use super::store::add_entry;
+use crate::credentials::get_groq_api_key_internal;
 use crate::paste::read_focused_text;
 use tauri::{AppHandle, Emitter};
 use tokio::time::{sleep, Duration};
@@ -46,12 +48,43 @@ pub fn start_correction_window(app: &AppHandle, pasted_text: String) {
 
             // Compare with pasted text
             if let Some(corrections) = detect_corrections(&pasted_text, &current_text) {
+                // Get API key for LLM classification gate
+                let api_key = match get_groq_api_key_internal(&app_handle) {
+                    Ok(Some(key)) => Some(key),
+                    _ => None,
+                };
+
                 let mut added = false;
                 for (original, correction) in &corrections {
-                    if let Err(e) = add_entry(original, correction) {
-                        eprintln!("[Detection] Failed to add dictionary entry: {}", e);
+                    // LLM validation gate: classify before adding
+                    let should_learn = if let Some(ref key) = api_key {
+                        match classify_correction(key, original, correction, &current_text).await {
+                            Ok(true) => {
+                                eprintln!("[Detection] LLM classified '{}' → '{}' as LEARN", original, correction);
+                                true
+                            }
+                            Ok(false) => {
+                                eprintln!("[Detection] LLM classified '{}' → '{}' as IGNORE, skipping", original, correction);
+                                false
+                            }
+                            Err(e) => {
+                                // Fail closed: do not add if LLM call fails
+                                eprintln!("[Detection] LLM classification failed for '{}' → '{}': {}, skipping", original, correction, e);
+                                false
+                            }
+                        }
                     } else {
-                        added = true;
+                        // No API key available — fail closed, skip entry
+                        eprintln!("[Detection] No API key available for LLM classification, skipping '{}' → '{}'", original, correction);
+                        false
+                    };
+
+                    if should_learn {
+                        if let Err(e) = add_entry(original, correction) {
+                            eprintln!("[Detection] Failed to add dictionary entry: {}", e);
+                        } else {
+                            added = true;
+                        }
                     }
                 }
                 // Notify frontend that dictionary changed
@@ -69,25 +102,50 @@ pub fn start_correction_window(app: &AppHandle, pasted_text: String) {
     });
 }
 
+/// Common stop words that should never be treated as corrections.
+/// These are short grammar/context words in French and English that users
+/// frequently edit for grammatical reasons, not because of transcription errors.
+const STOP_WORDS: &[&str] = &[
+    "le", "la", "les", "de", "du", "des", "un", "une", "et", "ou", "en", "au", "aux", "ce", "se",
+    "ne", "que", "qui", "the", "a", "an", "is", "are", "was", "were", "be", "to", "of", "in",
+    "it", "for", "on", "at",
+];
+
+/// Check if a word is a common stop word
+fn is_stop_word(word: &str) -> bool {
+    STOP_WORDS.contains(&word.to_lowercase().as_str())
+}
+
 /// Check if a word change looks like a real spelling correction vs noise
 ///
-/// A real correction is: "Grok" → "Groq", "john" → "John", "parris" → "Paris"
-/// NOT a correction: "donne" → "donne.Magnifique", "marche" → "ma"
+/// A real correction is: "Whysper" → "Whisper", "parris" → "Paris"
+/// NOT a correction: "donne" → "donne.Magnifique", "marche" → "ma",
+/// "bonjour" → "Bonjour" (case-only), "du" → "de" (stop words)
 fn is_valid_correction(orig: &str, curr: &str) -> bool {
     let orig_lower = orig.to_lowercase();
     let curr_lower = curr.to_lowercase();
 
-    // Both words must be at least 2 characters
-    if orig.len() < 2 || curr.len() < 2 {
+    // Both words must be at least 3 characters
+    // Two-letter words like "du", "de", "je" are grammar words, not transcription errors
+    if orig.len() < 3 || curr.len() < 3 {
+        return false;
+    }
+
+    // Reject case-only differences — the LLM already handles capitalization
+    // e.g. "bonjour" → "Bonjour" should not be a dictionary entry
+    if orig_lower == curr_lower {
+        return false;
+    }
+
+    // Reject if either word is a common stop word
+    // Stop words are edited for grammar, not transcription correction
+    if is_stop_word(orig) || is_stop_word(curr) {
         return false;
     }
 
     // Reject if one is a proper substring of the other (user concatenated text)
     // e.g. "donne" → "donne.Magnifique" or "test" → "testing"
-    // But allow case-only changes like "Kellou" → "KELLOU" (same length)
-    if orig_lower != curr_lower
-        && (curr_lower.contains(&orig_lower) || orig_lower.contains(&curr_lower))
-    {
+    if curr_lower.contains(&orig_lower) || orig_lower.contains(&curr_lower) {
         return false;
     }
 
@@ -98,9 +156,16 @@ fn is_valid_correction(orig: &str, curr: &str) -> bool {
         return false;
     }
 
-    // Similarity must be at least 0.5 (stricter than before)
+    // Reject if both words are short (< 5 chars) and have low similarity (< 0.8)
+    // Short common words being swapped are almost always false positives
     let sim = calculate_similarity(orig, curr);
-    if sim < 0.5 {
+    if orig.len() < 5 && curr.len() < 5 && sim < 0.8 {
+        return false;
+    }
+
+    // Similarity must be at least 0.65
+    // 0.5 was too low and allowed unrelated words like "fait" → "fais"
+    if sim < 0.65 {
         return false;
     }
 
@@ -174,6 +239,10 @@ fn detect_corrections(pasted: &str, current: &str) -> Option<Vec<(String, String
     }
 
     if corrections.is_empty() {
+        None
+    } else if corrections.len() > 2 {
+        // Too many corrections in a single window — the user is likely rewriting
+        // text, not correcting transcription errors. Discard all.
         None
     } else {
         Some(corrections)
@@ -291,13 +360,13 @@ mod tests {
     #[test]
     fn test_detect_corrections_basic() {
         let corrections = detect_corrections(
-            "J'utilise Grok pour la transcription.",
-            "J'utilise Groq pour la transcription.",
+            "J'utilise Whysper pour la transcription.",
+            "J'utilise Whisper pour la transcription.",
         );
         assert!(corrections.is_some());
         let c = corrections.unwrap();
         assert_eq!(c.len(), 1);
-        assert_eq!(c[0], ("Grok".to_string(), "Groq".to_string()));
+        assert_eq!(c[0], ("Whysper".to_string(), "Whisper".to_string()));
     }
 
     #[test]
@@ -307,10 +376,11 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_multiple_corrections() {
+    fn test_detect_two_corrections() {
+        // Two corrections is within the limit (max 2)
         let corrections = detect_corrections(
-            "I met jon and went to parris",
-            "I met John and went to Paris",
+            "I visited Barlin and saw the Colloseum",
+            "I visited Berlin and saw the Colosseum",
         );
         assert!(corrections.is_some());
         let c = corrections.unwrap();
@@ -318,8 +388,20 @@ mod tests {
     }
 
     #[test]
+    fn test_reject_too_many_corrections() {
+        // More than 2 corrections means user is rewriting, not correcting
+        let corrections = detect_corrections(
+            "I visited Barlin and saw Colloseum near Buckingam Palace",
+            "I visited Berlin and saw Colosseum near Buckingham Palace",
+        );
+        // 3 valid corrections: Barlin→Berlin, Colloseum→Colosseum, Buckingam→Buckingham
+        // This exceeds the limit of 2, so it should return None
+        assert!(corrections.is_none());
+    }
+
+    #[test]
     fn test_similarity() {
-        assert!(calculate_similarity("Grok", "Groq") > 0.5);
+        assert!(calculate_similarity("Grok", "Groq") > 0.65);
         assert!(calculate_similarity("john", "John") == 1.0);
         assert!(calculate_similarity("abc", "xyz") < 0.3);
     }
@@ -341,14 +423,46 @@ mod tests {
     fn test_reject_short_words() {
         // Single character words should not be corrections
         assert!(!is_valid_correction("a", "I"));
+        // Two-character words should also be rejected now (min length = 3)
+        assert!(!is_valid_correction("du", "de"));
+        assert!(!is_valid_correction("je", "le"));
+    }
+
+    #[test]
+    fn test_reject_case_only_differences() {
+        // Case-only changes should NOT be dictionary entries
+        // The LLM already handles capitalization
+        assert!(!is_valid_correction("bonjour", "Bonjour"));
+        assert!(!is_valid_correction("Kellou", "KELLOU"));
+        assert!(!is_valid_correction("AmirKs", "AmirKS"));
+        assert!(!is_valid_correction("hello", "HELLO"));
+    }
+
+    #[test]
+    fn test_reject_stop_words() {
+        // Stop words should never be treated as corrections
+        assert!(!is_valid_correction("les", "des"));
+        assert!(!is_valid_correction("the", "teh")); // "the" is a stop word
+        assert!(!is_valid_correction("fait", "for")); // "for" is a stop word
+        assert!(!is_valid_correction("are", "ore"));
+    }
+
+    #[test]
+    fn test_reject_short_low_similarity() {
+        // Both words < 5 chars with similarity < 0.8 should be rejected
+        // These are grammar variations, not transcription errors
+        assert!(!is_valid_correction("fait", "fais"));
+        assert!(!is_valid_correction("mais", "mois"));
+        assert!(!is_valid_correction("Grok", "Groq")); // both 4 chars, sim 0.75 < 0.8
     }
 
     #[test]
     fn test_accept_real_corrections() {
-        assert!(is_valid_correction("Grok", "Groq"));
-        assert!(is_valid_correction("parris", "Paris"));
-        assert!(is_valid_correction("Kellou", "KELLOU"));
-        assert!(is_valid_correction("AmirKs", "AmirKS"));
+        assert!(is_valid_correction("parris", "Paris")); // transcription error (6 chars)
+        assert!(is_valid_correction("Whysper", "Whisper")); // brand name transcription error
+        assert!(is_valid_correction("resultats", "résultats")); // accent correction
+        assert!(is_valid_correction("transcription", "transcripcion")); // long word, clear error
+        assert!(is_valid_correction("Barlin", "Berlin")); // city name transcription error
     }
 
     #[test]

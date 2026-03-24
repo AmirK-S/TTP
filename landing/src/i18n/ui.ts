@@ -79,7 +79,7 @@ export const ui = {
 
     // Install Guide
     'install.heading': 'Installation',
-    'install.subheading': 'Install TTP with a single command in your terminal.',
+    'install.subheading': 'Get TTP up and running in seconds.',
     'install.whyTitle': 'Why does this happen?',
     'install.whyText': "TTP is free and open source. Apple and Microsoft charge developers hundreds of dollars per year for a certificate that removes security warnings. We chose to keep TTP free instead. The app is fully open source \u2014 you can inspect every line of code on GitHub.",
     'install.macTab': 'macOS',
@@ -92,6 +92,10 @@ export const ui = {
     'install.macAltStep1': 'Open the app once (it will be blocked)',
     'install.macAltStep2': 'Go to System Settings \u2192 Privacy & Security',
     'install.macAltStep3': 'Click "Open Anyway" and enter your password',
+    'install.winDownloadTitle': 'Download for Windows:',
+    'install.winDownloadButton': 'Download TTP for Windows',
+    'install.winDownloadDesc': 'Downloads the installer (.exe). Run it to install TTP.',
+    'install.winSmartScreenTitle': 'Windows SmartScreen warning',
     'install.winDesc': 'Windows SmartScreen may show a warning on first launch.',
     'install.winStep1': 'Click "More info"',
     'install.winStep2': 'Click "Run anyway"',
@@ -224,7 +228,7 @@ export const ui = {
 
     // Install Guide
     'install.heading': 'Installation',
-    'install.subheading': 'Installez TTP avec une seule commande dans votre terminal.',
+    'install.subheading': 'Installez TTP en quelques secondes.',
     'install.whyTitle': 'Pourquoi cette \u00e9tape ?',
     'install.whyText': "TTP est gratuit et open source. Apple et Microsoft facturent des centaines d'euros par an pour un certificat qui supprime les alertes de s\u00e9curit\u00e9. On a pr\u00e9f\u00e9r\u00e9 garder TTP gratuit. L'app est enti\u00e8rement open source \u2014 vous pouvez inspecter chaque ligne de code sur GitHub.",
     'install.macTab': 'macOS',
@@ -237,6 +241,10 @@ export const ui = {
     'install.macAltStep1': "Ouvrez l'app une premi\u00e8re fois (elle sera bloqu\u00e9e)",
     'install.macAltStep2': 'Allez dans R\u00e9glages Syst\u00e8me \u2192 Confidentialit\u00e9 et s\u00e9curit\u00e9',
     'install.macAltStep3': 'Cliquez sur \u00ab Ouvrir quand m\u00eame \u00bb et entrez votre mot de passe',
+    'install.winDownloadTitle': 'T\u00e9l\u00e9charger pour Windows :',
+    'install.winDownloadButton': 'T\u00e9l\u00e9charger TTP pour Windows',
+    'install.winDownloadDesc': "T\u00e9l\u00e9charge l'installateur (.exe). Lancez-le pour installer TTP.",
+    'install.winSmartScreenTitle': 'Avertissement Windows SmartScreen',
     'install.winDesc': 'Windows SmartScreen peut afficher un avertissement au premier lancement.',
     'install.winStep1': 'Cliquez sur \u00ab Informations compl\u00e9mentaires \u00bb',
     'install.winStep2': 'Cliquez sur \u00ab Ex\u00e9cuter quand m\u00eame \u00bb',

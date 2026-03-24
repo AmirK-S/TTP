@@ -65,18 +65,63 @@ pub fn mark_first_launch_complete_cmd() -> Result<(), String> {
     mark_first_launch_complete()
 }
 
-/// Request microphone permission - opens System Settings for the user to grant access
+/// Request microphone permission - triggers the native macOS permission prompt
 #[command]
 pub fn request_microphone_permission() -> Result<PermissionStatus, String> {
     #[cfg(target_os = "macos")]
     {
-        use std::process::Command;
+        use objc::{class, msg_send, sel, sel_impl};
+        use std::sync::mpsc;
 
-        // Open System Settings > Privacy & Security > Microphone
-        Command::new("open")
-            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
-            .spawn()
-            .map_err(|e| format!("Failed to open microphone settings: {}", e))?;
+        #[link(name = "AVFoundation", kind = "framework")]
+        extern "C" {}
+
+        // First check current status
+        let current = check_microphone_permission_impl();
+        match current {
+            PermissionStatus::Undetermined => {
+                // Trigger the native permission dialog via AVCaptureDevice.requestAccessForMediaType
+                let (tx, rx) = mpsc::channel();
+                unsafe {
+                    let media_type_audio: cocoa::base::id =
+                        msg_send![class!(NSString), stringWithUTF8String: b"soun\0".as_ptr()];
+
+                    let block = block::ConcreteBlock::new(move |granted: bool| {
+                        let _ = tx.send(granted);
+                    });
+                    let block = block.copy();
+
+                    let _: () = msg_send![
+                        class!(AVCaptureDevice),
+                        requestAccessForMediaType: media_type_audio
+                        completionHandler: &*block
+                    ];
+                }
+
+                // Wait up to 30 seconds for user response
+                match rx.recv_timeout(std::time::Duration::from_secs(30)) {
+                    Ok(granted) => {
+                        if granted {
+                            return Ok(PermissionStatus::Granted);
+                        } else {
+                            return Ok(PermissionStatus::Denied);
+                        }
+                    }
+                    Err(_) => {
+                        return Ok(check_microphone_permission_impl());
+                    }
+                }
+            }
+            PermissionStatus::Denied => {
+                // Already denied - open System Settings so user can toggle it
+                use std::process::Command;
+                Command::new("open")
+                    .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+                    .spawn()
+                    .map_err(|e| format!("Failed to open microphone settings: {}", e))?;
+            }
+            PermissionStatus::Granted => {}
+        }
     }
 
     // Return current status

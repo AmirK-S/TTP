@@ -44,6 +44,10 @@ jobs:
         with:
           workspaces: src-tauri -> target
 
+      - name: Install opus dependencies (macOS)
+        if: matrix.platform == 'macos-latest'
+        run: brew install cmake opus pkg-config
+
       - name: Install frontend dependencies
         run: npm ci
 

@@ -4,6 +4,7 @@
 // Enables TTP to learn from user corrections of proper nouns (names, places,
 // specialized terms) and improve future transcription accuracy.
 
+pub mod classify;
 pub mod detection;
 pub mod store;
 

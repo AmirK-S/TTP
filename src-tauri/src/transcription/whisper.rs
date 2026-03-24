@@ -27,8 +27,8 @@ const BASE_TIMEOUT_SECS: u64 = 30;
 /// # Returns
 /// * `Ok(String)` - Transcription text on success
 /// * `Err(String)` - Error message on failure
-pub async fn transcribe_audio(api_key: &str, audio_path: &str) -> Result<String, String> {
-    transcribe_with_provider(api_key, audio_path, GROQ_TRANSCRIPTION_URL, "whisper-large-v3", "Groq").await
+pub async fn transcribe_audio(api_key: &str, audio_path: &str, prompt: Option<&str>) -> Result<String, String> {
+    transcribe_with_provider(api_key, audio_path, GROQ_TRANSCRIPTION_URL, "whisper-large-v3", "Groq", prompt).await
 }
 
 /// Internal function to transcribe audio with a specific provider
@@ -40,6 +40,7 @@ async fn transcribe_with_provider(
     transcription_url: &str,
     model: &str,
     _provider_name: &str,
+    prompt: Option<&str>,
 ) -> Result<String, String> {
     // Convert model to owned String for Form::text (requires 'static)
     let model = model.to_string();
@@ -49,12 +50,18 @@ async fn transcribe_with_provider(
         .await
         .map_err(|e| format!("Failed to read audio file: {}", e))?;
 
-    // Get filename from path for the multipart form
+    // Get filename and MIME type from path for the multipart form
     let filename = Path::new(audio_path)
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("recording.wav")
         .to_string();
+
+    let mime_type = if filename.ends_with(".ogg") {
+        "audio/ogg"
+    } else {
+        "audio/wav"
+    };
 
     // Scale timeout based on file size: base + 2s per MB
     let file_mb = audio_bytes.len() as u64 / (1024 * 1024);
@@ -78,14 +85,18 @@ async fn transcribe_with_provider(
         // Build multipart form - need to recreate each attempt since Part consumes bytes
         let file_part = Part::bytes(audio_bytes.clone())
             .file_name(filename.clone())
-            .mime_str("audio/wav")
+            .mime_str(mime_type)
             .map_err(|e| format!("Failed to set MIME type: {}", e))?;
 
-        let form = Form::new()
+        let mut form = Form::new()
             .text("model", model.clone())
             .text("response_format", "text")
             .text("temperature", "0")
             .part("file", file_part);
+
+        if let Some(prompt_value) = prompt {
+            form = form.text("prompt", prompt_value.to_string());
+        }
 
         // Make the request
         match client

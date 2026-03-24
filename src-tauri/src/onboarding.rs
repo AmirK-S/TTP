@@ -22,7 +22,7 @@ pub fn show_onboarding(app: AppHandle) -> Result<(), String> {
         WebviewUrl::App("onboarding.html".into()),
     )
     .title("Welcome to Talk To Paste")
-    .inner_size(500.0, 400.0)
+    .inner_size(480.0, 600.0)
     .resizable(false)
     .center()
     .always_on_top(true)

@@ -14,7 +14,7 @@ import { fetchGitHubData } from '@/lib/github';
 const lang = getLangFromUrl(Astro.url);
 const t = useTranslations(lang);
 
-const { totalDownloads, changelog } = await fetchGitHubData();
+const { downloadLinks, totalDownloads, changelog } = await fetchGitHubData();
 const latestVersion = changelog[0]?.tag_name?.replace(/^v/, '') ?? '1.2.0';
 
 const installTranslations = {
@@ -32,6 +32,10 @@ const installTranslations = {
   macAltStep1: t('install.macAltStep1'),
   macAltStep2: t('install.macAltStep2'),
   macAltStep3: t('install.macAltStep3'),
+  winDownloadTitle: t('install.winDownloadTitle'),
+  winDownloadButton: t('install.winDownloadButton'),
+  winDownloadDesc: t('install.winDownloadDesc'),
+  winSmartScreenTitle: t('install.winSmartScreenTitle'),
   winDesc: t('install.winDesc'),
   winStep1: t('install.winStep1'),
   winStep2: t('install.winStep2'),
@@ -54,7 +58,7 @@ const changelogTranslations = {
     <HeroSection />
 
     <!-- Guide d'installation : installation via terminal -->
-    <InstallGuide client:visible version={latestVersion} translations={installTranslations} />
+    <InstallGuide client:visible version={latestVersion} windowsDownloadUrl={downloadLinks.windows} translations={installTranslations} />
 
     <!-- Comment ca marche : guide visuel en 3 etapes -->
     <HowItWorks />
