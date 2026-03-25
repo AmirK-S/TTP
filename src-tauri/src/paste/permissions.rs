@@ -146,10 +146,5 @@ pub fn reset_accessibility_tcc() -> Result<(), String> {
 /// Get the app's bundle identifier
 #[cfg(target_os = "macos")]
 fn get_bundle_id() -> Option<String> {
-    use core_foundation::base::TCFType;
-    use core_foundation::bundle::CFBundle;
-
-    let main_bundle = CFBundle::main_bundle();
-    let id = main_bundle.identifier()?;
-    Some(id.to_string())
+    Some("com.ttp.desktop".to_string())
 }
