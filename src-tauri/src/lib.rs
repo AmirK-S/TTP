@@ -26,10 +26,10 @@ use credentials::{
 use dictionary::{add_dictionary_entry, clear_dictionary, delete_dictionary_entry, get_dictionary};
 use history::{clear_history, get_history};
 use onboarding::{close_onboarding, show_onboarding};
-use paste::check_accessibility;
 use permissions::{
     check_microphone_permission, is_first_launch_cmd, mark_first_launch_complete_cmd,
-    check_accessibility_permission, request_accessibility_permission, PermissionStatus,
+    check_accessibility_permission, request_accessibility_permission,
+    reset_accessibility_permission, PermissionStatus,
 };
 use recording::{get_recordings_dir, RecordingContext};
 use settings::{get_settings, reset_settings, set_settings, open_settings_window};
@@ -182,14 +182,30 @@ pub fn run() {
             // Check accessibility permission (needed for paste simulation on macOS)
             #[cfg(target_os = "macos")]
             {
-                if !paste::check_accessibility() {
-                    // Send notification instead of opening System Preferences every time
+                let api_trusted = paste::check_accessibility();
+                let actually_works = paste::probe_accessibility();
+
+                if !api_trusted {
+                    // Not trusted at all — prompt via the system dialog
+                    paste::check_accessibility_with_prompt(true);
+                    let _ = app.handle().emit("accessibility-missing", ());
+                } else if !actually_works {
+                    // Stale trust entry (common after app update) — reset and re-prompt
+                    eprintln!(
+                        "[TTP] Accessibility trust is stale after update. Resetting TCC entry."
+                    );
+                    if let Err(e) = paste::reset_accessibility_tcc() {
+                        eprintln!("[TTP] Failed to reset TCC: {}", e);
+                    }
+                    // Small delay then re-prompt
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    paste::check_accessibility_with_prompt(true);
                     let _ = app.handle().emit("accessibility-missing", ());
                     use tauri_plugin_notification::NotificationExt;
                     let _ = app.notification()
                         .builder()
-                        .title("TTP — Accessibility Required")
-                        .body("TTP needs Accessibility permission to paste text. Go to System Settings → Privacy & Security → Accessibility and enable TTP.")
+                        .title("TTP — Accessibility Update Required")
+                        .body("TTP was updated and needs you to re-grant Accessibility permission. Please allow it in the dialog or go to System Settings → Privacy & Security → Accessibility.")
                         .show();
                 }
             }
@@ -274,6 +290,7 @@ pub fn run() {
             permissions::request_microphone_permission,
             check_accessibility_permission,
             request_accessibility_permission,
+            reset_accessibility_permission,
             show_onboarding,
             close_onboarding,
         ])

@@ -205,29 +205,74 @@ pub fn get_permission_instructions(status: &PermissionStatus) -> String {
 // Accessibility Permission
 // ============================================================================
 
-/// Check accessibility permission status
+/// Check accessibility permission status.
+///
+/// This does a two-level check on macOS:
+/// 1. AXIsProcessTrustedWithOptions — checks if the TCC database says we're trusted
+/// 2. probe_accessibility() — actually tries an AX API call to detect stale entries
+///
+/// After an app update, the binary hash changes and macOS may show the app as
+/// "enabled" in System Preferences while the actual AX calls fail. The probe
+/// detects this stale state so the UI can guide the user to re-grant access.
 #[command]
 pub fn check_accessibility_permission() -> PermissionStatus {
-    let granted = crate::paste::check_accessibility();
-    if granted {
+    #[cfg(target_os = "macos")]
+    {
+        let api_says_trusted = crate::paste::check_accessibility();
+
+        if !api_says_trusted {
+            return PermissionStatus::Denied;
+        }
+
+        // API says trusted — but verify with a real AX call to catch stale entries
+        if crate::paste::probe_accessibility() {
+            PermissionStatus::Granted
+        } else {
+            // Stale trust entry: TCC says yes, but AX calls fail.
+            // Return Denied so the UI prompts the user to fix it.
+            eprintln!(
+                "[Permissions] Accessibility trust is stale (TCC says trusted but AX calls fail). \
+                 This typically happens after an app update."
+            );
+            PermissionStatus::Denied
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
         PermissionStatus::Granted
-    } else {
-        PermissionStatus::Denied
     }
 }
 
-/// Request accessibility permission - opens System Settings
+/// Request accessibility permission.
+///
+/// Uses AXIsProcessTrustedWithOptions with the prompt flag, which triggers
+/// the native macOS dialog asking the user to grant accessibility. If the
+/// trust entry is stale (after an app update), it first resets the TCC entry
+/// so the user gets a clean prompt instead of seeing a confusing "already enabled"
+/// state.
 #[command]
 pub fn request_accessibility_permission() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        use std::process::Command;
+        let api_says_trusted = crate::paste::check_accessibility();
+        let actually_works = crate::paste::probe_accessibility();
 
-        // Open System Settings > Privacy & Security > Accessibility
-        Command::new("open")
-            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
-            .spawn()
-            .map_err(|e| format!("Failed to open accessibility settings: {}", e))?;
+        if api_says_trusted && !actually_works {
+            // Stale entry detected — reset TCC so the user gets a fresh prompt
+            eprintln!("[Permissions] Resetting stale accessibility TCC entry before re-prompting");
+            if let Err(e) = crate::paste::reset_accessibility_tcc() {
+                eprintln!("[Permissions] Failed to reset TCC entry: {}. Opening System Settings instead.", e);
+                // Fall back to opening System Settings
+                std::process::Command::new("open")
+                    .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+                    .spawn()
+                    .map_err(|e| format!("Failed to open accessibility settings: {}", e))?;
+                return Ok(());
+            }
+        }
+
+        // Prompt the user via the system dialog
+        crate::paste::check_accessibility_with_prompt(true);
 
         Ok(())
     }
@@ -235,5 +280,28 @@ pub fn request_accessibility_permission() -> Result<(), String> {
     #[cfg(not(target_os = "macos"))]
     {
         Ok(()) // No action needed on other platforms
+    }
+}
+
+/// Reset stale accessibility trust and re-prompt.
+/// Exposed as a Tauri command so the UI can trigger it explicitly.
+#[command]
+pub fn reset_accessibility_permission() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        // Reset the TCC entry
+        crate::paste::reset_accessibility_tcc()?;
+
+        // Small delay to let TCC process the reset
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        // Re-prompt
+        crate::paste::check_accessibility_with_prompt(true);
+
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(())
     }
 }

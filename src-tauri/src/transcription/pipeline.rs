@@ -19,9 +19,6 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 use tokio::time::sleep;
 
-/// Minimum audio file size in bytes (< 10KB is likely too short/silent)
-const MIN_AUDIO_SIZE: u64 = 10_000;
-
 /// Maximum audio file size in bytes (25MB Groq API limit)
 const MAX_AUDIO_SIZE: u64 = 25_000_000;
 
@@ -170,7 +167,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // Set state to Processing
     set_state(app, RecordingState::Processing);
 
-    // Check if audio file exists and has minimum size
+    // Check if audio file exists
     let audio_file = Path::new(&audio_path);
     let file_size = match std::fs::metadata(audio_file) {
         Ok(meta) => meta.len(),
@@ -181,14 +178,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             return Err(format!("Audio file error: {}", e));
         }
     };
-
-    if file_size < MIN_AUDIO_SIZE {
-        let _ = std::fs::remove_file(&audio_path);
-        emit_progress(app, "error", "Recording too short");
-        crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "too_short", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
-        set_state(app, RecordingState::Idle);
-        return Err("Recording too short".to_string());
-    }
 
     // AUDI-04: Validate WAV header before any processing
     if let Err(msg) = super::backup::validate_wav(&audio_path) {
@@ -420,20 +409,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
         set_state(app, RecordingState::Idle);
         return Err("No speech detected (filtered)".to_string());
-    }
-
-    // Check minimum meaningful content (at least 10 chars after trimming)
-    // This prevents the LLM from responding with help messages on near-empty input
-    if raw_text.trim().len() < 10 {
-        let _ = std::fs::remove_file(&audio_path);
-        if use_converted { let _ = std::fs::remove_file(&converted_path); }
-        if let Some(ref ogg) = ogg_path { let _ = std::fs::remove_file(ogg); }
-
-        if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
-        emit_progress(app, "error", "Recording too short");
-        crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "too_short", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
-        set_state(app, RecordingState::Idle);
-        return Err("Recording too short".to_string());
     }
 
     // Stage 2: Polish text (if enabled)
