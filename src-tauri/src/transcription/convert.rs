@@ -179,7 +179,7 @@ pub fn convert_to_ogg_opus(wav_path: &str) -> Result<String, String> {
     const SAMPLE_RATE: u32 = 16_000;
     const FRAME_MS: usize = 20;
     const FRAME_SIZE: usize = (SAMPLE_RATE as usize * FRAME_MS) / 1000; // 320 samples
-    const BITRATE: i32 = 32_000;
+    const BITRATE: i32 = 64_000;
 
     // Read WAV samples
     let reader = WavReader::open(wav_path)
