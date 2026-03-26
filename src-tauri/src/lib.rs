@@ -204,8 +204,8 @@ pub fn run() {
                     use tauri_plugin_notification::NotificationExt;
                     let _ = app.notification()
                         .builder()
-                        .title("TTP — Accessibility Update Required")
-                        .body("TTP was updated and needs you to re-grant Accessibility permission. Please allow it in the dialog or go to System Settings → Privacy & Security → Accessibility.")
+                        .title("TTP — Re-grant Accessibility")
+                        .body("After update: open System Settings → Accessibility, remove TTP (−), then re-add it (+) and select TTP.")
                         .show();
                 }
             }
