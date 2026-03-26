@@ -39,7 +39,7 @@ const HALLUCINATIONS: &[&str] = &[
 ];
 
 use crate::logging::log_error;
-use super::{convert::{convert_to_mono_16khz, convert_to_ogg_opus}, polish_text, transcribe_audio};
+use super::{convert::convert_to_mono_16khz, polish_text, transcribe_audio};
 
 /// Progress event sent to frontend during transcription pipeline
 #[derive(Clone, serde::Serialize)]
@@ -201,20 +201,10 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     };
     let use_converted = converted_path != audio_path;
 
-    // Compress to OGG Opus for smaller upload (graceful degradation: fall back to WAV)
-    let ogg_path = match convert_to_ogg_opus(&converted_path) {
-        Ok(path) => {
-            eprintln!("[Pipeline] OGG Opus encoding succeeded: {}", path);
-            Some(path)
-        }
-        Err(e) => {
-            eprintln!("[Pipeline] OGG Opus encoding failed, using WAV: {}", e);
-            None
-        }
-    };
-
-    // Use OGG if available, otherwise the converted WAV
-    let final_upload_path = ogg_path.clone().unwrap_or_else(|| converted_path.clone());
+    // OGG Opus disabled — granule position bug caused transcription quality loss.
+    // Mono 16kHz WAV is already ~6x smaller than original, fine for upload.
+    let ogg_path: Option<String> = None;
+    let final_upload_path = converted_path.clone();
 
     // AUDI-05: If conversion failed and original exceeds 25MB, reject early
     if !use_converted && file_size > MAX_AUDIO_SIZE {
