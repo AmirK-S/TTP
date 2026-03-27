@@ -84,15 +84,22 @@ fn toggle_recording(app: &AppHandle) {
 
 /// Update tray menu text based on recording state
 fn update_tray_menu(app: &AppHandle, is_recording: bool) {
+    let text = if is_recording {
+        "Stop Recording"
+    } else {
+        "Start Recording"
+    };
+    // Rebuild the menu with updated text (Tauri 2 TrayIcon has no menu() getter)
     if let Some(tray) = app.tray_by_id("main") {
-        if let Some(menu) = tray.menu() {
-            if let Some(item) = menu.get("record") {
-                let text = if is_recording {
-                    "Stop Recording"
-                } else {
-                    "Start Recording"
-                };
-                let _ = item.as_menuitem().map(|mi| mi.set_text(text));
+        if let Ok(record) = MenuItem::with_id(app, "record", text, true, None::<&str>) {
+            if let Ok(separator) = PredefinedMenuItem::separator(app) {
+                if let Ok(settings) = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>) {
+                    if let Ok(quit) = MenuItem::with_id(app, "quit", "Quit TTP", true, None::<&str>) {
+                        if let Ok(menu) = Menu::with_items(app, &[&record, &separator, &settings, &quit]) {
+                            let _ = tray.set_menu(Some(menu));
+                        }
+                    }
+                }
             }
         }
     }
