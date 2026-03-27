@@ -1,5 +1,5 @@
 // TTP - Talk To Paste
-// Tutorial pill component - old simple style: "Maintiens fn pour dicter"
+// Tutorial pill component - shows keyboard shortcut hint in user's language
 
 import { useState, useEffect } from 'react';
 
@@ -11,9 +11,10 @@ interface TutorialPillProps {
 /** LocalStorage key for tutorial dismissal */
 const TUTORIAL_DISMISSED_KEY = 'tutorial_pill_dismissed';
 
+const isFrench = navigator.language.startsWith('fr');
+
 /**
  * Tutorial pill - simple dark pill showing keyboard shortcut hint
- * Old style: "Maintiens fn pour dicter"
  */
 export function TutorialPill({ shortcutText = 'fn' }: TutorialPillProps) {
   const [isVisible, setIsVisible] = useState(false);
@@ -49,7 +50,7 @@ export function TutorialPill({ shortcutText = 'fn' }: TutorialPillProps) {
         color: 'rgba(255,255,255,0.8)',
         userSelect: 'none',
       }}>
-        Maintiens{' '}
+        {isFrench ? 'Maintiens' : 'Hold'}{' '}
         <span style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -64,7 +65,7 @@ export function TutorialPill({ shortcutText = 'fn' }: TutorialPillProps) {
         }}>
           {shortcutText.toUpperCase()}
         </span>
-        {' '}pour dicter
+        {' '}{isFrench ? 'pour dicter' : 'to dictate'}
       </span>
     </div>
   );

@@ -32,6 +32,7 @@ export function ApiKeyForm({ onSuccess }: Props) {
 
     setLoading(true);
     try {
+      await invoke('validate_groq_api_key', { key: groqKey });
       await invoke('set_groq_api_key', { key: groqKey });
       onSuccess();
     } catch (err) {
@@ -83,7 +84,7 @@ export function ApiKeyForm({ onSuccess }: Props) {
         disabled={loading || !groqKey}
         className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors disabled:cursor-not-allowed"
       >
-        {loading ? 'Saving...' : 'Get Started'}
+        {loading ? 'Validating...' : 'Get Started'}
       </button>
     </form>
   );

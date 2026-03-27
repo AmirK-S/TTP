@@ -31,7 +31,10 @@ pub fn setup_shortcuts(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>
     }
 
     let shortcut = shortcut_str.parse::<Shortcut>().unwrap_or_else(|_| {
-        "Alt+Space".parse::<Shortcut>().unwrap()
+        #[cfg(target_os = "macos")]
+        { "Alt+Space".parse::<Shortcut>().unwrap() }
+        #[cfg(not(target_os = "macos"))]
+        { "Ctrl+Space".parse::<Shortcut>().unwrap() }
     });
 
     // Use register() instead of on_shortcut() - handler is set in Builder

@@ -31,7 +31,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .icon(tray_icon)
         .icon_as_template(false)
         .menu(&menu)
-        .show_menu_on_left_click(false) // Right-click for menu
+        .show_menu_on_left_click(true) // Left-click or right-click for menu
         .tooltip("TTP by AmirKS — Talk To Paste")
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quit" => {
@@ -83,9 +83,19 @@ fn toggle_recording(app: &AppHandle) {
 }
 
 /// Update tray menu text based on recording state
-fn update_tray_menu(_app: &AppHandle, _is_recording: bool) {
-    // TODO: Update menu text dynamically if needed
-    // For now, the menu item text stays static
+fn update_tray_menu(app: &AppHandle, is_recording: bool) {
+    if let Some(tray) = app.tray_by_id("main") {
+        if let Some(menu) = tray.menu() {
+            if let Some(item) = menu.get("record") {
+                let text = if is_recording {
+                    "Stop Recording"
+                } else {
+                    "Start Recording"
+                };
+                let _ = item.as_menuitem().map(|mi| mi.set_text(text));
+            }
+        }
+    }
 }
 
 /// Update the tray icon to reflect recording state

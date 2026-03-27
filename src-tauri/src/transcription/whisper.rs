@@ -57,11 +57,7 @@ async fn transcribe_with_provider(
         .unwrap_or("recording.wav")
         .to_string();
 
-    let mime_type = if filename.ends_with(".ogg") {
-        "audio/ogg"
-    } else {
-        "audio/wav"
-    };
+    let mime_type = "audio/wav";
 
     // Scale timeout based on file size: base + 2s per MB
     let file_mb = audio_bytes.len() as u64 / (1024 * 1024);

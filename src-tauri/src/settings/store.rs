@@ -37,8 +37,8 @@ fn default_shortcut() -> String {
     }
     #[cfg(not(target_os = "macos"))]
     {
-        // Option+Space on other platforms
-        "Alt+Space".to_string()
+        // Ctrl+Space on Windows/Linux (no conflicts with system shortcuts)
+        "Ctrl+Space".to_string()
     }
 }
 

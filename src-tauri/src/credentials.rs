@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ApiKeys {
@@ -89,4 +90,39 @@ pub async fn delete_groq_api_key(_app: tauri::AppHandle) -> Result<(), String> {
     let mut keys = load_keys();
     keys.groq = None;
     save_keys(&keys)
+}
+
+/// Validate a Groq API key by making a lightweight GET request to the models endpoint.
+/// Returns Ok(()) if the key is valid, or Err(message) with a user-friendly error.
+#[tauri::command]
+pub async fn validate_groq_api_key(key: String) -> Result<(), String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    let response = client
+        .get("https://api.groq.com/openai/v1/models")
+        .header("Authorization", format!("Bearer {}", key))
+        .send()
+        .await
+        .map_err(|e| {
+            if e.is_timeout() {
+                "Request timed out — check your internet connection".to_string()
+            } else {
+                format!("Network error: {}", e)
+            }
+        })?;
+
+    let status = response.status();
+    if status.is_success() {
+        Ok(())
+    } else if status.as_u16() == 401 {
+        Err("Invalid API key".to_string())
+    } else if status.as_u16() == 403 {
+        Err("API key does not have access — check your Groq account".to_string())
+    } else {
+        let body = response.text().await.unwrap_or_default();
+        Err(format!("Groq API error ({}): {}", status.as_u16(), body))
+    }
 }

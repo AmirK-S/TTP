@@ -82,7 +82,7 @@ export default function Onboarding() {
     }
   };
 
-  // Save API key directly
+  // Validate and save API key
   const saveApiKey = async () => {
     if (!apiKeyInput.trim()) {
       setApiKeyError('Enter a valid key');
@@ -93,11 +93,12 @@ export default function Onboarding() {
     setApiKeyError('');
 
     try {
+      await invoke('validate_groq_api_key', { key: apiKeyInput.trim() });
       await invoke('set_groq_api_key', { key: apiKeyInput.trim() });
       setChecklist(prev => ({ ...prev, apikey: true }));
       setApiKeyInput('');
     } catch (e) {
-      setApiKeyError('Failed to save');
+      setApiKeyError(String(e));
     } finally {
       setIsSavingKey(false);
     }
@@ -216,7 +217,7 @@ export default function Onboarding() {
                   onClick={saveApiKey}
                   disabled={isSavingKey}
                 >
-                  {isSavingKey ? '...' : 'Save'}
+                  {isSavingKey ? 'Validating...' : 'Save'}
                 </button>
               </div>
             )}

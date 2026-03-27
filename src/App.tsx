@@ -2,6 +2,7 @@
 // Main App component - handles mic recording control and auto-update checking
 
 import { useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useRecordingControl } from './hooks/useRecordingControl';
 import { useUpdater } from './hooks/useUpdater';
 
@@ -18,6 +19,26 @@ function App() {
     onRecordingComplete: () => {},
     onError: () => {},
   });
+
+  // Check if we should show the "What's New" popup after an update
+  useEffect(() => {
+    invoke<[string, string] | null>('check_whats_new').then(async (result) => {
+      if (result) {
+        try {
+          const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+          const settingsWindow = await WebviewWindow.getByLabel('settings');
+          if (settingsWindow) {
+            await settingsWindow.show();
+            await settingsWindow.setFocus();
+          }
+        } catch (e) {
+          console.error('[WhatsNew] Failed to open settings window:', e);
+        }
+      }
+    }).catch((err) => {
+      console.error('[WhatsNew] Failed to check:', err);
+    });
+  }, []);
 
   // Auto-check for updates on launch and every 4 hours
   // shouldNotify becomes true when update is available AND app is idle

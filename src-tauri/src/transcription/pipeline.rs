@@ -24,9 +24,12 @@ const MAX_AUDIO_SIZE: u64 = 25_000_000;
 
 /// Common Whisper hallucinations on silent/empty audio
 const HALLUCINATIONS: &[&str] = &[
+    // English
     "thank you",
     "thanks for watching",
+    "thank you for watching",
     "thanks for listening",
+    "thanks for watching please subscribe",
     "bye",
     "goodbye",
     "see you",
@@ -34,8 +37,33 @@ const HALLUCINATIONS: &[&str] = &[
     "like and subscribe",
     "you",
     "the end",
+    "so",
+    "the",
+    "oh",
+    "okay",
+    "uh",
+    "i'm sorry",
+    "hello everyone welcome to my channel",
+    // French
+    "merci d'avoir regarde cette video",
+    "je vous remercie",
+    // Subtitle attribution hallucinations (all languages)
+    "subtitles by the amara org community",
+    "sous-titres realises par la communaute d'amara.org",
+    "sous-titrage st' 501",
+    "transcription by castingwords",
     ".",
     "",
+];
+
+/// Substrings that indicate a hallucination (partial match)
+const HALLUCINATION_SUBSTRINGS: &[&str] = &[
+    "amara.org",
+    "sous-titr",
+    "subtitles by",
+    "transcription by",
+    "soustitreur.com",
+    "www.mooji.org",
 ];
 
 use crate::logging::log_error;
@@ -98,9 +126,17 @@ fn set_state(app: &AppHandle, state: RecordingState) {
 /// Filter out common Whisper hallucinations
 fn is_hallucination(text: &str) -> bool {
     let lower = text.trim().to_lowercase();
-    HALLUCINATIONS
+    // Exact match (with/without trailing period)
+    let exact = HALLUCINATIONS
         .iter()
-        .any(|h| lower == *h || lower.trim_end_matches('.') == *h)
+        .any(|h| lower == *h || lower.trim_end_matches('.') == *h);
+    if exact {
+        return true;
+    }
+    // Substring match for common attribution/credit hallucinations
+    HALLUCINATION_SUBSTRINGS
+        .iter()
+        .any(|sub| lower.contains(sub))
 }
 
 /// Strip LLM wrapper/comparison format from polish output
@@ -201,9 +237,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     };
     let use_converted = converted_path != audio_path;
 
-    // OGG Opus disabled — granule position bug caused transcription quality loss.
-    // Mono 16kHz WAV is already ~6x smaller than original, fine for upload.
-    let ogg_path: Option<String> = None;
     let final_upload_path = converted_path.clone();
 
     // AUDI-05: If conversion failed and original exceeds 25MB, reject early
@@ -234,7 +267,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     if final_size > MAX_AUDIO_SIZE {
         let _ = std::fs::remove_file(&audio_path);
         if use_converted { let _ = std::fs::remove_file(&converted_path); }
-        if let Some(ref ogg) = ogg_path { let _ = std::fs::remove_file(ogg); }
+
 
         emit_progress(
             app,
@@ -378,7 +411,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     if raw_text.trim().is_empty() {
         let _ = std::fs::remove_file(&audio_path);
         if use_converted { let _ = std::fs::remove_file(&converted_path); }
-        if let Some(ref ogg) = ogg_path { let _ = std::fs::remove_file(ogg); }
+
 
         if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
         emit_progress(app, "error", "No speech detected");
@@ -388,11 +421,34 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         return Err("No speech detected".to_string());
     }
 
+    // Filter out dictionary-induced hallucinations: if the entire transcription
+    // is just 1-2 words that all appear in the dictionary glossary, Whisper likely
+    // hallucinated a glossary word on silence rather than transcribing real speech.
+    if let Some(ref prompt) = whisper_prompt {
+        let words: Vec<&str> = raw_text.trim().split_whitespace().collect();
+        if words.len() <= 2 {
+            let prompt_lower = prompt.to_lowercase();
+            let all_in_glossary = words.iter().all(|w| {
+                let w_lower = w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()).to_string();
+                prompt_lower.contains(&w_lower)
+            });
+            if all_in_glossary {
+                let _ = std::fs::remove_file(&audio_path);
+                if use_converted { let _ = std::fs::remove_file(&converted_path); }
+                if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
+                emit_progress(app, "error", "No speech detected");
+                crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
+                set_state(app, RecordingState::Idle);
+                return Err("No speech detected (glossary ghost)".to_string());
+            }
+        }
+    }
+
     // Filter out common Whisper hallucinations on silent audio
     if is_hallucination(&raw_text) {
         let _ = std::fs::remove_file(&audio_path);
         if use_converted { let _ = std::fs::remove_file(&converted_path); }
-        if let Some(ref ogg) = ogg_path { let _ = std::fs::remove_file(ogg); }
+
 
         if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
         emit_progress(app, "error", "No speech detected");
@@ -567,7 +623,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // Clean up audio files after processing
     let _ = std::fs::remove_file(&audio_path);
     if use_converted { let _ = std::fs::remove_file(&converted_path); }
-    if let Some(ref ogg) = ogg_path { let _ = std::fs::remove_file(ogg); }
 
     // AUDI-02: Delete backup only after successful transcription
     if let Some(ref bp) = backup_path {

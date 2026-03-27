@@ -75,6 +75,10 @@ pub fn add_history_entry(text: &str, raw_text: Option<&str>) -> Result<(), Strin
     // Prepend new entry (will be at start after sort)
     entries.insert(0, entry);
 
+    // Enforce maximum history size to prevent unbounded growth
+    const MAX_HISTORY_ENTRIES: usize = 500;
+    entries.truncate(MAX_HISTORY_ENTRIES);
+
     // Save back to file
     let json = serde_json::to_string_pretty(&entries)
         .map_err(|e| format!("Failed to serialize history: {}", e))?;

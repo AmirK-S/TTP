@@ -11,6 +11,7 @@ import { relaunch } from '@tauri-apps/plugin-process';
 import { trackEvent } from '../lib/analytics';
 import { useUpdater } from '../hooks/useUpdater';
 import { useSettingsStore, DictionaryEntry, HistoryEntry } from '../stores/settings-store';
+import WhatsNew from '../components/WhatsNew';
 
 /**
  * Toggle switch component for settings
@@ -368,6 +369,7 @@ export function Settings() {
   const [hasGroqKey, setHasGroqKey] = useState(false);
   const [groqKeySaving, setGroqKeySaving] = useState(false);
   const [groqKeySuccess, setGroqKeySuccess] = useState(false);
+  const [groqKeyError, setGroqKeyError] = useState('');
   const [newOriginal, setNewOriginal] = useState('');
   const [newCorrection, setNewCorrection] = useState('');
   const [addEntryError, setAddEntryError] = useState('');
@@ -454,18 +456,21 @@ export function Settings() {
     }
   };
 
-  // Handle Groq API key save
+  // Handle Groq API key save (validates before saving)
   const handleGroqKeySave = async () => {
     if (!groqApiKey.trim()) return;
     setGroqKeySaving(true);
+    setGroqKeyError('');
+    setGroqKeySuccess(false);
     try {
+      await invoke('validate_groq_api_key', { key: groqApiKey });
       await invoke('set_groq_api_key', { key: groqApiKey });
       setHasGroqKey(true);
       setGroqApiKey('');
       setGroqKeySuccess(true);
       setTimeout(() => setGroqKeySuccess(false), 3000);
     } catch (error) {
-      console.error('Failed to save Groq API key:', error);
+      setGroqKeyError(String(error));
     } finally {
       setGroqKeySaving(false);
     }
@@ -632,10 +637,9 @@ export function Settings() {
                   { value: 'CmdOrCtrl+Shift+R', label: '⌘⇧ R', desc: 'Cmd + Shift + R' },
                 ]
               : [
-                  { value: 'Super+Space', label: 'Win + Space', desc: 'Recommended (disable Windows language switcher)', recommended: true },
+                  { value: 'Ctrl+Space', label: 'Ctrl + Space', desc: 'Recommended', recommended: true },
+                  { value: 'Ctrl+Shift+Space', label: 'Ctrl + Shift + Space', desc: '' },
                   { value: 'Super+J', label: 'Win + J', desc: 'No conflicts' },
-                  { value: 'Ctrl+Space', label: 'Ctrl + Space', desc: '' },
-                  { value: 'Alt+Space', label: 'Alt + Space', desc: '' },
                 ]
             ).map((opt) => (
               <button
@@ -773,12 +777,17 @@ export function Settings() {
                       disabled={groqKeySaving || !groqApiKey.trim()}
                       className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md transition-colors"
                     >
-                      Save
+                      {groqKeySaving ? 'Validating...' : 'Save'}
                     </button>
                   </div>
                   {groqKeySuccess && (
                     <p className="text-sm text-green-600 dark:text-green-400">
-                      API key saved!
+                      API key validated and saved!
+                    </p>
+                  )}
+                  {groqKeyError && (
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      {groqKeyError}
                     </p>
                   )}
                   <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -1026,6 +1035,8 @@ export function Settings() {
           onConfirm={handleClearHistory}
           onCancel={() => setShowClearHistoryConfirm(false)}
         />
+
+        <WhatsNew />
       </div>
     </div>
   );

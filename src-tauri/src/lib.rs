@@ -19,9 +19,11 @@ mod state;
 mod telemetry;
 mod transcription;
 mod tray;
+mod whatsnew;
 
 use credentials::{
     delete_groq_api_key, get_groq_api_key, has_groq_api_key, set_groq_api_key,
+    validate_groq_api_key,
 };
 use dictionary::{add_dictionary_entry, clear_dictionary, delete_dictionary_entry, get_dictionary};
 use history::{clear_history, get_history};
@@ -35,6 +37,7 @@ use recording::{get_recordings_dir, RecordingContext};
 use settings::{get_settings, reset_settings, set_settings, open_settings_window};
 use state::AppState;
 use transcription::process_audio;
+use whatsnew::{check_whats_new, dismiss_whats_new};
 use std::sync::Mutex;
 #[cfg(target_os = "macos")]
 use tauri::ActivationPolicy;
@@ -267,6 +270,7 @@ pub fn run() {
             set_groq_api_key,
             has_groq_api_key,
             delete_groq_api_key,
+            validate_groq_api_key,
             get_recordings_dir,
             process_audio,
             get_settings,
@@ -293,6 +297,8 @@ pub fn run() {
             reset_accessibility_permission,
             show_onboarding,
             close_onboarding,
+            check_whats_new,
+            dismiss_whats_new,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
