@@ -27,13 +27,6 @@ pub struct Settings {
     /// Hide the recording indicator pill when not recording
     #[serde(default)]
     pub hide_pill_when_inactive: bool,
-    /// Transcription language: "auto", "fr", or "en"
-    #[serde(default = "default_language")]
-    pub transcription_language: String,
-}
-
-fn default_language() -> String {
-    "auto".to_string()
 }
 
 fn default_shortcut() -> String {
@@ -61,7 +54,6 @@ impl Default for Settings {
             telemetry_enabled: false,
             hands_free_mode: false,
             hide_pill_when_inactive: false,
-            transcription_language: default_language(),
         }
     }
 }

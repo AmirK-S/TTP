@@ -329,10 +329,11 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
     // Build Whisper prompt from dictionary corrections to bias transcription
     let whisper_prompt = {
+        // Bilingual hint helps Whisper narrow language detection to FR/EN
+        let mut prompt = "French and English bilingual speaker.".to_string();
+
         let entries = crate::dictionary::store::get_dictionary();
-        if entries.is_empty() {
-            None
-        } else {
+        if !entries.is_empty() {
             // Collect unique correction values
             let mut corrections: Vec<String> = entries
                 .iter()
@@ -342,9 +343,8 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 .collect();
             corrections.sort();
 
-            // Build prompt string, staying under ~200 tokens (~800 chars conservative estimate)
-            let prefix = "Glossary: ";
-            let mut prompt = prefix.to_string();
+            // Append glossary, staying under ~200 tokens (~800 chars conservative estimate)
+            prompt.push_str(" Glossary: ");
             let mut first = true;
             for word in &corrections {
                 let addition = if first {
@@ -361,24 +361,15 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 prompt.push_str(word);
                 first = false;
             }
-            if prompt.len() > prefix.len() {
-                Some(prompt)
-            } else {
-                None
-            }
         }
+
+        Some(prompt)
     };
 
     // Stage 1: Transcribe audio via Groq Whisper
     emit_progress(app, "transcribing", "Transcribing...");
 
-    let whisper_language = match settings.transcription_language.as_str() {
-        "fr" => Some("fr"),
-        "en" => Some("en"),
-        _ => None, // "auto" — let Whisper detect
-    };
-
-    let raw_text = match transcribe_audio(&api_key, transcription_path, whisper_prompt.as_deref(), whisper_language).await {
+    let raw_text = match transcribe_audio(&api_key, transcription_path, whisper_prompt.as_deref()).await {
         Ok(text) => text,
         Err(e) => {
             // AUDI-02: Do NOT delete the original audio on API failure.
