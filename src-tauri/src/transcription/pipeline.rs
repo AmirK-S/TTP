@@ -305,6 +305,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         Some(key) => key,
         None => {
             let _ = std::fs::remove_file(&audio_path);
+            if use_converted { let _ = std::fs::remove_file(&converted_path); }
             emit_progress(app, "error", "No Groq API key configured");
             if let Some(window) = app.get_webview_window("setup") {
                 let _ = window.show();
@@ -419,24 +420,29 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     }
 
     // Filter out dictionary-induced hallucinations: if the entire transcription
-    // is just 1-2 words that all appear in the dictionary glossary, Whisper likely
+    // is just 1-2 words that all appear in the dictionary, Whisper likely
     // hallucinated a glossary word on silence rather than transcribing real speech.
-    if let Some(ref prompt) = whisper_prompt {
-        let words: Vec<&str> = raw_text.trim().split_whitespace().collect();
-        if words.len() <= 2 {
-            let prompt_lower = prompt.to_lowercase();
-            let all_in_glossary = words.iter().all(|w| {
-                let w_lower = w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()).to_string();
-                prompt_lower.contains(&w_lower)
-            });
-            if all_in_glossary {
-                let _ = std::fs::remove_file(&audio_path);
-                if use_converted { let _ = std::fs::remove_file(&converted_path); }
-                if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
-                emit_progress(app, "error", "No speech detected");
-                crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
-                set_state(app, RecordingState::Idle);
-                return Err("No speech detected (glossary ghost)".to_string());
+    {
+        let dict_entries = crate::dictionary::store::get_dictionary();
+        if !dict_entries.is_empty() {
+            let words: Vec<&str> = raw_text.trim().split_whitespace().collect();
+            if words.len() <= 2 {
+                let dict_words: Vec<String> = dict_entries.iter()
+                    .map(|e| e.correction.to_lowercase())
+                    .collect();
+                let all_in_dict = words.iter().all(|w| {
+                    let w_lower = w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()).to_string();
+                    dict_words.iter().any(|d| d == &w_lower)
+                });
+                if all_in_dict {
+                    let _ = std::fs::remove_file(&audio_path);
+                    if use_converted { let _ = std::fs::remove_file(&converted_path); }
+                    if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
+                    emit_progress(app, "error", "No speech detected");
+                    crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
+                    set_state(app, RecordingState::Idle);
+                    return Err("No speech detected (glossary ghost)".to_string());
+                }
             }
         }
     }
