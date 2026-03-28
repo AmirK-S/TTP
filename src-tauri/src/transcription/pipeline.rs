@@ -372,7 +372,13 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // Stage 1: Transcribe audio via Groq Whisper
     emit_progress(app, "transcribing", "Transcribing...");
 
-    let raw_text = match transcribe_audio(&api_key, transcription_path, whisper_prompt.as_deref()).await {
+    let whisper_language = match settings.transcription_language.as_str() {
+        "fr" => Some("fr"),
+        "en" => Some("en"),
+        _ => None, // "auto" — let Whisper detect
+    };
+
+    let raw_text = match transcribe_audio(&api_key, transcription_path, whisper_prompt.as_deref(), whisper_language).await {
         Ok(text) => text,
         Err(e) => {
             // AUDI-02: Do NOT delete the original audio on API failure.

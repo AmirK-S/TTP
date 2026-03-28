@@ -27,8 +27,8 @@ const BASE_TIMEOUT_SECS: u64 = 30;
 /// # Returns
 /// * `Ok(String)` - Transcription text on success
 /// * `Err(String)` - Error message on failure
-pub async fn transcribe_audio(api_key: &str, audio_path: &str, prompt: Option<&str>) -> Result<String, String> {
-    transcribe_with_provider(api_key, audio_path, GROQ_TRANSCRIPTION_URL, "whisper-large-v3", "Groq", prompt).await
+pub async fn transcribe_audio(api_key: &str, audio_path: &str, prompt: Option<&str>, language: Option<&str>) -> Result<String, String> {
+    transcribe_with_provider(api_key, audio_path, GROQ_TRANSCRIPTION_URL, "whisper-large-v3", "Groq", prompt, language).await
 }
 
 /// Internal function to transcribe audio with a specific provider
@@ -41,6 +41,7 @@ async fn transcribe_with_provider(
     model: &str,
     _provider_name: &str,
     prompt: Option<&str>,
+    language: Option<&str>,
 ) -> Result<String, String> {
     // Convert model to owned String for Form::text (requires 'static)
     let model = model.to_string();
@@ -92,6 +93,10 @@ async fn transcribe_with_provider(
 
         if let Some(prompt_value) = prompt {
             form = form.text("prompt", prompt_value.to_string());
+        }
+
+        if let Some(lang) = language {
+            form = form.text("language", lang.to_string());
         }
 
         // Make the request

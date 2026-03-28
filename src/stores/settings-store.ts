@@ -27,6 +27,7 @@ export interface Settings {
   telemetry_enabled: boolean;
   hands_free_mode: boolean;
   hide_pill_when_inactive: boolean;
+  transcription_language: string;
 }
 
 interface SettingsStore {
@@ -37,6 +38,7 @@ interface SettingsStore {
   telemetryEnabled: boolean;
   handsFreeMode: boolean;
   hidePillWhenInactive: boolean;
+  transcriptionLanguage: string;
   dictionary: DictionaryEntry[];
   history: HistoryEntry[];
   loading: boolean;
@@ -60,6 +62,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   telemetryEnabled: false,
   handsFreeMode: false,
   hidePillWhenInactive: false,
+  transcriptionLanguage: 'auto',
   dictionary: [],
   history: [],
   loading: false,
@@ -76,6 +79,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         telemetryEnabled: settings.telemetry_enabled ?? false,
         handsFreeMode: settings.hands_free_mode ?? false,
         hidePillWhenInactive: settings.hide_pill_when_inactive ?? false,
+        transcriptionLanguage: settings.transcription_language ?? 'auto',
       });
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -94,6 +98,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         telemetry_enabled: get().telemetryEnabled,
         hands_free_mode: get().handsFreeMode,
         hide_pill_when_inactive: get().hidePillWhenInactive,
+        transcription_language: get().transcriptionLanguage,
       };
 
       const newSettings: Settings = {
@@ -111,6 +116,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         telemetryEnabled: newSettings.telemetry_enabled,
         handsFreeMode: newSettings.hands_free_mode,
         hidePillWhenInactive: newSettings.hide_pill_when_inactive,
+        transcriptionLanguage: newSettings.transcription_language,
       });
     } catch (error) {
       console.error('Failed to save settings:', error);
@@ -129,6 +135,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         telemetryEnabled: false,
         handsFreeMode: false,
         hidePillWhenInactive: false,
+        transcriptionLanguage: 'auto',
       }); // Default values
     } catch (error) {
       console.error('Failed to reset settings:', error);

@@ -329,6 +329,7 @@ export function Settings() {
     shortcut,
     handsFreeMode,
     hidePillWhenInactive,
+    transcriptionLanguage,
     dictionary,
     history,
     loading,
@@ -746,6 +747,36 @@ export function Settings() {
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
             Transcription
           </h2>
+
+          {/* Language */}
+          <div className="mb-6">
+            <p className="text-gray-900 dark:text-white font-medium mb-1">
+              Language
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+              Set a language for better accuracy, or leave on Auto
+            </p>
+            <div className="flex gap-2">
+              {[
+                { value: 'auto', label: 'Auto-detect' },
+                { value: 'fr', label: 'Français' },
+                { value: 'en', label: 'English' },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => saveSettings({ transcription_language: opt.value })}
+                  disabled={loading}
+                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                    transcriptionLanguage === opt.value
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Groq API Key */}
           <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
