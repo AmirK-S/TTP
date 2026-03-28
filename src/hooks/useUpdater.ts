@@ -9,7 +9,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { trackEvent } from '../lib/analytics';
 import { useRecordingState } from './useRecordingState';
 
-export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error';
+export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error' | 'up-to-date';
 
 export interface UpdateInfo {
   version: string;
@@ -73,7 +73,9 @@ export function useUpdater(options?: UseUpdaterOptions) {
         }).catch(() => {});
         return true;
       } else {
-        setStatus('idle');
+        setStatus('up-to-date');
+        // Reset to idle after 5 seconds so the button reappears
+        setTimeout(() => setStatus('idle'), 5000);
         return false;
       }
     } catch (e) {

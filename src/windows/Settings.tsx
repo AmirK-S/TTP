@@ -231,6 +231,13 @@ function UpdateSection() {
           </button>
         )}
 
+        {status === 'up-to-date' && (
+          <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm">
+            <span>✓</span>
+            You're up to date! (v{appVersion})
+          </div>
+        )}
+
         {status === 'checking' && (
           <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
             <RefreshCw className="w-4 h-4 animate-spin" />
