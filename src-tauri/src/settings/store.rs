@@ -27,6 +27,13 @@ pub struct Settings {
     /// Hide the recording indicator pill when not recording
     #[serde(default)]
     pub hide_pill_when_inactive: bool,
+    /// Whether to save transcriptions to history. Default ON.
+    #[serde(default = "default_true")]
+    pub history_enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_shortcut() -> String {
@@ -54,6 +61,7 @@ impl Default for Settings {
             telemetry_enabled: false,
             hands_free_mode: false,
             hide_pill_when_inactive: false,
+            history_enabled: true,
         }
     }
 }

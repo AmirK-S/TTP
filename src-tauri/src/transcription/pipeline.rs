@@ -589,16 +589,18 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         false
     };
 
-    // Save to history (before completing)
-    // Store both final and raw text so user can see the unpolished transcription
-    let raw_for_history = if settings.ai_polish_enabled {
-        Some(raw_text.as_str())
-    } else {
-        None // No raw text if polish was disabled (they're the same)
-    };
+    // Save to history (before completing) — only when user has history enabled
+    if settings.history_enabled {
+        // Store both final and raw text so user can see the unpolished transcription
+        let raw_for_history = if settings.ai_polish_enabled {
+            Some(raw_text.as_str())
+        } else {
+            None // No raw text if polish was disabled (they're the same)
+        };
 
-    if let Err(e) = add_history_entry(&final_text, raw_for_history) {
-        eprintln!("[Pipeline] Failed to save to history: {}", e);
+        if let Err(e) = add_history_entry(&final_text, raw_for_history) {
+            eprintln!("[Pipeline] Failed to save to history: {}", e);
+        }
     }
 
     // Complete with appropriate message

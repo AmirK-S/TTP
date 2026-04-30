@@ -27,6 +27,7 @@ export interface Settings {
   telemetry_enabled: boolean;
   hands_free_mode: boolean;
   hide_pill_when_inactive: boolean;
+  history_enabled: boolean;
 }
 
 interface SettingsStore {
@@ -37,6 +38,7 @@ interface SettingsStore {
   telemetryEnabled: boolean;
   handsFreeMode: boolean;
   hidePillWhenInactive: boolean;
+  historyEnabled: boolean;
   dictionary: DictionaryEntry[];
   history: HistoryEntry[];
   loading: boolean;
@@ -60,6 +62,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   telemetryEnabled: false,
   handsFreeMode: false,
   hidePillWhenInactive: false,
+  historyEnabled: true,
   dictionary: [],
   history: [],
   loading: false,
@@ -76,6 +79,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         telemetryEnabled: settings.telemetry_enabled ?? false,
         handsFreeMode: settings.hands_free_mode ?? false,
         hidePillWhenInactive: settings.hide_pill_when_inactive ?? false,
+        historyEnabled: settings.history_enabled ?? true,
       });
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -94,6 +98,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         telemetry_enabled: get().telemetryEnabled,
         hands_free_mode: get().handsFreeMode,
         hide_pill_when_inactive: get().hidePillWhenInactive,
+        history_enabled: get().historyEnabled,
       };
 
       const newSettings: Settings = {
@@ -111,6 +116,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         telemetryEnabled: newSettings.telemetry_enabled,
         handsFreeMode: newSettings.hands_free_mode,
         hidePillWhenInactive: newSettings.hide_pill_when_inactive,
+        historyEnabled: newSettings.history_enabled,
       });
     } catch (error) {
       console.error('Failed to save settings:', error);
@@ -129,6 +135,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         telemetryEnabled: false,
         handsFreeMode: false,
         hidePillWhenInactive: false,
+        historyEnabled: true,
       }); // Default values
     } catch (error) {
       console.error('Failed to reset settings:', error);

@@ -336,6 +336,7 @@ export function Settings() {
     shortcut,
     handsFreeMode,
     hidePillWhenInactive,
+    historyEnabled,
     dictionary,
     history,
     loading,
@@ -460,6 +461,16 @@ export function Settings() {
       trackEvent("setting_changed", { setting_name: "hide_pill_when_inactive", new_value: String(enabled) });
     } catch (error) {
       console.error('Failed to save hide pill when inactive setting:', error);
+    }
+  };
+
+  // Handle history enabled toggle
+  const handleHistoryEnabledToggle = async (enabled: boolean) => {
+    try {
+      await saveSettings({ history_enabled: enabled });
+      trackEvent("setting_changed", { setting_name: "history_enabled", new_value: String(enabled) });
+    } catch (error) {
+      console.error('Failed to save history enabled setting:', error);
     }
   };
 
@@ -981,9 +992,26 @@ export function Settings() {
             )}
           </div>
 
+          {/* Save history toggle */}
+          <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex-1 pr-4">
+              <p className="text-gray-900 dark:text-white font-medium">
+                Save transcriptions
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                When off, new transcriptions are not saved to history
+              </p>
+            </div>
+            <Toggle
+              enabled={historyEnabled}
+              onChange={handleHistoryEnabledToggle}
+              disabled={loading}
+            />
+          </div>
+
           {history.length === 0 ? (
             <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-              No transcriptions yet
+              {historyEnabled ? 'No transcriptions yet' : 'History is off'}
             </p>
           ) : (
             <div className="max-h-80 overflow-y-auto rounded-md border border-gray-200 dark:border-gray-700">
