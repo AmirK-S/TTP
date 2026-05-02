@@ -32,6 +32,12 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "1.5.0" => Some(
+            "• Introducing TTP Pro — unlock unlimited AI Polish, dictionary, and history\n\
+             • New Pro section in Settings to manage your license\n\
+             • One-time payment, lifetime license, free updates forever\n\
+             • Free tier remains fully usable",
+        ),
         "1.3.5" => Some(
             "• Left-click on menu bar icon now opens the menu\n\
              • Tray menu shows \"Stop Recording\" during active recording\n\
