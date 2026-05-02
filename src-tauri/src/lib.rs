@@ -7,6 +7,7 @@ mod dictionary;
 #[cfg(target_os = "macos")]
 mod fnkey;
 mod history;
+mod licensing;
 pub mod logging;
 mod onboarding;
 mod paste;
@@ -27,6 +28,9 @@ use credentials::{
 };
 use dictionary::{add_dictionary_entry, clear_dictionary, delete_dictionary_entry, get_dictionary};
 use history::{clear_history, get_history};
+use licensing::{
+    activate_license, deactivate_license, get_license_info, is_pro, validate_license,
+};
 use onboarding::{close_onboarding, show_onboarding};
 use permissions::{
     check_microphone_permission, is_first_launch_cmd, mark_first_launch_complete_cmd,
@@ -169,6 +173,9 @@ pub fn run() {
                 });
             }
 
+            // Initialize license state (loads cached license + kicks off background refresh)
+            licensing::init(app.handle());
+
             // Clean up stale audio backups (>24 hours old)
             transcription::backup::cleanup_stale_backups(app.handle());
 
@@ -299,6 +306,11 @@ pub fn run() {
             close_onboarding,
             check_whats_new,
             dismiss_whats_new,
+            activate_license,
+            deactivate_license,
+            validate_license,
+            is_pro,
+            get_license_info,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -30,6 +30,17 @@ export interface Settings {
   history_enabled: boolean;
 }
 
+/** License info returned by Rust backend */
+export interface LicenseInfo {
+  is_pro: boolean;
+  license_key: string | null;
+  status: string | null;
+  expires_at: number | null;
+  last_validated_at: number | null;
+  activation_count: number | null;
+  activation_limit: number | null;
+}
+
 interface SettingsStore {
   // State
   aiPolishEnabled: boolean;
@@ -43,6 +54,17 @@ interface SettingsStore {
   history: HistoryEntry[];
   loading: boolean;
 
+  // License state
+  isPro: boolean;
+  licenseKey: string | null;
+  licenseStatus: string | null;
+  licenseExpiresAt: number | null;
+  licenseLastValidatedAt: number | null;
+  licenseActivationCount: number | null;
+  licenseActivationLimit: number | null;
+  licenseLoading: boolean;
+  licenseError: string | null;
+
   // Actions
   loadSettings: () => Promise<void>;
   saveSettings: (settings: Partial<Settings>) => Promise<void>;
@@ -52,6 +74,22 @@ interface SettingsStore {
   clearDictionary: () => Promise<void>;
   loadHistory: () => Promise<void>;
   clearHistory: () => Promise<void>;
+  loadLicense: () => Promise<void>;
+  activateLicense: (key: string) => Promise<void>;
+  deactivateLicense: () => Promise<void>;
+  validateLicense: () => Promise<void>;
+}
+
+function applyLicenseInfo(info: LicenseInfo) {
+  return {
+    isPro: info.is_pro,
+    licenseKey: info.license_key,
+    licenseStatus: info.status,
+    licenseExpiresAt: info.expires_at,
+    licenseLastValidatedAt: info.last_validated_at,
+    licenseActivationCount: info.activation_count,
+    licenseActivationLimit: info.activation_limit,
+  };
 }
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
@@ -66,6 +104,17 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   dictionary: [],
   history: [],
   loading: false,
+
+  // License initial state
+  isPro: false,
+  licenseKey: null,
+  licenseStatus: null,
+  licenseExpiresAt: null,
+  licenseLastValidatedAt: null,
+  licenseActivationCount: null,
+  licenseActivationLimit: null,
+  licenseLoading: false,
+  licenseError: null,
 
   // Load settings from backend
   loadSettings: async () => {
@@ -198,6 +247,68 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     } catch (error) {
       console.error('Failed to clear history:', error);
       throw error;
+    }
+  },
+
+  // Load current license info from backend
+  loadLicense: async () => {
+    try {
+      const info = await invoke<LicenseInfo>('get_license_info');
+      set({ ...applyLicenseInfo(info), licenseError: null });
+    } catch (error) {
+      console.error('Failed to load license:', error);
+    }
+  },
+
+  // Activate a new license key
+  activateLicense: async (key: string) => {
+    set({ licenseLoading: true, licenseError: null });
+    try {
+      const info = await invoke<LicenseInfo>('activate_license', { licenseKey: key });
+      set({ ...applyLicenseInfo(info), licenseError: null });
+    } catch (error) {
+      const message = typeof error === 'string' ? error : 'Activation failed';
+      set({ licenseError: message });
+      throw error;
+    } finally {
+      set({ licenseLoading: false });
+    }
+  },
+
+  // Deactivate the current license (frees an activation slot on LS)
+  deactivateLicense: async () => {
+    set({ licenseLoading: true, licenseError: null });
+    try {
+      await invoke('deactivate_license');
+      set({
+        isPro: false,
+        licenseKey: null,
+        licenseStatus: null,
+        licenseExpiresAt: null,
+        licenseLastValidatedAt: null,
+        licenseActivationCount: null,
+        licenseActivationLimit: null,
+      });
+    } catch (error) {
+      const message = typeof error === 'string' ? error : 'Deactivation failed';
+      set({ licenseError: message });
+      throw error;
+    } finally {
+      set({ licenseLoading: false });
+    }
+  },
+
+  // Force a re-validation against the LS server
+  validateLicense: async () => {
+    set({ licenseLoading: true, licenseError: null });
+    try {
+      const info = await invoke<LicenseInfo>('validate_license');
+      set({ ...applyLicenseInfo(info), licenseError: null });
+    } catch (error) {
+      const message = typeof error === 'string' ? error : 'Validation failed';
+      set({ licenseError: message });
+    } finally {
+      set({ licenseLoading: false });
     }
   },
 }));

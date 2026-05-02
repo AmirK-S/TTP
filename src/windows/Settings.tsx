@@ -2,7 +2,7 @@
 // Settings window - configure app behavior and manage dictionary
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Copy, Check, Download, RefreshCw } from 'lucide-react';
+import { Copy, Check, Download, RefreshCw, Crown, Loader2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -340,6 +340,14 @@ export function Settings() {
     dictionary,
     history,
     loading,
+    isPro,
+    licenseKey,
+    licenseStatus,
+    licenseExpiresAt,
+    licenseActivationCount,
+    licenseActivationLimit,
+    licenseLoading,
+    licenseError,
     loadSettings,
     saveSettings,
     resetSettings,
@@ -348,6 +356,10 @@ export function Settings() {
     clearDictionary,
     loadHistory,
     clearHistory,
+    loadLicense,
+    activateLicense,
+    deactivateLicense,
+    validateLicense,
   } = useSettingsStore();
 
   const isMac = navigator.platform.startsWith('Mac');
@@ -382,6 +394,8 @@ export function Settings() {
   const [newCorrection, setNewCorrection] = useState('');
   const [addEntryError, setAddEntryError] = useState('');
   const [showRestartBanner, setShowRestartBanner] = useState(false);
+  const [licenseInput, setLicenseInput] = useState('');
+  const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
 
   // Check API key status
   const checkApiKeys = useCallback(() => {
@@ -393,8 +407,17 @@ export function Settings() {
     loadSettings();
     loadDictionary();
     loadHistory();
+    loadLicense();
     checkApiKeys();
-  }, [loadSettings, loadDictionary, loadHistory, checkApiKeys]);
+  }, [loadSettings, loadDictionary, loadHistory, loadLicense, checkApiKeys]);
+
+  // React to license changes emitted by the backend (e.g. background re-validate)
+  useEffect(() => {
+    const unlisten = listen('license-changed', () => {
+      loadLicense();
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, [loadLicense]);
 
   // Re-check API keys when window gets focus (e.g. after setup popup)
   useEffect(() => {
@@ -592,6 +615,42 @@ export function Settings() {
     }
   };
 
+  // Handle license activation
+  const handleActivateLicense = async () => {
+    const key = licenseInput.trim();
+    if (!key) return;
+    try {
+      await activateLicense(key);
+      setLicenseInput('');
+      trackEvent('license_activated', {});
+    } catch (error) {
+      console.error('Activation failed:', error);
+    }
+  };
+
+  // Handle license deactivation
+  const handleDeactivateLicense = async () => {
+    try {
+      await deactivateLicense();
+      setShowDeactivateConfirm(false);
+      trackEvent('license_deactivated', {});
+    } catch (error) {
+      console.error('Deactivation failed:', error);
+    }
+  };
+
+  // Format expiration timestamp into a readable date
+  const formatExpiry = (ts: number | null): string => {
+    if (!ts) return 'Never expires';
+    const date = new Date(ts * 1000);
+    return `Expires ${date.toLocaleDateString()}`;
+  };
+
+  // Mask the license key for display (show first/last 4 chars)
+  const maskedLicenseKey = licenseKey
+    ? `${licenseKey.slice(0, 4)}…${licenseKey.slice(-4)}`
+    : '';
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
       <div className="max-w-lg mx-auto">
@@ -636,6 +695,126 @@ export function Settings() {
               LinkedIn
             </a>
           </div>
+        </section>
+
+        {/* TTP Pro Section */}
+        <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Crown className={`w-5 h-5 ${isPro ? 'text-amber-500' : 'text-gray-400'}`} />
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                TTP Pro
+              </h2>
+              {isPro && (
+                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                  Active
+                </span>
+              )}
+            </div>
+            {isPro && (
+              <button
+                onClick={validateLicense}
+                disabled={licenseLoading}
+                className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex items-center gap-1 disabled:opacity-50"
+                title="Re-validate with server"
+              >
+                {licenseLoading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3.5 h-3.5" />
+                )}
+                Refresh
+              </button>
+            )}
+          </div>
+
+          {!isPro ? (
+            <>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Unlock unlimited AI Polish, unlimited dictionary entries, unlimited history, and
+                priority support. One-time payment, lifetime license.
+              </p>
+              <div className="space-y-2 mb-4">
+                <input
+                  type="text"
+                  value={licenseInput}
+                  onChange={(e) => setLicenseInput(e.target.value)}
+                  placeholder="Paste your license key here"
+                  spellCheck={false}
+                  className="w-full px-3 py-2 text-sm font-mono border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={licenseLoading}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && licenseInput.trim()) {
+                      handleActivateLicense();
+                    }
+                  }}
+                />
+                {licenseError && (
+                  <p className="text-xs text-red-600 dark:text-red-400">{licenseError}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleActivateLicense}
+                  disabled={licenseLoading || !licenseInput.trim()}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors flex items-center gap-2"
+                >
+                  {licenseLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Activate License
+                </button>
+                <a
+                  href="https://amirks.lemonsqueezy.com/buy/dcc74241-21ae-4d20-8a3c-90bf8d842bae"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                >
+                  Buy TTP Pro →
+                </a>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="space-y-2 mb-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">License key</span>
+                  <span className="font-mono text-gray-900 dark:text-white">{maskedLicenseKey}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Status</span>
+                  <span className="text-gray-900 dark:text-white capitalize">
+                    {licenseStatus ?? 'unknown'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Validity</span>
+                  <span className="text-gray-900 dark:text-white">
+                    {formatExpiry(licenseExpiresAt)}
+                  </span>
+                </div>
+                {licenseActivationLimit !== null && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Activations</span>
+                    <span className="text-gray-900 dark:text-white">
+                      {licenseActivationCount ?? 0} / {licenseActivationLimit}
+                    </span>
+                  </div>
+                )}
+              </div>
+              {licenseError && (
+                <p className="text-xs text-red-600 dark:text-red-400 mb-3">{licenseError}</p>
+              )}
+              <button
+                onClick={() => setShowDeactivateConfirm(true)}
+                disabled={licenseLoading}
+                className="text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50"
+              >
+                Deactivate this device
+              </button>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                Deactivating frees an activation slot so you can use this license on another device.
+              </p>
+            </>
+          )}
         </section>
 
         {/* Recording Trigger Section */}
@@ -1069,6 +1248,15 @@ export function Settings() {
           confirmText="Clear History"
           onConfirm={handleClearHistory}
           onCancel={() => setShowClearHistoryConfirm(false)}
+        />
+
+        <ConfirmDialog
+          open={showDeactivateConfirm}
+          title="Deactivate License"
+          message="This will remove TTP Pro from this device and free an activation slot. You can re-activate any time with the same license key."
+          confirmText="Deactivate"
+          onConfirm={handleDeactivateLicense}
+          onCancel={() => setShowDeactivateConfirm(false)}
         />
 
         <WhatsNew />
