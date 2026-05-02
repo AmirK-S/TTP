@@ -15,6 +15,15 @@ use storage::{LicenseRecord, clear_license, load_license, save_license};
 /// Maximum days a cached license can be trusted offline before requiring re-validation.
 const OFFLINE_GRACE_DAYS: i64 = 14;
 
+/// Free tier: max AI Polish calls per calendar month.
+pub const FREE_POLISH_PER_MONTH: u32 = 30;
+/// Free tier: max dictionary entries (existing entries above this are grandfathered).
+pub const FREE_DICTIONARY_LIMIT: usize = 20;
+/// Free tier: max history entries (existing entries above this are grandfathered).
+pub const FREE_HISTORY_LIMIT: usize = 50;
+/// Length of the auto-trial granted on first launch, in days.
+pub const TRIAL_DAYS: i64 = 7;
+
 /// Public license info returned to the frontend.
 #[derive(Debug, Clone, Serialize)]
 pub struct LicenseInfo {
@@ -215,6 +224,31 @@ pub fn init(app: &AppHandle) {
             let _ = validate_license(app_handle).await;
         });
     }
+}
+
+/// Disk-only check: does the cached license currently grant Pro access?
+/// Doesn't require AppHandle — safe to call from anywhere (pipeline, dictionary, etc).
+pub fn is_pro_disk() -> bool {
+    load_license().as_ref().map(is_pro_for).unwrap_or(false)
+}
+
+/// Disk-only check: is the user currently within the auto-trial window?
+/// Caller passes a pre-loaded UsageRecord to avoid double IO.
+pub fn is_in_trial_disk(usage: &crate::usage::UsageRecord) -> bool {
+    let Some(started) = usage.trial_started_at else {
+        return false;
+    };
+    let elapsed_secs = chrono::Utc::now().timestamp().saturating_sub(started);
+    elapsed_secs < TRIAL_DAYS * 86_400
+}
+
+/// Combined check: Pro license OR active trial.
+pub fn is_pro_or_trial_disk() -> bool {
+    if is_pro_disk() {
+        return true;
+    }
+    let usage = crate::usage::load_usage();
+    is_in_trial_disk(&usage)
 }
 
 fn device_label() -> String {

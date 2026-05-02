@@ -41,6 +41,20 @@ export interface LicenseInfo {
   activation_limit: number | null;
 }
 
+/** Usage stats returned by Rust backend */
+export interface UsageStats {
+  is_pro: boolean;
+  is_in_trial: boolean;
+  trial_days_left: number | null;
+  trial_started_at: number | null;
+  polish_count_this_month: number;
+  polish_limit_free: number;
+  dictionary_count: number;
+  dictionary_limit_free: number;
+  history_count: number;
+  history_limit_free: number;
+}
+
 interface SettingsStore {
   // State
   aiPolishEnabled: boolean;
@@ -65,6 +79,9 @@ interface SettingsStore {
   licenseLoading: boolean;
   licenseError: string | null;
 
+  // Usage state
+  usage: UsageStats | null;
+
   // Actions
   loadSettings: () => Promise<void>;
   saveSettings: (settings: Partial<Settings>) => Promise<void>;
@@ -78,6 +95,7 @@ interface SettingsStore {
   activateLicense: (key: string) => Promise<void>;
   deactivateLicense: () => Promise<void>;
   validateLicense: () => Promise<void>;
+  loadUsage: () => Promise<void>;
 }
 
 function applyLicenseInfo(info: LicenseInfo) {
@@ -115,6 +133,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   licenseActivationLimit: null,
   licenseLoading: false,
   licenseError: null,
+
+  usage: null,
 
   // Load settings from backend
   loadSettings: async () => {
@@ -309,6 +329,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       set({ licenseError: message });
     } finally {
       set({ licenseLoading: false });
+    }
+  },
+
+  // Load usage counters and trial state
+  loadUsage: async () => {
+    try {
+      const stats = await invoke<UsageStats>('get_usage_stats');
+      set({ usage: stats });
+    } catch (error) {
+      console.error('Failed to load usage:', error);
     }
   },
 }));

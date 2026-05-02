@@ -460,12 +460,39 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         return Err("No speech detected (filtered)".to_string());
     }
 
-    // Stage 2: Polish text (if enabled)
-    let final_text = if settings.ai_polish_enabled {
+    // Stage 2: Polish text (if enabled AND user has quota)
+    let polish_quota_ok = if !settings.ai_polish_enabled {
+        false
+    } else if crate::licensing::is_pro_or_trial_disk() {
+        true
+    } else {
+        let used = crate::usage::polish_count_this_month(&crate::usage::load_usage());
+        if used < crate::licensing::FREE_POLISH_PER_MONTH {
+            true
+        } else {
+            notify(
+                app,
+                &format!(
+                    "AI Polish limit reached ({}/{} this month). Upgrade to TTP Pro for unlimited.",
+                    crate::licensing::FREE_POLISH_PER_MONTH,
+                    crate::licensing::FREE_POLISH_PER_MONTH
+                ),
+            );
+            crate::telemetry::analytics::track(
+                app,
+                "free_cap_hit",
+                Some(serde_json::json!({"feature": "ai_polish"})),
+            );
+            false
+        }
+    };
+
+    let final_text = if polish_quota_ok {
         emit_progress(app, "polishing", "Processing...");
 
         match polish_text(&api_key, &raw_text).await {
             Ok(text) => {
+                crate::usage::record_polish_success();
                 // Detect LLM help responses (happens when input is too minimal)
                 let lower = text.to_lowercase();
                 let is_llm_help = lower.contains("i'm here to help")

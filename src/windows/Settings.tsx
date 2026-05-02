@@ -348,6 +348,7 @@ export function Settings() {
     licenseActivationLimit,
     licenseLoading,
     licenseError,
+    usage,
     loadSettings,
     saveSettings,
     resetSettings,
@@ -360,6 +361,7 @@ export function Settings() {
     activateLicense,
     deactivateLicense,
     validateLicense,
+    loadUsage,
   } = useSettingsStore();
 
   const isMac = navigator.platform.startsWith('Mac');
@@ -408,16 +410,28 @@ export function Settings() {
     loadDictionary();
     loadHistory();
     loadLicense();
+    loadUsage();
     checkApiKeys();
-  }, [loadSettings, loadDictionary, loadHistory, loadLicense, checkApiKeys]);
+  }, [loadSettings, loadDictionary, loadHistory, loadLicense, loadUsage, checkApiKeys]);
 
   // React to license changes emitted by the backend (e.g. background re-validate)
   useEffect(() => {
     const unlisten = listen('license-changed', () => {
       loadLicense();
+      loadUsage();
     });
     return () => { unlisten.then(fn => fn()); };
-  }, [loadLicense]);
+  }, [loadLicense, loadUsage]);
+
+  // Refresh usage on transcription completion (polish counter changes)
+  useEffect(() => {
+    const unlisten = listen('recording-state-changed', (event) => {
+      if (event.payload === 'Idle') {
+        setTimeout(() => loadUsage(), 600);
+      }
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, [loadUsage]);
 
   // Re-check API keys when window gets focus (e.g. after setup popup)
   useEffect(() => {
@@ -431,9 +445,10 @@ export function Settings() {
   useEffect(() => {
     const unlisten = listen('dictionary-changed', () => {
       loadDictionary();
+      loadUsage();
     });
     return () => { unlisten.then(fn => fn()); };
-  }, [loadDictionary]);
+  }, [loadDictionary, loadUsage]);
 
   // Refresh history when a transcription completes (state goes back to Idle)
   useEffect(() => {
@@ -591,6 +606,7 @@ export function Settings() {
       setNewOriginal('');
       setNewCorrection('');
       await loadDictionary();
+      await loadUsage();
     } catch (error) {
       setAddEntryError(String(error));
     }
@@ -651,6 +667,18 @@ export function Settings() {
     ? `${licenseKey.slice(0, 4)}…${licenseKey.slice(-4)}`
     : '';
 
+  const isInTrial = !!usage?.is_in_trial && !isPro;
+  const trialDaysLeft = usage?.trial_days_left ?? 0;
+  const polishUsed = usage?.polish_count_this_month ?? 0;
+  const polishLimit = usage?.polish_limit_free ?? 0;
+  const dictCount = usage?.dictionary_count ?? dictionary.length;
+  const dictLimit = usage?.dictionary_limit_free ?? 20;
+  const histCount = usage?.history_count ?? history.length;
+  const histLimit = usage?.history_limit_free ?? 50;
+  const dictAtCap = !isPro && !isInTrial && dictCount >= dictLimit;
+  const histAtCap = !isPro && !isInTrial && histCount >= histLimit;
+  const polishAtCap = !isPro && !isInTrial && polishUsed >= polishLimit;
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
       <div className="max-w-lg mx-auto">
@@ -701,13 +729,18 @@ export function Settings() {
         <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <Crown className={`w-5 h-5 ${isPro ? 'text-amber-500' : 'text-gray-400'}`} />
+              <Crown className={`w-5 h-5 ${isPro || isInTrial ? 'text-amber-500' : 'text-gray-400'}`} />
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                 TTP Pro
               </h2>
               {isPro && (
                 <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
                   Active
+                </span>
+              )}
+              {!isPro && isInTrial && (
+                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
+                  Trial — {trialDaysLeft}d left
                 </span>
               )}
             </div>
@@ -731,9 +764,35 @@ export function Settings() {
           {!isPro ? (
             <>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                Unlock unlimited AI Polish, unlimited dictionary entries, unlimited history, and
-                priority support. One-time payment, lifetime license.
+                {isInTrial
+                  ? `You're on a ${trialDaysLeft}-day Pro trial. Enjoy unlimited AI Polish, dictionary, and history. After the trial, activate a license to keep them.`
+                  : 'Unlock unlimited AI Polish, unlimited dictionary entries, unlimited history, and priority support. One-time payment, lifetime license.'}
               </p>
+
+              {/* Free tier usage counters */}
+              {!isInTrial && (
+                <div className="space-y-2 mb-4 p-3 bg-gray-50 dark:bg-gray-900/40 rounded-md">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-500 dark:text-gray-400">AI Polish (this month)</span>
+                    <span className={`font-mono ${polishAtCap ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-900 dark:text-white'}`}>
+                      {polishUsed} / {polishLimit}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-500 dark:text-gray-400">Dictionary entries</span>
+                    <span className={`font-mono ${dictAtCap ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-900 dark:text-white'}`}>
+                      {dictCount} / {dictLimit}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-500 dark:text-gray-400">History entries</span>
+                    <span className={`font-mono ${histAtCap ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-900 dark:text-white'}`}>
+                      {histCount} / {histLimit}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2 mb-4">
                 <input
                   type="text"
@@ -1097,7 +1156,8 @@ export function Settings() {
                 value={newOriginal}
                 onChange={(e) => setNewOriginal(e.target.value)}
                 placeholder="grok"
-                className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={dictAtCap}
+                className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
               />
             </div>
             <span className="text-gray-400 pb-1.5">&rarr;</span>
@@ -1108,17 +1168,23 @@ export function Settings() {
                 value={newCorrection}
                 onChange={(e) => setNewCorrection(e.target.value)}
                 placeholder="Groq"
-                className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                disabled={dictAtCap}
+                className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
               />
             </div>
             <button
               onClick={handleAddEntry}
-              disabled={!newOriginal.trim() || !newCorrection.trim()}
+              disabled={!newOriginal.trim() || !newCorrection.trim() || dictAtCap}
               className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md transition-colors"
             >
               Add
             </button>
           </div>
+          {dictAtCap && (
+            <p className="text-amber-600 dark:text-amber-400 text-xs mb-3">
+              Free tier limit reached ({dictLimit} entries). Upgrade to TTP Pro for unlimited.
+            </p>
+          )}
           {addEntryError && (
             <p className="text-red-500 text-sm mb-3">{addEntryError}</p>
           )}

@@ -32,6 +32,12 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "1.6.0" => Some(
+            "• 7-day Pro trial automatically starts on this update — enjoy everything unlimited\n\
+             • After the trial, Free tier kicks in: 30 AI Polish/month, 20 dictionary entries, 50 history entries\n\
+             • Existing entries above the cap are kept (you can keep using them, just can't add new ones)\n\
+             • Activate a Pro license any time from Settings → TTP Pro to remove all limits forever",
+        ),
         "1.5.0" => Some(
             "• Introducing TTP Pro — unlock unlimited AI Polish, dictionary, and history\n\
              • New Pro section in Settings to manage your license\n\

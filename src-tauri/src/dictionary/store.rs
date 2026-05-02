@@ -84,7 +84,8 @@ pub fn add_dictionary_entry(original: String, correction: String) -> Result<(), 
 }
 
 /// Add a new entry to the dictionary
-/// If an entry with the same original text exists, it will be updated
+/// If an entry with the same original text exists, it will be updated.
+/// Free tier: blocks NEW entries when at the cap (existing entries stay editable).
 pub fn add_entry(original: &str, correction: &str) -> Result<(), String> {
     let path = get_dictionary_path()?;
 
@@ -96,6 +97,17 @@ pub fn add_entry(original: &str, correction: &str) -> Result<(), String> {
     let existing_idx = entries
         .iter()
         .position(|e| e.original.to_lowercase() == original_lower);
+
+    // Free tier cap — only blocks brand-new entries; updates pass through.
+    if existing_idx.is_none()
+        && !crate::licensing::is_pro_or_trial_disk()
+        && entries.len() >= crate::licensing::FREE_DICTIONARY_LIMIT
+    {
+        return Err(format!(
+            "Free tier limit reached ({} dictionary entries). Upgrade to TTP Pro for unlimited.",
+            crate::licensing::FREE_DICTIONARY_LIMIT
+        ));
+    }
 
     let timestamp = chrono::Utc::now().timestamp();
     let new_entry = DictionaryEntry {

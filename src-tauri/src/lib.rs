@@ -20,6 +20,7 @@ mod state;
 mod telemetry;
 mod transcription;
 mod tray;
+mod usage;
 mod whatsnew;
 
 use credentials::{
@@ -41,6 +42,7 @@ use recording::{get_recordings_dir, RecordingContext};
 use settings::{get_settings, reset_settings, set_settings, open_settings_window};
 use state::AppState;
 use transcription::process_audio;
+use usage::get_usage_stats;
 use whatsnew::{check_whats_new, dismiss_whats_new};
 use std::sync::Mutex;
 #[cfg(target_os = "macos")]
@@ -175,6 +177,9 @@ pub fn run() {
 
             // Initialize license state (loads cached license + kicks off background refresh)
             licensing::init(app.handle());
+
+            // Start the auto-trial on first launch (idempotent).
+            usage::init();
 
             // Clean up stale audio backups (>24 hours old)
             transcription::backup::cleanup_stale_backups(app.handle());
@@ -311,6 +316,7 @@ pub fn run() {
             validate_license,
             is_pro,
             get_license_info,
+            get_usage_stats,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

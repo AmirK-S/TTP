@@ -47,7 +47,8 @@ pub fn get_history() -> Vec<HistoryEntry> {
 }
 
 /// Add a new entry to history
-/// Prepends to existing history (newest first)
+/// Prepends to existing history (newest first).
+/// Free tier: skips silently when at the cap (existing entries are grandfathered).
 pub fn add_history_entry(text: &str, raw_text: Option<&str>) -> Result<(), String> {
     let path = get_history_path().ok_or("Could not determine config directory")?;
 
@@ -59,6 +60,13 @@ pub fn add_history_entry(text: &str, raw_text: Option<&str>) -> Result<(), Strin
 
     // Load existing history
     let mut entries = get_history();
+
+    // Free tier cap — silently skip new entries (don't fail the whole pipeline).
+    if !crate::licensing::is_pro_or_trial_disk()
+        && entries.len() >= crate::licensing::FREE_HISTORY_LIMIT
+    {
+        return Ok(());
+    }
 
     // Create new entry with current timestamp
     let timestamp = SystemTime::now()
