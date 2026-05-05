@@ -9,6 +9,11 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# build.yml only needs to read the repo and write artifacts; no need for
+# contents:write or any token elevation.
+permissions:
+  contents: read
+
 jobs:
   build:
     strategy:
@@ -56,6 +61,13 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm ci
+
+      # Run Rust tests once on macOS — short-circuits the build if something
+      # regressed. Skipped on Windows to avoid duplicating the cost.
+      - name: Run Rust tests
+        if: matrix.platform == 'macos-latest'
+        working-directory: src-tauri
+        run: cargo test --lib
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
