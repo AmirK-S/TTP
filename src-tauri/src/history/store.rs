@@ -4,7 +4,39 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+// In-memory cache so opening Settings (which calls get_history) doesn't
+// re-read + re-parse the JSON file on every render. Invalidated on writes.
+static HISTORY_CACHE: OnceLock<Mutex<Option<(Vec<HistoryEntry>, Instant)>>> = OnceLock::new();
+const CACHE_TTL_SECS: u64 = 5;
+
+fn cache() -> &'static Mutex<Option<(Vec<HistoryEntry>, Instant)>> {
+    HISTORY_CACHE.get_or_init(|| Mutex::new(None))
+}
+
+fn read_cached() -> Option<Vec<HistoryEntry>> {
+    let guard = cache().lock().ok()?;
+    let (entries, cached_at) = guard.as_ref()?;
+    if cached_at.elapsed().as_secs() < CACHE_TTL_SECS {
+        Some(entries.clone())
+    } else {
+        None
+    }
+}
+
+fn store_cache(entries: Vec<HistoryEntry>) {
+    if let Ok(mut guard) = cache().lock() {
+        *guard = Some((entries, Instant::now()));
+    }
+}
+
+fn invalidate_cache() {
+    if let Ok(mut guard) = cache().lock() {
+        *guard = None;
+    }
+}
 
 /// A single history entry representing a past transcription
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,24 +58,31 @@ fn get_history_path() -> Option<PathBuf> {
 /// Returns entries sorted by timestamp, newest first
 #[tauri::command]
 pub fn get_history() -> Vec<HistoryEntry> {
+    if let Some(cached) = read_cached() {
+        return cached;
+    }
+
     let Some(path) = get_history_path() else {
         return Vec::new();
     };
 
     if !path.exists() {
+        store_cache(Vec::new());
         return Vec::new();
     }
 
-    match fs::read_to_string(&path) {
+    let entries = match fs::read_to_string(&path) {
         Ok(content) => {
             let mut entries: Vec<HistoryEntry> =
                 serde_json::from_str(&content).unwrap_or_default();
-            // Sort by timestamp descending (newest first)
             entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
             entries
         }
         Err(_) => Vec::new(),
-    }
+    };
+
+    store_cache(entries.clone());
+    entries
 }
 
 /// Add a new entry to history
@@ -93,12 +132,18 @@ pub fn add_history_entry(text: &str, raw_text: Option<&str>) -> Result<(), Strin
 
     fs::write(&path, json).map_err(|e| format!("Failed to write history file: {}", e))?;
 
+    // Refresh the cache with what we just persisted, so the next get_history()
+    // doesn't have to re-read disk.
+    store_cache(entries);
+
     Ok(())
 }
 
 /// Clear all history by deleting the history file
 #[tauri::command]
 pub fn clear_history() -> Result<(), String> {
+    invalidate_cache();
+
     let Some(path) = get_history_path() else {
         return Ok(()); // No config dir, nothing to clear
     };

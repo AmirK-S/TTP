@@ -5,6 +5,40 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
+
+// In-memory cache so get_dictionary() doesn't re-read + re-parse the JSON
+// file on every Settings render or every transcription pass (apply_dictionary
+// is on the hot path). Invalidated on writes.
+static DICTIONARY_CACHE: OnceLock<Mutex<Option<(Vec<DictionaryEntry>, Instant)>>> = OnceLock::new();
+const CACHE_TTL_SECS: u64 = 5;
+
+fn cache() -> &'static Mutex<Option<(Vec<DictionaryEntry>, Instant)>> {
+    DICTIONARY_CACHE.get_or_init(|| Mutex::new(None))
+}
+
+fn read_cached() -> Option<Vec<DictionaryEntry>> {
+    let guard = cache().lock().ok()?;
+    let (entries, cached_at) = guard.as_ref()?;
+    if cached_at.elapsed().as_secs() < CACHE_TTL_SECS {
+        Some(entries.clone())
+    } else {
+        None
+    }
+}
+
+fn store_cache(entries: Vec<DictionaryEntry>) {
+    if let Ok(mut guard) = cache().lock() {
+        *guard = Some((entries, Instant::now()));
+    }
+}
+
+fn invalidate_cache() {
+    if let Ok(mut guard) = cache().lock() {
+        *guard = None;
+    }
+}
 
 /// A single dictionary entry mapping original (misheard) text to correction
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +72,10 @@ fn get_dictionary_path() -> Result<PathBuf, String> {
 /// Returns empty Vec if file doesn't exist or is empty
 #[tauri::command]
 pub fn get_dictionary() -> Vec<DictionaryEntry> {
+    if let Some(cached) = read_cached() {
+        return cached;
+    }
+
     let path = match get_dictionary_path() {
         Ok(p) => p,
         Err(e) => {
@@ -47,6 +85,7 @@ pub fn get_dictionary() -> Vec<DictionaryEntry> {
     };
 
     if !path.exists() {
+        store_cache(Vec::new());
         return Vec::new();
     }
 
@@ -65,16 +104,20 @@ pub fn get_dictionary() -> Vec<DictionaryEntry> {
     }
 
     if contents.trim().is_empty() {
+        store_cache(Vec::new());
         return Vec::new();
     }
 
-    match serde_json::from_str(&contents) {
+    let entries: Vec<DictionaryEntry> = match serde_json::from_str(&contents) {
         Ok(entries) => entries,
         Err(e) => {
             eprintln!("[Dictionary] Failed to parse JSON: {}", e);
             Vec::new()
         }
-    }
+    };
+
+    store_cache(entries.clone());
+    entries
 }
 
 /// Tauri command to add a dictionary entry from the frontend
@@ -132,6 +175,10 @@ pub fn add_entry(original: &str, correction: &str) -> Result<(), String> {
     file.write_all(json.as_bytes())
         .map_err(|e| format!("Failed to write dictionary file: {}", e))?;
 
+    // Refresh cache with what we just wrote so subsequent get_dictionary()
+    // calls (and apply_dictionary on the hot path) skip disk.
+    store_cache(entries);
+
     Ok(())
 }
 
@@ -173,6 +220,8 @@ fn delete_entry_internal(original: &str) -> Result<(), String> {
         file.write_all(json.as_bytes())
             .map_err(|e| format!("Failed to write dictionary file: {}", e))?;
     }
+
+    store_cache(entries);
 
     Ok(())
 }
@@ -230,6 +279,8 @@ pub fn apply_dictionary(text: &str) -> String {
 /// Clear all dictionary entries (delete file)
 #[tauri::command]
 pub fn clear_dictionary() -> Result<(), String> {
+    invalidate_cache();
+
     let path = get_dictionary_path()?;
 
     if path.exists() {
