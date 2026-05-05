@@ -32,6 +32,47 @@ command -v gh      >/dev/null || die "gh CLI is not installed. Install with: bre
 command -v openssl >/dev/null || die "openssl is not installed."
 gh auth status >/dev/null 2>&1 || die "gh is not authenticated. Run: gh auth login"
 
+# ── If no Developer ID cert exists yet, walk the user through making one ──
+HAS_DEV_ID=$(security find-identity -v -p codesigning 2>/dev/null | grep -c "Developer ID Application" || true)
+if [ "${1:-}" = "" ] && [ "$HAS_DEV_ID" -eq 0 ]; then
+  cat <<'GUIDE'
+No "Developer ID Application" identity found in your keychain.
+
+You need to create one before running this script:
+
+  1. Open Keychain Access.app → menu Certificate Assistant →
+     "Request a Certificate from a Certificate Authority..."
+       • User Email Address: your Apple-ID email
+       • Common Name:        anything (e.g. "TTP Developer ID")
+       • CA Email Address:   leave blank
+       • Choose: "Saved to disk" + "Let me specify key pair information"
+       • Key Size 2048, Algorithm RSA → Continue → save the .certSigningRequest
+
+  2. Go to https://developer.apple.com/account/resources/certificates/add
+       • Choose "Developer ID Application" (under "Software")
+       • Upload the .certSigningRequest from step 1
+       • Download the resulting .cer file
+
+  3. Double-click the .cer to import it into your login keychain.
+     Verify with:
+       security find-identity -v -p codesigning
+     You should see one line like:
+       1) ABCDEF1234... "Developer ID Application: Your Name (TEAMID)"
+
+  4. Right-click the identity in Keychain Access → Export →
+     File Format: Personal Information Exchange (.p12) → save somewhere
+     (any password you like; you'll paste it here next time).
+
+  5. Re-run this script:
+       ./scripts/setup-apple-signing.sh path/to/cert.p12
+
+You also need (collect now, you'll paste them when prompted):
+  • App-specific password from https://appleid.apple.com → Sign-In and
+    Security → App-Specific Passwords. Label it "TTP notarization".
+GUIDE
+  exit 0
+fi
+
 # ── Locate .p12 ────────────────────────────────────────────────────────────
 P12="${1:-}"
 if [ -z "$P12" ]; then
