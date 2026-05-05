@@ -22,7 +22,8 @@ jobs:
     steps:
       - name: Trigger Coolify redeploy
         run: |
-          curl -sf "${{ secrets.COOLIFY_WEBHOOK_URL }}" \
-            -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}" \
-            && echo "Coolify redeploy triggered successfully" \
-            || echo "Warning: Failed to trigger Coolify redeploy"
+          set -euo pipefail
+          curl -sf --retry 3 --retry-delay 5 \
+            "${{ secrets.COOLIFY_WEBHOOK_URL }}" \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}"
+          echo "Coolify redeploy triggered successfully"
