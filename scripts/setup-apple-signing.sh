@@ -151,9 +151,17 @@ case "$CONFIRM" in
 esac
 
 # ── Push secrets ───────────────────────────────────────────────────────────
+# IMPORTANT: use --body-file with a temp file rather than `--body -` piped
+# from stdin. The piped form silently truncates large or odd-shaped values
+# (observed 2026-05-05 — a 4380-char base64 cert ended up stored as a single
+# newline char, and short ASCII values got reduced to 1 char too).
 set_secret() {
   local name="$1" value="$2"
-  printf '%s' "$value" | gh secret set "$name" --repo "$REPO" --body -
+  local tmp
+  tmp=$(mktemp)
+  printf '%s' "$value" > "$tmp"
+  gh secret set "$name" --repo "$REPO" --body-file "$tmp" >/dev/null
+  rm -f "$tmp"
   ok "$name"
 }
 
