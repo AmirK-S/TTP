@@ -56,14 +56,18 @@ export async function fetchGitHubData(): Promise<GitHubData> {
       return getFallbackData();
     }
 
-    // Download links from latest release
+    // Download links from latest release.
+    // Prefer Apple Silicon for Mac (every Mac sold since late 2020 is arm64);
+    // prefer NSIS .exe over .msi for Windows.
     const latest = releases[0];
-    const dmg = latest.assets.find(
-      (a) => a.name.endsWith(".dmg") || a.name.endsWith(".zip")
-    );
-    const exe = latest.assets.find(
-      (a) => a.name.endsWith(".exe") || a.name.endsWith(".msi")
-    );
+    const dmg =
+      latest.assets.find((a) => /aarch64\.dmg$|arm64\.dmg$/i.test(a.name)) ??
+      latest.assets.find((a) => a.name.endsWith(".dmg")) ??
+      latest.assets.find((a) => a.name.endsWith(".zip"));
+    const exe =
+      latest.assets.find((a) => /-setup\.exe$/i.test(a.name)) ??
+      latest.assets.find((a) => a.name.endsWith(".exe")) ??
+      latest.assets.find((a) => a.name.endsWith(".msi"));
     const downloadLinks: DownloadLinks = {
       mac: dmg?.browser_download_url || FALLBACK_URL,
       windows: exe?.browser_download_url || FALLBACK_URL,

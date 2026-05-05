@@ -98,6 +98,7 @@ jobs:
           security list-keychain -d user -s $KEYCHAIN_PATH
 
       - name: Build and Release
+        id: tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -117,3 +118,50 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
           timeout: 90
+
+      # Upload a stable-named alias so /releases/latest/download/<stable> works
+      # without the consumer having to know the version. Versioned originals
+      # are preserved alongside.
+      - name: Upload stable-named macOS alias
+        if: matrix.platform == 'macos-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/dmg"
+          SRC=$(ls "$BUNDLE_DIR"/*.dmg 2>/dev/null | head -1)
+          if [ -z "$SRC" ]; then
+            echo "No DMG produced in $BUNDLE_DIR; skipping alias upload."
+            exit 0
+          fi
+          case "${{ matrix.target }}" in
+            aarch64-apple-darwin) DEST="TTP-macOS-arm64.dmg" ;;
+            x86_64-apple-darwin)  DEST="TTP-macOS-x64.dmg" ;;
+            *) echo "Unknown target ${{ matrix.target }}"; exit 1 ;;
+          esac
+          cp "$SRC" "$DEST"
+          gh release upload "${{ github.ref_name }}" "$DEST" --clobber --repo "${{ github.repository }}"
+
+      - name: Upload stable-named Windows aliases
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          EXE=$(ls src-tauri/target/release/bundle/nsis/*-setup.exe 2>/dev/null | head -1)
+          MSI=$(ls src-tauri/target/release/bundle/msi/*.msi 2>/dev/null | head -1)
+          UPLOADS=()
+          if [ -n "$EXE" ]; then
+            cp "$EXE" "TTP-Windows-x64-setup.exe"
+            UPLOADS+=("TTP-Windows-x64-setup.exe")
+          fi
+          if [ -n "$MSI" ]; then
+            cp "$MSI" "TTP-Windows-x64.msi"
+            UPLOADS+=("TTP-Windows-x64.msi")
+          fi
+          if [ ${#UPLOADS[@]} -gt 0 ]; then
+            gh release upload "${{ github.ref_name }}" "${UPLOADS[@]}" --clobber --repo "${{ github.repository }}"
+          else
+            echo "No Windows installers produced; skipping alias upload."
+          fi
