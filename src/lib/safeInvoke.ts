@@ -26,7 +26,7 @@ function isBridgeReady(): boolean {
 
 function waitForBridge(): Promise<void> {
   if (bridgeReady) return bridgeReady;
-  bridgeReady = new Promise((resolve, reject) => {
+  const promise = new Promise<void>((resolve, reject) => {
     if (isBridgeReady()) {
       resolve();
       return;
@@ -42,7 +42,15 @@ function waitForBridge(): Promise<void> {
       }
     }, POLL_INTERVAL_MS);
   });
-  return bridgeReady;
+  bridgeReady = promise;
+  // If this attempt rejects, drop the cached promise so the next safeInvoke
+  // call gets a fresh wait. Otherwise a single early failure (slow webview
+  // boot, transient OS hiccup) would stick a rejected promise in the cache
+  // and break every subsequent invoke for the whole session.
+  promise.catch(() => {
+    if (bridgeReady === promise) bridgeReady = null;
+  });
+  return promise;
 }
 
 export async function safeInvoke<T = unknown>(

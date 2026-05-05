@@ -22,7 +22,9 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 use tokio::time::sleep;
 
-/// Global rate limiter for `process_audio`: 5 transcriptions per 60s (sliding window via GCRA).
+/// Global rate limiter for `process_audio`: 20 transcriptions per 60s (sliding window via GCRA).
+/// Sized to never trip a power user transcribing rapidly while still capping a runaway
+/// frontend loop in the seconds it would take to notice.
 static PROCESS_AUDIO_LIMITER: OnceLock<DefaultDirectRateLimiter> = OnceLock::new();
 
 /// Maximum audio file size in bytes (25MB Groq API limit)
@@ -721,7 +723,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 #[tauri::command]
 pub async fn process_audio(app: AppHandle, audio_path: String) -> Result<String, String> {
     let limiter = PROCESS_AUDIO_LIMITER.get_or_init(|| {
-        RateLimiter::direct(Quota::per_minute(NonZeroU32::new(5).unwrap()))
+        RateLimiter::direct(Quota::per_minute(NonZeroU32::new(20).unwrap()))
     });
     if limiter.check().is_err() {
         return Err("Rate limit exceeded — please wait a few seconds before transcribing again".to_string());
