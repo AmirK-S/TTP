@@ -32,9 +32,9 @@ pub fn setup_shortcuts(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>
 
     let shortcut = shortcut_str.parse::<Shortcut>().unwrap_or_else(|_| {
         #[cfg(target_os = "macos")]
-        { "Alt+Space".parse::<Shortcut>().unwrap() }
+        { "Alt+Space".parse::<Shortcut>().expect("hardcoded fallback shortcut must parse") }
         #[cfg(not(target_os = "macos"))]
-        { "Ctrl+Space".parse::<Shortcut>().unwrap() }
+        { "Ctrl+Space".parse::<Shortcut>().expect("hardcoded fallback shortcut must parse") }
     });
 
     // Use register() instead of on_shortcut() - handler is set in Builder

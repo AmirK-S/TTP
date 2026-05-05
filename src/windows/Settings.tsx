@@ -4,8 +4,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Copy, Check, Download, RefreshCw, Crown, Loader2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { useTauriEvent } from '../hooks/useTauriEvent';
 import { getVersion } from '@tauri-apps/api/app';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from '@tauri-apps/plugin-autostart';
@@ -208,12 +208,9 @@ function UpdateSection() {
   }, []);
 
   // Auto-trigger check when main window detects an update and emits the event
-  useEffect(() => {
-    const unlisten = listen('update-available', () => {
-      checkForUpdates();
-    });
-    return () => { unlisten.then(fn => fn()); };
-  }, [checkForUpdates]);
+  useTauriEvent('update-available', () => {
+    checkForUpdates();
+  });
 
   return (
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
@@ -376,12 +373,9 @@ export function Settings() {
   }, []);
 
   // Scroll to update section when update-available event fires
-  useEffect(() => {
-    const unlisten = listen<{ version: string; body?: string }>('update-available', () => {
-      updateSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-    return () => { unlisten.then(fn => fn()); };
-  }, []);
+  useTauriEvent<{ version: string; body?: string }>('update-available', () => {
+    updateSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
 
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -432,25 +426,24 @@ export function Settings() {
   }, [loadSettings, loadDictionary, loadHistory, loadLicense, loadUsage, checkApiKeys]);
 
   // React to license changes emitted by the backend (e.g. background re-validate)
-  useEffect(() => {
-    const unlisten = listen('license-changed', () => {
-      loadLicense();
-      loadUsage();
-    });
-    return () => { unlisten.then(fn => fn()); };
-  }, [loadLicense, loadUsage]);
+  useTauriEvent('license-changed', () => {
+    loadLicense();
+    loadUsage();
+  });
 
-  // Refresh usage on transcription completion (polish counter changes)
-  useEffect(() => {
-    const unlisten = listen('recording-state-changed', (event) => {
-      if (event.payload === 'Idle') {
-        setTimeout(() => loadUsage(), 600);
-      }
-    });
-    return () => { unlisten.then(fn => fn()); };
-  }, [loadUsage]);
+  // Refresh usage and history when a transcription completes.
+  // Single listener intentionally — two competing useEffects on the same event
+  // were the suspected source of the listener race in TTP-5.
+  useTauriEvent<string>('recording-state-changed', (event) => {
+    if (event.payload === 'Idle') {
+      setTimeout(() => loadHistory(), 500);
+      setTimeout(() => loadUsage(), 600);
+    }
+  });
 
-  // Re-check API keys when window gets focus (e.g. after setup popup)
+  // Re-check API keys when window gets focus (e.g. after setup popup).
+  // Window.onFocusChanged uses a different (synchronous) API so the legacy
+  // pattern is OK here.
   useEffect(() => {
     const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
       if (focused) checkApiKeys();
@@ -459,24 +452,10 @@ export function Settings() {
   }, [checkApiKeys]);
 
   // Refresh dictionary when backend auto-detects corrections
-  useEffect(() => {
-    const unlisten = listen('dictionary-changed', () => {
-      loadDictionary();
-      loadUsage();
-    });
-    return () => { unlisten.then(fn => fn()); };
-  }, [loadDictionary, loadUsage]);
-
-  // Refresh history when a transcription completes (state goes back to Idle)
-  useEffect(() => {
-    const unlisten = listen('recording-state-changed', (event) => {
-      if (event.payload === 'Idle') {
-        // Small delay to let the backend finish writing history
-        setTimeout(() => loadHistory(), 500);
-      }
-    });
-    return () => { unlisten.then(fn => fn()); };
-  }, [loadHistory]);
+  useTauriEvent('dictionary-changed', () => {
+    loadDictionary();
+    loadUsage();
+  });
 
   // Handle AI polish toggle
   const handlePolishToggle = async (enabled: boolean) => {

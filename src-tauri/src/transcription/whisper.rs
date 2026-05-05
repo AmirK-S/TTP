@@ -114,13 +114,16 @@ async fn transcribe_with_provider(
                         .map_err(|e| format!("Failed to read transcription response: {}", e))?;
                     return Ok(text);
                 } else {
-                    // HTTP error - capture for potential retry
+                    // HTTP error - capture for potential retry. Status code is
+                    // included in the error string verbatim so the pipeline can
+                    // detect 429/401/403 and surface a friendlier message.
                     let error_body = response.text().await.unwrap_or_default();
+                    let status_code = status.as_u16();
                     last_error = format!("Transcription API error: {} - {}", status, error_body);
                     log_error(&format!("API error {}: {}", status, &error_body[..error_body.len().min(300)]));
 
                     // Don't retry on client errors (4xx) except rate limits (429)
-                    if status.is_client_error() && status.as_u16() != 429 {
+                    if status.is_client_error() && status_code != 429 {
                         return Err(last_error);
                     }
                 }

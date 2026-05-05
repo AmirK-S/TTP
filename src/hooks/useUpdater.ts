@@ -18,6 +18,14 @@ export interface UpdateInfo {
 
 const UPDATE_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
+/// Strip user-identifying paths and truncate, so update_failed telemetry stays safe.
+function scrubUpdateError(msg: string): string {
+  return msg
+    .replace(/\/Users\/[^\s/"']+/g, '[USER]')
+    .replace(/\/home\/[^\s/"']+/g, '[USER]')
+    .slice(0, 200);
+}
+
 interface UseUpdaterOptions {
   autoCheck?: boolean;
 }
@@ -81,8 +89,15 @@ export function useUpdater(options?: UseUpdaterOptions) {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('[Updater] Check failed:', msg);
+      trackEvent('update_failed', {
+        stage: 'check',
+        error: scrubUpdateError(msg),
+      });
       setError(msg);
       setStatus('error');
+      // Drop back to idle so the user can hit "Check" again — without this
+      // the button stayed disabled forever after a transient network blip.
+      setTimeout(() => setStatus('idle'), 5000);
       return false;
     }
   }, []);
@@ -145,8 +160,13 @@ export function useUpdater(options?: UseUpdaterOptions) {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('[Updater] Download failed:', msg);
+      trackEvent('update_failed', {
+        stage: 'download',
+        error: scrubUpdateError(msg),
+      });
       setError(msg);
       setStatus('error');
+      setTimeout(() => setStatus('idle'), 5000);
     }
   }, []);
 

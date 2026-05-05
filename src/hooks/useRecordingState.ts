@@ -1,8 +1,8 @@
 // TTP - Talk To Paste
 // Hook for listening to recording state changes from Rust backend
 
-import { listen } from '@tauri-apps/api/event';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useTauriEvent } from './useTauriEvent';
 
 export type RecordingState = 'Idle' | 'Recording' | 'Processing';
 
@@ -14,15 +14,9 @@ export type RecordingState = 'Idle' | 'Recording' | 'Processing';
 export function useRecordingState() {
   const [state, setState] = useState<RecordingState>('Idle');
 
-  useEffect(() => {
-    const unlisten = listen<RecordingState>('recording-state-changed', (event) => {
-      setState(event.payload);
-    });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, []);
+  useTauriEvent<RecordingState>('recording-state-changed', (event) => {
+    setState(event.payload);
+  });
 
   return state;
 }

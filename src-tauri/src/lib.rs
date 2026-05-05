@@ -240,6 +240,23 @@ pub fn run() {
                 fnkey::set_fn_key_enabled(fn_enabled);
             }
 
+            // Best-effort: clear the macOS quarantine xattr after a self-update so
+            // Gatekeeper doesn't re-prompt the user. Only runs when installed in
+            // /Applications (i.e. real users, never dev mode), and silently no-ops
+            // if `xattr` isn't on PATH.
+            #[cfg(target_os = "macos")]
+            {
+                if let Ok(exe) = std::env::current_exe() {
+                    if exe.starts_with("/Applications/") {
+                        std::thread::spawn(|| {
+                            let _ = std::process::Command::new("xattr")
+                                .args(["-dr", "com.apple.quarantine", "/Applications/TTP.app"])
+                                .output();
+                        });
+                    }
+                }
+            }
+
             // Load persisted hands_free_mode from settings
             let hands_free_mode = settings::get_settings().hands_free_mode;
             if let Some(state) = app.try_state::<Mutex<AppState>>() {

@@ -32,6 +32,27 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "1.7.0" => Some(
+            "• Onboarding refresh: clearer help text, ordered steps, trial banner, and one-tap link to System Settings when a permission is denied\n\
+             • Friendlier error messages when Groq is rate-limited (429) or your API key is invalid (401) — no more raw HTTP codes in the pill\n\
+             • You now get a quick \"Polish unavailable — pasting raw text\" notice instead of silent fallback\n\
+             • Microphone permission denied mid-session now shows feedback in the pill instead of failing silently\n\
+             • Update failures (check + download) are tracked so we can spot regressions; the \"Check for Updates\" button no longer gets stuck after a transient network blip\n\
+             • macOS: the quarantine flag is cleared after a self-update so Gatekeeper stops re-prompting you\n\
+             • Anti-tamper: license and usage caches are now HMAC-signed; manual file edits no longer hand out free Pro\n\
+             • Fewer ways the app can crash on cold start (license cache poison recovery, recordings dir errors)\n\
+             • Crash reporter can no longer take itself down on its own regex (defensive)\n\
+             • Privacy: audio-backup failures send only a category — no more raw OS paths\n\
+             • Removed listener race condition that could surface as a UI freeze (TTP-5)\n\
+             • Background analytics errors fixed (TTP-6/8)",
+        ),
+        "1.6.2" => Some(
+            "• Fixed background analytics errors that were spamming our crash reporter\n\
+             • Hardened event listeners against a rare race that could surface as a UI freeze\n\
+             • Crash reporter pipeline can no longer panic on its own regex (defensive)\n\
+             • Privacy: audio-backup failures send a category instead of the raw OS path\n\
+             • No new features — pure stability pass driven by production telemetry",
+        ),
         "1.6.1" => Some(
             "• Launch at startup — toggle in Settings to open TTP automatically when you log in\n\
              • Fixed F3 / F6 / other system function keys triggering recordings on macOS\n\

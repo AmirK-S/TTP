@@ -4,17 +4,26 @@
 
 use std::sync::OnceLock;
 
+/// A regex that matches nothing — used as a fallback if a hand-written
+/// pattern fails to compile, so the scrubber can never panic and take
+/// down the Sentry pipeline (which runs from event/breadcrumb hooks on
+/// arbitrary threads, where a panic kills the whole app).
+fn never_match() -> regex::Regex {
+    regex::Regex::new(r"$.^").expect("trivial regex must compile")
+}
+
 /// Compiled regex for Groq API keys (gsk_...)
 fn api_key_regex() -> &'static regex::Regex {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
-    RE.get_or_init(|| regex::Regex::new(r"gsk_[a-zA-Z0-9]{20,}").unwrap())
+    RE.get_or_init(|| regex::Regex::new(r"gsk_[a-zA-Z0-9]{20,}").unwrap_or_else(|_| never_match()))
 }
 
 /// Compiled regex for file paths (macOS, Linux, Windows)
 fn file_path_regex() -> &'static regex::Regex {
     static RE: OnceLock<regex::Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        regex::Regex::new(r"(/Users/[^\s:]+|/home/[^\s:]+|[A-Z]:\\[^\s:]+)").unwrap()
+        regex::Regex::new(r"(/Users/[^\s:]+|/home/[^\s:]+|[A-Z]:\\[^\s:]+)")
+            .unwrap_or_else(|_| never_match())
     })
 }
 

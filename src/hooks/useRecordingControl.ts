@@ -5,8 +5,9 @@
 
 import { startRecording, stopRecording } from 'tauri-plugin-mic-recorder-api';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
-import { useEffect, useRef, useCallback } from 'react';
+import { emit } from '@tauri-apps/api/event';
+import { useRef, useCallback } from 'react';
+import { useTauriEvent } from './useTauriEvent';
 
 type RecordingState = 'Idle' | 'Recording' | 'Processing';
 
@@ -42,7 +43,14 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
     } catch (error) {
       isRecordingRef.current = false;
       recordingStartTime.current = null;
-      onError?.(String(error));
+      const errorMsg = String(error);
+      // Surface the failure to FloatingBar via the same event the Rust pipeline uses,
+      // so the user always sees feedback even when no `onError` handler is wired.
+      const friendly = /permission/i.test(errorMsg)
+        ? 'Microphone permission denied — check System Settings'
+        : `Mic error: ${errorMsg.slice(0, 120)}`;
+      emit('transcription-progress', { stage: 'error', message: friendly }).catch(() => {});
+      onError?.(errorMsg);
       // Reset Rust state to Idle so the user can record again
       invoke('reset_to_idle').catch(() => {});
     }
@@ -92,28 +100,22 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
     }
   }, [onRecordingComplete, onError]);
 
-  useEffect(() => {
-    // Listen for recording state changes from Rust
-    const unlisten = listen<RecordingState>('recording-state-changed', async (event) => {
-      const state = event.payload;
-
-      if (state === 'Recording' && !isRecordingRef.current) {
-        await handleStartRecording();
-      } else if (state === 'Processing') {
-        if (isRecordingRef.current) {
-          // Recording stopped, now processing - stop mic and trigger pipeline
-          await handleStopRecording();
-        } else {
-          // JS mic never started (plugin failed) — reset Rust state so user isn't stuck
-          invoke('reset_to_idle').catch(() => {});
-        }
+  // Listen for recording state changes from Rust. The handler reads
+  // handleStart/Stop via the ref-stable hook, so we register exactly once
+  // for the lifetime of the component instead of churning on every render
+  // — that churn was the suspected cause of TTP-5.
+  useTauriEvent<RecordingState>('recording-state-changed', async (event) => {
+    const state = event.payload;
+    if (state === 'Recording' && !isRecordingRef.current) {
+      await handleStartRecording();
+    } else if (state === 'Processing') {
+      if (isRecordingRef.current) {
+        await handleStopRecording();
+      } else {
+        invoke('reset_to_idle').catch(() => {});
       }
-    });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [handleStartRecording, handleStopRecording]);
+    }
+  });
 
   return {
     isRecording: isRecordingRef.current,

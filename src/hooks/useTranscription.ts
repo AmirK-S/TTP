@@ -1,8 +1,8 @@
 // TTP - Talk To Paste
 // Hook for listening to transcription progress events from Rust backend
 
-import { listen } from '@tauri-apps/api/event';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useTauriEvent } from './useTauriEvent';
 
 export type TranscriptionStage =
   | 'idle'
@@ -33,30 +33,22 @@ export function useTranscription() {
   const [stage, setStage] = useState<TranscriptionStage>('idle');
   const [message, setMessage] = useState('');
 
-  useEffect(() => {
-    const unlisten = listen<TranscriptionProgress>('transcription-progress', (event) => {
-      setStage(event.payload.stage);
-      setMessage(event.payload.message);
+  useTauriEvent<TranscriptionProgress>('transcription-progress', (event) => {
+    setStage(event.payload.stage);
+    setMessage(event.payload.message);
 
-      // Reset to idle after complete/error
-      if (event.payload.stage === 'complete') {
-        setTimeout(() => {
-          setStage('idle');
-          setMessage('');
-        }, 500);
-      } else if (event.payload.stage === 'error') {
-        // Keep errors visible longer so user can read the message
-        setTimeout(() => {
-          setStage('idle');
-          setMessage('');
-        }, 4000);
-      }
-    });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, []);
+    if (event.payload.stage === 'complete') {
+      setTimeout(() => {
+        setStage('idle');
+        setMessage('');
+      }, 500);
+    } else if (event.payload.stage === 'error') {
+      setTimeout(() => {
+        setStage('idle');
+        setMessage('');
+      }, 4000);
+    }
+  });
 
   const isProcessing = stage !== 'idle';
 

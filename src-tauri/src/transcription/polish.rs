@@ -166,13 +166,15 @@ pub async fn polish_text(api_key: &str, raw_text: &str) -> Result<String, String
                     }
                     return Ok(trimmed);
                 } else {
-                    // HTTP error - capture for potential retry
+                    // HTTP error - capture for potential retry. Status code is
+                    // included verbatim so pipeline can detect 429/401/403.
                     let error_body = response.text().await.unwrap_or_default();
+                    let status_code = status.as_u16();
                     last_error = format!("Polish API error: {} - {}", status, error_body);
                     log_error(&last_error);
 
                     // Don't retry on client errors (4xx) except rate limits (429)
-                    if status.is_client_error() && status.as_u16() != 429 {
+                    if status.is_client_error() && status_code != 429 {
                         return Err(last_error);
                     }
                 }

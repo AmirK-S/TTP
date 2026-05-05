@@ -1,6 +1,6 @@
 [package]
 name = "ttp"
-version = "1.6.1"
+version = "1.7.0"
 description = "Talk To Paste - Voice to text transcription"
 authors = ["TTP Team"]
 edition = "2021"
@@ -40,6 +40,9 @@ sentry = "0.42"
 tauri-plugin-sentry = "0.5"
 tauri-plugin-aptabase = "1.0"
 regex = "1"
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"

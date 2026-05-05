@@ -232,6 +232,9 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         Ok(path) => path,
         Err(e) => {
             eprintln!("[Pipeline] Conversion failed: {} — sending original", e);
+            // Tell the user the next stage may reject it (~25 MB cap on
+            // un-compressed audio is hit much earlier than on compressed).
+            emit_progress(app, "transcribing", "Compressing audio failed — using original");
             audio_path.clone()
         }
     };
@@ -320,9 +323,16 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     let backup_path = match super::backup::backup_audio(app, &audio_path) {
         Ok(path) => Some(path),
         Err(e) => {
+            // Local log keeps the full error (incl. paths) for the user's
+            // own debugging; analytics gets only the error category to
+            // avoid leaking filesystem paths off-device.
             crate::logging::log_warn(&format!("Audio backup failed: {}", e));
+            let category = if e.contains("Permission") { "permission_denied" }
+                else if e.contains("space") || e.contains("No space") { "disk_full" }
+                else if e.contains("dir") { "create_dir_failed" }
+                else { "other" };
             crate::telemetry::analytics::track(app, "backup_failed", Some(serde_json::json!({
-                "error": e
+                "category": category
             })));
             None // Continue without backup -- don't block transcription
         }
@@ -382,7 +392,11 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             ));
 
             // Classify error for analytics
-            let error_category = if e.contains("413") || e.to_lowercase().contains("entity too large") || e.to_lowercase().contains("too long") {
+            let error_category = if e.contains(" 429 ") || e.contains(": 429") {
+                "rate_limited"
+            } else if e.contains(" 401 ") || e.contains(": 401") || e.contains(" 403 ") || e.contains(": 403") {
+                "invalid_api_key"
+            } else if e.contains("413") || e.to_lowercase().contains("entity too large") || e.to_lowercase().contains("too long") {
                 "too_long"
             } else if e.to_lowercase().contains("timeout") || e.to_lowercase().contains("connect") || e.to_lowercase().contains("network") || e.to_lowercase().contains("dns") {
                 "network"
@@ -390,11 +404,12 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 "api_error"
             };
 
-            // User-friendly message for 413 / payload too large
-            let user_msg = if error_category == "too_long" {
-                "Recording too long — try a shorter recording".to_string()
-            } else {
-                format!("Transcription failed: {}", e)
+            // User-friendly message based on error category
+            let user_msg = match error_category {
+                "rate_limited" => "Rate limited by Groq — wait a few seconds and try again".to_string(),
+                "invalid_api_key" => "Invalid Groq API key — check Settings → Transcription".to_string(),
+                "too_long" => "Recording too long — try a shorter recording".to_string(),
+                _ => format!("Transcription failed: {}", e),
             };
 
             emit_progress(app, "error", &user_msg);
@@ -539,6 +554,22 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             }
             Err(e) => {
                 eprintln!("[Pipeline] Polish failed, using raw text: {}", e);
+                let category = if e.contains(" 429 ") || e.contains(": 429") {
+                    "rate_limited"
+                } else if e.contains(" 401 ") || e.contains(": 401") || e.contains(" 403 ") || e.contains(": 403") {
+                    "invalid_api_key"
+                } else {
+                    "polish_failed"
+                };
+                // Quick pill flicker so user understands why their text isn't polished.
+                // For rate-limit / bad-key the main transcription stage already surfaced
+                // the error, so don't double-message.
+                if category == "polish_failed" {
+                    emit_progress(app, "pasting", "Polish unavailable — pasting raw text");
+                }
+                crate::telemetry::analytics::track(app, "polish_failed", Some(serde_json::json!({
+                    "category": category
+                })));
                 raw_text.clone()
             }
         }

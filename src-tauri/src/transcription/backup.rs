@@ -17,11 +17,11 @@ const BACKUP_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 /// Get the backup directory path: `app_data_dir/audio_backups/`
 ///
 /// Follows the same pattern as `recording.rs::get_recording_dir()`.
-pub fn backup_dir(app: &AppHandle) -> PathBuf {
+pub fn backup_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
-        .expect("Failed to get app data dir")
-        .join("audio_backups")
+        .map(|p| p.join("audio_backups"))
+        .map_err(|e| format!("Failed to get app data dir: {}", e))
 }
 
 /// Copy an audio file to the backup directory before transcription.
@@ -29,7 +29,7 @@ pub fn backup_dir(app: &AppHandle) -> PathBuf {
 /// Creates the backup directory if it does not exist. The backup filename
 /// matches the source filename. Returns the full path to the backup file.
 pub fn backup_audio(app: &AppHandle, audio_path: &str) -> Result<PathBuf, String> {
-    let dir = backup_dir(app);
+    let dir = backup_dir(app)?;
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create backup dir: {}", e))?;
 
@@ -102,7 +102,10 @@ pub fn remove_backup(backup_path: &Path) {
 /// files but never fails or panics -- if the backup directory does not
 /// exist, returns silently.
 pub fn cleanup_stale_backups(app: &AppHandle) {
-    let dir = backup_dir(app);
+    let Ok(dir) = backup_dir(app) else {
+        crate::logging::log_warn("backup cleanup skipped: app data dir unavailable");
+        return;
+    };
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return;
     };

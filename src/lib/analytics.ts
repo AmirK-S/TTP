@@ -1,16 +1,12 @@
 // TTP - Talk To Paste
-// Safe analytics wrapper - silently no-ops when Aptabase plugin is not registered (telemetry OFF)
+// Analytics wrapper — calls the tauri-plugin-aptabase Rust command directly.
+// We bypass @aptabase/tauri because it ships a bundled @tauri-apps/api v1
+// that calls window.__TAURI_IPC__() — undefined under Tauri 2 (TTP-8/TTP-6).
 
-import { trackEvent as aptabaseTrackEvent } from "@aptabase/tauri";
+import { invoke } from '@tauri-apps/api/core';
 
-/**
- * Track an analytics event. Silently no-ops when telemetry is disabled
- * (Aptabase plugin not registered).
- */
 export function trackEvent(name: string, props?: Record<string, string | number>) {
-  try {
-    aptabaseTrackEvent(name, props);
-  } catch {
-    // Silently ignore -- plugin not registered when telemetry is OFF
-  }
+  // Plugin is only registered when telemetry is opted in — on opt-out the
+  // invoke rejects and we silently drop the event.
+  invoke('plugin:aptabase|track_event', { name, props }).catch(() => {});
 }
