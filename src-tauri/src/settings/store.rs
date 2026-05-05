@@ -71,6 +71,34 @@ fn get_settings_path() -> Option<PathBuf> {
     dirs::config_dir().map(|p| p.join("ttp").join("settings.json"))
 }
 
+/// Backup of the most recent valid settings file. Used to recover from a
+/// corrupted primary file (e.g. interrupted write, future schema migration
+/// gone wrong) instead of silently resetting the user's preferences.
+fn get_settings_backup_path() -> Option<PathBuf> {
+    dirs::config_dir().map(|p| p.join("ttp").join("settings.json.bak"))
+}
+
+/// Try the .bak file when the primary settings file is unreadable / unparseable.
+/// Returns Settings::default() if the backup is also missing or corrupt.
+fn recover_from_backup() -> Settings {
+    let Some(bak) = get_settings_backup_path() else {
+        return Settings::default();
+    };
+    if !bak.exists() {
+        return Settings::default();
+    }
+    match fs::read_to_string(&bak) {
+        Ok(content) => match serde_json::from_str::<Settings>(&content) {
+            Ok(s) => {
+                crate::logging::log_info("Recovered settings from settings.json.bak");
+                s
+            }
+            Err(_) => Settings::default(),
+        },
+        Err(_) => Settings::default(),
+    }
+}
+
 /// Load settings from file, return defaults if file doesn't exist
 #[tauri::command]
 pub fn get_settings() -> Settings {
@@ -82,13 +110,27 @@ pub fn get_settings() -> Settings {
         return Settings::default();
     }
 
-    match fs::read_to_string(&path) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
-        Err(_) => Settings::default(),
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return recover_from_backup(),
+    };
+
+    match serde_json::from_str::<Settings>(&content) {
+        Ok(s) => s,
+        Err(e) => {
+            crate::logging::log_error(&format!(
+                "settings.json failed to parse ({}); falling back to .bak",
+                e
+            ));
+            recover_from_backup()
+        }
     }
 }
 
-/// Save settings to file
+/// Save settings to file. Copies the current file to settings.json.bak first
+/// so a parse failure on the next load (e.g. a half-written file, or a
+/// future field whose schema we got wrong) can recover instead of resetting
+/// to defaults.
 #[tauri::command]
 pub fn set_settings(settings: Settings, app: AppHandle) -> Result<(), String> {
     let path = get_settings_path().ok_or("Could not determine config directory")?;
@@ -96,6 +138,15 @@ pub fn set_settings(settings: Settings, app: AppHandle) -> Result<(), String> {
     // Ensure parent directory exists
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create config directory: {}", e))?;
+    }
+
+    // Snapshot the current valid file before overwriting it. Best-effort —
+    // if the copy fails (e.g. permission, disk full) we still proceed; we'd
+    // rather lose the backup than block the user from changing a setting.
+    if path.exists() {
+        if let Some(bak) = get_settings_backup_path() {
+            let _ = fs::copy(&path, &bak);
+        }
     }
 
     let json = serde_json::to_string_pretty(&settings)
@@ -118,6 +169,13 @@ pub fn reset_settings() -> Result<(), String> {
 
     if path.exists() {
         fs::remove_file(&path).map_err(|e| format!("Failed to delete settings file: {}", e))?;
+    }
+
+    // Also clear the backup so a stale recovery doesn't resurrect old settings.
+    if let Some(bak) = get_settings_backup_path() {
+        if bak.exists() {
+            let _ = fs::remove_file(&bak);
+        }
     }
 
     Ok(())
