@@ -28,8 +28,14 @@ const DETECTION_WINDOW_SECS: u64 = 15;
 /// * `pasted_text` - The text that was just pasted
 pub fn start_correction_window(app: &AppHandle, pasted_text: String) {
     let app_handle = app.clone();
-    // Spawn background task for detection
-    tokio::spawn(async move {
+    // Spawn on Tauri's runtime instead of tokio::spawn directly. tokio::spawn
+    // requires Handle::current(), which is thread-local — if this fn ever gets
+    // called from a thread without a tokio runtime attached (e.g. an OS event
+    // callback that bypassed the async dispatch chain) we'd panic with
+    // "no reactor running, must be called from the context of a Tokio 1.x
+    // runtime". tauri::async_runtime::spawn is bound to the global Tauri
+    // runtime so it works from any thread for the lifetime of the app.
+    tauri::async_runtime::spawn(async move {
         // Small initial delay to let the paste settle
         sleep(Duration::from_millis(500)).await;
 
