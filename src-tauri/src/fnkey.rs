@@ -48,6 +48,12 @@ static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 /// Whether Fn key monitoring is active
 static FN_MONITORING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
+/// Timestamp (ms) of the most recent F-key (F1..F12) press observed via NSEvent.
+/// The timer-based Fn detector rejects the Function modifier if an F-key fired
+/// within FKEY_VETO_WINDOW_MS — this is what stops F3/F6/etc. from being
+/// misread as "Fn held" on Macs that send the Function flag for system F-keys.
+static LAST_FKEY_PRESS_MS: AtomicU64 = AtomicU64::new(0);
+
 /// Double-tap detection threshold in milliseconds
 const DOUBLE_TAP_THRESHOLD_MS: u64 = 300;
 
@@ -64,6 +70,34 @@ const NS_MODIFIER_KEY_MASK: u64 = 0x1E0000; // Shift|Ctrl|Option|Command
 
 /// Debounce: Fn must be held for this long before recording starts (ms)
 const FN_DEBOUNCE_MS: u64 = 150;
+
+/// NSEventMaskKeyDown = 1 << 10
+const NS_EVENT_MASK_KEY_DOWN: u64 = 1 << 10;
+
+/// How long after an F-key press to ignore Function-flag events.
+/// Covers the brief window where the OS still reports the Function modifier
+/// after a system F-key (Mission Control, brightness, etc.) was tapped.
+const FKEY_VETO_WINDOW_MS: u64 = 250;
+
+/// Carbon kVK_F1..kVK_F12 keycodes — any of these arriving as keyDown means
+/// the user pressed a system F-key, not the physical Fn/Globe key.
+fn is_fkey_keycode(code: u16) -> bool {
+    matches!(
+        code,
+        0x7A // F1
+        | 0x78 // F2
+        | 0x63 // F3
+        | 0x76 // F4
+        | 0x60 // F5
+        | 0x61 // F6
+        | 0x62 // F7
+        | 0x64 // F8
+        | 0x65 // F9
+        | 0x6D // F10
+        | 0x67 // F11
+        | 0x6F // F12
+    )
+}
 
 macro_rules! fnlog {
     ($($arg:tt)*) => {
@@ -98,6 +132,13 @@ fn is_physical_fn_key(flags: u64) -> bool {
 
     // Arrow keys set NumericPad (0x200000) alongside Function — reject
     if (flags & NS_EVENT_MODIFIER_FLAG_NUMERIC_PAD) != 0 {
+        return false;
+    }
+
+    // If a system F-key (Mission Control, brightness, etc.) was just pressed,
+    // the Function flag we're seeing belongs to it — not the physical Fn key.
+    let last_fkey = LAST_FKEY_PRESS_MS.load(Ordering::Relaxed);
+    if last_fkey > 0 && now_ms().saturating_sub(last_fkey) < FKEY_VETO_WINDOW_MS {
         return false;
     }
 
@@ -200,6 +241,28 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
 
         std::mem::forget(timer_block);
         fnlog!("[FnKey] Fn key monitor started (20ms poll, {}ms debounce, arrow key filter)", FN_DEBOUNCE_MS);
+
+        // Global keyDown monitor: records the timestamp of any F-key press so
+        // the timer above can veto the Function flag that the OS attaches to
+        // them. Without this, F3/F6/etc. count as "Fn held".
+        let veto_block = ConcreteBlock::new(move |event: id| {
+            if !FN_MONITORING_ACTIVE.load(Ordering::Relaxed) {
+                return;
+            }
+            let keycode: u16 = msg_send![event, keyCode];
+            if is_fkey_keycode(keycode) {
+                LAST_FKEY_PRESS_MS.store(now_ms(), Ordering::Relaxed);
+            }
+        });
+        let veto_block = veto_block.copy();
+
+        let _veto_monitor: id = msg_send![
+            class!(NSEvent),
+            addGlobalMonitorForEventsMatchingMask: NS_EVENT_MASK_KEY_DOWN
+            handler: &*veto_block
+        ];
+        std::mem::forget(veto_block);
+        fnlog!("[FnKey] F-key veto monitor armed ({}ms window)", FKEY_VETO_WINDOW_MS);
     }
 }
 

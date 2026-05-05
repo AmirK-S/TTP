@@ -86,16 +86,31 @@ fn emit_license_changed(app: &AppHandle, info: &LicenseInfo) {
     let _ = app.emit("license-changed", info);
 }
 
+/// Recover from a poisoned mutex by taking the inner value rather than
+/// panicking. License state is just a cache; if a previous holder panicked,
+/// we'd rather rebuild the state than crash the whole app.
+fn lock_or_recover<'a>(
+    state: &'a State<Mutex<LicenseState>>,
+) -> std::sync::MutexGuard<'a, LicenseState> {
+    match state.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            log_error("License state mutex was poisoned — recovering");
+            poisoned.into_inner()
+        }
+    }
+}
+
 #[tauri::command]
 pub fn get_license_info(state: State<Mutex<LicenseState>>) -> LicenseInfo {
-    let guard = state.lock().expect("license state poisoned");
+    let guard = lock_or_recover(&state);
     let is_pro = guard.record.as_ref().map(is_pro_for).unwrap_or(false);
     LicenseInfo::from_record(guard.record.clone(), is_pro)
 }
 
 #[tauri::command]
 pub fn is_pro(state: State<Mutex<LicenseState>>) -> bool {
-    let guard = state.lock().expect("license state poisoned");
+    let guard = lock_or_recover(&state);
     guard.record.as_ref().map(is_pro_for).unwrap_or(false)
 }
 
@@ -131,7 +146,7 @@ pub async fn activate_license(
     save_license(&record)?;
 
     let state = app.state::<Mutex<LicenseState>>();
-    let mut guard = state.lock().expect("license state poisoned");
+    let mut guard = lock_or_recover(&state);
     guard.record = Some(record.clone());
     let is_pro = is_pro_for(&record);
     drop(guard);
@@ -145,7 +160,7 @@ pub async fn activate_license(
 pub async fn deactivate_license(app: AppHandle) -> Result<(), String> {
     let state = app.state::<Mutex<LicenseState>>();
     let snapshot = {
-        let guard = state.lock().expect("license state poisoned");
+        let guard = lock_or_recover(&state);
         guard.record.clone()
     };
 
@@ -160,7 +175,7 @@ pub async fn deactivate_license(app: AppHandle) -> Result<(), String> {
 
     clear_license()?;
     {
-        let mut guard = state.lock().expect("license state poisoned");
+        let mut guard = lock_or_recover(&state);
         guard.record = None;
     }
 
@@ -173,7 +188,7 @@ pub async fn deactivate_license(app: AppHandle) -> Result<(), String> {
 pub async fn validate_license(app: AppHandle) -> Result<LicenseInfo, String> {
     let state = app.state::<Mutex<LicenseState>>();
     let snapshot = {
-        let guard = state.lock().expect("license state poisoned");
+        let guard = lock_or_recover(&state);
         guard.record.clone()
     };
 
@@ -190,7 +205,7 @@ pub async fn validate_license(app: AppHandle) -> Result<LicenseInfo, String> {
             record.last_validated_at = chrono::Utc::now().timestamp();
             save_license(&record)?;
 
-            let mut guard = state.lock().expect("license state poisoned");
+            let mut guard = lock_or_recover(&state);
             guard.record = Some(record.clone());
             let is_pro = is_pro_for(&record);
             drop(guard);

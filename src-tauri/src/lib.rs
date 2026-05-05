@@ -153,7 +153,11 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init());
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ));
 
     // Note: Aptabase plugin is registered inside setup() because it requires
     // a Tokio runtime context for HTTP client creation (which doesn't exist yet here).
@@ -244,8 +248,11 @@ pub fn run() {
                 }
             }
 
-            // Show pill window (always visible)
-            tray::show_pill(app.handle());
+            // Respect the `hide_pill_when_inactive` setting at startup — without this,
+            // the pill always reappeared after a relaunch even when the user had hidden it.
+            if tray::should_show_pill(app.handle()) {
+                tray::show_pill(app.handle());
+            }
 
             // Check if this is the first launch
             let is_first = permissions::is_first_launch();

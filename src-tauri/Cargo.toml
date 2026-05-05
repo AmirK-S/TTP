@@ -26,7 +26,7 @@ hound = "3.5"
 tauri-plugin-mic-recorder = "2"
 cpal = "0.15"
 tauri-plugin-http = "2"
-reqwest = { version = "0.12", features = ["multipart", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["multipart", "json", "rustls-tls"] }
 chrono = "0.4"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tauri-plugin-clipboard-manager = "2"
@@ -35,6 +35,7 @@ enigo = "0.2"
 dirs = "5"
 tauri-plugin-updater = "2.10.0"
 tauri-plugin-process = "2.3.1"
+tauri-plugin-autostart = "2"
 sentry = "0.42"
 tauri-plugin-sentry = "0.5"
 tauri-plugin-aptabase = "1.0"
@@ -46,3 +47,10 @@ objc = "0.2"
 core-graphics = "0.24"
 core-foundation = "0.10"
 block = "0.1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+opt-level = "z"

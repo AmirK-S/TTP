@@ -32,6 +32,13 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "1.6.1" => Some(
+            "• Launch at startup — toggle in Settings to open TTP automatically when you log in\n\
+             • Fixed F3 / F6 / other system function keys triggering recordings on macOS\n\
+             • Pill visibility setting is now respected after restart (was always reappearing)\n\
+             • Smaller, faster binary thanks to release build optimizations\n\
+             • Hardened license state — no more crashes from a poisoned mutex on edge cases",
+        ),
         "1.6.0" => Some(
             "• 7-day Pro trial automatically starts on this update — enjoy everything unlimited\n\
              • After the trial, Free tier kicks in: 30 AI Polish/month, 20 dictionary entries, 50 history entries\n\

@@ -8,6 +8,7 @@ import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getVersion } from '@tauri-apps/api/app';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from '@tauri-apps/plugin-autostart';
 import { trackEvent } from '../lib/analytics';
 import { useUpdater } from '../hooks/useUpdater';
 import { useSettingsStore, DictionaryEntry, HistoryEntry } from '../stores/settings-store';
@@ -398,6 +399,22 @@ export function Settings() {
   const [showRestartBanner, setShowRestartBanner] = useState(false);
   const [licenseInput, setLicenseInput] = useState('');
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
+  const [autostartOn, setAutostartOn] = useState(false);
+
+  // Read the current OS-level autostart status on mount.
+  useEffect(() => {
+    isAutostartEnabled().then(setAutostartOn).catch(() => {});
+  }, []);
+
+  const handleAutostartToggle = async (enabled: boolean) => {
+    try {
+      if (enabled) await enableAutostart(); else await disableAutostart();
+      setAutostartOn(enabled);
+      trackEvent("setting_changed", { setting_name: "autostart_enabled", new_value: String(enabled) });
+    } catch (error) {
+      console.error('Failed to update autostart:', error);
+    }
+  };
 
   // Check API key status
   const checkApiKeys = useCallback(() => {
@@ -980,7 +997,7 @@ export function Settings() {
           </div>
 
           {/* Hide pill when inactive toggle */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-4">
             <div className="flex-1 pr-4">
               <p className="text-gray-900 dark:text-white font-medium">
                 Hide pill when inactive
@@ -992,6 +1009,23 @@ export function Settings() {
             <Toggle
               enabled={hidePillWhenInactive}
               onChange={handleHidePillWhenInactiveToggle}
+              disabled={loading}
+            />
+          </div>
+
+          {/* Launch at startup toggle */}
+          <div className="flex items-center justify-between">
+            <div className="flex-1 pr-4">
+              <p className="text-gray-900 dark:text-white font-medium">
+                Launch at startup
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Open TTP automatically when you log in
+              </p>
+            </div>
+            <Toggle
+              enabled={autostartOn}
+              onChange={handleAutostartToggle}
               disabled={loading}
             />
           </div>
