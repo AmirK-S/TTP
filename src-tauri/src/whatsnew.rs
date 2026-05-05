@@ -32,6 +32,12 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "1.7.2" => Some(
+            "• Faster Settings: history and dictionary now cache in memory (5s TTL) instead of re-reading the file on every render — opening Settings feels instant, even with hundreds of entries\n\
+             • Smoother dictionary list: rows skip re-render when their entry hasn't changed (real win once you've got a few dozen)\n\
+             • Better error triage on our side: transcription failures now report the HTTP status code separately so we can spot a Groq outage faster\n\
+             • Internal: hardened the release pipeline (auto-retry on Apple notarization flakes, mandatory signing for releases, pinned action versions)",
+        ),
         "1.7.1" => Some(
             "• Fixed F3 / F4 / F6 still triggering recording on macOS — the keys macOS hijacks for Mission Control, Launchpad, and Do Not Disturb were slipping past the previous filter\n\
              • Fixed the \"What's New\" popup growing too tall to show its dismiss button when the changelog ran long\n\
