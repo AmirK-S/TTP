@@ -32,6 +32,12 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "1.7.3" => Some(
+            "• Fix: a slow IPC bridge boot could leave the app in a state where every backend call failed for the rest of the session — now it retries instead of caching the failure\n\
+             • Bumped the transcription rate limit from 5 to 20 per minute so power users don't hit it on a normal workflow (still caps a runaway loop)\n\
+             • Settings file now keeps a .bak so a half-written settings.json can recover instead of resetting your preferences\n\
+             • Internal: smaller polish from production telemetry feedback",
+        ),
         "1.7.2" => Some(
             "• Faster Settings: history and dictionary now cache in memory (5s TTL) instead of re-reading the file on every render — opening Settings feels instant, even with hundreds of entries\n\
              • Smoother dictionary list: rows skip re-render when their entry hasn't changed (real win once you've got a few dozen)\n\
