@@ -142,6 +142,7 @@ pub async fn activate_license(
         last_validated_at: now,
         activation_count: result.activation_count,
         activation_limit: result.activation_limit,
+        signature: None, // populated by save_license
     };
     save_license(&record)?;
 
