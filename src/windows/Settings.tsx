@@ -1,7 +1,7 @@
 // TTP - Talk To Paste
 // Settings window - configure app behavior and manage dictionary
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, memo } from 'react';
 import { Copy, Check, Download, RefreshCw, Crown, Loader2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -98,14 +98,18 @@ function ConfirmDialog({
 }
 
 /**
- * Dictionary table row component
+ * Dictionary table row component (memoised).
+ *
+ * onDelete takes the entry's `original` so callers can pass a stable callback
+ * — without that, every parent re-render would create a fresh closure and
+ * defeat React.memo.
  */
-function DictionaryRow({
+const DictionaryRow = memo(function DictionaryRow({
   entry,
   onDelete,
 }: {
   entry: DictionaryEntry;
-  onDelete: () => void;
+  onDelete: (original: string) => void;
 }) {
   return (
     <tr className="border-b border-gray-200 dark:border-gray-700">
@@ -117,7 +121,7 @@ function DictionaryRow({
       </td>
       <td className="py-3 px-4 text-right">
         <button
-          onClick={onDelete}
+          onClick={() => onDelete(entry.original)}
           className="text-red-600 hover:text-red-700 text-sm font-medium"
         >
           Delete
@@ -125,7 +129,7 @@ function DictionaryRow({
       </td>
     </tr>
   );
-}
+});
 
 /**
  * Format timestamp to readable date string
@@ -144,7 +148,7 @@ function formatTimestamp(timestamp: number): string {
 /**
  * History entry row component
  */
-function HistoryRow({ entry }: { entry: HistoryEntry }) {
+const HistoryRow = memo(function HistoryRow({ entry }: { entry: HistoryEntry }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -184,7 +188,7 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
       </button>
     </div>
   );
-}
+});
 
 /**
  * Update section component
@@ -608,14 +612,14 @@ export function Settings() {
     }
   };
 
-  // Handle delete single entry
-  const handleDeleteEntry = async (original: string) => {
+  // Handle delete single entry — stable ref so DictionaryRow's React.memo holds.
+  const handleDeleteEntry = useCallback(async (original: string) => {
     try {
       await deleteEntry(original);
     } catch (error) {
       console.error('Failed to delete entry:', error);
     }
-  };
+  }, [deleteEntry]);
 
   // Handle clear history
   const handleClearHistory = async () => {
@@ -1225,7 +1229,7 @@ export function Settings() {
                     <DictionaryRow
                       key={entry.original}
                       entry={entry}
-                      onDelete={() => handleDeleteEntry(entry.original)}
+                      onDelete={handleDeleteEntry}
                     />
                   ))}
                 </tbody>
