@@ -12,12 +12,18 @@ use crate::paste::{check_accessibility, simulate_paste, ClipboardGuard};
 // Pill stays visible - no hide needed
 use crate::settings::get_settings;
 use crate::state::{AppState, RecordingState};
+use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
+use std::num::NonZeroU32;
 use std::sync::Mutex;
+use std::sync::OnceLock;
 use std::time::Duration;
 use std::path::Path;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 use tokio::time::sleep;
+
+/// Global rate limiter for `process_audio`: 5 transcriptions per 60s (sliding window via GCRA).
+static PROCESS_AUDIO_LIMITER: OnceLock<DefaultDirectRateLimiter> = OnceLock::new();
 
 /// Maximum audio file size in bytes (25MB Groq API limit)
 const MAX_AUDIO_SIZE: u64 = 25_000_000;
@@ -702,5 +708,11 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 /// Runs the full transcription pipeline asynchronously.
 #[tauri::command]
 pub async fn process_audio(app: AppHandle, audio_path: String) -> Result<String, String> {
+    let limiter = PROCESS_AUDIO_LIMITER.get_or_init(|| {
+        RateLimiter::direct(Quota::per_minute(NonZeroU32::new(5).unwrap()))
+    });
+    if limiter.check().is_err() {
+        return Err("Rate limit exceeded — please wait a few seconds before transcribing again".to_string());
+    }
     process_recording(&app, audio_path).await
 }

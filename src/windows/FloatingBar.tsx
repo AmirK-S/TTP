@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { invoke } from '@tauri-apps/api/core';
+import { safeInvoke } from '../lib/safeInvoke';
 import { useRecordingState } from '../hooks/useRecordingState';
 import { useTranscription } from '../hooks/useTranscription';
 import { TutorialPill } from '../components/TutorialPill';
@@ -38,7 +38,7 @@ export function FloatingBar() {
     // Check if this is first launch and tutorial not dismissed
     const checkFirstLaunch = async () => {
       try {
-        const isFirst = await invoke<boolean>('is_first_launch_cmd');
+        const isFirst = await safeInvoke<boolean>('is_first_launch_cmd');
         const dismissed = localStorage.getItem(TUTORIAL_DISMISSED_KEY) === 'true';
         setShowTutorial(isFirst && !dismissed);
       } catch (e) {

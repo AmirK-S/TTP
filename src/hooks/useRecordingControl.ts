@@ -11,7 +11,7 @@ import { useTauriEvent } from './useTauriEvent';
 
 type RecordingState = 'Idle' | 'Recording' | 'Processing';
 
-export interface RecordingResult {
+interface RecordingResult {
   filePath: string;
   duration?: number;
 }

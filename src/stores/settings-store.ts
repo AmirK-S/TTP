@@ -3,6 +3,7 @@
 
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
+import { safeInvoke } from '../lib/safeInvoke';
 import { emit } from '@tauri-apps/api/event';
 
 /** Dictionary entry structure matching Rust backend */
@@ -31,7 +32,7 @@ export interface Settings {
 }
 
 /** License info returned by Rust backend */
-export interface LicenseInfo {
+interface LicenseInfo {
   is_pro: boolean;
   license_key: string | null;
   status: string | null;
@@ -42,7 +43,7 @@ export interface LicenseInfo {
 }
 
 /** Usage stats returned by Rust backend */
-export interface UsageStats {
+interface UsageStats {
   is_pro: boolean;
   is_in_trial: boolean;
   trial_days_left: number | null;
@@ -140,7 +141,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   loadSettings: async () => {
     set({ loading: true });
     try {
-      const settings = await invoke<Settings>('get_settings');
+      const settings = await safeInvoke<Settings>('get_settings');
       set({
         aiPolishEnabled: settings.ai_polish_enabled,
         shortcut: settings.shortcut || 'Alt+Space',
@@ -215,7 +216,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   // Load dictionary entries
   loadDictionary: async () => {
     try {
-      const entries = await invoke<DictionaryEntry[]>('get_dictionary');
+      const entries = await safeInvoke<DictionaryEntry[]>('get_dictionary');
       set({ dictionary: entries });
     } catch (error) {
       console.error('Failed to load dictionary:', error);
@@ -251,7 +252,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   // Load history entries
   loadHistory: async () => {
     try {
-      const entries = await invoke<HistoryEntry[]>('get_history');
+      const entries = await safeInvoke<HistoryEntry[]>('get_history');
       set({ history: entries });
     } catch (error) {
       console.error('Failed to load history:', error);
@@ -273,7 +274,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   // Load current license info from backend
   loadLicense: async () => {
     try {
-      const info = await invoke<LicenseInfo>('get_license_info');
+      const info = await safeInvoke<LicenseInfo>('get_license_info');
       set({ ...applyLicenseInfo(info), licenseError: null });
     } catch (error) {
       console.error('Failed to load license:', error);
@@ -335,7 +336,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   // Load usage counters and trial state
   loadUsage: async () => {
     try {
-      const stats = await invoke<UsageStats>('get_usage_stats');
+      const stats = await safeInvoke<UsageStats>('get_usage_stats');
       set({ usage: stats });
     } catch (error) {
       console.error('Failed to load usage:', error);

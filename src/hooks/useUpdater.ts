@@ -9,9 +9,9 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { trackEvent } from '../lib/analytics';
 import { useRecordingState } from './useRecordingState';
 
-export type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error' | 'up-to-date';
+type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error' | 'up-to-date';
 
-export interface UpdateInfo {
+interface UpdateInfo {
   version: string;
   body?: string;
 }
@@ -44,6 +44,23 @@ export function useUpdater(options?: UseUpdaterOptions) {
 
   // Track the last found version so dismiss resets on new version
   const lastFoundVersionRef = useRef<string | null>(null);
+
+  // Tracks the "drop status back to idle after error" timer so we can clear it on unmount.
+  const idleResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleIdleReset = useCallback((delayMs: number) => {
+    if (idleResetTimerRef.current) clearTimeout(idleResetTimerRef.current);
+    idleResetTimerRef.current = setTimeout(() => {
+      setStatus('idle');
+      idleResetTimerRef.current = null;
+    }, delayMs);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (idleResetTimerRef.current) clearTimeout(idleResetTimerRef.current);
+    };
+  }, []);
 
   const recordingState = useRecordingState();
 
@@ -83,7 +100,7 @@ export function useUpdater(options?: UseUpdaterOptions) {
       } else {
         setStatus('up-to-date');
         // Reset to idle after 5 seconds so the button reappears
-        setTimeout(() => setStatus('idle'), 5000);
+        scheduleIdleReset(5000);
         return false;
       }
     } catch (e) {
@@ -97,7 +114,7 @@ export function useUpdater(options?: UseUpdaterOptions) {
       setStatus('error');
       // Drop back to idle so the user can hit "Check" again — without this
       // the button stayed disabled forever after a transient network blip.
-      setTimeout(() => setStatus('idle'), 5000);
+      scheduleIdleReset(5000);
       return false;
     }
   }, []);
@@ -166,7 +183,7 @@ export function useUpdater(options?: UseUpdaterOptions) {
       });
       setError(msg);
       setStatus('error');
-      setTimeout(() => setStatus('idle'), 5000);
+      scheduleIdleReset(5000);
     }
   }, []);
 

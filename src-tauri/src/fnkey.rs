@@ -30,6 +30,59 @@ extern "C" {
     fn CGRequestListenEventAccess() -> bool;
 }
 
+// CoreGraphics event tap — captures keys at the HID level, BEFORE macOS
+// dispatches them to system overlays (Mission Control, Launchpad, DND).
+// addGlobalMonitorForEventsMatchingMask does NOT receive these consumed
+// keys, which is why F3/F4/F6 used to slip past the veto.
+#[allow(non_camel_case_types)]
+type CFMachPortRef = *mut std::ffi::c_void;
+#[allow(non_camel_case_types)]
+type CFRunLoopSourceRef = *mut std::ffi::c_void;
+#[allow(non_camel_case_types)]
+type CFRunLoopRef = *mut std::ffi::c_void;
+#[allow(non_camel_case_types)]
+type CFAllocatorRef = *mut std::ffi::c_void;
+#[allow(non_camel_case_types)]
+type CFStringRef = *mut std::ffi::c_void;
+#[allow(non_camel_case_types)]
+type CGEventRef = *mut std::ffi::c_void;
+#[allow(non_camel_case_types)]
+type CGEventTapProxy = *mut std::ffi::c_void;
+
+type CGEventTapCallBack = unsafe extern "C" fn(
+    proxy: CGEventTapProxy,
+    event_type: u32,
+    event: CGEventRef,
+    user_info: *mut std::ffi::c_void,
+) -> CGEventRef;
+
+extern "C" {
+    fn CGEventTapCreate(
+        tap: u32,
+        place: u32,
+        options: u32,
+        events_of_interest: u64,
+        callback: CGEventTapCallBack,
+        user_info: *mut std::ffi::c_void,
+    ) -> CFMachPortRef;
+    fn CFMachPortCreateRunLoopSource(
+        allocator: CFAllocatorRef,
+        port: CFMachPortRef,
+        order: isize,
+    ) -> CFRunLoopSourceRef;
+    fn CFRunLoopGetCurrent() -> CFRunLoopRef;
+    fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
+    fn CGEventTapEnable(tap: CFMachPortRef, enable: u8);
+    fn CGEventGetIntegerValueField(event: CGEventRef, field: u32) -> i64;
+    static kCFRunLoopCommonModes: CFStringRef;
+}
+
+const KCG_HID_EVENT_TAP: u32 = 0;
+const KCG_TAIL_APPEND_EVENT_TAP: u32 = 1;
+const KCG_EVENT_TAP_OPTION_LISTEN_ONLY: u32 = 1;
+const KCG_EVENT_KEY_DOWN: u32 = 10;
+const KCG_KEYBOARD_EVENT_KEYCODE: u32 = 9;
+
 /// Whether Fn key is currently held (raw, before debounce)
 static FN_KEY_DOWN: AtomicBool = AtomicBool::new(false);
 
@@ -70,9 +123,6 @@ const NS_MODIFIER_KEY_MASK: u64 = 0x1E0000; // Shift|Ctrl|Option|Command
 
 /// Debounce: Fn must be held for this long before recording starts (ms)
 const FN_DEBOUNCE_MS: u64 = 150;
-
-/// NSEventMaskKeyDown = 1 << 10
-const NS_EVENT_MASK_KEY_DOWN: u64 = 1 << 10;
 
 /// How long after an F-key press to ignore Function-flag events.
 /// Covers the brief window where the OS still reports the Function modifier
@@ -242,28 +292,47 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
         std::mem::forget(timer_block);
         fnlog!("[FnKey] Fn key monitor started (20ms poll, {}ms debounce, arrow key filter)", FN_DEBOUNCE_MS);
 
-        // Global keyDown monitor: records the timestamp of any F-key press so
+        // HID-level event tap: records the timestamp of any F-key press so
         // the timer above can veto the Function flag that the OS attaches to
-        // them. Without this, F3/F6/etc. count as "Fn held".
-        let veto_block = ConcreteBlock::new(move |event: id| {
-            if !FN_MONITORING_ACTIVE.load(Ordering::Relaxed) {
-                return;
-            }
-            let keycode: u16 = msg_send![event, keyCode];
-            if is_fkey_keycode(keycode) {
-                LAST_FKEY_PRESS_MS.store(now_ms(), Ordering::Relaxed);
-            }
-        });
-        let veto_block = veto_block.copy();
-
-        let _veto_monitor: id = msg_send![
-            class!(NSEvent),
-            addGlobalMonitorForEventsMatchingMask: NS_EVENT_MASK_KEY_DOWN
-            handler: &*veto_block
-        ];
-        std::mem::forget(veto_block);
-        fnlog!("[FnKey] F-key veto monitor armed ({}ms window)", FKEY_VETO_WINDOW_MS);
+        // them. We use CGEventTap at kCGHIDEventTap (not NSEvent's global
+        // monitor) because macOS consumes F3/F4/F6 for Mission Control /
+        // Launchpad / DND BEFORE they reach NSEvent global monitors. Without
+        // this, those keys hold the Function flag for the duration of the
+        // system overlay and falsely trigger Fn recording.
+        let mask: u64 = 1u64 << KCG_EVENT_KEY_DOWN;
+        let tap = CGEventTapCreate(
+            KCG_HID_EVENT_TAP,
+            KCG_TAIL_APPEND_EVENT_TAP,
+            KCG_EVENT_TAP_OPTION_LISTEN_ONLY,
+            mask,
+            fkey_tap_callback,
+            std::ptr::null_mut(),
+        );
+        if tap.is_null() {
+            fnlog!("[FnKey] CGEventTapCreate returned null — F3/F4/F6 veto disabled (Input Monitoring permission missing?)");
+        } else {
+            let source = CFMachPortCreateRunLoopSource(std::ptr::null_mut(), tap, 0);
+            let rl = CFRunLoopGetCurrent();
+            CFRunLoopAddSource(rl, source, kCFRunLoopCommonModes);
+            CGEventTapEnable(tap, 1);
+            fnlog!("[FnKey] CGEventTap armed at HID level ({}ms window, catches system-consumed F-keys)", FKEY_VETO_WINDOW_MS);
+        }
     }
+}
+
+unsafe extern "C" fn fkey_tap_callback(
+    _proxy: CGEventTapProxy,
+    _event_type: u32,
+    event: CGEventRef,
+    _user_info: *mut std::ffi::c_void,
+) -> CGEventRef {
+    if FN_MONITORING_ACTIVE.load(Ordering::Relaxed) {
+        let keycode = CGEventGetIntegerValueField(event, KCG_KEYBOARD_EVENT_KEYCODE) as u16;
+        if is_fkey_keycode(keycode) {
+            LAST_FKEY_PRESS_MS.store(now_ms(), Ordering::Relaxed);
+        }
+    }
+    event
 }
 
 pub fn set_fn_key_enabled(enabled: bool) {

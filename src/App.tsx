@@ -2,7 +2,7 @@
 // Main App component - handles mic recording control and auto-update checking
 
 import { useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { safeInvoke } from './lib/safeInvoke';
 import { useRecordingControl } from './hooks/useRecordingControl';
 import { useUpdater } from './hooks/useUpdater';
 
@@ -22,7 +22,7 @@ function App() {
 
   // Check if we should show the "What's New" popup after an update
   useEffect(() => {
-    invoke<[string, string] | null>('check_whats_new').then(async (result) => {
+    safeInvoke<[string, string] | null>('check_whats_new').then(async (result) => {
       if (result) {
         try {
           const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');

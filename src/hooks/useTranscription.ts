@@ -1,10 +1,10 @@
 // TTP - Talk To Paste
 // Hook for listening to transcription progress events from Rust backend
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTauriEvent } from './useTauriEvent';
 
-export type TranscriptionStage =
+type TranscriptionStage =
   | 'idle'
   | 'transcribing'
   | 'polishing'
@@ -32,20 +32,34 @@ interface TranscriptionProgress {
 export function useTranscription() {
   const [stage, setStage] = useState<TranscriptionStage>('idle');
   const [message, setMessage] = useState('');
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    };
+  }, []);
 
   useTauriEvent<TranscriptionProgress>('transcription-progress', (event) => {
     setStage(event.payload.stage);
     setMessage(event.payload.message);
 
+    if (resetTimerRef.current) {
+      clearTimeout(resetTimerRef.current);
+      resetTimerRef.current = null;
+    }
+
     if (event.payload.stage === 'complete') {
-      setTimeout(() => {
+      resetTimerRef.current = setTimeout(() => {
         setStage('idle');
         setMessage('');
+        resetTimerRef.current = null;
       }, 500);
     } else if (event.payload.stage === 'error') {
-      setTimeout(() => {
+      resetTimerRef.current = setTimeout(() => {
         setStage('idle');
         setMessage('');
+        resetTimerRef.current = null;
       }, 4000);
     }
   });

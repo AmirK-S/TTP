@@ -32,6 +32,14 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "1.7.1" => Some(
+            "• Fixed F3 / F4 / F6 still triggering recording on macOS — the keys macOS hijacks for Mission Control, Launchpad, and Do Not Disturb were slipping past the previous filter\n\
+             • Fixed the \"What's New\" popup growing too tall to show its dismiss button when the changelog ran long\n\
+             • Anti-abuse: capped transcription requests at 5 per minute so a runaway loop can't burn through your Groq credits\n\
+             • Hardened cold-start: the IPC bridge is now waited on before any backend call, eliminating a class of crashes that hit some users on launch\n\
+             • Smaller initial JS payload thanks to code-splitting (Tauri + icon library load on demand)\n\
+             • Internal: cleaner timer lifecycle in the transcription and updater hooks; small dead-code cleanup",
+        ),
         "1.7.0" => Some(
             "• Onboarding refresh: clearer help text, ordered steps, trial banner, and one-tap link to System Settings when a permission is denied\n\
              • Friendlier error messages when Groq is rate-limited (429) or your API key is invalid (401) — no more raw HTTP codes in the pill\n\
