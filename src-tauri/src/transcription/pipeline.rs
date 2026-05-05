@@ -397,17 +397,22 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 backup_path.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "no backup".into())
             ));
 
-            // Classify error for analytics
-            let error_category = if e.contains(" 429 ") || e.contains(": 429") {
-                "rate_limited"
-            } else if e.contains(" 401 ") || e.contains(": 401") || e.contains(" 403 ") || e.contains(": 403") {
-                "invalid_api_key"
-            } else if e.contains("413") || e.to_lowercase().contains("entity too large") || e.to_lowercase().contains("too long") {
-                "too_long"
+            // Classify error for analytics — capture HTTP status alongside the category
+            // so Sentry/Aptabase can split the catch-all "api_error" bucket by code.
+            let (error_category, status_code): (&str, Option<u16>) = if e.contains(" 429 ") || e.contains(": 429") {
+                ("rate_limited", Some(429))
+            } else if e.contains(" 401 ") || e.contains(": 401") {
+                ("invalid_api_key", Some(401))
+            } else if e.contains(" 403 ") || e.contains(": 403") {
+                ("invalid_api_key", Some(403))
+            } else if e.contains("413") {
+                ("too_long", Some(413))
+            } else if e.to_lowercase().contains("entity too large") || e.to_lowercase().contains("too long") {
+                ("too_long", None)
             } else if e.to_lowercase().contains("timeout") || e.to_lowercase().contains("connect") || e.to_lowercase().contains("network") || e.to_lowercase().contains("dns") {
-                "network"
+                ("network", None)
             } else {
-                "api_error"
+                ("api_error", None)
             };
 
             // User-friendly message based on error category
@@ -420,7 +425,14 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
             emit_progress(app, "error", &user_msg);
             notify(app, "Transcription failed");
-            crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": error_category, "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
+            let mut payload = serde_json::json!({
+                "error_category": error_category,
+                "duration_seconds": pipeline_start.elapsed().as_secs_f64(),
+            });
+            if let Some(code) = status_code {
+                payload["status_code"] = code.into();
+            }
+            crate::telemetry::analytics::track(app, "transcription_failed", Some(payload));
             set_state(app, RecordingState::Idle);
             return Err(e);
         }
