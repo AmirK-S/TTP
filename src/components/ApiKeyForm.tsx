@@ -62,16 +62,31 @@ export function ApiKeyForm({ onSuccess }: Props) {
           autoComplete="off"
           autoFocus
         />
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Free — get yours at{' '}
-          <a
-            href="https://console.groq.com/keys"
-            className="text-blue-500 hover:text-blue-600 underline"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            console.groq.com
-          </a>
+        <ol className="mt-2 text-xs text-gray-500 dark:text-gray-400 list-decimal pl-5 space-y-1">
+          <li>
+            Sign up at{' '}
+            <a
+              href="https://console.groq.com"
+              className="text-blue-500 hover:text-blue-600 underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              console.groq.com
+            </a>{' '}
+            (free, no credit card)
+          </li>
+          <li>Click "API Keys" → "Create API Key"</li>
+          <li>
+            Copy the key starting with{' '}
+            <code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-mono text-[11px]">
+              gsk_
+            </code>{' '}
+            and paste it above
+          </li>
+        </ol>
+        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          Groq's free tier covers tens of thousands of transcriptions per month — you'll never see
+          a bill from typical usage.
         </p>
       </div>
 

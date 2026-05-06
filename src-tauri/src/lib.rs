@@ -89,6 +89,36 @@ fn check_input_monitoring() -> bool {
     { true }
 }
 
+/// Check Input Monitoring permission status WITHOUT triggering the system prompt.
+/// Used by onboarding to display the current state of the checklist item.
+/// On non-macOS, always returns true (no equivalent permission concept).
+#[tauri::command]
+fn check_input_monitoring_permission() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        fnkey::has_input_monitoring()
+    }
+    #[cfg(not(target_os = "macos"))]
+    { true }
+}
+
+/// Request Input Monitoring permission. On first call, this triggers the macOS
+/// system prompt; if already denied, macOS silently returns false and the user
+/// must toggle it in System Settings → Privacy & Security → Input Monitoring.
+/// On non-macOS, always returns true (no-op).
+#[tauri::command]
+fn request_input_monitoring_permission() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        if fnkey::has_input_monitoring() {
+            return true;
+        }
+        fnkey::request_input_monitoring()
+    }
+    #[cfg(not(target_os = "macos"))]
+    { true }
+}
+
 /// Tauri command to reset state to Idle (used when skipping short recordings)
 #[tauri::command]
 fn reset_to_idle(app: AppHandle) {
@@ -324,6 +354,8 @@ pub fn run() {
             unregister_shortcuts_cmd,
             set_fn_key_enabled,
             check_input_monitoring,
+            check_input_monitoring_permission,
+            request_input_monitoring_permission,
             reset_to_idle,
             check_microphone_permission,
             is_first_launch_cmd,

@@ -13,14 +13,21 @@ const HELP_TEXT: Record<string, string> = {
   microphone: 'Required to capture your voice for transcription.',
   accessibility:
     "Lets TTP paste the transcription into your active app. Without it, text only goes to the clipboard (you'd Cmd+V manually).",
+  inputMonitoring:
+    'Lets TTP detect when you press the Fn / Globe key for push-to-talk. Without it, only the keyboard-shortcut mode works.',
   apikey:
-    'Sends audio to Groq Whisper for transcription. Free tier on groq.com is enough — no credit card.',
+    "Groq's free tier covers tens of thousands of transcriptions per month — you'll never see a bill from typical usage.",
 };
+
+/** macOS-only — TTP doesn't surface this step on Windows. */
+const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.startsWith('Mac');
 
 /** Direct deep-links to the right System Settings pane on macOS. */
 const SETTINGS_URL: Record<string, string> = {
   microphone: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone',
   accessibility: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
+  inputMonitoring:
+    'x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent',
 };
 
 /**
@@ -37,20 +44,32 @@ export default function Onboarding() {
 
   const checkAllItems = useCallback(async () => {
     try {
-      const [micStatus, hasApiKey, accessibilityStatus] = await Promise.all([
+      // Input Monitoring is mac-only; on Windows we treat it as already passed
+      // so the rest of the checklist gating logic is uniform.
+      const inputMonitoringPromise = IS_MAC
+        ? invoke<boolean>('check_input_monitoring_permission')
+        : Promise.resolve(true);
+
+      const [micStatus, hasApiKey, accessibilityStatus, hasInputMonitoring] = await Promise.all([
         invoke<PermissionStatus>('check_microphone_permission'),
         invoke<boolean>('has_groq_api_key'),
         invoke<PermissionStatus>('check_accessibility_permission'),
+        inputMonitoringPromise,
       ]);
 
       setChecklist({
         microphone: micStatus === 'Granted',
         apikey: hasApiKey,
         accessibility: accessibilityStatus === 'Granted',
+        inputMonitoring: hasInputMonitoring,
       });
       setPermissionStatus({
         microphone: micStatus,
         accessibility: accessibilityStatus,
+        // Input Monitoring doesn't expose Granted/Denied/Undetermined like AVFoundation —
+        // the OS just returns a bool. We map it to Granted/Denied for the UI to render
+        // the same "tap to enable / tap to open Settings" pattern as the other items.
+        inputMonitoring: hasInputMonitoring ? 'Granted' : 'Denied',
       });
     } catch (error) {
       console.error('Failed to check items:', error);
@@ -72,7 +91,7 @@ export default function Onboarding() {
   }, [checkAllItems]);
 
   // Open the System Settings pane via the opener plugin (already registered).
-  const openSettingsPane = async (key: 'microphone' | 'accessibility') => {
+  const openSettingsPane = async (key: 'microphone' | 'accessibility' | 'inputMonitoring') => {
     try {
       await invoke('plugin:opener|open_url', { url: SETTINGS_URL[key] });
     } catch (e) {
@@ -112,6 +131,25 @@ export default function Onboarding() {
     }
   };
 
+  // Input Monitoring: macOS only. The first request triggers the system prompt;
+  // any subsequent denial means we have to send the user to System Settings,
+  // because macOS won't re-prompt once the user has answered once.
+  const requestInputMonitoring = async () => {
+    setChecking('inputMonitoring');
+    try {
+      const granted = await invoke<boolean>('request_input_monitoring_permission');
+      if (!granted) {
+        // System won't re-prompt — open the right Settings pane so the user
+        // can flip the toggle themselves.
+        await openSettingsPane('inputMonitoring');
+      }
+    } catch (e) {
+      console.log('Input Monitoring permission result:', e);
+    } finally {
+      setChecking(null);
+    }
+  };
+
   // Validate and save API key
   const saveApiKey = async () => {
     if (!apiKeyInput.trim()) {
@@ -142,13 +180,29 @@ export default function Onboarding() {
     }
   };
 
-  const allChecked = checklist.microphone && checklist.apikey && checklist.accessibility;
+  // Input Monitoring only counts on macOS — Windows doesn't have an equivalent
+  // permission and we treat it as passed in checkAllItems().
+  const allChecked =
+    !!checklist.microphone &&
+    !!checklist.apikey &&
+    !!checklist.accessibility &&
+    (!IS_MAC || !!checklist.inputMonitoring);
 
-  // Explicit ordering — Microphone → Accessibility → API key — so the user
-  // always knows which step is next instead of guessing.
-  const items: Array<{ key: 'microphone' | 'accessibility' | 'apikey'; label: string; }> = [
+  // Build a list of which items are still missing — surfaced as a subtitle
+  // under the disabled CTA so the user knows what's blocking them.
+  const missingLabels: string[] = [];
+  if (!checklist.microphone) missingLabels.push('Microphone');
+  if (!checklist.accessibility) missingLabels.push('Accessibility');
+  if (IS_MAC && !checklist.inputMonitoring) missingLabels.push('Input Monitoring');
+  if (!checklist.apikey) missingLabels.push('Groq API Key');
+
+  // Explicit ordering — Microphone → Accessibility → Input Monitoring (mac) → API key —
+  // so the user always knows which step is next instead of guessing.
+  type ItemKey = 'microphone' | 'accessibility' | 'inputMonitoring' | 'apikey';
+  const items: Array<{ key: ItemKey; label: string }> = [
     { key: 'microphone', label: 'Microphone' },
     { key: 'accessibility', label: 'Accessibility' },
+    ...(IS_MAC ? [{ key: 'inputMonitoring' as const, label: 'Input Monitoring' }] : []),
     { key: 'apikey', label: 'Groq API Key' },
   ];
 
@@ -184,6 +238,24 @@ export default function Onboarding() {
                       }}>
                         {isChecked ? 'Key saved' : 'No key'}
                       </div>
+                      {!isChecked && (
+                        <ol style={styles.helpSteps}>
+                          <li>
+                            Sign up at{' '}
+                            <a
+                              href="https://console.groq.com"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={styles.helpLink}
+                            >
+                              console.groq.com
+                            </a>
+                            {' '}(free, no credit card)
+                          </li>
+                          <li>Click "API Keys" → "Create API Key"</li>
+                          <li>Copy the key starting with <code style={styles.helpCode}>gsk_</code> and paste it below</li>
+                        </ol>
+                      )}
                       <div style={styles.helpText}>{HELP_TEXT[item.key]}</div>
                     </div>
                   </div>
@@ -212,7 +284,12 @@ export default function Onboarding() {
               );
             }
 
-            const onClick = item.key === 'microphone' ? requestMicrophone : requestAccessibility;
+            const onClick =
+              item.key === 'microphone'
+                ? requestMicrophone
+                : item.key === 'accessibility'
+                  ? requestAccessibility
+                  : requestInputMonitoring;
             const denied = permissionStatus[item.key] === 'Denied';
             return (
               <div key={item.key} style={itemStyle}>
@@ -266,9 +343,20 @@ export default function Onboarding() {
           }}
           disabled={!allChecked}
           onClick={handleGetStarted}
+          title={
+            allChecked
+              ? undefined
+              : `Still missing: ${missingLabels.join(', ')}`
+          }
         >
           {allChecked ? 'Get Started' : 'Complete all steps'}
         </button>
+
+        {!allChecked && missingLabels.length > 0 && (
+          <p style={styles.missingHint}>
+            Still missing: {missingLabels.join(', ')}
+          </p>
+        )}
 
         <p style={styles.hint}>
           You can reopen settings anytime by right-clicking the TTP icon in the menu bar.
@@ -364,6 +452,32 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#888',
     marginTop: '4px',
     lineHeight: 1.4,
+  },
+  helpSteps: {
+    fontSize: '11px',
+    color: '#aaa',
+    margin: '6px 0 4px 0',
+    paddingLeft: '18px',
+    lineHeight: 1.5,
+  },
+  helpLink: {
+    color: '#60a5fa',
+    textDecoration: 'underline',
+  },
+  helpCode: {
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    fontSize: '10.5px',
+    backgroundColor: '#0a0a0a',
+    border: '1px solid #2a2a2a',
+    borderRadius: '3px',
+    padding: '0 4px',
+  },
+  missingHint: {
+    textAlign: 'center',
+    fontSize: '11px',
+    color: '#888',
+    marginTop: '8px',
+    marginBottom: 0,
   },
   actionButton: {
     padding: '8px 16px',
