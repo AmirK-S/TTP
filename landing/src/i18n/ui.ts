@@ -13,6 +13,7 @@ export const ui = {
     'nav.howItWorks': 'How It Works',
     'nav.changelog': 'Changelog',
     'nav.download': 'Download',
+    'nav.getPro': 'Get Pro',
 
     // Hero
     'hero.headline': 'Turn Speech into Text.',
@@ -63,6 +64,28 @@ export const ui = {
     'features.updatesTitle': 'Auto Updates',
     'features.updatesDesc':
       'Always up to date. Updates install automatically in the background.',
+
+    // Pricing
+    'pricing.heading': 'Simple Pricing',
+    'pricing.subheading': 'No subscriptions. Pay once, use forever.',
+    'pricing.free.label': 'Free',
+    'pricing.free.name': 'Free',
+    'pricing.free.price': '$0',
+    'pricing.free.priceSub': 'forever, no credit card',
+    'pricing.free.feat1': '30 AI Polish per month',
+    'pricing.free.feat2': '20 dictionary entries',
+    'pricing.free.feat3': '50 history entries',
+    'pricing.free.feat4': 'BYOK Groq (your own API key)',
+    'pricing.free.cta': 'Download Free',
+    'pricing.pro.label': 'Pro',
+    'pricing.pro.name': 'Pro',
+    'pricing.pro.badge': 'Recommended',
+    'pricing.pro.priceSub': 'one-time payment, forever yours',
+    'pricing.pro.feat1': 'Unlimited everything',
+    'pricing.pro.feat2': 'Lifetime updates',
+    'pricing.pro.feat3': 'BYOK Groq (your own API key)',
+    'pricing.pro.feat4': 'Priority support',
+    'pricing.pro.cta': 'Get Pro',
 
     // Footer
     'footer.tagline': 'Talk To Paste',
@@ -162,6 +185,7 @@ export const ui = {
     'nav.howItWorks': 'Comment \u00e7a marche',
     'nav.changelog': 'Changelog',
     'nav.download': 'T\u00e9l\u00e9charger',
+    'nav.getPro': 'Passer en Pro',
 
     // Hero
     'hero.headline': 'Transformez la parole en texte.',
@@ -213,6 +237,28 @@ export const ui = {
     'features.updatesTitle': 'Mises \u00e0 Jour Auto',
     'features.updatesDesc':
       "Toujours \u00e0 jour. Les mises \u00e0 jour s'installent automatiquement en arri\u00e8re-plan.",
+
+    // Pricing
+    'pricing.heading': 'Tarifs Simples',
+    'pricing.subheading': 'Aucun abonnement. Achetez une fois, utilisez \u00e0 vie.',
+    'pricing.free.label': 'Gratuit',
+    'pricing.free.name': 'Gratuit',
+    'pricing.free.price': '0\u00a0\u20ac',
+    'pricing.free.priceSub': 'pour toujours, sans carte bancaire',
+    'pricing.free.feat1': '30 corrections IA par mois',
+    'pricing.free.feat2': '20 entr\u00e9es de dictionnaire',
+    'pricing.free.feat3': "50 entr\u00e9es d'historique",
+    'pricing.free.feat4': 'BYOK Groq (votre propre cl\u00e9 API)',
+    'pricing.free.cta': 'T\u00e9l\u00e9charger Gratuitement',
+    'pricing.pro.label': 'Pro',
+    'pricing.pro.name': 'Pro',
+    'pricing.pro.badge': 'Recommand\u00e9',
+    'pricing.pro.priceSub': 'paiement unique, \u00e0 vous pour toujours',
+    'pricing.pro.feat1': 'Tout en illimit\u00e9',
+    'pricing.pro.feat2': 'Mises \u00e0 jour \u00e0 vie',
+    'pricing.pro.feat3': 'BYOK Groq (votre propre cl\u00e9 API)',
+    'pricing.pro.feat4': 'Support prioritaire',
+    'pricing.pro.cta': 'Passer en Pro',
 
     // Footer
     'footer.tagline': 'Talk To Paste',
