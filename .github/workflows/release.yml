@@ -194,6 +194,31 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
+      # Upload debug symbols to Sentry so future stack traces are
+      # symbolicated. Without this, panics show as `__mh_execute_header`
+      # at raw addresses (which is what we hit on TTP-7/A/B). Skipped
+      # silently when SENTRY_AUTH_TOKEN isn't set so forks of the repo
+      # don't fail the release.
+      - name: Upload debug symbols to Sentry
+        if: env.SENTRY_AUTH_TOKEN != ''
+        continue-on-error: true
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: aks-12
+          SENTRY_PROJECT: ttp
+        shell: bash
+        run: |
+          curl -sL https://sentry.io/get-cli/ | bash
+          # Cargo with split-debuginfo=packed emits .dSYM (macOS) or .pdb
+          # (Windows) sidecars next to the release binary in the target
+          # directory. sentry-cli walks the tree.
+          sentry-cli debug-files upload \
+            --include-sources \
+            "src-tauri/target/${{ matrix.target }}/release/" \
+            || sentry-cli debug-files upload \
+              --include-sources \
+              "src-tauri/target/release/"
+
       # Upload a stable-named alias so /releases/latest/download/<stable> works
       # without the consumer having to know the version. Versioned originals
       # are preserved alongside.

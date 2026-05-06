@@ -61,5 +61,10 @@ block = "0.1"
 lto = true
 codegen-units = 1
 panic = "abort"
+# Strip the binary itself but emit debug info to a packed sidecar (.dSYM on
+# macOS, .pdb on Windows) so Sentry can symbolicate stack traces while the
+# shipped binary stays small. CI uploads the sidecar via sentry-cli.
 strip = true
+split-debuginfo = "packed"
+debug = "limited"
 opt-level = "z"
