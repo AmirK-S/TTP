@@ -44,6 +44,9 @@ hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
 governor = "0.10"
+# Stores secrets in macOS Keychain / Windows Credential Manager so the
+# Groq API key is never written to disk in plain text.
+keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"
