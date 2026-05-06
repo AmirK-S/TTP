@@ -17,7 +17,8 @@
 <p align="center">
   <a href="https://ttp.amirks.eu">Website</a> &middot;
   <a href="https://github.com/AmirK-S/TTP/releases">Download</a> &middot;
-  <a href="https://github.com/AmirK-S/TTP/releases">Changelog</a>
+  <a href="https://github.com/AmirK-S/TTP/releases">Changelog</a> &middot;
+  <a href="https://amirks.lemonsqueezy.com/buy/dcc74241-21ae-4d20-8a3c-90bf8d842bae">Buy Pro</a>
 </p>
 
 ---
@@ -35,6 +36,21 @@ Free forever. No account required. Bring your own Groq API key.
 - **Mac + Windows** — Native app, lives in your menu bar / system tray.
 - **Privacy first** — API keys and history stored locally. Nothing leaves your machine.
 - **Auto updates** — Updates install automatically in the background.
+
+## Trust & Security
+
+TTP runs on your machine and handles your voice and your API keys, so we treat the security pipeline as a feature.
+
+- **Signed + notarized macOS builds** — every release is code-signed with an Apple Developer ID certificate and notarized through Apple's notary service before shipping.
+- **Code-signed Windows installers** — `.msi` and NSIS `-setup.exe` artifacts are signed in CI when the Windows certificate is configured.
+- **Minisign-verified auto-updates** — the Tauri updater verifies every update payload against a minisign public key embedded in the app at install time; tampered updates are rejected.
+- **OS keychain for API keys** — your Groq API key lives in the macOS Keychain (and Windows Credential Manager on Windows), not in plaintext config files.
+- **HMAC-signed local caches** — the offline license cache and Pro usage counters are HMAC-signed with a per-machine secret stored in your OS keychain, so a license file forged on one machine won't be accepted on another.
+- **Telemetry off by default** — Sentry crash reporting and Aptabase usage analytics are opt-in only and disabled until you explicitly enable them in Settings.
+- **Strict CSP, no remote webview content** — the embedded webview only loads bundled assets; there's no external network reachable from the UI layer.
+- **Third-party calls are listed in the [privacy policy](https://ttp.amirks.eu/privacy)** — Groq, Lemon Squeezy, GitHub (updater feed), Sentry, and Aptabase. No other network calls are made.
+
+Found a security issue? Please report it privately — see [SECURITY.md](SECURITY.md).
 
 ## How It Works
 
