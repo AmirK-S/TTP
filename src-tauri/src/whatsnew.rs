@@ -32,6 +32,15 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "1.8.0" => Some(
+            "🔒 Security release\n\
+             • Your Groq API key is now stored in the macOS Keychain (Windows Credential Manager) instead of a plaintext file. Existing keys migrate automatically on first launch.\n\
+             • License and trial state are now signed with a per-machine secret stored in the keychain — a forged file from one Mac can no longer be replayed on another.\n\
+             • Constant-time signature comparison closes a small timing side-channel.\n\
+             • Email addresses in error reports are now redacted before they leave your machine.\n\
+             • Fixed a rare panic on transcription completion (\"no reactor running\") seen by a single user on macOS 26.3.1.\n\
+             • Quality-of-life: more Sentry detail on transcription failures, faster Settings open, smaller settings.json recovery on corruption.",
+        ),
         "1.7.3" => Some(
             "• Fix: a slow IPC bridge boot could leave the app in a state where every backend call failed for the rest of the session — now it retries instead of caching the failure\n\
              • Bumped the transcription rate limit from 5 to 20 per minute so power users don't hit it on a normal workflow (still caps a runaway loop)\n\
