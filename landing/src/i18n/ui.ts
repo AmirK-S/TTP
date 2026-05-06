@@ -69,6 +69,8 @@ export const ui = {
     'footer.github': 'GitHub',
     'footer.download': 'Download',
     'footer.changelog': 'Changelog',
+    'footer.privacy': 'Privacy',
+    'footer.terms': 'Terms',
     'footer.madeWith': 'Made with care.',
 
     // Download
@@ -217,6 +219,8 @@ export const ui = {
     'footer.github': 'GitHub',
     'footer.download': 'T\u00e9l\u00e9charger',
     'footer.changelog': 'Changelog',
+    'footer.privacy': 'Confidentialit\u00e9',
+    'footer.terms': 'Conditions',
     'footer.madeWith': 'Fait avec soin.',
 
     // Download

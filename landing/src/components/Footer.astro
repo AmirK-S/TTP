@@ -36,6 +36,18 @@ const currentYear = new Date().getFullYear();
       >
         {t('footer.changelog')}
       </a>
+      <a
+        href={getLocalizedPath(lang, 'privacy')}
+        class="text-sm text-slate-400 transition-colors hover:text-white"
+      >
+        {t('footer.privacy')}
+      </a>
+      <a
+        href={getLocalizedPath(lang, 'terms')}
+        class="text-sm text-slate-400 transition-colors hover:text-white"
+      >
+        {t('footer.terms')}
+      </a>
     </nav>
   </div>
 

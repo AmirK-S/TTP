@@ -1,0 +1,90 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import Navbar from '@/components/Navbar.astro';
+import Footer from '@/components/Footer.astro';
+
+const lastUpdated = '2026-05-06';
+---
+
+<Layout title="Terms of Service — TTP">
+  <Navbar />
+  <main class="mx-auto max-w-3xl px-6 pb-16 pt-32 text-slate-200">
+    <h1 class="mb-2 text-4xl font-bold text-white">Terms of Service</h1>
+    <p class="mb-8 text-sm text-slate-500">Last updated: {lastUpdated}</p>
+
+    <p class="mb-6">
+      By installing or using TTP (Talk To Paste, "the app"), you agree to these terms.
+      If you do not agree, do not install the app or stop using it.
+    </p>
+
+    <h2 class="mb-3 mt-10 text-2xl font-semibold text-white">1. The service</h2>
+    <p class="mb-6">
+      TTP is a desktop application that records audio from your microphone, sends it to a third-party transcription provider (Groq), and pastes the result into the focused window.
+      The app runs on your computer; we do not host or process your audio on our infrastructure.
+      Transcription quality, latency, and availability depend on Groq and on your internet connection.
+    </p>
+
+    <h2 class="mb-3 mt-10 text-2xl font-semibold text-white">2. Free and Pro tiers</h2>
+    <p class="mb-3">TTP is offered in two tiers:</p>
+    <ul class="mb-6 list-disc space-y-2 pl-6">
+      <li><strong>Free</strong> — full transcription functionality with capped AI Polish, dictionary, and history limits.</li>
+      <li><strong>Pro</strong> — a one-time purchase that unlocks unlimited use of those features and includes free updates for the lifetime of the product.</li>
+    </ul>
+    <p class="mb-6">
+      A 7-day Pro trial starts automatically on first launch so you can evaluate Pro features before purchasing.
+      The trial is per-machine and cannot be reset by reinstalling.
+    </p>
+
+    <h2 class="mb-3 mt-10 text-2xl font-semibold text-white">3. License</h2>
+    <p class="mb-6">
+      We grant you a non-exclusive, non-transferable license to install and use TTP on the number of machines covered by your purchase
+      (Free tier: unlimited installs; Pro tier: per the activation count shown at checkout).
+      You may not redistribute, resell, decompile, reverse-engineer, or remove any license-enforcement mechanisms in the app.
+    </p>
+
+    <h2 class="mb-3 mt-10 text-2xl font-semibold text-white">4. Payment, refunds, and cancellation</h2>
+    <p class="mb-6">
+      All Pro purchases are processed by Lemon Squeezy. Pricing, taxes, and currency are shown on the checkout page.
+      Pro is a one-time purchase; there is no recurring subscription. Refunds are handled per Lemon Squeezy's standard refund window — contact <a class="underline hover:text-white" href="mailto:amirksmain@gmail.com">amirksmain@gmail.com</a> within 14 days of purchase if the product doesn't work for you.
+    </p>
+
+    <h2 class="mb-3 mt-10 text-2xl font-semibold text-white">5. Your responsibilities</h2>
+    <ul class="mb-6 list-disc space-y-2 pl-6">
+      <li>You are responsible for the content you record and transcribe. Do not record people without consent or in jurisdictions where it is illegal.</li>
+      <li>You are responsible for safeguarding your Groq API key. TTP stores it in your OS keychain, but you must keep your account secure.</li>
+      <li>You agree to comply with Groq's terms of service for any audio sent through the app.</li>
+    </ul>
+
+    <h2 class="mb-3 mt-10 text-2xl font-semibold text-white">6. Disclaimers</h2>
+    <p class="mb-6">
+      TTP is provided "as is", without warranties of any kind, express or implied, including merchantability, fitness for a particular purpose, and non-infringement.
+      Transcription is performed by Groq; we make no guarantee about accuracy, completeness, or fitness for any specific use.
+      The app may stop working at any time if Groq, Lemon Squeezy, or any third party we depend on changes their terms.
+    </p>
+
+    <h2 class="mb-3 mt-10 text-2xl font-semibold text-white">7. Limitation of liability</h2>
+    <p class="mb-6">
+      To the maximum extent permitted by law, TTP and its author are not liable for any indirect, incidental, special, consequential, or punitive damages,
+      or any loss of profits, data, or use, arising from or related to the app.
+      Our total liability for any direct damages is limited to the amount you paid for the app in the 12 months preceding the claim.
+    </p>
+
+    <h2 class="mb-3 mt-10 text-2xl font-semibold text-white">8. Termination</h2>
+    <p class="mb-6">
+      You may stop using the app and uninstall it at any time. If you breach these terms (e.g. by attempting to circumvent license enforcement),
+      we may terminate your license without refund.
+    </p>
+
+    <h2 class="mb-3 mt-10 text-2xl font-semibold text-white">9. Governing law</h2>
+    <p class="mb-6">
+      These terms are governed by the laws of France. Any dispute will be resolved in the competent courts of France, subject to mandatory consumer-protection laws of your country of residence.
+    </p>
+
+    <h2 class="mb-3 mt-10 text-2xl font-semibold text-white">10. Contact</h2>
+    <p class="mb-6">
+      Questions about these terms:
+      <a class="underline hover:text-white" href="mailto:amirksmain@gmail.com">amirksmain@gmail.com</a>.
+    </p>
+  </main>
+  <Footer />
+</Layout>
