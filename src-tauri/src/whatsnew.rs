@@ -32,6 +32,14 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "1.8.1" => Some(
+            "🚀 Launch polish\n\
+             • Onboarding now waits for your Groq API key before closing — no more landing in the app with nothing configured.\n\
+             • Input Monitoring permission (used for the Fn key) is now requested in onboarding instead of as a surprise system prompt afterwards.\n\
+             • Clearer Groq sign-up steps and a reassurance that the free tier covers tens of thousands of transcriptions a month.\n\
+             • Webview locked down with a strict Content Security Policy — XSS in the frontend can no longer reach external networks.\n\
+             • Future panic reports will include real symbol names (we now upload debug info to Sentry on every release).",
+        ),
         "1.8.0" => Some(
             "🔒 Security release\n\
              • Your Groq API key is now stored in the macOS Keychain (Windows Credential Manager) instead of a plaintext file. Existing keys migrate automatically on first launch.\n\
