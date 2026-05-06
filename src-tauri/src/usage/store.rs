@@ -9,9 +9,16 @@ use sha2::Sha256;
 use std::fs;
 use std::path::PathBuf;
 
-/// HMAC secret used to detect tampering of the usage cache.
-/// Different from the license secret so each file is independently signed.
-const HMAC_SECRET: &[u8; 32] = b"TTPUsageTracking_v1_OneShotTrial";
+/// Legacy hardcoded HMAC secret from v1.6.x–v1.7.3. Kept as a fallback so
+/// usage.json files signed by previous versions still verify on first run
+/// after upgrade — we re-sign them with the per-machine key below.
+const LEGACY_HMAC_SECRET: &[u8; 32] = b"TTPUsageTracking_v1_OneShotTrial";
+
+const KEYCHAIN_ACCOUNT: &str = "usage_hmac_secret";
+
+fn machine_hmac_secret() -> [u8; 32] {
+    crate::keychain::get_or_create_hmac_secret(KEYCHAIN_ACCOUNT, LEGACY_HMAC_SECRET)
+}
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -40,25 +47,57 @@ fn usage_path() -> Option<PathBuf> {
     dirs::config_dir().map(|p| p.join("ttp").join("usage.json"))
 }
 
-fn compute_usage_signature(record: &UsageRecord) -> String {
-    let input = format!(
+fn usage_signature_input(record: &UsageRecord) -> String {
+    format!(
         "{}|{}|{}|{}",
         record.polish_month,
         record.polish_count,
         record.trial_started_at.unwrap_or(0),
         record.trial_count,
-    );
-    let mut mac =
-        HmacSha256::new_from_slice(HMAC_SECRET).expect("HMAC_SECRET has correct length");
+    )
+}
+
+fn compute_usage_signature(record: &UsageRecord) -> String {
+    let input = usage_signature_input(record);
+    let secret = machine_hmac_secret();
+    let mut mac = HmacSha256::new_from_slice(&secret).expect("32-byte secret");
     mac.update(input.as_bytes());
     hex::encode(mac.finalize().into_bytes())
 }
 
-fn verify_usage_signature(record: &UsageRecord) -> bool {
-    let Some(ref stored) = record.signature else {
-        return false;
+enum SigVerify {
+    NotPresent,
+    Invalid,
+    ValidMachine,
+    ValidLegacy,
+}
+
+/// Constant-time HMAC verification via `verify_slice`. Tries the per-machine
+/// secret first, falls back to the legacy hardcoded constant so usage.json
+/// files written by previous versions still verify on first run after upgrade.
+fn verify_usage_signature(record: &UsageRecord) -> SigVerify {
+    let Some(stored_hex) = record.signature.as_deref() else {
+        return SigVerify::NotPresent;
     };
-    compute_usage_signature(record) == *stored
+    let Ok(stored_bytes) = hex::decode(stored_hex) else {
+        return SigVerify::Invalid;
+    };
+
+    let input = usage_signature_input(record);
+
+    let machine_secret = machine_hmac_secret();
+    let mut mac = HmacSha256::new_from_slice(&machine_secret).expect("32-byte secret");
+    mac.update(input.as_bytes());
+    if mac.verify_slice(&stored_bytes).is_ok() {
+        return SigVerify::ValidMachine;
+    }
+
+    let mut legacy = HmacSha256::new_from_slice(LEGACY_HMAC_SECRET).expect("32-byte secret");
+    legacy.update(input.as_bytes());
+    if legacy.verify_slice(&stored_bytes).is_ok() {
+        return SigVerify::ValidLegacy;
+    }
+    SigVerify::Invalid
 }
 
 pub fn current_month_key() -> String {
@@ -81,27 +120,30 @@ pub fn load_usage() -> UsageRecord {
         return UsageRecord::default();
     };
 
-    if record.signature.is_some() {
-        if verify_usage_signature(&record) {
-            return record;
+    match verify_usage_signature(&record) {
+        SigVerify::ValidMachine => record,
+        SigVerify::ValidLegacy => {
+            // Re-sign with the per-machine secret so the legacy path stops
+            // being needed on this install.
+            let _ = save_usage(&record);
+            record
         }
-        // Tamper detected — discard. User effectively gets a fresh-state
-        // record (trial may not restart because trial_count was set on the
-        // previous valid save we discarded — but if they delete the file
-        // entirely we get UsageRecord::default with trial_count=0 anyway,
-        // which is the trade-off of a non-secure store).
-        crate::logging::log_warn("usage signature invalid — discarding cache");
-        return UsageRecord::default();
+        SigVerify::NotPresent => {
+            // Pre-1.6.2 file with no signature. If the trial was already
+            // started, bump trial_count to 1 so resigning doesn't accidentally
+            // hand them a fresh trial via "delete file then relaunch."
+            if record.trial_started_at.is_some() && record.trial_count == 0 {
+                record.trial_count = 1;
+            }
+            let _ = save_usage(&record);
+            record
+        }
+        SigVerify::Invalid => {
+            // Tamper detected — discard.
+            crate::logging::log_warn("usage signature invalid — discarding cache");
+            UsageRecord::default()
+        }
     }
-
-    // Legacy 1.6.x file with no signature. If the trial was already started,
-    // bump trial_count to 1 so resigning doesn't accidentally hand them a
-    // fresh trial via "delete file then relaunch."
-    if record.trial_started_at.is_some() && record.trial_count == 0 {
-        record.trial_count = 1;
-    }
-    let _ = save_usage(&record);
-    record
 }
 
 pub fn save_usage(record: &UsageRecord) -> Result<(), String> {

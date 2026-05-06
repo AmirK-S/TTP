@@ -7,10 +7,21 @@ use sha2::Sha256;
 use std::fs;
 use std::path::PathBuf;
 
-/// HMAC secret used to detect tampering of the local license cache.
-/// Reverse-engineerable from the binary — this is "casual tamper-resistant",
-/// not crypto. Raises the bar above plain text editing.
-const HMAC_SECRET: &[u8; 32] = b"TTPOfflineGraceCache_v1_Casual__";
+/// Legacy hardcoded HMAC secret from v1.6.x–v1.7.3. Kept so license.json
+/// files signed by previous versions still verify on first run after
+/// upgrade — we then re-sign them with the per-machine key below so the
+/// legacy secret stops mattering on this install.
+const LEGACY_HMAC_SECRET: &[u8; 32] = b"TTPOfflineGraceCache_v1_Casual__";
+
+const KEYCHAIN_ACCOUNT: &str = "license_hmac_secret";
+
+/// Per-machine HMAC secret stored in the OS keychain. Generated once with
+/// the OS CSPRNG on first use, then reused across launches. Replaces the
+/// shared LEGACY_HMAC_SECRET so a forged license.json can't be signed
+/// once and replayed across machines.
+fn machine_hmac_secret() -> [u8; 32] {
+    crate::keychain::get_or_create_hmac_secret(KEYCHAIN_ACCOUNT, LEGACY_HMAC_SECRET)
+}
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -32,8 +43,8 @@ fn license_path() -> Option<PathBuf> {
     dirs::config_dir().map(|p| p.join("ttp").join("license.json"))
 }
 
-fn compute_license_signature(record: &LicenseRecord) -> String {
-    let input = format!(
+fn license_signature_input(record: &LicenseRecord) -> String {
+    format!(
         "{}|{}|{}|{}|{}|{}|{}",
         record.license_key,
         record.status,
@@ -42,18 +53,56 @@ fn compute_license_signature(record: &LicenseRecord) -> String {
         record.activation_count.unwrap_or(0),
         record.activation_limit.unwrap_or(0),
         record.instance_id,
-    );
-    let mut mac =
-        HmacSha256::new_from_slice(HMAC_SECRET).expect("HMAC_SECRET has correct length");
+    )
+}
+
+fn compute_license_signature_with(record: &LicenseRecord, secret: &[u8]) -> String {
+    let input = license_signature_input(record);
+    let mut mac = HmacSha256::new_from_slice(secret).expect("HMAC secret has correct length");
     mac.update(input.as_bytes());
     hex::encode(mac.finalize().into_bytes())
 }
 
-fn verify_license_signature(record: &LicenseRecord) -> bool {
-    let Some(ref stored) = record.signature else {
-        return false;
+fn compute_license_signature(record: &LicenseRecord) -> String {
+    compute_license_signature_with(record, &machine_hmac_secret())
+}
+
+enum SigVerify {
+    NotPresent,
+    Invalid,
+    ValidMachine,
+    ValidLegacy,
+}
+
+/// Verify a stored signature using HMAC's constant-time `verify_slice` to
+/// defeat timing attacks (the previous `==` compare exited on first byte
+/// mismatch). Tries the per-machine secret first; falls back to the legacy
+/// hardcoded secret so license.json files written by v1.7.x still verify
+/// on first run after upgrade. The caller re-signs ValidLegacy files so
+/// the legacy path stops being needed on this install.
+fn verify_license_signature(record: &LicenseRecord) -> SigVerify {
+    let Some(stored_hex) = record.signature.as_deref() else {
+        return SigVerify::NotPresent;
     };
-    compute_license_signature(record) == *stored
+    let Ok(stored_bytes) = hex::decode(stored_hex) else {
+        return SigVerify::Invalid;
+    };
+
+    let input = license_signature_input(record);
+
+    let machine_secret = machine_hmac_secret();
+    let mut mac = HmacSha256::new_from_slice(&machine_secret).expect("32-byte secret");
+    mac.update(input.as_bytes());
+    if mac.verify_slice(&stored_bytes).is_ok() {
+        return SigVerify::ValidMachine;
+    }
+
+    let mut legacy = HmacSha256::new_from_slice(LEGACY_HMAC_SECRET).expect("32-byte secret");
+    legacy.update(input.as_bytes());
+    if legacy.verify_slice(&stored_bytes).is_ok() {
+        return SigVerify::ValidLegacy;
+    }
+    SigVerify::Invalid
 }
 
 pub fn load_license() -> Option<LicenseRecord> {
@@ -64,20 +113,26 @@ pub fn load_license() -> Option<LicenseRecord> {
     let content = fs::read_to_string(&path).ok()?;
     let record: LicenseRecord = serde_json::from_str(&content).ok()?;
 
-    if record.signature.is_some() {
-        if verify_license_signature(&record) {
-            return Some(record);
+    match verify_license_signature(&record) {
+        SigVerify::ValidMachine => Some(record),
+        SigVerify::ValidLegacy => {
+            // File was signed by v1.7.x's hardcoded secret — re-sign with the
+            // per-machine key so the legacy path isn't needed again on this
+            // install.
+            let _ = save_license(&record);
+            Some(record)
         }
-        // Signature present but mismatched — discard rather than crash.
-        // Tamper detected; treat as no license.
-        crate::logging::log_warn("license signature invalid — discarding cache");
-        return None;
+        SigVerify::NotPresent => {
+            // Pre-1.6.2 file with no signature — accept once, sign now.
+            let _ = save_license(&record);
+            Some(record)
+        }
+        SigVerify::Invalid => {
+            // Genuine tamper or corruption — discard.
+            crate::logging::log_warn("license signature invalid — discarding cache");
+            None
+        }
     }
-
-    // Legacy 1.6.x file with no signature — accept once, re-sign on disk so
-    // future edits get caught. Existing legitimate users aren't broken.
-    let _ = save_license(&record);
-    Some(record)
 }
 
 pub fn save_license(record: &LicenseRecord) -> Result<(), String> {

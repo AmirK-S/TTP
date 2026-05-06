@@ -47,6 +47,8 @@ governor = "0.10"
 # Stores secrets in macOS Keychain / Windows Credential Manager so the
 # Groq API key is never written to disk in plain text.
 keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native"] }
+# OS CSPRNG for generating per-machine HMAC secrets stored in keychain.
+getrandom = "0.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"
