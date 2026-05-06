@@ -27,14 +27,25 @@ fn file_path_regex() -> &'static regex::Regex {
     })
 }
 
-/// Scrub PII from a string: redacts API keys and file paths.
+/// Compiled regex for email addresses. Conservative: requires a TLD of at
+/// least two letters and disallows whitespace inside the address.
+fn email_regex() -> &'static regex::Regex {
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        regex::Regex::new(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b")
+            .unwrap_or_else(|_| never_match())
+    })
+}
+
+/// Scrub PII from a string: redacts API keys, file paths, and emails.
 fn scrub_string(s: &str) -> String {
-    let result = api_key_regex()
+    let s = api_key_regex()
         .replace_all(s, "[REDACTED_API_KEY]")
         .to_string();
-    file_path_regex()
-        .replace_all(&result, "[REDACTED_PATH]")
-        .to_string()
+    let s = file_path_regex()
+        .replace_all(&s, "[REDACTED_PATH]")
+        .to_string();
+    email_regex().replace_all(&s, "[REDACTED_EMAIL]").to_string()
 }
 
 /// Returns true if a key name likely contains sensitive data.
