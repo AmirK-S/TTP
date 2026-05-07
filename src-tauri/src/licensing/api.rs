@@ -2,6 +2,7 @@
 // Lemon Squeezy License API client
 
 use super::types::{LicenseStatus, LsResponse};
+use crate::http_client::shared as shared_http;
 use std::time::Duration;
 
 const ACTIVATE_URL: &str = "https://api.lemonsqueezy.com/v1/licenses/activate";
@@ -94,13 +95,13 @@ pub async fn deactivate(license_key: &str, instance_id: &str) -> Result<(), Stri
 }
 
 async fn post_form(url: &str, params: &[(&str, &str)]) -> Result<LsResponse, String> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    // Reuse the process-wide HTTP client; per-request timeout below replaces
+    // the previous builder-level timeout so connection pooling stays shared.
+    let client = shared_http();
 
     let response = client
         .post(url)
+        .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
         .header("Accept", "application/json")
         .form(params)
         .send()

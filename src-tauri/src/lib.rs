@@ -7,6 +7,7 @@ mod dictionary;
 #[cfg(target_os = "macos")]
 mod fnkey;
 mod history;
+mod http_client;
 mod keychain;
 mod licensing;
 pub mod logging;

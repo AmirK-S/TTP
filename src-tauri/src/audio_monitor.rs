@@ -53,6 +53,7 @@ fn run(app: &AppHandle) -> Result<(), String> {
     let stream = match config.sample_format() {
         cpal::SampleFormat::F32 => {
             let lw = level_writer;
+            let err_app = app.clone();
             device
                 .build_input_stream(
                     &config.config(),
@@ -60,13 +61,14 @@ fn run(app: &AppHandle) -> Result<(), String> {
                         let rms = rms_f32(data);
                         lw.store(rms.to_bits(), Ordering::Relaxed);
                     },
-                    |e| eprintln!("[AudioMonitor] Stream error: {}", e),
+                    move |e| handle_stream_error(&err_app, e),
                     None,
                 )
                 .map_err(|e| format!("Failed to build F32 stream: {}", e))?
         }
         cpal::SampleFormat::I16 => {
             let lw = level_writer;
+            let err_app = app.clone();
             device
                 .build_input_stream(
                     &config.config(),
@@ -74,7 +76,7 @@ fn run(app: &AppHandle) -> Result<(), String> {
                         let rms = rms_i16(data);
                         lw.store(rms.to_bits(), Ordering::Relaxed);
                     },
-                    |e| eprintln!("[AudioMonitor] Stream error: {}", e),
+                    move |e| handle_stream_error(&err_app, e),
                     None,
                 )
                 .map_err(|e| format!("Failed to build I16 stream: {}", e))?
@@ -95,6 +97,34 @@ fn run(app: &AppHandle) -> Result<(), String> {
 
     // Stream is dropped here, stopping capture
     Ok(())
+}
+
+/// Handle a fatal cpal input-stream error (typically: another process — e.g. macOS
+/// Dictation on F5 — took exclusive access of the mic, so our stream was kicked).
+///
+/// We can't recover the stream from inside the callback, so we:
+///   1. Flip ACTIVE off so the 30fps emit loop in `run()` exits and drops the stream
+///      cleanly instead of pumping zeros forever.
+///   2. Emit `audio-stream-error` so the frontend can reset the recording state
+///      machine to Idle and toast the user (instead of leaving them with a stuck
+///      pill and an empty audio file).
+///   3. Drop a Sentry breadcrumb so we get visibility on Sentry when consent is on.
+fn handle_stream_error(app: &AppHandle, e: cpal::StreamError) {
+    let msg = e.to_string();
+    eprintln!("[AudioMonitor] Stream error: {}", msg);
+
+    // Stop the emit loop — it would otherwise keep firing audio-level=0 forever
+    // and leave the pill visible with the bars stuck flat.
+    ACTIVE.store(false, Ordering::SeqCst);
+
+    sentry::add_breadcrumb(sentry::Breadcrumb {
+        category: Some("audio_stream".into()),
+        level: sentry::Level::Warning,
+        message: Some(format!("cpal input stream error: {}", msg)),
+        ..Default::default()
+    });
+
+    app.emit("audio-stream-error", msg).ok();
 }
 
 fn rms_f32(data: &[f32]) -> f32 {

@@ -2,10 +2,24 @@
 // Groq LLM text polish API client (llama-3.3-70b-versatile)
 
 use crate::dictionary::{get_dictionary, DictionaryEntry};
+use crate::http_client::shared as shared_http;
 use crate::logging::log_error;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::time::sleep;
+
+/// Compute a retry sleep with ±25% jitter from `base_ms`.
+///
+/// See `whisper.rs::jittered_backoff_ms` for rationale. Duplicated here
+/// (rather than pulled into a shared util) to keep this module self-contained
+/// and avoid disturbing module structure for ~12 lines of code.
+fn jittered_backoff_ms(base_ms: u64) -> u64 {
+    let entropy = Instant::now().elapsed().subsec_nanos() ^ base_ms as u32;
+    let frac = (entropy & 0x3FF) as f32 / 1024.0;
+    let signed = frac - 0.5;
+    let delta = signed * 0.5 * base_ms as f32;
+    (base_ms as f32 + delta).max(1.0) as u64
+}
 
 /// Groq chat completions API endpoint (OpenAI-compatible)
 const CHAT_URL: &str = "https://api.groq.com/openai/v1/chat/completions";
@@ -101,11 +115,9 @@ pub async fn polish_text(api_key: &str, raw_text: &str) -> Result<String, String
     let dictionary = get_dictionary();
     let system_prompt = build_polish_prompt(&dictionary);
 
-    // Create HTTP client with timeout
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    // Reuse the process-wide HTTP client; per-request timeout is applied on
+    // the request builder below.
+    let client = shared_http();
 
     // Build request body
     let request_body = ChatRequest {
@@ -127,15 +139,18 @@ pub async fn polish_text(api_key: &str, raw_text: &str) -> Result<String, String
     // Retry loop with exponential backoff
     let mut last_error = String::new();
     for attempt in 0..MAX_RETRIES {
-        // Calculate backoff delay: 500ms, 1000ms, 1500ms
+        // Backoff with ±25% jitter so we don't synchronize retries across
+        // concurrent users when Groq returns 429.
         if attempt > 0 {
-            let delay_ms = 500 * (attempt as u64);
+            let delay_ms = jittered_backoff_ms(500 * (attempt as u64));
             sleep(Duration::from_millis(delay_ms)).await;
         }
 
-        // Make the request
+        // Make the request. Per-request timeout is set here (not on the
+        // shared client) so other modules keep their own timeouts.
         match client
             .post(CHAT_URL)
+            .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
             .json(&request_body)

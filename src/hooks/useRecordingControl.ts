@@ -117,6 +117,26 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
     }
   });
 
+  // Audio stream got kicked out of the mic (e.g. F5/macOS Dictation took exclusive
+  // access). cpal can't recover from inside its error callback, so the Rust side
+  // emits this event; we cancel the in-flight recording, reset state, and surface
+  // a user-facing message via the same error pill that the rest of the pipeline uses.
+  // No toast lib in TTP yet, so we ride on `transcription-progress` which the
+  // FloatingBar already renders as a red pill auto-dismissing after 4s.
+  useTauriEvent<string>('audio-stream-error', (event) => {
+    console.warn('[AudioStream] Stream error from Rust:', event.payload);
+    isRecordingRef.current = false;
+    recordingStartTime.current = null;
+    // Best-effort: try to stop the mic-recorder plugin so it releases the file
+    // handle. It may already be in an error state — ignore.
+    stopRecording().catch(() => {});
+    invoke('reset_to_idle').catch(() => {});
+    emit('transcription-progress', {
+      stage: 'error',
+      message: 'Le micro a été pris par macOS (probablement la dictée). Enregistrement annulé.',
+    }).catch(() => {});
+  });
+
   return {
     isRecording: isRecordingRef.current,
   };
