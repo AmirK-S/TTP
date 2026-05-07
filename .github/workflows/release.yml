@@ -51,6 +51,20 @@ jobs:
             echo "channel=stable" >> "$GITHUB_OUTPUT"
           fi
 
+      # On Windows + beta tags, skip the MSI bundler. MSI rejects non-numeric
+      # SemVer pre-release identifiers (e.g. -beta.1) — see tauri-apps/tauri
+      # issue. NSIS .exe still ships and is sufficient for beta-channel users.
+      # Stable Windows builds keep both NSIS + MSI.
+      - name: Compute build args
+        id: build-args
+        shell: bash
+        run: |
+          ARGS="${{ matrix.args }}"
+          if [[ "${{ matrix.platform }}" == "windows-latest" && "${{ steps.beta-check.outputs.is_beta }}" == "true" ]]; then
+            ARGS="${ARGS:+$ARGS }--bundles nsis"
+          fi
+          echo "args=$ARGS" >> "$GITHUB_OUTPUT"
+
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
@@ -165,7 +179,7 @@ jobs:
           # promote them to /releases/latest and stable users keep getting the
           # latest stable manifest.
           prerelease: ${{ steps.beta-check.outputs.is_beta == 'true' }}
-          args: ${{ matrix.args }}
+          args: ${{ steps.build-args.outputs.args }}
 
       - name: Wait before retry
         if: steps.tauri-1.outcome == 'failure'
@@ -190,7 +204,7 @@ jobs:
           releaseBody: "See the assets below for downloadable installers."
           releaseDraft: true
           prerelease: ${{ steps.beta-check.outputs.is_beta == 'true' }}
-          args: ${{ matrix.args }}
+          args: ${{ steps.build-args.outputs.args }}
 
       - name: Wait before final attempt
         if: steps.tauri-1.outcome == 'failure' && steps.tauri-2.outcome == 'failure'
@@ -214,7 +228,7 @@ jobs:
           releaseBody: "See the assets below for downloadable installers."
           releaseDraft: true
           prerelease: ${{ steps.beta-check.outputs.is_beta == 'true' }}
-          args: ${{ matrix.args }}
+          args: ${{ steps.build-args.outputs.args }}
 
       # Upload debug symbols to Sentry so future stack traces are
       # symbolicated. Without this, panics show as `__mh_execute_header`
