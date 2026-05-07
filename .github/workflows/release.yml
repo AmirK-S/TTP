@@ -289,11 +289,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          # Use find instead of ls because beta builds may skip the MSI
-          # bundler (MSI rejects non-numeric pre-release identifiers); ls
-          # with a non-matching glob errors under set -e.
-          EXE=$(find src-tauri/target/release/bundle/nsis -name "*-setup.exe" 2>/dev/null | head -1)
-          MSI=$(find src-tauri/target/release/bundle/msi -name "*.msi" 2>/dev/null | head -1)
+          # Beta builds skip the MSI bundler (MSI rejects non-numeric
+          # pre-release identifiers like -beta.1), so the msi/ directory
+          # may not exist. GitHub's bash runs with `pipefail`, so we
+          # check the directory exists before find-ing — otherwise find
+          # returns 1, the pipe is non-zero, and set -e kills the step.
+          EXE=""
+          if [ -d "src-tauri/target/release/bundle/nsis" ]; then
+            EXE=$(find src-tauri/target/release/bundle/nsis -name "*-setup.exe" -print -quit 2>/dev/null || true)
+          fi
+          MSI=""
+          if [ -d "src-tauri/target/release/bundle/msi" ]; then
+            MSI=$(find src-tauri/target/release/bundle/msi -name "*.msi" -print -quit 2>/dev/null || true)
+          fi
           UPLOADS=()
           if [ -n "$EXE" ]; then
             cp "$EXE" "TTP-Windows-x64-setup.exe"
