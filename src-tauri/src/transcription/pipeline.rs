@@ -8,7 +8,7 @@ use crate::credentials::get_groq_api_key_internal;
 use crate::dictionary::detection::start_correction_window;
 use crate::dictionary::apply_dictionary;
 use crate::history::add_history_entry;
-use crate::paste::{check_accessibility, simulate_paste, ClipboardGuard};
+use crate::paste::{check_accessibility, simulate_paste, simulate_typing, ClipboardGuard};
 // Pill stays visible - no hide needed
 use crate::settings::get_settings;
 use crate::state::{AppState, RecordingState};
@@ -29,6 +29,26 @@ static PROCESS_AUDIO_LIMITER: OnceLock<DefaultDirectRateLimiter> = OnceLock::new
 
 /// Maximum audio file size in bytes (25MB Groq API limit)
 const MAX_AUDIO_SIZE: u64 = 25_000_000;
+
+/// Threshold above which we fall back to clipboard+Cmd+V instead of direct
+/// keystroke injection. Below this, we type the transcription directly via
+/// enigo (CGEventKeyboardSetUnicodeString on macOS) — the clipboard is never
+/// touched, eliminating the NSPasteboard read/restore race that bites slow
+/// Electron targets (Slack, Notion, Mail). 99 % of voice transcriptions are
+/// well under this length; over it, character-by-character typing would feel
+/// laggy so we accept the clipboard race for the rare long-text case and
+/// mitigate it with a longer post-paste wait (1500 ms).
+const DIRECT_TYPING_MAX_CHARS: usize = 2000;
+
+/// How long to wait after Cmd+V before restoring the user's pre-record
+/// clipboard, when we have to use the clipboard path (text > DIRECT_TYPING_MAX_CHARS).
+/// Slow Electron apps (Slack, Notion, Mail, Discord) can take 200–600 ms to
+/// actually read NSPasteboard after receiving Cmd+V — restoring sooner makes
+/// the target read the OLD clipboard. 1500 ms is a conservative ceiling that
+/// covers the worst observed Electron pauses without making the UX painful
+/// (the user only hits this branch for >2000-char transcriptions, which are
+/// rare and themselves take seconds to produce).
+const CLIPBOARD_PASTE_RESTORE_DELAY_MS: u64 = 1500;
 
 /// Common Whisper hallucinations on silent/empty audio
 const HALLUCINATIONS: &[&str] = &[
@@ -604,10 +624,14 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // Stage 3: Paste into active app
     emit_progress(app, "pasting", "");
 
-    // Create clipboard guard to save original content
+    // Create clipboard guard to save original content.
+    // We always write the transcription to the clipboard first so that if AX
+    // is denied — or anything in the paste path fails — the user can still
+    // recover the text with a manual Cmd+V. The transcription stays in the
+    // clipboard until either (a) we successfully paste/type and restore, or
+    // (b) we error out (in which case we deliberately leave it).
     let clipboard_guard = ClipboardGuard::new(app);
 
-    // ALWAYS write to clipboard first (backup for manual paste)
     if let Err(e) = clipboard_guard.write_text(&final_text) {
         emit_progress(app, "error", "Failed to write to clipboard");
         notify(app, "Failed to copy text to clipboard");
@@ -618,17 +642,49 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // Check accessibility permission and try to paste
     let has_accessibility = check_accessibility();
 
+    // Pick the paste strategy based on length.
+    //
+    // For short text (the overwhelming majority of voice transcriptions) we
+    // type the characters directly via enigo. The clipboard is written for
+    // manual-Cmd+V fallback only — the actual insertion never touches the
+    // pasteboard, so there is no race: as soon as enigo.text() returns, every
+    // keystroke has been delivered to the focused app's HID queue and we can
+    // restore the user's pre-record clipboard immediately.
+    //
+    // For long text we keep the clipboard+Cmd+V path because typing thousands
+    // of characters one by one would be unacceptably slow. We trade the race
+    // for speed and mitigate by waiting CLIPBOARD_PASTE_RESTORE_DELAY_MS
+    // (1500 ms) before restoring — long enough for slow Electron apps to
+    // actually read the pasteboard after Cmd+V.
+    let use_direct_typing = final_text.chars().count() <= DIRECT_TYPING_MAX_CHARS;
+
     // Use spawn_blocking to run sync paste code safely in async context
     let paste_success = if has_accessibility {
-        let paste_result = tokio::task::spawn_blocking(|| {
-            std::panic::catch_unwind(|| simulate_paste())
-        })
-        .await;
+        let paste_result = if use_direct_typing {
+            let text_for_typing = final_text.clone();
+            tokio::task::spawn_blocking(move || {
+                std::panic::catch_unwind(|| simulate_typing(&text_for_typing))
+            })
+            .await
+        } else {
+            tokio::task::spawn_blocking(|| {
+                std::panic::catch_unwind(|| simulate_paste())
+            })
+            .await
+        };
 
         match paste_result {
             Ok(Ok(Ok(()))) => {
-                // Wait a bit for paste to complete before restoring clipboard
-                sleep(Duration::from_millis(150)).await;
+                if use_direct_typing {
+                    // Direct typing already delivered every character to the
+                    // focused app — no async pasteboard read in flight, so we
+                    // can restore the user's clipboard immediately.
+                } else {
+                    // Clipboard+Cmd+V: give the target app a generous window
+                    // to actually read NSPasteboard before we overwrite it
+                    // with the original contents.
+                    sleep(Duration::from_millis(CLIPBOARD_PASTE_RESTORE_DELAY_MS)).await;
+                }
 
                 // Restore original clipboard content
                 if let Err(e) = clipboard_guard.restore() {

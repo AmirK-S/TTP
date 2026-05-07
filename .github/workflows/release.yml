@@ -289,8 +289,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          EXE=$(ls src-tauri/target/release/bundle/nsis/*-setup.exe 2>/dev/null | head -1)
-          MSI=$(ls src-tauri/target/release/bundle/msi/*.msi 2>/dev/null | head -1)
+          # Use find instead of ls because beta builds may skip the MSI
+          # bundler (MSI rejects non-numeric pre-release identifiers); ls
+          # with a non-matching glob errors under set -e.
+          EXE=$(find src-tauri/target/release/bundle/nsis -name "*-setup.exe" 2>/dev/null | head -1)
+          MSI=$(find src-tauri/target/release/bundle/msi -name "*.msi" 2>/dev/null | head -1)
           UPLOADS=()
           if [ -n "$EXE" ]; then
             cp "$EXE" "TTP-Windows-x64-setup.exe"
