@@ -25,6 +25,45 @@ const description = lang === 'fr'
     <link rel="icon" type="image/png" href="/icon.png" />
     <link rel="alternate" hreflang="en" href="/" />
     <link rel="alternate" hreflang="fr" href="/fr/" />
+
+    <!-- Open Graph / social previews -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="TTP — Talk To Paste" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content="https://ttp.amirks.eu/ttp-logo-1024.png" />
+    <meta property="og:image:width" content="1024" />
+    <meta property="og:image:height" content="1024" />
+    <meta property="og:url" content={`https://ttp.amirks.eu${Astro.url.pathname}`} />
+    <meta property="og:locale" content={lang === 'fr' ? 'fr_FR' : 'en_US'} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content="https://ttp.amirks.eu/ttp-logo-1024.png" />
+
+    <!-- JSON-LD: SoftwareApplication for richer search results -->
+    <script type="application/ld+json" set:html={JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "TTP — Talk To Paste",
+      "description": description,
+      "url": "https://ttp.amirks.eu",
+      "downloadUrl": "https://github.com/AmirK-S/TTP/releases",
+      "operatingSystem": ["macOS", "Windows"],
+      "applicationCategory": "ProductivityApplication",
+      "image": "https://ttp.amirks.eu/ttp-logo-1024.png",
+      "softwareVersion": "1.8.1",
+      "author": {
+        "@type": "Person",
+        "name": "Amir KS",
+        "url": "https://amirks.eu"
+      },
+      "offers": [
+        { "@type": "Offer", "name": "Free", "price": "0", "priceCurrency": "EUR" },
+        { "@type": "Offer", "name": "Pro", "price": "17", "priceCurrency": "EUR", "url": "https://amirks.lemonsqueezy.com/buy/dcc74241-21ae-4d20-8a3c-90bf8d842bae" }
+      ]
+    })} />
+
     <title>{title}</title>
     <script is:inline>
     (function(){

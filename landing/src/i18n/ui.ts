@@ -22,7 +22,8 @@ export const ui = {
       "Press a shortcut. Speak. Your words appear wherever you're typing. No switching apps. No copy-pasting. Just talk.",
     'hero.cta': 'Get TTP Free',
     'hero.socialProof': 'Free forever. No account. No strings attached.',
-    'hero.whisperNote': 'Like Whisper... but FREE!',
+    'hero.whisperNote': 'Powered by Groq. Sub-2-second transcription.',
+    'hero.trustBar': 'No servers · No tracking · Audio sent direct to Groq · Open source',
 
     // How It Works
     'howItWorks.heading': 'How It Works',
@@ -194,7 +195,8 @@ export const ui = {
       "Appuyez sur un raccourci. Parlez. Vos mots apparaissent l\u00e0 o\u00f9 vous tapez. Sans changer d'app. Sans copier-coller. Parlez, c'est tout.",
     'hero.cta': 'Obtenir TTP Gratuitement',
     'hero.socialProof': 'Gratuit pour toujours. Sans compte. Sans conditions.',
-    'hero.whisperNote': 'Comme Whisper... mais GRATUIT !',
+    'hero.whisperNote': 'Propulsé par Groq. Transcription en moins de 2 secondes.',
+    'hero.trustBar': 'Pas de serveur · Pas de tracking · Audio envoyé direct à Groq · Open source',
 
     // How It Works
     'howItWorks.heading': 'Comment \u00e7a marche',
