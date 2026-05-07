@@ -32,6 +32,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
+      # Detect whether this tag targets the beta channel (e.g. v2.0.0-beta.1).
+      # Outputs:
+      #   is_beta = "true" | "false"
+      #   channel = "beta" | "stable"
+      # Used downstream to flip the GitHub Release to prerelease and to
+      # publish a `latest-beta.json` manifest pointing at this build.
+      - name: Detect beta tag
+        id: beta-check
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ "$TAG" =~ -beta\.[0-9]+$ ]]; then
+            echo "is_beta=true" >> "$GITHUB_OUTPUT"
+            echo "channel=beta" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_beta=false" >> "$GITHUB_OUTPUT"
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
@@ -142,7 +161,10 @@ jobs:
           releaseName: "TTP ${{ github.ref_name }}"
           releaseBody: "See the assets below for downloadable installers."
           releaseDraft: true
-          prerelease: false
+          # Beta tags (vX.Y.Z-beta.N) are marked prerelease so GitHub does not
+          # promote them to /releases/latest and stable users keep getting the
+          # latest stable manifest.
+          prerelease: ${{ steps.beta-check.outputs.is_beta == 'true' }}
           args: ${{ matrix.args }}
 
       - name: Wait before retry
@@ -167,7 +189,7 @@ jobs:
           releaseName: "TTP ${{ github.ref_name }}"
           releaseBody: "See the assets below for downloadable installers."
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ steps.beta-check.outputs.is_beta == 'true' }}
           args: ${{ matrix.args }}
 
       - name: Wait before final attempt
@@ -191,7 +213,7 @@ jobs:
           releaseName: "TTP ${{ github.ref_name }}"
           releaseBody: "See the assets below for downloadable installers."
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ steps.beta-check.outputs.is_beta == 'true' }}
           args: ${{ matrix.args }}
 
       # Upload debug symbols to Sentry so future stack traces are
@@ -269,3 +291,86 @@ jobs:
           else
             echo "No Windows installers produced; skipping alias upload."
           fi
+
+  # Publish the channel-specific update manifest. Runs once after all matrix
+  # jobs have uploaded their per-target artifacts so that latest.json on the
+  # GitHub release is fully merged across macOS arm64 / x64 / Windows.
+  #
+  # Stable tag (vX.Y.Z): copy this release's latest.json to latest-beta.json
+  # and attach it here too, so beta-channel users on this stable build can
+  # roll forward to the next beta from this release's URL.
+  #
+  # Beta tag (vX.Y.Z-beta.N): the release is prerelease, so it is NOT
+  # /releases/latest. We download this release's latest.json, rename it to
+  # latest-beta.json, and re-upload it to the most recent NON-prerelease
+  # release (which is what /releases/latest points to). Beta-channel users
+  # querying /releases/latest/download/latest-beta.json then get the new beta.
+  publish-channel-manifest:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Detect beta tag
+        id: beta-check
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ "$TAG" =~ -beta\.[0-9]+$ ]]; then
+            echo "is_beta=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_beta=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish latest-beta.json (stable tag)
+        if: steps.beta-check.outputs.is_beta == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -e
+          # Wait briefly for tauri-action's last upload to settle on the API.
+          sleep 5
+          mkdir -p _channel
+          if ! gh release download "${{ github.ref_name }}" \
+              --pattern 'latest.json' \
+              --repo "${{ github.repository }}" \
+              --dir _channel; then
+            echo "::warning::No latest.json on release ${{ github.ref_name }}; skipping latest-beta.json publication."
+            exit 0
+          fi
+          cp _channel/latest.json _channel/latest-beta.json
+          gh release upload "${{ github.ref_name }}" _channel/latest-beta.json \
+            --clobber --repo "${{ github.repository }}"
+
+      - name: Publish latest-beta.json (beta tag)
+        if: steps.beta-check.outputs.is_beta == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -e
+          sleep 5
+          mkdir -p _channel
+          # Pull THIS beta release's latest.json (tauri-action wrote one).
+          if ! gh release download "${{ github.ref_name }}" \
+              --pattern 'latest.json' \
+              --repo "${{ github.repository }}" \
+              --dir _channel; then
+            echo "::error::No latest.json found on beta release ${{ github.ref_name }}."
+            exit 1
+          fi
+          cp _channel/latest.json _channel/latest-beta.json
+
+          # Find the most recent NON-prerelease tag — that's what
+          # /releases/latest/download/<asset> resolves to.
+          STABLE_TAG=$(gh release list --limit 50 --repo "${{ github.repository }}" \
+            --json tagName,isPrerelease,isDraft \
+            | jq -r '[.[] | select(.isPrerelease == false and .isDraft == false)] | .[0].tagName // empty')
+          if [ -z "$STABLE_TAG" ]; then
+            echo "::error::No published stable release found to attach latest-beta.json to."
+            exit 1
+          fi
+          echo "Attaching latest-beta.json to stable release: $STABLE_TAG"
+          gh release upload "$STABLE_TAG" _channel/latest-beta.json \
+            --clobber --repo "${{ github.repository }}"

@@ -51,6 +51,7 @@ use std::sync::Mutex;
 use tauri::ActivationPolicy;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
+use tauri_plugin_updater::UpdaterExt;
 
 /// Tauri command to update the global shortcut at runtime
 #[tauri::command]
@@ -118,6 +119,116 @@ fn request_input_monitoring_permission() -> bool {
     }
     #[cfg(not(target_os = "macos"))]
     { true }
+}
+
+/// Pick the right manifest URL based on the user's channel preference.
+fn channel_manifest_url(use_beta: bool) -> &'static str {
+    if use_beta {
+        "https://github.com/AmirK-S/TTP/releases/latest/download/latest-beta.json"
+    } else {
+        "https://github.com/AmirK-S/TTP/releases/latest/download/latest.json"
+    }
+}
+
+/// Build a channel-aware Updater that targets either the stable or beta manifest.
+fn build_channel_updater(
+    app: &AppHandle,
+    use_beta: bool,
+) -> Result<tauri_plugin_updater::Updater, String> {
+    let endpoint = channel_manifest_url(use_beta)
+        .parse::<url::Url>()
+        .map_err(|e| format!("Failed to parse update endpoint: {}", e))?;
+
+    app.updater_builder()
+        .endpoints(vec![endpoint])
+        .map_err(|e| format!("Failed to set update endpoints: {}", e))?
+        .build()
+        .map_err(|e| format!("Failed to build updater: {}", e))
+}
+
+/// Result of a channel-aware update check.
+/// Tagged enum so the frontend can pattern-match cleanly.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum UpdateCheckResult {
+    /// An update is available on the chosen channel. Frontend should prompt
+    /// the user, then call `install_update_with_channel` to actually download
+    /// and install it.
+    Available { version: String, body: Option<String> },
+    /// No update available — current build is up-to-date on this channel.
+    NoUpdate,
+}
+
+/// Channel-aware update *check only*. Swaps the manifest URL based on the
+/// user's `use_beta_channel` setting (stable: `latest.json`, beta:
+/// `latest-beta.json`) and reports whether an update is available, without
+/// downloading anything.
+///
+/// Splitting check vs install lets the frontend keep its existing two-step
+/// UX (preview the version, then user clicks "Download and Install").
+#[tauri::command]
+async fn check_for_updates_with_channel(
+    app: AppHandle,
+    use_beta: bool,
+) -> Result<UpdateCheckResult, String> {
+    let updater = build_channel_updater(&app, use_beta)?;
+
+    match updater.check().await {
+        Ok(Some(update)) => Ok(UpdateCheckResult::Available {
+            version: update.version.clone(),
+            body: update.body.clone(),
+        }),
+        Ok(None) => Ok(UpdateCheckResult::NoUpdate),
+        Err(e) => Err(format!("Update check failed: {}", e)),
+    }
+}
+
+/// Channel-aware download + install. Re-runs the manifest check (so we always
+/// install the latest announced version on the chosen channel) and streams
+/// progress to the frontend via `update-progress` / `update-progress-finished`
+/// events so the existing progress bar UI keeps working.
+///
+/// Returns the installed version on success.
+#[tauri::command]
+async fn install_update_with_channel(
+    app: AppHandle,
+    use_beta: bool,
+) -> Result<String, String> {
+    let updater = build_channel_updater(&app, use_beta)?;
+
+    let update = updater
+        .check()
+        .await
+        .map_err(|e| format!("Update check failed: {}", e))?
+        .ok_or_else(|| "No update available on this channel".to_string())?;
+
+    let version = update.version.clone();
+
+    // Stream download progress to the frontend so the existing progress
+    // bar in useUpdater.ts can render it.
+    let progress_app = app.clone();
+    let mut downloaded: u64 = 0;
+    let on_chunk = move |chunk_len: usize, content_length: Option<u64>| {
+        downloaded = downloaded.saturating_add(chunk_len as u64);
+        let _ = progress_app.emit(
+            "update-progress",
+            serde_json::json!({
+                "downloaded": downloaded,
+                "total": content_length,
+            }),
+        );
+    };
+    let finish_app = app.clone();
+    let on_finish = move || {
+        let _ = finish_app.emit("update-progress-finished", ());
+    };
+
+    update
+        .download_and_install(on_chunk, on_finish)
+        .await
+        .map_err(|e| format!("Download/install failed: {}", e))?;
+
+    Ok(version)
 }
 
 /// Tauri command to reset state to Idle (used when skipping short recordings)
@@ -358,6 +469,8 @@ pub fn run() {
             check_input_monitoring_permission,
             request_input_monitoring_permission,
             reset_to_idle,
+            check_for_updates_with_channel,
+            install_update_with_channel,
             check_microphone_permission,
             is_first_launch_cmd,
             mark_first_launch_complete_cmd,

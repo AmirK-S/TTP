@@ -191,6 +191,94 @@ const HistoryRow = memo(function HistoryRow({ entry }: { entry: HistoryEntry }) 
 });
 
 /**
+ * Update Channel section — lets the user opt into beta builds.
+ *
+ * Toggling OFF while running a beta build shows a warning: until the next
+ * stable release catches up, the user will not receive updates (their build
+ * is "ahead" of stable). We use window.confirm intentionally — the rest of
+ * the app uses a custom ConfirmDialog, but wiring that in here would require
+ * refactoring the modal out of the parent Settings component. The native
+ * dialog is acceptable for an admin-style setting; promoting it to the
+ * shared ConfirmDialog is a TODO.
+ */
+function UpdateChannelSection() {
+  const { useBetaChannel, saveSettings, loading } = useSettingsStore();
+  const [appVersion, setAppVersion] = useState('...');
+
+  useEffect(() => {
+    getVersion().then((v) => setAppVersion(v)).catch(() => {});
+  }, []);
+
+  const isOnBetaBuild = appVersion.includes('-beta');
+
+  const handleToggle = async (enabled: boolean) => {
+    // Downgrade safeguard: if the user is currently on a beta build and
+    // disabling beta, warn them that they are "ahead of" the stable channel
+    // and will see no updates until a new stable release ships.
+    if (!enabled && isOnBetaBuild) {
+      // TODO: replace window.confirm with the shared ConfirmDialog component
+      // once we refactor it out of the parent Settings scope.
+      const ok = window.confirm(
+        "Tu es actuellement sur une version beta qui peut être plus récente que la dernière version stable. Tu n'auras pas de mises à jour jusqu'à une nouvelle version stable. Continuer ?"
+      );
+      if (!ok) return;
+    }
+
+    try {
+      await saveSettings({ use_beta_channel: enabled });
+      trackEvent('setting_changed', {
+        setting_name: 'use_beta_channel',
+        new_value: String(enabled),
+      });
+    } catch (error) {
+      console.error('Failed to save update channel setting:', error);
+    }
+  };
+
+  return (
+    <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+          Canal de mise à jour
+        </h2>
+        {isOnBetaBuild && (
+          <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300">
+            Beta
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between mt-4">
+        <div className="flex-1 pr-4">
+          <p className="text-gray-900 dark:text-white font-medium">
+            {useBetaChannel ? 'Beta' : 'Stable'}
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            {useBetaChannel
+              ? 'Tu testes les nouvelles versions avant la sortie publique'
+              : 'Tu reçois les versions stables et fiables'}
+          </p>
+        </div>
+        <Toggle
+          enabled={useBetaChannel}
+          onChange={handleToggle}
+          disabled={loading}
+        />
+      </div>
+
+      {useBetaChannel && (
+        <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+          <p className="text-sm text-amber-700 dark:text-amber-400">
+            ⚠️ Les versions beta peuvent contenir des bugs. Tu pourras revenir
+            en stable à tout moment.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
  * Update section component
  */
 function UpdateSection() {
@@ -1283,6 +1371,9 @@ export function Settings() {
             </div>
           )}
         </section>
+
+        {/* Update Channel Section — beta opt-in */}
+        <UpdateChannelSection />
 
         {/* Updates Section */}
         <div ref={updateSectionRef}>

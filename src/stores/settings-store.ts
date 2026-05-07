@@ -29,6 +29,7 @@ export interface Settings {
   hands_free_mode: boolean;
   hide_pill_when_inactive: boolean;
   history_enabled: boolean;
+  use_beta_channel: boolean;
 }
 
 /** License info returned by Rust backend */
@@ -65,6 +66,7 @@ interface SettingsStore {
   handsFreeMode: boolean;
   hidePillWhenInactive: boolean;
   historyEnabled: boolean;
+  useBetaChannel: boolean;
   dictionary: DictionaryEntry[];
   history: HistoryEntry[];
   loading: boolean;
@@ -120,6 +122,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   handsFreeMode: false,
   hidePillWhenInactive: false,
   historyEnabled: true,
+  useBetaChannel: false,
   dictionary: [],
   history: [],
   loading: false,
@@ -150,6 +153,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         handsFreeMode: settings.hands_free_mode ?? false,
         hidePillWhenInactive: settings.hide_pill_when_inactive ?? false,
         historyEnabled: settings.history_enabled ?? true,
+        useBetaChannel: settings.use_beta_channel ?? false,
       });
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -169,6 +173,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         hands_free_mode: get().handsFreeMode,
         hide_pill_when_inactive: get().hidePillWhenInactive,
         history_enabled: get().historyEnabled,
+        use_beta_channel: get().useBetaChannel,
       };
 
       const newSettings: Settings = {
@@ -187,6 +192,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         handsFreeMode: newSettings.hands_free_mode,
         hidePillWhenInactive: newSettings.hide_pill_when_inactive,
         historyEnabled: newSettings.history_enabled,
+        useBetaChannel: newSettings.use_beta_channel,
       });
     } catch (error) {
       console.error('Failed to save settings:', error);
@@ -206,6 +212,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         handsFreeMode: false,
         hidePillWhenInactive: false,
         historyEnabled: true,
+        useBetaChannel: false,
       }); // Default values
     } catch (error) {
       console.error('Failed to reset settings:', error);

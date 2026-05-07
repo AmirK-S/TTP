@@ -30,6 +30,10 @@ pub struct Settings {
     /// Whether to save transcriptions to history. Default ON.
     #[serde(default = "default_true")]
     pub history_enabled: bool,
+    /// Whether to subscribe to the beta update channel. Default OFF (stable).
+    /// When true, the updater queries `latest-beta.json` instead of `latest.json`.
+    #[serde(default)]
+    pub use_beta_channel: bool,
 }
 
 fn default_true() -> bool {
@@ -62,6 +66,7 @@ impl Default for Settings {
             hands_free_mode: false,
             hide_pill_when_inactive: false,
             history_enabled: true,
+            use_beta_channel: false,
         }
     }
 }
