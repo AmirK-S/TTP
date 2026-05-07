@@ -635,8 +635,14 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                     eprintln!("[Pipeline] Failed to restore clipboard: {}", e);
                 }
 
-                // Start correction detection window (10 seconds to detect user corrections)
-                start_correction_window(app, final_text.clone());
+                // Start correction detection window (10 seconds to detect user corrections).
+                // Skip when the final text is empty — the detection task would otherwise
+                // poll Accessibility API for 15s for no reason (phantom F5 race, empty API).
+                if final_text.trim().is_empty() {
+                    eprintln!("[Pipeline] start_correction_window skipped — empty final_text");
+                } else {
+                    start_correction_window(app, final_text.clone());
+                }
 
                 true
             }

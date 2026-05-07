@@ -158,9 +158,12 @@ pub fn show_pill(app: &AppHandle) {
         let _ = window.set_ignore_cursor_events(true);
         let _ = window.show();
         let _ = window.set_always_on_top(true);
-        // Re-apply after a short delay to ensure macOS window server has processed it
+        // Re-apply after a short delay to ensure macOS window server has processed it.
+        // Use Tauri's async runtime so the Tauri API call lands on a runtime-attached
+        // worker thread (mirrors the sounds.rs fix — avoids "no reactor running" panic
+        // if set_ignore_cursor_events ever delegates to Tokio internals on macOS).
         let w = window.clone();
-        std::thread::spawn(move || {
+        tauri::async_runtime::spawn_blocking(move || {
             std::thread::sleep(std::time::Duration::from_millis(100));
             let _ = w.set_ignore_cursor_events(true);
         });

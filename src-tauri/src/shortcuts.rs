@@ -62,6 +62,16 @@ pub fn handle_shortcut_event_public(app: &AppHandle, shortcut_state: ShortcutSta
     let state = app.state::<Mutex<AppState>>();
 
     let Ok(mut app_state) = state.try_lock() else {
+        // Lock contended — a previous press/release handler is still running.
+        // Surfacing this in Sentry so we can quantify how often hotkey events
+        // get dropped under spam (currently silent → users blame the hotkey).
+        sentry::add_breadcrumb(sentry::Breadcrumb {
+            category: Some("shortcuts".to_string()),
+            message: Some("try_lock contended at handle_shortcut_event_public".to_string()),
+            level: sentry::Level::Warning,
+            ..Default::default()
+        });
+        eprintln!("[Shortcuts] try_lock contended at handle_shortcut_event_public");
         return;
     };
 
@@ -76,6 +86,14 @@ pub fn handle_fn_double_tap(app: &AppHandle) {
     let state = app.state::<Mutex<AppState>>();
 
     let Ok(mut app_state) = state.try_lock() else {
+        // Same rationale as handle_shortcut_event_public: track dropped events.
+        sentry::add_breadcrumb(sentry::Breadcrumb {
+            category: Some("shortcuts".to_string()),
+            message: Some("try_lock contended at handle_fn_double_tap".to_string()),
+            level: sentry::Level::Warning,
+            ..Default::default()
+        });
+        eprintln!("[Shortcuts] try_lock contended at handle_fn_double_tap");
         return;
     };
 

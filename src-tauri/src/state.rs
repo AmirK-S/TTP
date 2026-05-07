@@ -42,6 +42,12 @@ impl AppState {
         // Handle pill visibility when transitioning to Idle
         // When going from Processing/Recording to Idle, respect hide_pill_when_inactive setting
         // Uses should_show_pill_for_state() to avoid deadlock (mutex is already held here)
+        //
+        // CAREFUL: we are holding `&mut self` (the AppState mutex is locked by the caller).
+        // `should_show_pill_for_state` and `hide_pill` MUST NOT re-enter AppState — they
+        // currently only read settings / call window APIs. If anyone refactors `hide_pill`
+        // to take the AppState lock or do async work that re-enters here, this becomes a
+        // deadlock. Verified safe 2026-05-07.
         if old_state != RecordingState::Idle && state == RecordingState::Idle {
             if !crate::tray::should_show_pill_for_state(&state) {
                 crate::tray::hide_pill(app);
