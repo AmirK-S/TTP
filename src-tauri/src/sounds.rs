@@ -17,7 +17,11 @@ const STOP_SOUND: &[u8] = include_bytes!("../sounds/stop.wav");
 
 /// Play a sound from embedded bytes on a separate thread
 fn play_sound_bytes(sound_data: &'static [u8]) {
-    std::thread::spawn(move || {
+    // Use Tauri's async runtime so rodio/cpal internals can find a Tokio
+    // reactor. A bare `std::thread::spawn` panics with "there is no reactor
+    // running". `spawn_blocking` runs on a runtime-attached worker thread
+    // and matches the synchronous `sleep_until_end` body below.
+    tauri::async_runtime::spawn_blocking(move || {
         if let Ok((_stream, stream_handle)) = OutputStream::try_default() {
             if let Ok(source) = Decoder::new(Cursor::new(sound_data)) {
                 if let Ok(sink) = Sink::try_new(&stream_handle) {

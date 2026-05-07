@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+/* Force a defined text-selection rendering to bypass the macOS WebKit default,
+   which paints a large translucent layer through panels using backdrop-filter
+   (or even on plain panels in transparent windows). Uses the app's blue accent. */
+::selection {
+  background-color: rgba(37, 99, 235, 0.45);
+  color: #ffffff;
+}
+::-moz-selection {
+  background-color: rgba(37, 99, 235, 0.45);
+  color: #ffffff;
+}
+
 :root {
   font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;

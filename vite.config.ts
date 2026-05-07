@@ -1,13 +1,26 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
+// Bake package.json version into the bundle so the JS Sentry SDK can tag
+// events with the same release tag as the Rust SDK (sentry::release_name!()
+// uses Cargo.toml version, kept in lockstep with package.json).
+const pkgVersion = JSON.parse(
+  readFileSync(fileURLToPath(new URL("./package.json", import.meta.url)), "utf-8")
+).version as string;
+
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
+
+  define: {
+    "import.meta.env.VITE_APP_VERSION": JSON.stringify(pkgVersion),
+  },
 
   build: {
     rollupOptions: {

@@ -9,6 +9,7 @@ import FloatingBar from './windows/FloatingBar';
 import ApiKeySetup from './windows/ApiKeySetup';
 import Onboarding from './windows/Onboarding';
 import Settings from './windows/Settings';
+import { ErrorBoundary, initSentryIfConsented } from './lib/sentry';
 import './index.css';
 
 /**
@@ -19,44 +20,62 @@ import './index.css';
  * - main (or others): Renders the main App component (hidden for tray app)
  */
 async function main() {
+  // Fire-and-forget: gates itself on user telemetry consent (queried via
+  // get_settings IPC); never throws, never blocks rendering.
+  void initSentryIfConsented();
+
   const currentWindow = getCurrentWebviewWindow();
   const windowLabel = currentWindow.label;
 
   const rootElement = document.getElementById('root') as HTMLElement;
 
+  // Tiny fallback so a render-time crash doesn't leave a fully blank
+  // window. The Sentry SDK still captures the error if telemetry is on.
+  const fallback = <div style={{ padding: 16, fontFamily: 'system-ui' }}>Something went wrong.</div>;
+
   if (windowLabel === 'floating-bar' || windowLabel === 'pill') {
     // Floating bar / pill window - transparent recording indicator
     ReactDOM.createRoot(rootElement).render(
       <React.StrictMode>
-        <FloatingBar />
+        <ErrorBoundary fallback={fallback}>
+          <FloatingBar />
+        </ErrorBoundary>
       </React.StrictMode>
     );
   } else if (windowLabel === 'onboarding') {
     // Onboarding window - first-launch permission setup
     ReactDOM.createRoot(rootElement).render(
       <React.StrictMode>
-        <Onboarding />
+        <ErrorBoundary fallback={fallback}>
+          <Onboarding />
+        </ErrorBoundary>
       </React.StrictMode>
     );
   } else if (windowLabel === 'setup') {
     // Setup window - first-run API key configuration
     ReactDOM.createRoot(rootElement).render(
       <React.StrictMode>
-        <ApiKeySetup />
+        <ErrorBoundary fallback={fallback}>
+          <ApiKeySetup />
+        </ErrorBoundary>
       </React.StrictMode>
     );
   } else if (windowLabel === 'settings') {
     // Settings window - app configuration and dictionary management
     ReactDOM.createRoot(rootElement).render(
       <React.StrictMode>
-        <Settings />
+        <ErrorBoundary fallback={fallback}>
+          <Settings />
+        </ErrorBoundary>
       </React.StrictMode>
     );
   } else {
     // Main window or any other window (hidden for tray-only app)
     ReactDOM.createRoot(rootElement).render(
       <React.StrictMode>
-        <App />
+        <ErrorBoundary fallback={fallback}>
+          <App />
+        </ErrorBoundary>
       </React.StrictMode>
     );
   }

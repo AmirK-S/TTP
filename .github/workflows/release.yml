@@ -218,6 +218,10 @@ jobs:
             || sentry-cli debug-files upload \
               --include-sources \
               "src-tauri/target/release/"
+          # TODO: JS source map upload to be added later. With @sentry/react
+          # now wired on the frontend, JS stack traces from the Vite bundle
+          # will arrive minified until we run `sentry-cli sourcemaps upload`
+          # against `dist/` on the same release tag (package.json version).
 
       # Upload a stable-named alias so /releases/latest/download/<stable> works
       # without the consumer having to know the version. Versioned originals

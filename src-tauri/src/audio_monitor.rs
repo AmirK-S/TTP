@@ -20,7 +20,10 @@ pub fn start(app: AppHandle) {
         return; // Already running
     }
 
-    std::thread::spawn(move || {
+    // Use Tauri's blocking runtime so cpal callbacks live inside the
+    // tokio reactor (raw std::thread::spawn caused "no reactor running"
+    // panics in TTP-B; same latent risk here).
+    tauri::async_runtime::spawn_blocking(move || {
         if let Err(e) = run(&app) {
             eprintln!("[AudioMonitor] Failed: {}", e);
         }

@@ -55,30 +55,45 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
 /// Toggle recording state from tray menu
 fn toggle_recording(app: &AppHandle) {
-    let state = app.state::<Mutex<AppState>>();
+    // Compute the transition inside the lock, then drop the lock BEFORE
+    // performing side effects (set_state emits events + starts audio monitor,
+    // and the icon/pill/sound/menu helpers can re-enter Tauri). Holding the
+    // AppState mutex across those calls caused deadlocks (see Sentry TTP-A).
+    let next_state = {
+        let state = app.state::<Mutex<AppState>>();
+        let Ok(mut app_state) = state.try_lock() else {
+            eprintln!("[Tray] Could not acquire state lock");
+            return;
+        };
 
-    let Ok(mut app_state) = state.try_lock() else {
-        eprintln!("[Tray] Could not acquire state lock");
-        return;
-    };
+        match app_state.recording_state {
+            RecordingState::Idle => {
+                app_state.hands_free_mode = true; // Use hands-free mode for tray
+                app_state.set_state(RecordingState::Recording, app);
+                RecordingState::Recording
+            }
+            RecordingState::Recording => {
+                app_state.set_state(RecordingState::Processing, app);
+                RecordingState::Processing
+            }
+            RecordingState::Processing => RecordingState::Processing,
+        }
+    }; // ← Mutex released here, before any UI/sound side effects
 
-    match app_state.recording_state {
-        RecordingState::Idle => {
-            app_state.hands_free_mode = true; // Use hands-free mode for tray
-            app_state.set_state(RecordingState::Recording, app);
+    match next_state {
+        RecordingState::Recording => {
             set_recording_icon(app, true);
             show_pill(app);
             play_start_sound(app);
             update_tray_menu(app, true);
         }
-        RecordingState::Recording => {
-            app_state.set_state(RecordingState::Processing, app);
+        RecordingState::Processing => {
             set_recording_icon(app, false);
             // Keep pill visible during processing, hide when done
             play_stop_sound(app);
             update_tray_menu(app, false);
         }
-        RecordingState::Processing => {}
+        RecordingState::Idle => {}
     }
 }
 
