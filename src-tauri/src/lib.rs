@@ -228,6 +228,30 @@ async fn install_update_with_channel(
         .await
         .map_err(|e| format!("Download/install failed: {}", e))?;
 
+    // Tauri's updater drops the freshly downloaded bundle into the app's
+    // current location, but the new files carry the com.apple.quarantine
+    // attribute. Without stripping it, the subsequent restart() spawns a
+    // binary that macOS Gatekeeper silently blocks — which is why the
+    // "Restart now" button has been doing nothing on every beta update.
+    // Run xattr synchronously here so we know it's done BEFORE the
+    // frontend calls relaunch().
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(bundle) = exe
+                .ancestors()
+                .find(|p| p.extension().and_then(|s| s.to_str()) == Some("app"))
+            {
+                if bundle.starts_with("/Applications/") {
+                    let _ = std::process::Command::new("xattr")
+                        .args(["-dr", "com.apple.quarantine"])
+                        .arg(bundle)
+                        .output();
+                }
+            }
+        }
+    }
+
     Ok(version)
 }
 
@@ -405,15 +429,27 @@ pub fn run() {
             // Gatekeeper doesn't re-prompt the user. Only runs when installed in
             // /Applications (i.e. real users, never dev mode), and silently no-ops
             // if `xattr` isn't on PATH.
+            //
+            // We walk up from the current executable to find the actual .app
+            // bundle path — previously this hardcoded "/Applications/TTP.app"
+            // but the product name is "TTP by AmirKS", so the hardcoded path
+            // never matched and the xattr clear was silently a no-op.
             #[cfg(target_os = "macos")]
             {
                 if let Ok(exe) = std::env::current_exe() {
-                    if exe.starts_with("/Applications/") {
-                        std::thread::spawn(|| {
-                            let _ = std::process::Command::new("xattr")
-                                .args(["-dr", "com.apple.quarantine", "/Applications/TTP.app"])
-                                .output();
-                        });
+                    if let Some(bundle) = exe
+                        .ancestors()
+                        .find(|p| p.extension().and_then(|s| s.to_str()) == Some("app"))
+                    {
+                        if bundle.starts_with("/Applications/") {
+                            let bundle = bundle.to_path_buf();
+                            std::thread::spawn(move || {
+                                let _ = std::process::Command::new("xattr")
+                                    .args(["-dr", "com.apple.quarantine"])
+                                    .arg(&bundle)
+                                    .output();
+                            });
+                        }
                     }
                 }
             }
