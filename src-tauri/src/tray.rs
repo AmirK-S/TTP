@@ -13,14 +13,9 @@ use tauri::{
 };
 
 pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    // Create menu items
-    let record = MenuItem::with_id(app, "record", "Start Recording", true, None::<&str>)?;
-    let separator = PredefinedMenuItem::separator(app)?;
-    let settings = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit TTP", true, None::<&str>)?;
-
-    // Build context menu
-    let menu = Menu::with_items(app, &[&record, &separator, &settings, &quit])?;
+    // Build context menu (including the conditional permission-warning entry
+    // when Fn is configured but Input Monitoring is missing).
+    let menu = build_tray_menu(app, false)?;
 
     // Use simple tray icon (monochrome, works with macOS template)
     let tray_icon = Image::from_bytes(include_bytes!("../icons/icon-idle.png"))
@@ -45,6 +40,16 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             }
             "record" => {
                 toggle_recording(app);
+            }
+            "fix_input_monitoring" => {
+                // Open macOS Privacy & Security → Input Monitoring directly.
+                // Same deep link as the in-Settings button; here we just
+                // surface it from the tray for users who never open Settings.
+                use tauri_plugin_opener::OpenerExt;
+                let _ = app.opener().open_url(
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
+                    None::<&str>,
+                );
             }
             _ => {}
         })
@@ -97,26 +102,68 @@ fn toggle_recording(app: &AppHandle) {
     }
 }
 
-/// Update tray menu text based on recording state
+/// Update tray menu text based on recording state. Also re-evaluates the
+/// Input Monitoring permission state — if the user has granted it since
+/// the previous build, the warning entry disappears at the next state
+/// transition (start/stop recording).
 fn update_tray_menu(app: &AppHandle, is_recording: bool) {
-    let text = if is_recording {
+    if let Some(tray) = app.tray_by_id("main") {
+        if let Ok(menu) = build_tray_menu(app, is_recording) {
+            let _ = tray.set_menu(Some(menu));
+        }
+    }
+}
+
+/// Build the tray context menu. Always contains record / settings / quit;
+/// prepends a "⚠ Fix Input Monitoring permission" entry when Fn is the
+/// configured hotkey and the OS hasn't granted that permission yet — the
+/// only silent-failure case in the app, so the most important one to
+/// surface where the user actually looks (the tray, not buried in Settings).
+fn build_tray_menu(
+    app: &AppHandle,
+    is_recording: bool,
+) -> Result<tauri::menu::Menu<tauri::Wry>, Box<dyn std::error::Error>> {
+    let record_text = if is_recording {
         "Stop Recording"
     } else {
         "Start Recording"
     };
-    // Rebuild the menu with updated text (Tauri 2 TrayIcon has no menu() getter)
-    if let Some(tray) = app.tray_by_id("main") {
-        if let Ok(record) = MenuItem::with_id(app, "record", text, true, None::<&str>) {
-            if let Ok(separator) = PredefinedMenuItem::separator(app) {
-                if let Ok(settings) = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>) {
-                    if let Ok(quit) = MenuItem::with_id(app, "quit", "Quit TTP", true, None::<&str>) {
-                        if let Ok(menu) = Menu::with_items(app, &[&record, &separator, &settings, &quit]) {
-                            let _ = tray.set_menu(Some(menu));
-                        }
-                    }
-                }
-            }
+    let record = MenuItem::with_id(app, "record", record_text, true, None::<&str>)?;
+    let separator = PredefinedMenuItem::separator(app)?;
+    let settings = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit TTP", true, None::<&str>)?;
+
+    // Only show the permission warning when Fn is the active hotkey AND
+    // the OS hasn't granted Input Monitoring. Other hotkeys don't depend
+    // on this permission, so the warning would be misleading noise.
+    let needs_input_monitoring = {
+        #[cfg(target_os = "macos")]
+        {
+            get_settings().fn_key_enabled && !crate::fnkey::has_input_monitoring()
         }
+        #[cfg(not(target_os = "macos"))]
+        {
+            false
+        }
+    };
+
+    if needs_input_monitoring {
+        let warn = MenuItem::with_id(
+            app,
+            "fix_input_monitoring",
+            "⚠ Fix Input Monitoring permission",
+            true,
+            None::<&str>,
+        )?;
+        let warn_separator = PredefinedMenuItem::separator(app)?;
+        let menu = Menu::with_items(
+            app,
+            &[&warn, &warn_separator, &record, &separator, &settings, &quit],
+        )?;
+        Ok(menu)
+    } else {
+        let menu = Menu::with_items(app, &[&record, &separator, &settings, &quit])?;
+        Ok(menu)
     }
 }
 
