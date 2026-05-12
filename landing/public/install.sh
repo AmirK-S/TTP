@@ -97,17 +97,27 @@ fi
 APP_NAME=$(basename "$APP_PATH")
 DEST="/Applications/$APP_NAME"
 
-# Quit a running copy so cp -R doesn't corrupt the bundle.
-if pgrep -f "/Applications/$APP_NAME/" >/dev/null 2>&1; then
-  echo "Closing running TTP..."
-  osascript -e "tell application \"$APP_NAME\" to quit" >/dev/null 2>&1 || true
-  # Give it a moment, then force if needed.
-  for _ in 1 2 3 4 5; do
-    pgrep -f "/Applications/$APP_NAME/" >/dev/null 2>&1 || break
-    sleep 1
-  done
-  pkill -f "/Applications/$APP_NAME/" 2>/dev/null || true
-fi
+# Quit a running copy so cp -R doesn't corrupt the bundle AND so the new
+# instance can grab its own Input Monitoring / Accessibility privileges
+# cleanly. Always attempt — AppleScript's `quit` is a no-op if the app
+# isn't running. We don't gate on pgrep first, because pgrep -f pattern
+# matching can miss the running process depending on shell quoting and
+# leave the old binary in place.
+echo "Closing TTP if running..."
+APP_NAME_NO_EXT="${APP_NAME%.app}"
+osascript -e "tell application \"$APP_NAME_NO_EXT\" to quit" >/dev/null 2>&1 || true
+
+# Wait up to 5 seconds for a graceful quit, polling twice a second.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  pgrep -f "/Applications/$APP_NAME/Contents/" >/dev/null 2>&1 || break
+  sleep 0.5
+done
+
+# Belt-and-suspenders: force-kill anything still running. `pkill -f`
+# matches against the full command line so it catches the TTP binary
+# regardless of how it was launched.
+pkill -f "/Applications/$APP_NAME/Contents/" 2>/dev/null || true
+sleep 0.5
 
 echo "Installing $APP_NAME..."
 rm -rf "$DEST"
