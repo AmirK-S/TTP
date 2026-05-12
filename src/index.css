@@ -2,14 +2,15 @@
 
 /* Force a defined text-selection rendering to bypass the macOS WebKit default,
    which paints a large translucent layer through panels using backdrop-filter
-   (or even on plain panels in transparent windows). Uses the app's blue accent. */
+   (or even on plain panels in transparent windows). Kept subtle so multi-line
+   selections on dark gradient panels don't render as a jarring solid block. */
 ::selection {
-  background-color: rgba(37, 99, 235, 0.45);
-  color: #ffffff;
+  background-color: rgba(148, 163, 184, 0.30);
+  color: inherit;
 }
 ::-moz-selection {
-  background-color: rgba(37, 99, 235, 0.45);
-  color: #ffffff;
+  background-color: rgba(148, 163, 184, 0.30);
+  color: inherit;
 }
 
 :root {

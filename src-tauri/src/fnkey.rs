@@ -114,6 +114,23 @@ static LAST_FKEY_PRESS_MS: AtomicU64 = AtomicU64::new(0);
 /// Cleared by the KEY_UP event (or by a stale-keepalive check, see below).
 static FKEY_CURRENTLY_HELD: AtomicBool = AtomicBool::new(false);
 
+/// State of the Function flag at the previous timer tick. Combined with
+/// FN_FLAG_EPISODE_REJECTED, this lets us tell apart a NEW press (flag just
+/// went false→true) from a continuous hold (flag was already true).
+/// Critical because macOS keeps the Function flag set for the entire duration
+/// a system overlay is up (Mission Control, Launchpad, brightness HUD…),
+/// which can be 3+ seconds — longer than any sane fixed veto window. Once we
+/// reject the initial transition, we lock the rejection in until the flag
+/// clears, regardless of how long the overlay stays on screen.
+static LAST_FN_FLAG_OBSERVED: AtomicBool = AtomicBool::new(false);
+
+/// True if the current "Function flag is set" episode was rejected at its
+/// onset (because an F-key was held or recently pressed). Stays true for the
+/// whole episode, even after FKEY_CURRENTLY_HELD becomes false and the
+/// fixed-time veto expires. Cleared only when the Function flag itself goes
+/// back to unset, signalling the user has actually let go of everything.
+static FN_FLAG_EPISODE_REJECTED: AtomicBool = AtomicBool::new(false);
+
 /// Double-tap detection threshold in milliseconds
 const DOUBLE_TAP_THRESHOLD_MS: u64 = 300;
 
@@ -185,9 +202,22 @@ pub fn request_input_monitoring() -> bool {
 
 /// Check if the current modifier flags indicate the physical Fn key is held
 /// (as opposed to arrow keys or F-keys which also set the Function flag).
+///
+/// State-machine approach: we don't just look at the flag in isolation — we
+/// look at the *transition*. The Function flag stays continuously set for the
+/// whole duration of a system overlay (Mission Control etc.), often well
+/// beyond any sane veto window. Once we decide the current "flag set" episode
+/// belongs to an F-key, we lock that decision in for the whole episode and
+/// only re-evaluate when the flag goes back to unset.
 fn is_physical_fn_key(flags: u64) -> bool {
     let fn_set = (flags & NS_EVENT_MODIFIER_FLAG_FUNCTION) != 0;
+
     if !fn_set {
+        // Flag is off — reset episode state so the next set transition is
+        // evaluated cleanly. Don't touch FKEY_CURRENTLY_HELD or LAST_FKEY_*,
+        // those are owned by the CGEventTap callback.
+        LAST_FN_FLAG_OBSERVED.store(false, Ordering::Relaxed);
+        FN_FLAG_EPISODE_REJECTED.store(false, Ordering::Relaxed);
         return false;
     }
 
@@ -196,20 +226,29 @@ fn is_physical_fn_key(flags: u64) -> bool {
         return false;
     }
 
-    // If a system F-key (Mission Control, brightness, etc.) is currently
-    // held down, the Function flag belongs to it — reject unconditionally,
-    // even if the user has been holding F3 for 30 seconds.
-    if FKEY_CURRENTLY_HELD.load(Ordering::Relaxed) {
+    let was_set = LAST_FN_FLAG_OBSERVED.swap(true, Ordering::Relaxed);
+
+    if was_set {
+        // Continuous "flag is set" episode — keep the decision we made at
+        // the onset. If we rejected it then (F-key was active), keep
+        // rejecting; otherwise accept.
+        return !FN_FLAG_EPISODE_REJECTED.load(Ordering::Relaxed);
+    }
+
+    // New transition: flag just went unset → set. Evaluate ONCE who the
+    // Function bit belongs to, then freeze that decision for the rest of
+    // the episode.
+    let fkey_held = FKEY_CURRENTLY_HELD.load(Ordering::Relaxed);
+    let last_fkey = LAST_FKEY_PRESS_MS.load(Ordering::Relaxed);
+    let fkey_recent = last_fkey > 0
+        && now_ms().saturating_sub(last_fkey) < FKEY_VETO_WINDOW_MS;
+
+    if fkey_held || fkey_recent {
+        FN_FLAG_EPISODE_REJECTED.store(true, Ordering::Relaxed);
         return false;
     }
 
-    // After the F-key is released, give the system overlay a generous window
-    // to drop its Function flag. macOS holds it longer than you'd think
-    // (Mission Control HUD, Launchpad transition, etc.).
-    let last_fkey = LAST_FKEY_PRESS_MS.load(Ordering::Relaxed);
-    if last_fkey > 0 && now_ms().saturating_sub(last_fkey) < FKEY_VETO_WINDOW_MS {
-        return false;
-    }
+    FN_FLAG_EPISODE_REJECTED.store(false, Ordering::Relaxed);
 
     // If other modifier keys (Shift/Ctrl/Option/Command) are held with Fn,
     // still accept — user might hold Fn+Shift intentionally, and the Fn

@@ -770,10 +770,8 @@ export function Settings() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
       <div className="max-w-lg mx-auto">
-        {/* Welcome / About — informational chrome; text selection here is
-            pointless and renders as a jarring multi-paragraph rectangle that
-            spans inter-paragraph gaps on dark themes. Disable selection. */}
-        <section className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg shadow-sm p-6 mb-6 text-white select-none">
+        {/* Welcome / About */}
+        <section className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg shadow-sm p-6 mb-6 text-white">
           <h1 className="text-xl font-bold mb-1">TTP by AmirKS</h1>
           <p className="text-blue-400 text-xs font-medium mb-3">Talk To Paste — v{appVersion}</p>
           <p className="text-sm text-gray-300 leading-relaxed mb-3">
