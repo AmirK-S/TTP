@@ -74,6 +74,7 @@ extern "C" {
     fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
     fn CGEventTapEnable(tap: CFMachPortRef, enable: u8);
     fn CGEventGetIntegerValueField(event: CGEventRef, field: u32) -> i64;
+    fn CGEventGetFlags(event: CGEventRef) -> u64;
     static kCFRunLoopCommonModes: CFStringRef;
 }
 
@@ -82,7 +83,18 @@ const KCG_TAIL_APPEND_EVENT_TAP: u32 = 1;
 const KCG_EVENT_TAP_OPTION_LISTEN_ONLY: u32 = 1;
 const KCG_EVENT_KEY_DOWN: u32 = 10;
 const KCG_EVENT_KEY_UP: u32 = 11;
+/// CGEventType for modifier-key changes (Fn, Shift, Cmd, Option, Ctrl).
+/// macOS emits this with the dedicated keycode of the modifier being touched
+/// — including keycode 63 for the physical Fn/Globe key. F1..F12, in
+/// contrast, fire kCGEventKeyDown / KeyUp with their own keycodes (99 for
+/// F3 etc.) and never fire FlagsChanged with keycode 63 — which is exactly
+/// what lets us tell apart a real Fn press from an F-key "flag bleed".
+const KCG_EVENT_FLAGS_CHANGED: u32 = 12;
 const KCG_KEYBOARD_EVENT_KEYCODE: u32 = 9;
+/// kVK_Function — virtual keycode of the physical Fn/Globe key. The single
+/// source of truth for "is the Fn key actually held?". Independent of any
+/// modifier flag inference.
+const KVK_FUNCTION: u16 = 0x3F;
 
 /// Whether Fn key is currently held (raw, before debounce)
 static FN_KEY_DOWN: AtomicBool = AtomicBool::new(false);
@@ -114,22 +126,13 @@ static LAST_FKEY_PRESS_MS: AtomicU64 = AtomicU64::new(0);
 /// Cleared by the KEY_UP event (or by a stale-keepalive check, see below).
 static FKEY_CURRENTLY_HELD: AtomicBool = AtomicBool::new(false);
 
-/// State of the Function flag at the previous timer tick. Combined with
-/// FN_FLAG_EPISODE_REJECTED, this lets us tell apart a NEW press (flag just
-/// went false→true) from a continuous hold (flag was already true).
-/// Critical because macOS keeps the Function flag set for the entire duration
-/// a system overlay is up (Mission Control, Launchpad, brightness HUD…),
-/// which can be 3+ seconds — longer than any sane fixed veto window. Once we
-/// reject the initial transition, we lock the rejection in until the flag
-/// clears, regardless of how long the overlay stays on screen.
-static LAST_FN_FLAG_OBSERVED: AtomicBool = AtomicBool::new(false);
-
-/// True if the current "Function flag is set" episode was rejected at its
-/// onset (because an F-key was held or recently pressed). Stays true for the
-/// whole episode, even after FKEY_CURRENTLY_HELD becomes false and the
-/// fixed-time veto expires. Cleared only when the Function flag itself goes
-/// back to unset, signalling the user has actually let go of everything.
-static FN_FLAG_EPISODE_REJECTED: AtomicBool = AtomicBool::new(false);
+/// True when the physical Fn/Globe key is currently held, as reported by
+/// `kCGEventFlagsChanged` events with keycode `KVK_FUNCTION` (63). This is
+/// the single source of truth for Fn detection — F1..F12 never emit
+/// FlagsChanged with keycode 63, so the old modifier-flag inference race
+/// (timer reads `NSEvent.modifierFlags` showing Function set because an
+/// F-key bled the bit, the F-key veto callback hadn't run yet) is gone.
+static FN_KEY_PHYSICALLY_DOWN: AtomicBool = AtomicBool::new(false);
 
 /// Double-tap detection threshold in milliseconds
 const DOUBLE_TAP_THRESHOLD_MS: u64 = 300;
@@ -200,60 +203,19 @@ pub fn request_input_monitoring() -> bool {
     unsafe { CGRequestListenEventAccess() }
 }
 
-/// Check if the current modifier flags indicate the physical Fn key is held
-/// (as opposed to arrow keys or F-keys which also set the Function flag).
+/// Return whether the physical Fn/Globe key is currently held.
 ///
-/// State-machine approach: we don't just look at the flag in isolation — we
-/// look at the *transition*. The Function flag stays continuously set for the
-/// whole duration of a system overlay (Mission Control etc.), often well
-/// beyond any sane veto window. Once we decide the current "flag set" episode
-/// belongs to an F-key, we lock that decision in for the whole episode and
-/// only re-evaluate when the flag goes back to unset.
-fn is_physical_fn_key(flags: u64) -> bool {
-    let fn_set = (flags & NS_EVENT_MODIFIER_FLAG_FUNCTION) != 0;
-
-    if !fn_set {
-        // Flag is off — reset episode state so the next set transition is
-        // evaluated cleanly. Don't touch FKEY_CURRENTLY_HELD or LAST_FKEY_*,
-        // those are owned by the CGEventTap callback.
-        LAST_FN_FLAG_OBSERVED.store(false, Ordering::Relaxed);
-        FN_FLAG_EPISODE_REJECTED.store(false, Ordering::Relaxed);
-        return false;
-    }
-
-    // Arrow keys set NumericPad (0x200000) alongside Function — reject
-    if (flags & NS_EVENT_MODIFIER_FLAG_NUMERIC_PAD) != 0 {
-        return false;
-    }
-
-    let was_set = LAST_FN_FLAG_OBSERVED.swap(true, Ordering::Relaxed);
-
-    if was_set {
-        // Continuous "flag is set" episode — keep the decision we made at
-        // the onset. If we rejected it then (F-key was active), keep
-        // rejecting; otherwise accept.
-        return !FN_FLAG_EPISODE_REJECTED.load(Ordering::Relaxed);
-    }
-
-    // New transition: flag just went unset → set. Evaluate ONCE who the
-    // Function bit belongs to, then freeze that decision for the rest of
-    // the episode.
-    let fkey_held = FKEY_CURRENTLY_HELD.load(Ordering::Relaxed);
-    let last_fkey = LAST_FKEY_PRESS_MS.load(Ordering::Relaxed);
-    let fkey_recent = last_fkey > 0
-        && now_ms().saturating_sub(last_fkey) < FKEY_VETO_WINDOW_MS;
-
-    if fkey_held || fkey_recent {
-        FN_FLAG_EPISODE_REJECTED.store(true, Ordering::Relaxed);
-        return false;
-    }
-
-    FN_FLAG_EPISODE_REJECTED.store(false, Ordering::Relaxed);
-
-    // If other modifier keys (Shift/Ctrl/Option/Command) are held with Fn,
-    // still accept — user might hold Fn+Shift intentionally, and the Fn
-    // key is still physically held.
-    true
+/// The signal comes from `kCGEventFlagsChanged` events with keycode 63
+/// (`KVK_FUNCTION`), processed in `fkey_tap_callback`. F1..F12 generate
+/// `kCGEventKeyDown` with their own keycodes — they never generate a
+/// FlagsChanged event with keycode 63, so this state is immune to the bleed
+/// of the Function modifier bit that F-keys would otherwise produce.
+///
+/// The `_flags` parameter is preserved for ABI compatibility with the timer
+/// caller but is no longer used — `NSEvent.modifierFlags` was the ambiguous
+/// source we just replaced.
+fn is_physical_fn_key(_flags: u64) -> bool {
+    FN_KEY_PHYSICALLY_DOWN.load(Ordering::Relaxed)
 }
 
 /// Start Fn key monitoring using NSTimer on the main run loop.
@@ -357,9 +319,15 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
         // Launchpad / DND BEFORE they reach NSEvent global monitors. Without
         // this, those keys hold the Function flag for the duration of the
         // system overlay and falsely trigger Fn recording.
-        // Listen for both down AND up — the callback re-stamps LAST_FKEY_PRESS_MS
-        // on either, so the veto stays armed for the full release window.
-        let mask: u64 = (1u64 << KCG_EVENT_KEY_DOWN) | (1u64 << KCG_EVENT_KEY_UP);
+        // Subscribe to:
+        //   - FlagsChanged (12) for the physical Fn key — primary signal,
+        //     keycode 63 fires only when Fn itself is pressed/released
+        //   - KeyDown (10) + KeyUp (11) for the defensive F-key belt-and-
+        //     suspenders path (helpful only on non-Apple keyboards that
+        //     don't emit FlagsChanged for Fn)
+        let mask: u64 = (1u64 << KCG_EVENT_FLAGS_CHANGED)
+            | (1u64 << KCG_EVENT_KEY_DOWN)
+            | (1u64 << KCG_EVENT_KEY_UP);
         let tap = CGEventTapCreate(
             KCG_HID_EVENT_TAP,
             KCG_TAIL_APPEND_EVENT_TAP,
@@ -375,7 +343,7 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
             let rl = CFRunLoopGetCurrent();
             CFRunLoopAddSource(rl, source, kCFRunLoopCommonModes);
             CGEventTapEnable(tap, 1);
-            fnlog!("[FnKey] CGEventTap armed at HID level ({}ms window, catches system-consumed F-keys)", FKEY_VETO_WINDOW_MS);
+            fnlog!("[FnKey] CGEventTap armed at HID level (FlagsChanged for Fn keycode 63 + F-key safety net)");
         }
     }
 }
@@ -386,20 +354,38 @@ unsafe extern "C" fn fkey_tap_callback(
     event: CGEventRef,
     _user_info: *mut std::ffi::c_void,
 ) -> CGEventRef {
-    if FN_MONITORING_ACTIVE.load(Ordering::Relaxed) {
-        let keycode = CGEventGetIntegerValueField(event, KCG_KEYBOARD_EVENT_KEYCODE) as u16;
-        if is_fkey_keycode(keycode) {
-            // Re-stamp on every event (down, up, auto-repeat) so the release
-            // window starts from the most recent activity.
-            LAST_FKEY_PRESS_MS.store(now_ms(), Ordering::Relaxed);
+    if !FN_MONITORING_ACTIVE.load(Ordering::Relaxed) {
+        return event;
+    }
 
-            if event_type == KCG_EVENT_KEY_DOWN {
-                FKEY_CURRENTLY_HELD.store(true, Ordering::Relaxed);
-            } else if event_type == KCG_EVENT_KEY_UP {
-                FKEY_CURRENTLY_HELD.store(false, Ordering::Relaxed);
-            }
+    let keycode = CGEventGetIntegerValueField(event, KCG_KEYBOARD_EVENT_KEYCODE) as u16;
+
+    // Primary signal: FlagsChanged events with the dedicated Fn keycode.
+    // This fires only when the *physical* Fn/Globe key changes state — not
+    // when an F-key sets the Function bit as a side effect.
+    if event_type == KCG_EVENT_FLAGS_CHANGED && keycode == KVK_FUNCTION {
+        let flags = CGEventGetFlags(event);
+        let fn_down = (flags & NS_EVENT_MODIFIER_FLAG_FUNCTION) != 0;
+        FN_KEY_PHYSICALLY_DOWN.store(fn_down, Ordering::Relaxed);
+        return event;
+    }
+
+    // Defensive belt-and-suspenders: if the user's keyboard somehow doesn't
+    // emit FlagsChanged for the Fn key (rare on non-Apple keyboards), keep
+    // tracking F-key activity so the legacy F-key veto path can still act
+    // as a safety net. On Apple keyboards this branch is dead code in
+    // practice.
+    if (event_type == KCG_EVENT_KEY_DOWN || event_type == KCG_EVENT_KEY_UP)
+        && is_fkey_keycode(keycode)
+    {
+        LAST_FKEY_PRESS_MS.store(now_ms(), Ordering::Relaxed);
+        if event_type == KCG_EVENT_KEY_DOWN {
+            FKEY_CURRENTLY_HELD.store(true, Ordering::Relaxed);
+        } else {
+            FKEY_CURRENTLY_HELD.store(false, Ordering::Relaxed);
         }
     }
+
     event
 }
 
