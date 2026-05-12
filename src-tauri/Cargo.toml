@@ -1,6 +1,6 @@
 [package]
 name = "ttp"
-version = "2.0.2-beta.4"
+version = "2.0.2-beta.5"
 description = "Talk To Paste - Voice to text transcription"
 authors = ["TTP Team"]
 edition = "2021"
@@ -53,6 +53,10 @@ governor = "0.10"
 keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native"] }
 # OS CSPRNG for generating per-machine HMAC secrets stored in keychain.
 getrandom = "0.3"
+# PNG decode/encode used to programmatically composite the warning-state
+# tray icon (red dot overlay on icon-idle.png) — avoids shipping a separate
+# warning asset.
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"

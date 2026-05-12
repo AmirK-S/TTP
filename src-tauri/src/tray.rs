@@ -4,7 +4,7 @@
 use crate::settings::get_settings;
 use crate::sounds::{play_start_sound, play_stop_sound};
 use crate::state::{AppState, RecordingState};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
@@ -12,13 +12,91 @@ use tauri::{
     AppHandle, Listener, Manager,
 };
 
+/// Cached PNG bytes of the warning-state idle icon (icon-idle.png with a
+/// red dot composited in the bottom-right corner). Generated lazily on the
+/// first request and reused for the rest of the session.
+static WARNING_ICON_BYTES: OnceLock<Vec<u8>> = OnceLock::new();
+
+/// Build the warning-state tray icon by overlaying a red dot on
+/// icon-idle.png. Returns PNG bytes ready for `Image::from_bytes`. Falls
+/// back to the original idle bytes on encode failure so the tray never
+/// goes blank.
+fn warning_idle_icon_bytes() -> &'static [u8] {
+    const IDLE_BYTES: &[u8] = include_bytes!("../icons/icon-idle.png");
+    WARNING_ICON_BYTES.get_or_init(|| {
+        match image::load_from_memory(IDLE_BYTES) {
+            Ok(img) => {
+                let mut rgba = img.to_rgba8();
+                let (w, h) = rgba.dimensions();
+                // Red-600 (#dc2626). Dot sized for a 44x44 retina tray icon;
+                // scales proportionally to other sizes.
+                let dot_r = (w.min(h) as i32) / 5;
+                let cx = w as i32 - dot_r - 2;
+                let cy = h as i32 - dot_r - 2;
+                let r_sq = dot_r * dot_r;
+                let outer_sq = (dot_r + 1) * (dot_r + 1);
+                for y in 0..h as i32 {
+                    for x in 0..w as i32 {
+                        let dx = x - cx;
+                        let dy = y - cy;
+                        let d_sq = dx * dx + dy * dy;
+                        if d_sq <= r_sq {
+                            rgba.put_pixel(x as u32, y as u32, image::Rgba([220, 38, 38, 255]));
+                        } else if d_sq <= outer_sq {
+                            // 1-pixel-wide soft edge for anti-aliasing.
+                            rgba.put_pixel(x as u32, y as u32, image::Rgba([220, 38, 38, 160]));
+                        }
+                    }
+                }
+                let mut buf = Vec::new();
+                let encoder = image::codecs::png::PngEncoder::new(&mut buf);
+                use image::ImageEncoder;
+                if encoder
+                    .write_image(rgba.as_raw(), w, h, image::ExtendedColorType::Rgba8)
+                    .is_ok()
+                {
+                    buf
+                } else {
+                    IDLE_BYTES.to_vec()
+                }
+            }
+            Err(_) => IDLE_BYTES.to_vec(),
+        }
+    })
+}
+
+/// True when Fn is the active hotkey AND Input Monitoring is missing.
+/// Centralised so the icon picker and the menu builder agree on when to
+/// surface the warning state.
+#[cfg(target_os = "macos")]
+fn input_monitoring_warning_active() -> bool {
+    get_settings().fn_key_enabled && !crate::fnkey::has_input_monitoring()
+}
+#[cfg(not(target_os = "macos"))]
+fn input_monitoring_warning_active() -> bool {
+    false
+}
+
+/// Bytes of the idle icon to display in the current state. Returns the
+/// warning variant if Input Monitoring is missing for the Fn hotkey,
+/// otherwise the plain idle icon.
+fn idle_icon_bytes() -> &'static [u8] {
+    const IDLE_BYTES: &[u8] = include_bytes!("../icons/icon-idle.png");
+    if input_monitoring_warning_active() {
+        warning_idle_icon_bytes()
+    } else {
+        IDLE_BYTES
+    }
+}
+
 pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     // Build context menu (including the conditional permission-warning entry
     // when Fn is configured but Input Monitoring is missing).
     let menu = build_tray_menu(app, false)?;
 
-    // Use simple tray icon (monochrome, works with macOS template)
-    let tray_icon = Image::from_bytes(include_bytes!("../icons/icon-idle.png"))
+    // Pick the idle icon variant for the current permission state — shows
+    // a red dot overlay when Input Monitoring is missing for the Fn hotkey.
+    let tray_icon = Image::from_bytes(idle_icon_bytes())
         .map_err(|e| format!("Failed to load tray icon: {}", e))?;
 
     // Build tray icon with ID for later reference
@@ -167,13 +245,15 @@ fn build_tray_menu(
     }
 }
 
-/// Update the tray icon to reflect recording state
+/// Update the tray icon to reflect recording state. When not recording,
+/// uses the warning variant if Input Monitoring is missing for the Fn
+/// hotkey — so the red dot stays visible as soon as a recording ends.
 pub fn set_recording_icon(app: &AppHandle, recording: bool) {
     if let Some(tray) = app.tray_by_id("main") {
         let icon_bytes: &[u8] = if recording {
             include_bytes!("../icons/icon-recording.png")
         } else {
-            include_bytes!("../icons/icon-idle.png")
+            idle_icon_bytes()
         };
         if let Ok(icon) = Image::from_bytes(icon_bytes) {
             let _ = tray.set_icon(Some(icon));
