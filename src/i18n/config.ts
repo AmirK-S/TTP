@@ -26,9 +26,20 @@ export function resolveLanguage(choice: LanguageChoice | null | undefined): 'en'
   return nav.toLowerCase().startsWith('fr') ? 'fr' : 'en';
 }
 
+/** Reflect the active locale on <html lang> so screen-readers, browser spellcheck,
+ *  and CSS `:lang(...)` selectors all see the right language. Idempotent. */
+function syncDocumentLang(resolved: 'en' | 'fr'): void {
+  if (typeof document !== 'undefined' && document.documentElement.lang !== resolved) {
+    document.documentElement.lang = resolved;
+  }
+}
+
 /** Initialize i18next. Idempotent — safe to call multiple times. */
 export function initI18n(initialLanguage: LanguageChoice | null = null): typeof i18n {
-  if (i18n.isInitialized) return i18n;
+  if (i18n.isInitialized) {
+    syncDocumentLang(resolveLanguage(initialLanguage));
+    return i18n;
+  }
 
   const lng = resolveLanguage(initialLanguage);
 
@@ -45,6 +56,7 @@ export function initI18n(initialLanguage: LanguageChoice | null = null): typeof 
       returnEmptyString: false,
     });
 
+  syncDocumentLang(lng);
   return i18n;
 }
 
@@ -54,6 +66,7 @@ export function setLanguage(choice: LanguageChoice | null): void {
   if (i18n.language !== resolved) {
     i18n.changeLanguage(resolved);
   }
+  syncDocumentLang(resolved);
 }
 
 export default i18n;
