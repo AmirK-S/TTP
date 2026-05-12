@@ -5,6 +5,7 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { safeInvoke } from '../lib/safeInvoke';
 import { emit } from '@tauri-apps/api/event';
+import { setLanguage, type LanguageChoice } from '../i18n/config';
 
 /** Dictionary entry structure matching Rust backend */
 export interface DictionaryEntry {
@@ -30,6 +31,8 @@ export interface Settings {
   hide_pill_when_inactive: boolean;
   history_enabled: boolean;
   use_beta_channel: boolean;
+  /** 'en' | 'fr' | 'system' | null. null is treated as 'system' (autodetect). */
+  language: string | null;
 }
 
 /** License info returned by Rust backend */
@@ -67,6 +70,7 @@ interface SettingsStore {
   hidePillWhenInactive: boolean;
   historyEnabled: boolean;
   useBetaChannel: boolean;
+  language: LanguageChoice;
   dictionary: DictionaryEntry[];
   history: HistoryEntry[];
   loading: boolean;
@@ -123,6 +127,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   hidePillWhenInactive: false,
   historyEnabled: true,
   useBetaChannel: false,
+  language: 'system',
   dictionary: [],
   history: [],
   loading: false,
@@ -145,6 +150,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ loading: true });
     try {
       const settings = await safeInvoke<Settings>('get_settings');
+      const lang = (settings.language ?? 'system') as LanguageChoice;
       set({
         aiPolishEnabled: settings.ai_polish_enabled,
         shortcut: settings.shortcut || 'Alt+Space',
@@ -154,7 +160,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         hidePillWhenInactive: settings.hide_pill_when_inactive ?? false,
         historyEnabled: settings.history_enabled ?? true,
         useBetaChannel: settings.use_beta_channel ?? false,
+        language: lang,
       });
+      setLanguage(lang);
     } catch (error) {
       console.error('Failed to load settings:', error);
     } finally {
@@ -174,6 +182,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         hide_pill_when_inactive: get().hidePillWhenInactive,
         history_enabled: get().historyEnabled,
         use_beta_channel: get().useBetaChannel,
+        language: get().language,
       };
 
       const newSettings: Settings = {
@@ -184,6 +193,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       await invoke('set_settings', { settings: newSettings });
       // Emit event so other components (like pill, other windows) can react to settings changes
       emit('settings-changed', newSettings);
+      const newLang = (newSettings.language ?? 'system') as LanguageChoice;
       set({
         aiPolishEnabled: newSettings.ai_polish_enabled,
         shortcut: newSettings.shortcut,
@@ -193,7 +203,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         hidePillWhenInactive: newSettings.hide_pill_when_inactive,
         historyEnabled: newSettings.history_enabled,
         useBetaChannel: newSettings.use_beta_channel,
+        language: newLang,
       });
+      setLanguage(newLang);
     } catch (error) {
       console.error('Failed to save settings:', error);
       throw error;
@@ -213,7 +225,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         hidePillWhenInactive: false,
         historyEnabled: true,
         useBetaChannel: false,
+        language: 'system',
       }); // Default values
+      setLanguage('system');
     } catch (error) {
       console.error('Failed to reset settings:', error);
       throw error;

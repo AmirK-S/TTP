@@ -138,7 +138,11 @@ pub async fn delete_groq_api_key(_app: tauri::AppHandle) -> Result<(), String> {
 }
 
 /// Validate a Groq API key by making a lightweight GET request to the models endpoint.
-/// Returns Ok(()) if the key is valid, or Err(message) with a user-friendly error.
+/// Returns Ok(()) if the key is valid, or Err(code) with a translation key
+/// from `error.api_*`. The frontend resolves the key via i18next; dynamic
+/// detail (network error text, HTTP body) is logged via `log_error` for
+/// developer debugging but never surfaced to the user — the generic localized
+/// message is enough.
 #[tauri::command]
 pub async fn validate_groq_api_key(key: String) -> Result<(), String> {
     let client = reqwest::Client::builder()
@@ -153,9 +157,10 @@ pub async fn validate_groq_api_key(key: String) -> Result<(), String> {
         .await
         .map_err(|e| {
             if e.is_timeout() {
-                "Request timed out — check your internet connection".to_string()
+                "error.api_timeout".to_string()
             } else {
-                format!("Network error: {}", e)
+                crate::logging::log_error(&format!("API network error: {}", e));
+                "error.api_network".to_string()
             }
         })?;
 
@@ -163,11 +168,12 @@ pub async fn validate_groq_api_key(key: String) -> Result<(), String> {
     if status.is_success() {
         Ok(())
     } else if status.as_u16() == 401 {
-        Err("Invalid API key".to_string())
+        Err("error.api_invalid_key".to_string())
     } else if status.as_u16() == 403 {
-        Err("API key does not have access — check your Groq account".to_string())
+        Err("error.api_forbidden".to_string())
     } else {
         let body = response.text().await.unwrap_or_default();
-        Err(format!("Groq API error ({}): {}", status.as_u16(), body))
+        crate::logging::log_error(&format!("Groq API error {}: {}", status.as_u16(), body));
+        Err("error.api_generic".to_string())
     }
 }

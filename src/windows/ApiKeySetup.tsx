@@ -1,6 +1,8 @@
 // TTP - Talk To Paste
 // First-run API key setup window
 
+import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ApiKeyForm } from '../components/ApiKeyForm';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
@@ -11,6 +13,13 @@ import { invoke } from '@tauri-apps/api/core';
  * After successful setup, opens settings window and closes itself.
  */
 export function ApiKeySetup() {
+  const { t } = useTranslation();
+
+  // Keep the OS window title in sync with the active language.
+  useEffect(() => {
+    getCurrentWindow().setTitle(t('windowTitle.setup'));
+  });
+
   const handleSuccess = async () => {
     // Open settings window after successful save
     try {
@@ -18,7 +27,7 @@ export function ApiKeySetup() {
     } catch (e) {
       console.error('Failed to open settings window:', e);
     }
-    
+
     // Close setup window
     const window = getCurrentWindow();
     await window.close();
@@ -29,11 +38,10 @@ export function ApiKeySetup() {
       <div className="max-w-md mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Welcome to TTP by AmirKS
+            {t('setup.title')}
           </h1>
           <p className="mt-2 text-gray-600 dark:text-gray-400">
-            Talk To Paste needs a free API key for voice transcription.
-            It only takes a minute to set up.
+            {t('setup.description')}
           </p>
         </div>
 
@@ -43,7 +51,7 @@ export function ApiKeySetup() {
 
         <div className="mt-4 text-center">
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Your keys are stored locally on your machine.
+            {t('setup.localStorage')}
           </p>
         </div>
       </div>

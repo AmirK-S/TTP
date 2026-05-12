@@ -105,7 +105,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .icon_as_template(false)
         .menu(&menu)
         .show_menu_on_left_click(true) // Left-click or right-click for menu
-        .tooltip("TTP by AmirKS — Talk To Paste")
+        .tooltip(crate::i18n::tr("tray.tooltip"))
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quit" => {
                 app.exit(0);
@@ -184,6 +184,10 @@ fn toggle_recording(app: &AppHandle) {
 /// Input Monitoring permission state — if the user has granted it since
 /// the previous build, the warning entry disappears at the next state
 /// transition (start/stop recording).
+///
+/// Also called from the settings-changed listener so a language switch
+/// immediately rebuilds every menu label in the new locale (otherwise the
+/// tray menu would only re-translate on the next start/stop transition).
 fn update_tray_menu(app: &AppHandle, is_recording: bool) {
     if let Some(tray) = app.tray_by_id("main") {
         if let Ok(menu) = build_tray_menu(app, is_recording) {
@@ -202,14 +206,14 @@ fn build_tray_menu(
     is_recording: bool,
 ) -> Result<tauri::menu::Menu<tauri::Wry>, Box<dyn std::error::Error>> {
     let record_text = if is_recording {
-        "Stop Recording"
+        crate::i18n::tr("tray.stopRecording")
     } else {
-        "Start Recording"
+        crate::i18n::tr("tray.startRecording")
     };
-    let record = MenuItem::with_id(app, "record", record_text, true, None::<&str>)?;
+    let record = MenuItem::with_id(app, "record", &record_text, true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
-    let settings = MenuItem::with_id(app, "settings", "Settings...", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit TTP", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", crate::i18n::tr("tray.settings"), true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", crate::i18n::tr("tray.quit"), true, None::<&str>)?;
 
     // Only show the permission warning when Fn is the active hotkey AND
     // the OS hasn't granted Input Monitoring. Other hotkeys don't depend
@@ -229,7 +233,7 @@ fn build_tray_menu(
         let warn = MenuItem::with_id(
             app,
             "fix_input_monitoring",
-            "⚠ Fix Input Monitoring permission",
+            crate::i18n::tr("tray.fixInputMonitoring"),
             true,
             None::<&str>,
         )?;
@@ -337,6 +341,12 @@ pub fn should_show_pill_for_state(recording_state: &RecordingState) -> bool {
 }
 
 /// Set up listener for settings changes to update pill visibility and hands-free mode
+///
+/// Also rebuilds the tray menu on every settings change so a language switch
+/// retranslates every label and tooltip immediately — without this the tray
+/// menu would only pick up the new locale on the next recording transition.
+/// The rebuild is cheap (it just re-runs `build_tray_menu`), so we don't
+/// bother filtering on which setting actually changed.
 pub fn setup_settings_listener(app: &AppHandle) {
     let app_handle = app.clone();
     app.listen("settings-changed", move |_event| {
@@ -357,5 +367,20 @@ pub fn setup_settings_listener(app: &AppHandle) {
                 }
             }
         }
+
+        // Rebuild the tray menu so labels reflect the (possibly new) language.
+        // Read the current recording state under a try_lock — if we can't get
+        // the lock (e.g. mid-transition) we default to is_recording = false,
+        // which matches the menu state shown to the user 99% of the time.
+        let is_recording = app_handle
+            .try_state::<Mutex<AppState>>()
+            .and_then(|state| {
+                state
+                    .try_lock()
+                    .ok()
+                    .map(|guard| guard.recording_state == RecordingState::Recording)
+            })
+            .unwrap_or(false);
+        update_tray_menu(&app_handle, is_recording);
     });
 }

@@ -4,12 +4,15 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import App from './App';
 import FloatingBar from './windows/FloatingBar';
 import ApiKeySetup from './windows/ApiKeySetup';
 import Onboarding from './windows/Onboarding';
 import Settings from './windows/Settings';
 import { ErrorBoundary, initSentryIfConsented } from './lib/sentry';
+import { initI18n, setLanguage, type LanguageChoice } from './i18n/config';
 import './index.css';
 
 /**
@@ -23,6 +26,24 @@ async function main() {
   // Fire-and-forget: gates itself on user telemetry consent (queried via
   // get_settings IPC); never throws, never blocks rendering.
   void initSentryIfConsented();
+
+  // Initialize i18n synchronously with the persisted language choice (or
+  // 'system' if first launch). We read settings once here to avoid a render
+  // flash; further changes propagate via the 'settings-changed' event below.
+  let initialLang: LanguageChoice = 'system';
+  try {
+    const s = await invoke<{ language?: string | null }>('get_settings');
+    initialLang = ((s?.language ?? 'system') as LanguageChoice);
+  } catch {
+    // get_settings may fail on very first launch — defaults to 'system'.
+  }
+  initI18n(initialLang);
+
+  // Cross-window language sync: when any window saves a new language choice
+  // via settings-store, every other window picks it up and re-renders.
+  listen<{ language?: string | null }>('settings-changed', (event) => {
+    setLanguage((event.payload?.language ?? 'system') as LanguageChoice);
+  }).catch(() => {});
 
   const currentWindow = getCurrentWebviewWindow();
   const windowLabel = currentWindow.label;

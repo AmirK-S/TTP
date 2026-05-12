@@ -4,20 +4,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { useTranslation } from 'react-i18next';
 
 /** Permission status from the Rust backend */
 type PermissionStatus = 'Granted' | 'Denied' | 'Undetermined';
 
-/** Help text explaining why each step is needed — surfaces motivation upfront. */
-const HELP_TEXT: Record<string, string> = {
-  microphone: 'Required to capture your voice for transcription.',
-  accessibility:
-    "Lets TTP paste the transcription into your active app. Without it, text only goes to the clipboard (you'd Cmd+V manually).",
-  inputMonitoring:
-    'Lets TTP detect when you press the Fn / Globe key for push-to-talk. Without it, only the keyboard-shortcut mode works.',
-  apikey:
-    "Groq's free tier covers tens of thousands of transcriptions per month — you'll never see a bill from typical usage.",
-};
+// Help text for each step is sourced from i18n via `onboarding.help.<key>` —
+// resolved inline at the call site so we can use the active language at render.
 
 /** macOS-only — TTP doesn't surface this step on Windows. */
 const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.startsWith('Mac');
@@ -35,12 +28,18 @@ const SETTINGS_URL: Record<string, string> = {
  * Guides user through all setup steps as a checklist
  */
 export default function Onboarding() {
+  const { t } = useTranslation();
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
   const [permissionStatus, setPermissionStatus] = useState<Record<string, PermissionStatus>>({});
   const [checking, setChecking] = useState<string | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [isSavingKey, setIsSavingKey] = useState(false);
   const [apiKeyError, setApiKeyError] = useState('');
+
+  // Keep the window title in sync with the active language.
+  useEffect(() => {
+    getCurrentWindow().setTitle(t('windowTitle.onboarding'));
+  });
 
   const checkAllItems = useCallback(async () => {
     try {
@@ -153,7 +152,7 @@ export default function Onboarding() {
   // Validate and save API key
   const saveApiKey = async () => {
     if (!apiKeyInput.trim()) {
-      setApiKeyError('Enter a valid key');
+      setApiKeyError(t('onboarding.apiKey.enterValid'));
       return;
     }
 
@@ -166,7 +165,13 @@ export default function Onboarding() {
       setChecklist(prev => ({ ...prev, apikey: true }));
       setApiKeyInput('');
     } catch (e) {
-      setApiKeyError(String(e));
+      // Rust may return a translation key like "error.api_invalid_key";
+      // translate those defensively, otherwise show as-is.
+      setApiKeyError(
+        typeof e === 'string' && (e.startsWith('error.') || e.startsWith('permission.'))
+          ? t(e)
+          : String(e),
+      );
     } finally {
       setIsSavingKey(false);
     }
@@ -191,27 +196,27 @@ export default function Onboarding() {
   // Build a list of which items are still missing — surfaced as a subtitle
   // under the disabled CTA so the user knows what's blocking them.
   const missingLabels: string[] = [];
-  if (!checklist.microphone) missingLabels.push('Microphone');
-  if (!checklist.accessibility) missingLabels.push('Accessibility');
-  if (IS_MAC && !checklist.inputMonitoring) missingLabels.push('Input Monitoring');
-  if (!checklist.apikey) missingLabels.push('Groq API Key');
+  if (!checklist.microphone) missingLabels.push(t('onboarding.item.microphone'));
+  if (!checklist.accessibility) missingLabels.push(t('onboarding.item.accessibility'));
+  if (IS_MAC && !checklist.inputMonitoring) missingLabels.push(t('onboarding.item.inputMonitoring'));
+  if (!checklist.apikey) missingLabels.push(t('onboarding.item.apikey'));
 
   // Explicit ordering — Microphone → Accessibility → Input Monitoring (mac) → API key —
   // so the user always knows which step is next instead of guessing.
   type ItemKey = 'microphone' | 'accessibility' | 'inputMonitoring' | 'apikey';
   const items: Array<{ key: ItemKey; label: string }> = [
-    { key: 'microphone', label: 'Microphone' },
-    { key: 'accessibility', label: 'Accessibility' },
-    ...(IS_MAC ? [{ key: 'inputMonitoring' as const, label: 'Input Monitoring' }] : []),
-    { key: 'apikey', label: 'Groq API Key' },
+    { key: 'microphone', label: t('onboarding.item.microphone') },
+    { key: 'accessibility', label: t('onboarding.item.accessibility') },
+    ...(IS_MAC ? [{ key: 'inputMonitoring' as const, label: t('onboarding.item.inputMonitoring') }] : []),
+    { key: 'apikey', label: t('onboarding.item.apikey') },
   ];
 
   return (
     <div style={styles.container}>
       <div style={styles.content}>
         <div style={styles.header}>
-          <h1 style={styles.title}>Welcome to Talk To Paste</h1>
-          <p style={styles.subtitle}>Let's get you set up</p>
+          <h1 style={styles.title}>{t('onboarding.title')}</h1>
+          <p style={styles.subtitle}>{t('onboarding.subtitle')}</p>
         </div>
 
         <div style={styles.checklist}>
@@ -236,12 +241,12 @@ export default function Onboarding() {
                         ...styles.checkDesc,
                         color: isChecked ? '#22c55e' : '#ef4444',
                       }}>
-                        {isChecked ? 'Key saved' : 'No key'}
+                        {isChecked ? t('onboarding.apiKey.saved') : t('onboarding.apiKey.missing')}
                       </div>
                       {!isChecked && (
                         <ol style={styles.helpSteps}>
                           <li>
-                            Sign up at{' '}
+                            {t('onboarding.apiKey.stepSignup')}{' '}
                             <a
                               href="https://console.groq.com"
                               target="_blank"
@@ -250,13 +255,13 @@ export default function Onboarding() {
                             >
                               console.groq.com
                             </a>
-                            {' '}(free, no credit card)
+                            {' '}{t('onboarding.apiKey.stepSignupSuffix')}
                           </li>
-                          <li>Click "API Keys" → "Create API Key"</li>
-                          <li>Copy the key starting with <code style={styles.helpCode}>gsk_</code> and paste it below</li>
+                          <li>{t('onboarding.apiKey.stepCreate')}</li>
+                          <li>{t('onboarding.apiKey.stepCopy')} <code style={styles.helpCode}>gsk_</code> {t('onboarding.apiKey.stepCopySuffix')}</li>
                         </ol>
                       )}
-                      <div style={styles.helpText}>{HELP_TEXT[item.key]}</div>
+                      <div style={styles.helpText}>{t(`onboarding.help.${item.key}`)}</div>
                     </div>
                   </div>
 
@@ -275,7 +280,7 @@ export default function Onboarding() {
                         onClick={saveApiKey}
                         disabled={isSavingKey}
                       >
-                        {isSavingKey ? 'Validating...' : 'Save'}
+                        {isSavingKey ? t('common.validating') : t('common.save')}
                       </button>
                     </div>
                   )}
@@ -303,9 +308,13 @@ export default function Onboarding() {
                     ...styles.checkDesc,
                     color: isChecked ? '#22c55e' : '#ef4444',
                   }}>
-                    {isChecked ? 'Enabled' : denied ? 'Denied — tap to open Settings' : 'Not enabled'}
+                    {isChecked
+                      ? t('onboarding.status.enabled')
+                      : denied
+                        ? t('onboarding.status.denied')
+                        : t('onboarding.status.notEnabled')}
                   </div>
-                  <div style={styles.helpText}>{HELP_TEXT[item.key]}</div>
+                  <div style={styles.helpText}>{t(`onboarding.help.${item.key}`)}</div>
                 </div>
                 {!isChecked && (
                   <button
@@ -316,7 +325,11 @@ export default function Onboarding() {
                     onClick={onClick}
                     disabled={checking === item.key}
                   >
-                    {checking === item.key ? '...' : denied ? 'Open Settings' : 'Enable'}
+                    {checking === item.key
+                      ? t('onboarding.button.checking')
+                      : denied
+                        ? t('onboarding.button.openSettings')
+                        : t('onboarding.button.enable')}
                   </button>
                 )}
               </div>
@@ -328,9 +341,9 @@ export default function Onboarding() {
           <div style={styles.trialBanner}>
             <div style={styles.trialBannerEmoji}>✨</div>
             <div>
-              <div style={styles.trialBannerTitle}>Welcome — 7-day Pro trial just started</div>
+              <div style={styles.trialBannerTitle}>{t('onboarding.trial.title')}</div>
               <div style={styles.trialBannerSubtitle}>
-                Unlimited polish, dictionary, history. Free tier kicks in after.
+                {t('onboarding.trial.subtitle')}
               </div>
             </div>
           </div>
@@ -346,20 +359,20 @@ export default function Onboarding() {
           title={
             allChecked
               ? undefined
-              : `Still missing: ${missingLabels.join(', ')}`
+              : t('onboarding.cta.stillMissing', { items: missingLabels.join(', ') })
           }
         >
-          {allChecked ? 'Get Started' : 'Complete all steps'}
+          {allChecked ? t('onboarding.cta.getStarted') : t('onboarding.cta.completeSteps')}
         </button>
 
         {!allChecked && missingLabels.length > 0 && (
           <p style={styles.missingHint}>
-            Still missing: {missingLabels.join(', ')}
+            {t('onboarding.cta.stillMissing', { items: missingLabels.join(', ') })}
           </p>
         )}
 
         <p style={styles.hint}>
-          You can reopen settings anytime by right-clicking the TTP icon in the menu bar.
+          {t('onboarding.cta.reopenHint')}
         </p>
       </div>
     </div>
