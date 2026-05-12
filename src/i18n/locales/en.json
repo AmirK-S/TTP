@@ -46,7 +46,13 @@
     "microphone_permission_denied": "Microphone permission denied — enable it in System Settings",
     "microphone_generic": "Mic error: {{error}}",
     "audio_stream_interrupted": "Microphone was taken by another app — try again",
-    "input_monitoring_required": "Input Monitoring permission required for the Fn key. Open System Settings → Privacy & Security → Input Monitoring, enable TTP, then restart the app."
+    "input_monitoring_required": "Input Monitoring permission required for the Fn key. Open System Settings → Privacy & Security → Input Monitoring, enable TTP, then restart the app.",
+    "license_key_empty": "License key cannot be empty",
+    "license_none_to_deactivate": "No license to deactivate",
+    "license_activation_failed": "Activation failed — try again or check your license key",
+    "license_deactivation_failed": "Deactivation failed — try again",
+    "license_validation_failed": "Validation failed — check your internet connection",
+    "license_server_error": "License server is unreachable — try again later"
   },
   "progress": {
     "transcribing": "Transcribing…",

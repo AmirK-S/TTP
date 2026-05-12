@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "node scripts/check-i18n-parity.mjs && tsc && vite build",
+    "i18n:check": "node scripts/check-i18n-parity.mjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },

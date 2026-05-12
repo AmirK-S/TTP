@@ -30,7 +30,7 @@
       },
       {
         "label": "setup",
-        "title": "TTP by AmirKS — Setup",
+        "title": "TTP",
         "width": 420,
         "height": 520,
         "resizable": false,
@@ -39,7 +39,7 @@
       },
       {
         "label": "onboarding",
-        "title": "Welcome to Talk To Paste",
+        "title": "TTP",
         "width": 420,
         "height": 560,
         "resizable": false,
@@ -49,7 +49,7 @@
       },
       {
         "label": "settings",
-        "title": "TTP by AmirKS — Settings",
+        "title": "TTP",
         "width": 500,
         "height": 600,
         "resizable": true,
