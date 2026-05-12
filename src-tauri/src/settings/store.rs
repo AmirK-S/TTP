@@ -34,6 +34,10 @@ pub struct Settings {
     /// When true, the updater queries `latest-beta.json` instead of `latest.json`.
     #[serde(default)]
     pub use_beta_channel: bool,
+    /// User language preference: "en", "fr", or "system". None means system
+    /// (follow navigator.language at first launch — resolved to en or fr in JS).
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -67,6 +71,7 @@ impl Default for Settings {
             hide_pill_when_inactive: false,
             history_enabled: true,
             use_beta_channel: false,
+            language: None,
         }
     }
 }

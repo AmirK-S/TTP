@@ -3,10 +3,34 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import { useTranslation } from 'react-i18next';
 import { safeInvoke } from '../lib/safeInvoke';
 import { useRecordingState } from '../hooks/useRecordingState';
 import { useTranscription } from '../hooks/useTranscription';
 import { TutorialPill } from '../components/TutorialPill';
+
+/**
+ * Translate a message emitted by the Rust pipeline. Rust now sends translation
+ * keys (e.g. `error.no_speech`, `progress.transcribing`) in the `message` field.
+ * Defensive: only treat as a key when it matches the known namespaces, so any
+ * legacy / unforeseen literal strings still render gracefully during transition.
+ */
+function translateRustMessage(
+  t: (key: string, params?: Record<string, string | number>) => string,
+  message: string,
+  params?: Record<string, string | number>
+): string {
+  if (!message) return '';
+  if (
+    message.includes('.') &&
+    (message.startsWith('error.') ||
+      message.startsWith('progress.') ||
+      message.startsWith('permission.'))
+  ) {
+    return t(message, params);
+  }
+  return message;
+}
 
 const TUTORIAL_DISMISSED_KEY = 'tutorial_pill_dismissed';
 
@@ -16,6 +40,7 @@ const MIN_HEIGHT = 2;
 const MAX_HEIGHT = 20;
 
 export function FloatingBar() {
+  const { t } = useTranslation();
   const recordingState = useRecordingState();
 
   useEffect(() => {
@@ -23,7 +48,8 @@ export function FloatingBar() {
     document.body.style.background = 'transparent';
   }, []);
 
-  const { stage, message, isProcessing: isTranscribing } = useTranscription();
+  const { stage, message, params, isProcessing: isTranscribing } = useTranscription();
+  const translatedMessage = translateRustMessage(t, message, params);
   const isRecording = recordingState === 'Recording';
   // Treat both Rust "Processing" state AND transcription progress as processing
   // This eliminates the flash between recording end and first progress event
@@ -145,11 +171,11 @@ export function FloatingBar() {
         ))}
 
         {isError && (
-          <span className="text-xs font-medium text-white whitespace-nowrap">{message || 'Error'}</span>
+          <span className="text-xs font-medium text-white whitespace-nowrap">{translatedMessage || t('floatingBar.errorFallback')}</span>
         )}
 
         {isProcessing && !isError && (
-          <span className="text-xs font-medium text-white whitespace-nowrap">Transcription...</span>
+          <span className="text-xs font-medium text-white whitespace-nowrap">{t('floatingBar.statusTranscribing')}</span>
         )}
       </div>
     </div>

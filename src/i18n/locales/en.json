@@ -1,0 +1,313 @@
+{
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "change": "Change",
+    "add": "Add",
+    "delete": "Delete",
+    "clearAll": "Clear All",
+    "restartNow": "Restart Now",
+    "tryAgain": "Try again",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "validating": "Validating…",
+    "later": "Later",
+    "getStarted": "Get Started",
+    "openSettings": "Open Settings",
+    "active": "Active"
+  },
+  "windowTitle": {
+    "main": "TTP",
+    "setup": "TTP by AmirKS — Setup",
+    "onboarding": "Welcome to Talk To Paste",
+    "settings": "TTP by AmirKS — Settings"
+  },
+  "error": {
+    "audio_file_not_found": "Audio file not found",
+    "audio_corrupt": "Recording is corrupt — please try again",
+    "audio_too_large": "Recording too long ({{mb}} MB). Max ~14 min.",
+    "compression_failed": "Compressing audio failed — using original",
+    "no_api_key": "No Groq API key configured",
+    "transcription_rate_limited": "Rate limited by Groq — wait a few seconds and try again",
+    "transcription_invalid_key": "Invalid Groq API key — check Settings → Transcription",
+    "transcription_too_long": "Recording too long — try a shorter recording",
+    "transcription_generic": "Transcription failed: {{error}}",
+    "no_speech": "No speech detected",
+    "polish_unavailable": "Polish unavailable — pasting raw text",
+    "clipboard_write_failed": "Failed to write to clipboard",
+    "enable_accessibility": "Enable Accessibility to auto-paste",
+    "paste_failed": "Paste failed — Cmd+V to paste",
+    "rate_limit_exceeded": "Rate limit exceeded — please wait a few seconds before transcribing again",
+    "api_timeout": "Request timed out — check your internet connection",
+    "api_network": "Network error: {{error}}",
+    "api_invalid_key": "Invalid API key",
+    "api_forbidden": "API key does not have access — check your Groq account",
+    "api_generic": "Groq API error ({{status}}): {{body}}",
+    "microphone_permission_denied": "Microphone permission denied — enable it in System Settings",
+    "microphone_generic": "Mic error: {{error}}",
+    "audio_stream_interrupted": "Microphone was taken by another app — try again",
+    "input_monitoring_required": "Input Monitoring permission required for the Fn key. Open System Settings → Privacy & Security → Input Monitoring, enable TTP, then restart the app."
+  },
+  "progress": {
+    "transcribing": "Transcribing…",
+    "polishing": "Processing…"
+  },
+  "permission": {
+    "microphone_granted": "Microphone access is granted. You're all set!",
+    "microphone_denied": "Microphone access is denied. Please enable it in System Settings.",
+    "microphone_undetermined": "Microphone permission has not been requested yet."
+  },
+  "tray": {
+    "startRecording": "Start Recording",
+    "stopRecording": "Stop Recording",
+    "settings": "Settings…",
+    "quit": "Quit TTP",
+    "fixInputMonitoring": "⚠ Fix Input Monitoring permission",
+    "tooltip": "TTP by AmirKS — Talk To Paste"
+  },
+  "notification": {
+    "appName": "TTP",
+    "recordingTooLong": "Recording too long — max ~14 minutes",
+    "transcriptionFailed": "Transcription failed",
+    "noSpeech": "No speech detected",
+    "polishLimitReached": "AI Polish limit reached ({{used}}/{{limit}} this month). Upgrade to TTP Pro for unlimited.",
+    "clipboardFailed": "Failed to copy text to clipboard",
+    "addToAccessibility": "Add TTP to Accessibility in Settings, then paste with Cmd+V",
+    "textCopied": "Text copied — paste with Cmd+V",
+    "accessibilityRegrantTitle": "TTP — Re-grant Accessibility",
+    "accessibilityRegrantBody": "After update: open System Settings → Accessibility, remove TTP (−), then re-add it (+) and select TTP."
+  },
+  "dialog": {
+    "clearDictionary": {
+      "title": "Clear Dictionary",
+      "message": "Are you sure you want to delete all learned corrections? This cannot be undone.",
+      "confirm": "Clear All"
+    },
+    "reset": {
+      "title": "Reset to Defaults",
+      "message": "Are you sure you want to reset all settings and clear the dictionary? This cannot be undone.",
+      "confirm": "Reset"
+    },
+    "clearHistory": {
+      "title": "Clear History",
+      "message": "Are you sure you want to delete all transcription history? This cannot be undone.",
+      "confirm": "Clear History"
+    },
+    "deactivateLicense": {
+      "title": "Deactivate License",
+      "message": "This will remove TTP Pro from this device and free an activation slot. You can re-activate any time with the same license key.",
+      "confirm": "Deactivate"
+    },
+    "downgradeBeta": {
+      "message": "You're currently on a beta build that may be newer than the latest stable release. You won't see any updates until a new stable version ships. Continue?"
+    }
+  },
+  "settings": {
+    "about": {
+      "subtitle": "Talk To Paste — v{{version}}",
+      "description": "Thanks for using TTP! This is a free, open-source app I built to make voice-to-text effortless. Just press your hotkey, speak, and your words are transcribed and pasted instantly — powered by Groq's fast AI, with smart polish to clean up filler words and grammar. TTP also learns from your corrections over time.",
+      "author": "Built by Amir KELLOU--SIDHOUM. If you find it useful, feel free to share it or connect with me!",
+      "privacyLabel": "Privacy:",
+      "privacyBody": "TTP collects absolutely none of your data. Your API key is stored locally on your machine only. Audio is sent directly from your device to Groq's servers for transcription — I never see, store, or have access to any of it. Same for AI Polish: your text goes straight to Groq, not through me. Everything stays between you and your API provider."
+    },
+    "pro": {
+      "title": "TTP Pro",
+      "badgeActive": "Active",
+      "badgeTrial": "Trial — {{days}}d left",
+      "refreshTitle": "Re-validate with server",
+      "descTrial": "You're on a {{days}}-day Pro trial. Enjoy unlimited AI Polish, dictionary, and history. After the trial, activate a license to keep them.",
+      "descFree": "Unlock unlimited AI Polish, unlimited dictionary entries, unlimited history, and priority support. One-time payment, lifetime license.",
+      "usagePolish": "AI Polish (this month)",
+      "usageDictionary": "Dictionary entries",
+      "usageHistory": "History entries",
+      "inputPlaceholder": "Paste your license key here",
+      "activate": "Activate License",
+      "buyLink": "Buy TTP Pro →",
+      "labelKey": "License key",
+      "labelStatus": "Status",
+      "labelValidity": "Validity",
+      "labelActivations": "Activations",
+      "neverExpires": "Never expires",
+      "expiresOn": "Expires {{date}}",
+      "statusUnknown": "unknown",
+      "deactivateDevice": "Deactivate this device",
+      "deactivateHelp": "Deactivating frees an activation slot so you can use this license on another device."
+    },
+    "recordingTrigger": {
+      "title": "Recording Trigger",
+      "desc": "Hold to record, release to stop. Double-tap to toggle hands-free mode.",
+      "optionFn": "Fn",
+      "optionAltSpace": "⌥ Space",
+      "optionCmdShiftR": "⌘⇧ R",
+      "optionCtrlSpace": "Ctrl + Space",
+      "optionCtrlShiftSpace": "Ctrl + Shift + Space",
+      "optionWinJ": "Win + J",
+      "descRecommended": "Recommended",
+      "descAltSpace": "Option + Space",
+      "descCmdShiftR": "Cmd + Shift + R",
+      "descNoConflicts": "No conflicts",
+      "openInputMonitoring": "Open Input Monitoring settings",
+      "successUpdated": "Shortcut updated!"
+    },
+    "recordingMode": {
+      "title": "Recording Mode",
+      "handsFreeLabel": "Hands-free mode (Toggle)",
+      "handsFreeDesc": "When enabled, press once to start recording, press again to stop",
+      "hidePillLabel": "Hide pill when inactive",
+      "hidePillDesc": "Hide the recording indicator when not recording",
+      "launchStartupLabel": "Launch at startup",
+      "launchStartupDesc": "Open TTP automatically when you log in"
+    },
+    "transcription": {
+      "title": "Transcription",
+      "groqLabel": "Groq API Key",
+      "keyConfigured": "✓ Key configured",
+      "keyPlaceholder": "gsk_…",
+      "keySaved": "API key validated and saved!",
+      "getKeyAt": "Get your free key at",
+      "polishLabel": "AI Polish",
+      "polishDesc": "Clean up transcriptions with AI (remove filler words, fix grammar)"
+    },
+    "privacy": {
+      "title": "Privacy & Telemetry",
+      "helpLabel": "Help Improve TTP",
+      "helpDesc": "Send anonymous crash reports and usage statistics",
+      "restartHint": "Changes take effect after restart",
+      "whatSentLabel": "What is sent:",
+      "whatSentBody": "Crash reports (error type, OS, app version, pipeline stage) and anonymous usage events (feature usage counts).",
+      "neverSentLabel": "Never sent:",
+      "neverSentBody": "Your transcription text, API keys, file paths, or any personal data."
+    },
+    "dictionary": {
+      "title": "Dictionary",
+      "labelMisheard": "Misheard",
+      "labelCorrection": "Correction",
+      "placeholderMisheard": "grok",
+      "placeholderCorrection": "Groq",
+      "limitReached": "Free tier limit reached ({{limit}} entries). Upgrade to TTP Pro for unlimited.",
+      "emptyState": "No corrections yet",
+      "tableOriginal": "Original",
+      "tableCorrection": "Correction",
+      "bothRequired": "Both fields are required",
+      "mustBeDifferent": "Original and correction must be different",
+      "copyTooltip": "Copy to clipboard"
+    },
+    "history": {
+      "title": "Transcription History",
+      "clearButton": "Clear History",
+      "saveLabel": "Save transcriptions",
+      "saveDesc": "When off, new transcriptions are not saved to history",
+      "emptyEnabled": "No transcriptions yet",
+      "emptyDisabled": "History is off"
+    },
+    "updateChannel": {
+      "title": "Update Channel",
+      "betaBadge": "Beta",
+      "labelBeta": "Beta",
+      "labelStable": "Stable",
+      "descBeta": "You test new releases before public launch",
+      "descStable": "You receive stable, reliable releases",
+      "warning": "⚠️ Beta builds may contain bugs. You can switch back to stable at any time."
+    },
+    "updates": {
+      "title": "Updates",
+      "checkButton": "Check for Updates",
+      "upToDate": "You're up to date! (v{{version}})",
+      "checking": "Checking for updates…",
+      "available": "Update available: v{{version}}",
+      "downloadInstall": "Download and Install",
+      "downloading": "Downloading… {{progress}}%",
+      "ready": "Update downloaded! Restart to apply.",
+      "errorDefault": "Failed to check for updates",
+      "currentVersion": "Current version: v{{version}}"
+    },
+    "reset": {
+      "title": "Reset",
+      "desc": "Reset all settings to their default values and clear the dictionary.",
+      "button": "Reset to Defaults"
+    },
+    "language": {
+      "title": "Language",
+      "desc": "Pick the language used across TTP — affects every window and the tray menu.",
+      "optionSystem": "System default",
+      "optionEnglish": "English",
+      "optionFrench": "Français"
+    }
+  },
+  "onboarding": {
+    "title": "Welcome to Talk To Paste",
+    "subtitle": "Let's get you set up",
+    "item": {
+      "microphone": "Microphone",
+      "accessibility": "Accessibility",
+      "inputMonitoring": "Input Monitoring",
+      "apikey": "Groq API Key"
+    },
+    "help": {
+      "microphone": "Required to capture your voice for transcription.",
+      "accessibility": "Lets TTP paste the transcription into your active app. Without it, text only goes to the clipboard (you'd Cmd+V manually).",
+      "inputMonitoring": "Lets TTP detect when you press the Fn / Globe key for push-to-talk. Without it, only the keyboard-shortcut mode works.",
+      "apikey": "Groq's free tier covers tens of thousands of transcriptions per month — you'll never see a bill from typical usage."
+    },
+    "apiKey": {
+      "saved": "Key saved",
+      "missing": "No key",
+      "stepSignup": "Sign up at",
+      "stepSignupSuffix": "(free, no credit card)",
+      "stepCreate": "Click \"API Keys\" → \"Create API Key\"",
+      "stepCopy": "Copy the key starting with",
+      "stepCopySuffix": "and paste it below",
+      "enterValid": "Enter a valid key"
+    },
+    "status": {
+      "enabled": "Enabled",
+      "denied": "Denied — tap to open Settings",
+      "notEnabled": "Not enabled"
+    },
+    "button": {
+      "enable": "Enable",
+      "openSettings": "Open Settings",
+      "checking": "…"
+    },
+    "trial": {
+      "title": "Welcome — 7-day Pro trial just started",
+      "subtitle": "Unlimited polish, dictionary, history. Free tier kicks in after."
+    },
+    "cta": {
+      "getStarted": "Get Started",
+      "completeSteps": "Complete all steps",
+      "stillMissing": "Still missing: {{items}}",
+      "reopenHint": "You can reopen settings anytime by right-clicking the TTP icon in the menu bar."
+    }
+  },
+  "setup": {
+    "title": "Welcome to TTP by AmirKS",
+    "description": "Talk To Paste needs a free API key from Groq to transcribe your voice.",
+    "localStorage": "Your keys are stored locally on your machine and are never sent anywhere except to Groq for transcription."
+  },
+  "form": {
+    "apiKey": {
+      "label": "Groq API Key",
+      "placeholder": "gsk_…",
+      "stepSignup": "Sign up at",
+      "stepSignupSuffix": "(free, no credit card)",
+      "stepCreate": "Click \"API Keys\" → \"Create API Key\"",
+      "stepCopy": "Copy the key starting with",
+      "stepCopySuffix": "and paste it below",
+      "helpFreeTier": "Groq's free tier covers tens of thousands of transcriptions per month — you'll never see a bill from typical usage.",
+      "errorRequired": "Groq API key is required",
+      "errorFormat": "Groq API key should start with gsk_"
+    }
+  },
+  "floatingBar": {
+    "tutorialPrefix": "Hold",
+    "tutorialSuffix": "to dictate",
+    "errorFallback": "Error",
+    "statusTranscribing": "Transcription…"
+  },
+  "whatsNew": {
+    "title": "What's New in v{{version}}",
+    "subtitle": "TTP has been updated!",
+    "dismiss": "Got it"
+  }
+}

@@ -2,6 +2,7 @@
 // Tutorial pill component - shows keyboard shortcut hint in user's language
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface TutorialPillProps {
   shortcutText?: string;
@@ -11,12 +12,11 @@ interface TutorialPillProps {
 /** LocalStorage key for tutorial dismissal */
 const TUTORIAL_DISMISSED_KEY = 'tutorial_pill_dismissed';
 
-const isFrench = navigator.language.startsWith('fr');
-
 /**
  * Tutorial pill - simple dark pill showing keyboard shortcut hint
  */
 export function TutorialPill({ shortcutText = 'fn' }: TutorialPillProps) {
+  const { t } = useTranslation();
   const [isVisible, setIsVisible] = useState(false);
   const [isDismissed, setIsDismissed] = useState(true); // Start dismissed, check on mount
 
@@ -50,7 +50,7 @@ export function TutorialPill({ shortcutText = 'fn' }: TutorialPillProps) {
         color: 'rgba(255,255,255,0.8)',
         userSelect: 'none',
       }}>
-        {isFrench ? 'Maintiens' : 'Hold'}{' '}
+        {t('floatingBar.tutorialPrefix')}{' '}
         <span style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -65,7 +65,7 @@ export function TutorialPill({ shortcutText = 'fn' }: TutorialPillProps) {
         }}>
           {shortcutText.toUpperCase()}
         </span>
-        {' '}{isFrench ? 'pour dicter' : 'to dictate'}
+        {' '}{t('floatingBar.tutorialSuffix')}
       </span>
     </div>
   );

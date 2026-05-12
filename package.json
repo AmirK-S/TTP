@@ -10,15 +10,18 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@sentry/react": "^8.55.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-autostart": "^2",
     "@tauri-apps/plugin-global-shortcut": "^2.3.1",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.10.0",
-    "@sentry/react": "^8.55.0",
+    "i18next": "^26.1.0",
+    "i18next-browser-languagedetector": "^8.2.1",
     "lucide-react": "^0.577.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-i18next": "^17.0.7",
     "tauri-plugin-mic-recorder-api": "^2.0.0",
     "zustand": "^5.0.10"
   },

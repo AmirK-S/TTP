@@ -14,7 +14,12 @@ type TranscriptionStage =
 
 interface TranscriptionProgress {
   stage: TranscriptionStage;
+  // After the i18n refactor, `message` is a translation key emitted by Rust
+  // (e.g. 'error.no_speech', 'progress.transcribing') or '' when there is no
+  // text to display. Legacy/unknown values are displayed as-is by consumers.
   message: string;
+  // Optional interpolation values for the translation key.
+  params?: Record<string, string | number>;
 }
 
 /**
@@ -32,6 +37,7 @@ interface TranscriptionProgress {
 export function useTranscription() {
   const [stage, setStage] = useState<TranscriptionStage>('idle');
   const [message, setMessage] = useState('');
+  const [params, setParams] = useState<Record<string, string | number> | undefined>(undefined);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -43,6 +49,7 @@ export function useTranscription() {
   useTauriEvent<TranscriptionProgress>('transcription-progress', (event) => {
     setStage(event.payload.stage);
     setMessage(event.payload.message);
+    setParams(event.payload.params);
 
     if (resetTimerRef.current) {
       clearTimeout(resetTimerRef.current);
@@ -53,12 +60,14 @@ export function useTranscription() {
       resetTimerRef.current = setTimeout(() => {
         setStage('idle');
         setMessage('');
+        setParams(undefined);
         resetTimerRef.current = null;
       }, 500);
     } else if (event.payload.stage === 'error') {
       resetTimerRef.current = setTimeout(() => {
         setStage('idle');
         setMessage('');
+        setParams(undefined);
         resetTimerRef.current = null;
       }, 4000);
     }
@@ -66,5 +75,5 @@ export function useTranscription() {
 
   const isProcessing = stage !== 'idle';
 
-  return { stage, message, isProcessing };
+  return { stage, message, params, isProcessing };
 }

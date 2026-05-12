@@ -8,6 +8,7 @@ mod dictionary;
 mod fnkey;
 mod history;
 mod http_client;
+mod i18n;
 mod keychain;
 mod licensing;
 pub mod logging;
@@ -408,8 +409,8 @@ pub fn run() {
                     use tauri_plugin_notification::NotificationExt;
                     let _ = app.notification()
                         .builder()
-                        .title("TTP — Re-grant Accessibility")
-                        .body("After update: open System Settings → Accessibility, remove TTP (−), then re-add it (+) and select TTP.")
+                        .title(crate::i18n::tr("notification.accessibilityRegrantTitle"))
+                        .body(crate::i18n::tr("notification.accessibilityRegrantBody"))
                         .show();
                 }
             }

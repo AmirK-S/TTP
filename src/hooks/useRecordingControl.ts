@@ -7,6 +7,7 @@ import { startRecording, stopRecording } from 'tauri-plugin-mic-recorder-api';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import { useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useTauriEvent } from './useTauriEvent';
 
 type RecordingState = 'Idle' | 'Recording' | 'Processing';
@@ -28,6 +29,7 @@ interface UseRecordingControlOptions {
  */
 export function useRecordingControl(options: UseRecordingControlOptions = {}) {
   const { onRecordingComplete, onError } = options;
+  const { t } = useTranslation();
   const isRecordingRef = useRef(false);
   const recordingStartTime = useRef<number | null>(null);
 
@@ -47,14 +49,14 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
       // Surface the failure to FloatingBar via the same event the Rust pipeline uses,
       // so the user always sees feedback even when no `onError` handler is wired.
       const friendly = /permission/i.test(errorMsg)
-        ? 'Microphone permission denied — check System Settings'
-        : `Mic error: ${errorMsg.slice(0, 120)}`;
+        ? t('error.microphone_permission_denied')
+        : t('error.microphone_generic', { error: errorMsg.slice(0, 120) });
       emit('transcription-progress', { stage: 'error', message: friendly }).catch(() => {});
       onError?.(errorMsg);
       // Reset Rust state to Idle so the user can record again
       invoke('reset_to_idle').catch(() => {});
     }
-  }, [onError]);
+  }, [onError, t]);
 
   const handleStopRecording = useCallback(async () => {
     if (!isRecordingRef.current) {
@@ -133,7 +135,7 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
     invoke('reset_to_idle').catch(() => {});
     emit('transcription-progress', {
       stage: 'error',
-      message: 'Le micro a été pris par macOS (probablement la dictée). Enregistrement annulé.',
+      message: t('error.audio_stream_interrupted'),
     }).catch(() => {});
   });
 

@@ -97,15 +97,37 @@ const HALLUCINATION_SUBSTRINGS: &[&str] = &[
 use crate::logging::log_error;
 use super::{convert::convert_to_mono_16khz, polish_text, transcribe_audio};
 
-/// Progress event sent to frontend during transcription pipeline
+/// Progress event sent to frontend during transcription pipeline.
+///
+/// `message` carries a translation KEY (e.g. `"error.no_speech"`,
+/// `"progress.transcribing"`) — not a finished English string. The frontend
+/// resolves it via i18next using its own `t()` function, so the language of
+/// the pill text matches whatever the user selected in settings.
+///
+/// Empty `message` means "no text" — the frontend hides the message label
+/// in that case (used for stages like `"pasting"` and `"complete"` where
+/// the stage icon is enough).
+///
+/// `params` carries interpolation values for `{{var}}` placeholders inside
+/// the translation (e.g. `{"mb": "42"}` for `error.audio_too_large`).
+/// Serialised as a JSON object on the wire; `None` means no interpolation
+/// needed.
 #[derive(Clone, serde::Serialize)]
 pub struct TranscriptionProgress {
     pub stage: String, // "transcribing", "polishing", "pasting", "complete", "error"
+    /// Translation key for the frontend to resolve via i18next (e.g. "error.no_speech").
+    /// Empty string means "no message" (the frontend hides the text).
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<serde_json::Value>,
 }
 
-/// Emit a progress event to the frontend and tag the current pipeline stage in Sentry scope
-fn emit_progress(app: &AppHandle, stage: &str, message: &str) {
+/// Emit a progress event to the frontend and tag the current pipeline stage in Sentry scope.
+///
+/// `message` MUST be a translation key from `en.json` / `fr.json` (or the
+/// empty string when no message is appropriate). Do not pass raw English
+/// here — the frontend will surface it as a missing-key tag.
+fn emit_progress(app: &AppHandle, stage: &str, message: &str, params: Option<serde_json::Value>) {
     // Set Sentry tag for current pipeline stage so errors are attributed correctly
     sentry::configure_scope(|scope| {
         scope.set_tag("pipeline_stage", stage);
@@ -114,16 +136,18 @@ fn emit_progress(app: &AppHandle, stage: &str, message: &str) {
     let progress = TranscriptionProgress {
         stage: stage.to_string(),
         message: message.to_string(),
+        params,
     };
     app.emit("transcription-progress", &progress).ok();
 }
 
-/// Show a system notification
+/// Show a system notification. `message` is the already-translated body
+/// (this function does not look up keys — callers pass `crate::i18n::tr(...)`).
 fn notify(app: &AppHandle, message: &str) {
     // Try Tauri notification first
     let result = app.notification()
         .builder()
-        .title("TTP")
+        .title(crate::i18n::tr("notification.appName"))
         .body(message)
         .show();
 
@@ -131,11 +155,13 @@ fn notify(app: &AppHandle, message: &str) {
         // Fallback to osascript
         #[cfg(target_os = "macos")]
         {
+            let app_name = crate::i18n::tr("notification.appName");
             let _ = std::process::Command::new("osascript")
                 .arg("-e")
                 .arg(format!(
-                    "display notification \"{}\" with title \"TTP\"",
-                    message.replace("\"", "\\\"")
+                    "display notification \"{}\" with title \"{}\"",
+                    message.replace("\"", "\\\""),
+                    app_name.replace("\"", "\\\"")
                 ))
                 .spawn();
         }
@@ -236,17 +262,20 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     let file_size = match std::fs::metadata(audio_file) {
         Ok(meta) => meta.len(),
         Err(e) => {
-            emit_progress(app, "error", "Audio file not found");
+            emit_progress(app, "error", "error.audio_file_not_found", None);
             crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "api_error", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
             set_state(app, RecordingState::Idle);
             return Err(format!("Audio file error: {}", e));
         }
     };
 
-    // AUDI-04: Validate WAV header before any processing
+    // AUDI-04: Validate WAV header before any processing.
+    // The validation error detail is preserved in the developer log; the
+    // user-facing message is a single localized "audio corrupt" key.
     if let Err(msg) = super::backup::validate_wav(&audio_path) {
         let _ = std::fs::remove_file(&audio_path);
-        emit_progress(app, "error", &msg);
+        log_error(&format!("WAV validation failed: {}", msg));
+        emit_progress(app, "error", "error.audio_corrupt", None);
         crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({
             "error_category": "corrupt_audio",
             "duration_seconds": pipeline_start.elapsed().as_secs_f64()
@@ -262,7 +291,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             eprintln!("[Pipeline] Conversion failed: {} — sending original", e);
             // Tell the user the next stage may reject it (~25 MB cap on
             // un-compressed audio is hit much earlier than on compressed).
-            emit_progress(app, "transcribing", "Compressing audio failed — using original");
+            emit_progress(app, "transcribing", "error.compression_failed", None);
             audio_path.clone()
         }
     };
@@ -274,12 +303,14 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     if !use_converted && file_size > MAX_AUDIO_SIZE {
         let original_mb = file_size as f64 / 1_000_000.0;
         let _ = std::fs::remove_file(&audio_path);
+        let mb_str = format!("{:.0}", original_mb);
         emit_progress(
             app,
             "error",
-            &format!("Recording too long ({:.0}MB). Max ~14 min.", original_mb),
+            "error.audio_too_large",
+            Some(serde_json::json!({ "mb": mb_str })),
         );
-        notify(app, "Recording too long -- max ~14 minutes");
+        notify(app, &crate::i18n::tr("notification.recordingTooLong"));
         crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({
             "error_category": "too_long",
             "duration_seconds": pipeline_start.elapsed().as_secs_f64()
@@ -300,12 +331,14 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         if use_converted { let _ = std::fs::remove_file(&converted_path); }
 
 
+        let mb_str = format!("{:.0}", final_mb);
         emit_progress(
             app,
             "error",
-            &format!("Recording too long ({:.0}MB). Max ~14 min.", final_mb),
+            "error.audio_too_large",
+            Some(serde_json::json!({ "mb": mb_str })),
         );
-        notify(app, "Recording too long — max ~14 minutes");
+        notify(app, &crate::i18n::tr("notification.recordingTooLong"));
         crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "too_long", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
         set_state(app, RecordingState::Idle);
         log_error(&format!("Audio too large after conversion: {:.1}MB exceeds {}MB limit", final_mb, MAX_AUDIO_SIZE / 1_000_000));
@@ -337,7 +370,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         None => {
             let _ = std::fs::remove_file(&audio_path);
             if use_converted { let _ = std::fs::remove_file(&converted_path); }
-            emit_progress(app, "error", "No Groq API key configured");
+            emit_progress(app, "error", "error.no_api_key", None);
             if let Some(window) = app.get_webview_window("setup") {
                 let _ = window.show();
                 let _ = window.set_focus();
@@ -406,7 +439,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     };
 
     // Stage 1: Transcribe audio via Groq Whisper
-    emit_progress(app, "transcribing", "Transcribing...");
+    emit_progress(app, "transcribing", "progress.transcribing", None);
 
     let raw_text = match transcribe_audio(&api_key, transcription_path, whisper_prompt.as_deref()).await {
         Ok(text) => text,
@@ -437,16 +470,21 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 ("api_error", None)
             };
 
-            // User-friendly message based on error category
-            let user_msg = match error_category {
-                "rate_limited" => "Rate limited by Groq — wait a few seconds and try again".to_string(),
-                "invalid_api_key" => "Invalid Groq API key — check Settings → Transcription".to_string(),
-                "too_long" => "Recording too long — try a shorter recording".to_string(),
-                _ => format!("Transcription failed: {}", e),
+            // User-facing translation key + optional interpolation params,
+            // based on error category. The frontend resolves the key into
+            // localized pill text via i18next.
+            let (user_key, user_params) = match error_category {
+                "rate_limited" => ("error.transcription_rate_limited", None),
+                "invalid_api_key" => ("error.transcription_invalid_key", None),
+                "too_long" => ("error.transcription_too_long", None),
+                _ => (
+                    "error.transcription_generic",
+                    Some(serde_json::json!({ "error": e.clone() })),
+                ),
             };
 
-            emit_progress(app, "error", &user_msg);
-            notify(app, "Transcription failed");
+            emit_progress(app, "error", user_key, user_params);
+            notify(app, &crate::i18n::tr("notification.transcriptionFailed"));
             let mut payload = serde_json::json!({
                 "error_category": error_category,
                 "duration_seconds": pipeline_start.elapsed().as_secs_f64(),
@@ -467,8 +505,8 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
 
         if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
-        emit_progress(app, "error", "No speech detected");
-        notify(app, "No speech detected");
+        emit_progress(app, "error", "error.no_speech", None);
+        notify(app, &crate::i18n::tr("notification.noSpeech"));
         crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
         set_state(app, RecordingState::Idle);
         return Err("No speech detected".to_string());
@@ -493,7 +531,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                     let _ = std::fs::remove_file(&audio_path);
                     if use_converted { let _ = std::fs::remove_file(&converted_path); }
                     if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
-                    emit_progress(app, "error", "No speech detected");
+                    emit_progress(app, "error", "error.no_speech", None);
                     crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
                     set_state(app, RecordingState::Idle);
                     return Err("No speech detected (glossary ghost)".to_string());
@@ -509,7 +547,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
 
         if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
-        emit_progress(app, "error", "No speech detected");
+        emit_progress(app, "error", "error.no_speech", None);
         crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
         set_state(app, RecordingState::Idle);
         return Err("No speech detected (filtered)".to_string());
@@ -525,12 +563,13 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         if used < crate::licensing::FREE_POLISH_PER_MONTH {
             true
         } else {
+            let used_str = used.to_string();
+            let limit_str = crate::licensing::FREE_POLISH_PER_MONTH.to_string();
             notify(
                 app,
-                &format!(
-                    "AI Polish limit reached ({}/{} this month). Upgrade to TTP Pro for unlimited.",
-                    crate::licensing::FREE_POLISH_PER_MONTH,
-                    crate::licensing::FREE_POLISH_PER_MONTH
+                &crate::i18n::tr_with(
+                    "notification.polishLimitReached",
+                    &[("used", &used_str), ("limit", &limit_str)],
                 ),
             );
             crate::telemetry::analytics::track(
@@ -543,7 +582,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     };
 
     let final_text = if polish_quota_ok {
-        emit_progress(app, "polishing", "Processing...");
+        emit_progress(app, "polishing", "progress.polishing", None);
 
         match polish_text(&api_key, &raw_text).await {
             Ok(text) => {
@@ -605,7 +644,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 // For rate-limit / bad-key the main transcription stage already surfaced
                 // the error, so don't double-message.
                 if category == "polish_failed" {
-                    emit_progress(app, "pasting", "Polish unavailable — pasting raw text");
+                    emit_progress(app, "pasting", "error.polish_unavailable", None);
                 }
                 crate::telemetry::analytics::track(app, "polish_failed", Some(serde_json::json!({
                     "category": category
@@ -622,7 +661,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     let final_text = apply_dictionary(&final_text);
 
     // Stage 3: Paste into active app
-    emit_progress(app, "pasting", "");
+    emit_progress(app, "pasting", "", None);
 
     // Create clipboard guard to save original content.
     // We always write the transcription to the clipboard first so that if AX
@@ -633,8 +672,8 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     let clipboard_guard = ClipboardGuard::new(app);
 
     if let Err(e) = clipboard_guard.write_text(&final_text) {
-        emit_progress(app, "error", "Failed to write to clipboard");
-        notify(app, "Failed to copy text to clipboard");
+        emit_progress(app, "error", "error.clipboard_write_failed", None);
+        notify(app, &crate::i18n::tr("notification.clipboardFailed"));
         set_state(app, RecordingState::Idle);
         return Err(e);
     }
@@ -745,15 +784,15 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
     // Complete with appropriate message
     if paste_success {
-        emit_progress(app, "complete", "");
+        emit_progress(app, "complete", "", None);
     } else {
         // Clipboard fallback - show error in pill + system notification
         if !has_accessibility {
-            emit_progress(app, "error", "Enable Accessibility to auto-paste");
-            notify(app, "Add TTP to Accessibility in Settings, then paste with Cmd+V");
+            emit_progress(app, "error", "error.enable_accessibility", None);
+            notify(app, &crate::i18n::tr("notification.addToAccessibility"));
         } else {
-            emit_progress(app, "error", "Paste failed — Cmd+V to paste");
-            notify(app, "Text copied - paste with Cmd+V");
+            emit_progress(app, "error", "error.paste_failed", None);
+            notify(app, &crate::i18n::tr("notification.textCopied"));
         }
     }
 
@@ -788,7 +827,10 @@ pub async fn process_audio(app: AppHandle, audio_path: String) -> Result<String,
         RateLimiter::direct(Quota::per_minute(NonZeroU32::new(20).unwrap()))
     });
     if limiter.check().is_err() {
-        return Err("Rate limit exceeded — please wait a few seconds before transcribing again".to_string());
+        // Return the translation key rather than a finished string — the
+        // frontend resolves it via i18next so the toast/pill matches the
+        // user's selected language.
+        return Err("error.rate_limit_exceeded".to_string());
     }
     process_recording(&app, audio_path).await
 }

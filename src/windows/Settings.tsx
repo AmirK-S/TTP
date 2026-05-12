@@ -2,6 +2,7 @@
 // Settings window - configure app behavior and manage dictionary
 
 import { useEffect, useState, useCallback, useRef, memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Copy, Check, Download, RefreshCw, Crown, Loader2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -12,6 +13,7 @@ import { enable as enableAutostart, disable as disableAutostart, isEnabled as is
 import { trackEvent } from '../lib/analytics';
 import { useUpdater } from '../hooks/useUpdater';
 import { useSettingsStore, DictionaryEntry, HistoryEntry } from '../stores/settings-store';
+import type { LanguageChoice } from '../i18n/config';
 import WhatsNew from '../components/WhatsNew';
 
 /**
@@ -69,6 +71,7 @@ function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   if (!open) return null;
 
   return (
@@ -83,7 +86,7 @@ function ConfirmDialog({
             onClick={onCancel}
             className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             onClick={onConfirm}
@@ -111,6 +114,7 @@ const DictionaryRow = memo(function DictionaryRow({
   entry: DictionaryEntry;
   onDelete: (original: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <tr className="border-b border-gray-200 dark:border-gray-700">
       <td className="py-3 px-4 text-gray-900 dark:text-white font-mono text-sm">
@@ -124,7 +128,7 @@ const DictionaryRow = memo(function DictionaryRow({
           onClick={() => onDelete(entry.original)}
           className="text-red-600 hover:text-red-700 text-sm font-medium"
         >
-          Delete
+          {t('common.delete')}
         </button>
       </td>
     </tr>
@@ -149,6 +153,7 @@ function formatTimestamp(timestamp: number): string {
  * History entry row component
  */
 const HistoryRow = memo(function HistoryRow({ entry }: { entry: HistoryEntry }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -178,7 +183,7 @@ const HistoryRow = memo(function HistoryRow({ entry }: { entry: HistoryEntry }) 
       <button
         onClick={handleCopy}
         className="flex-shrink-0 p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-        title="Copy to clipboard"
+        title={t('settings.dictionary.copyTooltip')}
       >
         {copied ? (
           <Check className="w-4 h-4 text-green-500" />
@@ -202,6 +207,7 @@ const HistoryRow = memo(function HistoryRow({ entry }: { entry: HistoryEntry }) 
  * shared ConfirmDialog is a TODO.
  */
 function UpdateChannelSection() {
+  const { t } = useTranslation();
   const { useBetaChannel, saveSettings, loading } = useSettingsStore();
   const [appVersion, setAppVersion] = useState('...');
 
@@ -218,9 +224,7 @@ function UpdateChannelSection() {
     if (!enabled && isOnBetaBuild) {
       // TODO: replace window.confirm with the shared ConfirmDialog component
       // once we refactor it out of the parent Settings scope.
-      const ok = window.confirm(
-        "Tu es actuellement sur une version beta qui peut être plus récente que la dernière version stable. Tu n'auras pas de mises à jour jusqu'à une nouvelle version stable. Continuer ?"
-      );
+      const ok = window.confirm(t('dialog.downgradeBeta.message'));
       if (!ok) return;
     }
 
@@ -239,11 +243,11 @@ function UpdateChannelSection() {
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-          Canal de mise à jour
+          {t('settings.updateChannel.title')}
         </h2>
         {isOnBetaBuild && (
           <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300">
-            Beta
+            {t('settings.updateChannel.betaBadge')}
           </span>
         )}
       </div>
@@ -251,12 +255,12 @@ function UpdateChannelSection() {
       <div className="flex items-center justify-between mt-4">
         <div className="flex-1 pr-4">
           <p className="text-gray-900 dark:text-white font-medium">
-            {useBetaChannel ? 'Beta' : 'Stable'}
+            {useBetaChannel ? t('settings.updateChannel.labelBeta') : t('settings.updateChannel.labelStable')}
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             {useBetaChannel
-              ? 'Tu testes les nouvelles versions avant la sortie publique'
-              : 'Tu reçois les versions stables et fiables'}
+              ? t('settings.updateChannel.descBeta')
+              : t('settings.updateChannel.descStable')}
           </p>
         </div>
         <Toggle
@@ -269,8 +273,7 @@ function UpdateChannelSection() {
       {useBetaChannel && (
         <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
           <p className="text-sm text-amber-700 dark:text-amber-400">
-            ⚠️ Les versions beta peuvent contenir des bugs. Tu pourras revenir
-            en stable à tout moment.
+            {t('settings.updateChannel.warning')}
           </p>
         </div>
       )}
@@ -282,6 +285,7 @@ function UpdateChannelSection() {
  * Update section component
  */
 function UpdateSection() {
+  const { t } = useTranslation();
   const {
     status,
     updateInfo,
@@ -307,7 +311,7 @@ function UpdateSection() {
   return (
     <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
       <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-        Updates
+        {t('settings.updates.title')}
       </h2>
 
       <div className="space-y-3">
@@ -317,21 +321,21 @@ function UpdateSection() {
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md transition-colors"
           >
             <RefreshCw className="w-4 h-4" />
-            Check for Updates
+            {t('settings.updates.checkButton')}
           </button>
         )}
 
         {status === 'up-to-date' && (
           <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm">
             <span>✓</span>
-            You're up to date! (v{appVersion})
+            {t('settings.updates.upToDate', { version: appVersion })}
           </div>
         )}
 
         {status === 'checking' && (
           <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
             <RefreshCw className="w-4 h-4 animate-spin" />
-            Checking for updates...
+            {t('settings.updates.checking')}
           </div>
         )}
 
@@ -339,7 +343,7 @@ function UpdateSection() {
           <div className="space-y-3">
             <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
               <p className="text-sm font-medium text-blue-700 dark:text-blue-400">
-                Update available: v{updateInfo.version}
+                {t('settings.updates.available', { version: updateInfo.version })}
               </p>
               {updateInfo.body && (
                 <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">
@@ -353,13 +357,13 @@ function UpdateSection() {
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
               >
                 <Download className="w-4 h-4" />
-                Download and Install
+                {t('settings.updates.downloadInstall')}
               </button>
               <button
                 onClick={dismiss}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md transition-colors"
               >
-                Later
+                {t('common.later')}
               </button>
             </div>
           </div>
@@ -369,7 +373,7 @@ function UpdateSection() {
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
               <Download className="w-4 h-4 animate-pulse" />
-              Downloading... {Math.round(progress)}%
+              {t('settings.updates.downloading', { progress: Math.round(progress) })}
             </div>
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
               <div
@@ -383,13 +387,13 @@ function UpdateSection() {
         {status === 'ready' && (
           <div className="space-y-3">
             <p className="text-sm text-green-600 dark:text-green-400">
-              Update downloaded! Restart to apply.
+              {t('settings.updates.ready')}
             </p>
             <button
               onClick={restartApp}
               className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors"
             >
-              Restart Now
+              {t('common.restartNow')}
             </button>
           </div>
         )}
@@ -397,19 +401,19 @@ function UpdateSection() {
         {status === 'error' && (
           <div className="space-y-2">
             <p className="text-sm text-red-600 dark:text-red-400">
-              {error || 'Failed to check for updates'}
+              {error || t('settings.updates.errorDefault')}
             </p>
             <button
               onClick={checkForUpdates}
               className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400"
             >
-              Try again
+              {t('common.tryAgain')}
             </button>
           </div>
         )}
 
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          Current version: v{appVersion}
+          {t('settings.updates.currentVersion', { version: appVersion })}
         </p>
       </div>
     </section>
@@ -420,6 +424,7 @@ function UpdateSection() {
  * Settings window component
  */
 export function Settings() {
+  const { t } = useTranslation();
   const {
     aiPolishEnabled,
     telemetryEnabled,
@@ -427,6 +432,7 @@ export function Settings() {
     handsFreeMode,
     hidePillWhenInactive,
     historyEnabled,
+    language,
     dictionary,
     history,
     loading,
@@ -463,6 +469,13 @@ export function Settings() {
   useEffect(() => {
     getVersion().then(v => setAppVersion(v)).catch(() => {});
   }, []);
+
+  // Keep the OS window title in sync with the current language. No deps array
+  // intentionally — the call is cheap and ensures we don't desync after a
+  // language switch (re-running on every render is acceptable here).
+  useEffect(() => {
+    getCurrentWindow().setTitle(t('windowTitle.settings'));
+  });
 
   // Scroll to update section when update-available event fires
   useTauriEvent<{ version: string; body?: string }>('update-available', () => {
@@ -501,7 +514,10 @@ export function Settings() {
   useEffect(() => {
     if (shortcut !== 'FnKey') {
       // Clear any stale Input Monitoring warning if the user switched off Fn.
-      if (shortcutError.includes('Input Monitoring')) {
+      if (
+        shortcutError.includes('Input Monitoring') ||
+        shortcutError === 'error.input_monitoring_required'
+      ) {
         setShortcutError('');
       }
       return;
@@ -509,10 +525,11 @@ export function Settings() {
     invoke<boolean>('check_input_monitoring')
       .then((hasPermission) => {
         if (!hasPermission) {
-          setShortcutError(
-            'Input Monitoring permission required for Fn key. Go to System Settings → Privacy & Security → Input Monitoring and enable TTP, then restart the app.'
-          );
-        } else if (shortcutError.includes('Input Monitoring')) {
+          setShortcutError('error.input_monitoring_required');
+        } else if (
+          shortcutError.includes('Input Monitoring') ||
+          shortcutError === 'error.input_monitoring_required'
+        ) {
           // Permission has been re-granted while Settings was open — clear.
           setShortcutError('');
         }
@@ -661,7 +678,7 @@ export function Settings() {
         // Request Input Monitoring permission (needed for Fn key detection)
         const hasPermission = await invoke<boolean>('check_input_monitoring');
         if (!hasPermission) {
-          setShortcutError('Input Monitoring permission required for Fn key. Go to System Settings → Privacy & Security → Input Monitoring and enable TTP, then restart the app.');
+          setShortcutError('error.input_monitoring_required');
           return;
         }
         // Unregister any existing global shortcut before enabling Fn mode
@@ -711,11 +728,11 @@ export function Settings() {
     const orig = newOriginal.trim();
     const corr = newCorrection.trim();
     if (!orig || !corr) {
-      setAddEntryError('Both fields are required');
+      setAddEntryError(t('settings.dictionary.bothRequired'));
       return;
     }
     if (orig === corr) {
-      setAddEntryError('Original and correction must be different');
+      setAddEntryError(t('settings.dictionary.mustBeDifferent'));
       return;
     }
     try {
@@ -774,9 +791,9 @@ export function Settings() {
 
   // Format expiration timestamp into a readable date
   const formatExpiry = (ts: number | null): string => {
-    if (!ts) return 'Never expires';
+    if (!ts) return t('settings.pro.neverExpires');
     const date = new Date(ts * 1000);
-    return `Expires ${date.toLocaleDateString()}`;
+    return t('settings.pro.expiresOn', { date: date.toLocaleDateString() });
   };
 
   // Mask the license key for display (show first/last 4 chars)
@@ -796,30 +813,50 @@ export function Settings() {
   const histAtCap = !isPro && !isInTrial && histCount >= histLimit;
   const polishAtCap = !isPro && !isInTrial && polishUsed >= polishLimit;
 
+  // Build the recording-trigger options at render time so labels and descriptions
+  // re-translate when the language changes. Keeping the structure as plain
+  // objects (rather than translating inside the JSX) keeps the .map() loop
+  // small and easy to follow.
+  const triggerOptions = isMac
+    ? [
+        { value: 'FnKey', label: t('settings.recordingTrigger.optionFn'), desc: t('settings.recordingTrigger.descRecommended'), recommended: true },
+        { value: 'Alt+Space', label: t('settings.recordingTrigger.optionAltSpace'), desc: t('settings.recordingTrigger.descAltSpace'), recommended: false },
+        { value: 'CmdOrCtrl+Shift+R', label: t('settings.recordingTrigger.optionCmdShiftR'), desc: t('settings.recordingTrigger.descCmdShiftR'), recommended: false },
+      ]
+    : [
+        { value: 'Ctrl+Space', label: t('settings.recordingTrigger.optionCtrlSpace'), desc: t('settings.recordingTrigger.descRecommended'), recommended: true },
+        { value: 'Ctrl+Shift+Space', label: t('settings.recordingTrigger.optionCtrlShiftSpace'), desc: '', recommended: false },
+        { value: 'Super+J', label: t('settings.recordingTrigger.optionWinJ'), desc: t('settings.recordingTrigger.descNoConflicts'), recommended: false },
+      ];
+
+  // The shortcut error string may be either a translation key (from the Rust
+  // backend or from our own internal flags) or a raw human-readable string
+  // (legacy paths still in transition). Translate keys; pass others as-is.
+  const showShortcutError =
+    shortcutError.startsWith('error.') || shortcutError.startsWith('permission.')
+      ? t(shortcutError)
+      : shortcutError;
+  const shortcutErrorIsInputMonitoring =
+    shortcutError.includes('Input Monitoring') ||
+    shortcutError === 'error.input_monitoring_required';
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
       <div className="max-w-lg mx-auto">
         {/* Welcome / About */}
         <section className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg shadow-sm p-6 mb-6 text-white">
           <h1 className="text-xl font-bold mb-1">TTP by AmirKS</h1>
-          <p className="text-blue-400 text-xs font-medium mb-3">Talk To Paste — v{appVersion}</p>
+          <p className="text-blue-400 text-xs font-medium mb-3">{t('settings.about.subtitle', { version: appVersion })}</p>
           <p className="text-sm text-gray-300 leading-relaxed mb-3">
-            Thanks for using TTP! This is a free, open-source app I built to make voice-to-text
-            effortless. Just press your hotkey, speak, and your words are transcribed and pasted
-            instantly — powered by Groq's fast AI, with smart polish to clean up filler words
-            and grammar. TTP also learns from your corrections over time.
+            {t('settings.about.description')}
           </p>
           <p className="text-sm text-gray-300 leading-relaxed mb-3">
-            Built by Amir KELLOU--SIDHOUM. If you find it useful, feel free to
-            share it or connect with me!
+            {t('settings.about.author')}
           </p>
           <div className="p-3 bg-gray-700/50 rounded-lg mb-4">
             <p className="text-xs text-gray-400 leading-relaxed">
-              <span className="text-green-400 font-medium">Privacy:</span> TTP collects absolutely
-              none of your data. Your API key is stored locally on your machine only. Audio is sent
-              directly from your device to Groq's servers for transcription — I never see, store,
-              or have access to any of it. Same for AI Polish: your text goes straight to Groq,
-              not through me. Everything stays between you and your API provider.
+              <span className="text-green-400 font-medium">{t('settings.about.privacyLabel')}</span>{' '}
+              {t('settings.about.privacyBody')}
             </p>
           </div>
           <div className="flex gap-3">
@@ -848,16 +885,16 @@ export function Settings() {
             <div className="flex items-center gap-2">
               <Crown className={`w-5 h-5 ${isPro || isInTrial ? 'text-amber-500' : 'text-gray-400'}`} />
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                TTP Pro
+                {t('settings.pro.title')}
               </h2>
               {isPro && (
                 <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                  Active
+                  {t('settings.pro.badgeActive')}
                 </span>
               )}
               {!isPro && isInTrial && (
                 <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
-                  Trial — {trialDaysLeft}d left
+                  {t('settings.pro.badgeTrial', { days: trialDaysLeft })}
                 </span>
               )}
             </div>
@@ -866,14 +903,14 @@ export function Settings() {
                 onClick={validateLicense}
                 disabled={licenseLoading}
                 className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex items-center gap-1 disabled:opacity-50"
-                title="Re-validate with server"
+                title={t('settings.pro.refreshTitle')}
               >
                 {licenseLoading ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
                   <RefreshCw className="w-3.5 h-3.5" />
                 )}
-                Refresh
+                {t('common.refresh')}
               </button>
             )}
           </div>
@@ -882,27 +919,27 @@ export function Settings() {
             <>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 {isInTrial
-                  ? `You're on a ${trialDaysLeft}-day Pro trial. Enjoy unlimited AI Polish, dictionary, and history. After the trial, activate a license to keep them.`
-                  : 'Unlock unlimited AI Polish, unlimited dictionary entries, unlimited history, and priority support. One-time payment, lifetime license.'}
+                  ? t('settings.pro.descTrial', { days: trialDaysLeft })
+                  : t('settings.pro.descFree')}
               </p>
 
               {/* Free tier usage counters */}
               {!isInTrial && (
                 <div className="space-y-2 mb-4 p-3 bg-gray-50 dark:bg-gray-900/40 rounded-md">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-500 dark:text-gray-400">AI Polish (this month)</span>
+                    <span className="text-gray-500 dark:text-gray-400">{t('settings.pro.usagePolish')}</span>
                     <span className={`font-mono ${polishAtCap ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-900 dark:text-white'}`}>
                       {polishUsed} / {polishLimit}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-500 dark:text-gray-400">Dictionary entries</span>
+                    <span className="text-gray-500 dark:text-gray-400">{t('settings.pro.usageDictionary')}</span>
                     <span className={`font-mono ${dictAtCap ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-900 dark:text-white'}`}>
                       {dictCount} / {dictLimit}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-500 dark:text-gray-400">History entries</span>
+                    <span className="text-gray-500 dark:text-gray-400">{t('settings.pro.usageHistory')}</span>
                     <span className={`font-mono ${histAtCap ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-900 dark:text-white'}`}>
                       {histCount} / {histLimit}
                     </span>
@@ -915,7 +952,7 @@ export function Settings() {
                   type="text"
                   value={licenseInput}
                   onChange={(e) => setLicenseInput(e.target.value)}
-                  placeholder="Paste your license key here"
+                  placeholder={t('settings.pro.inputPlaceholder')}
                   spellCheck={false}
                   className="w-full px-3 py-2 text-sm font-mono border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={licenseLoading}
@@ -936,7 +973,7 @@ export function Settings() {
                   className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors flex items-center gap-2"
                 >
                   {licenseLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Activate License
+                  {t('settings.pro.activate')}
                 </button>
                 <a
                   href="https://amirks.lemonsqueezy.com/buy/dcc74241-21ae-4d20-8a3c-90bf8d842bae"
@@ -944,7 +981,7 @@ export function Settings() {
                   rel="noopener noreferrer"
                   className="text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                 >
-                  Buy TTP Pro →
+                  {t('settings.pro.buyLink')}
                 </a>
               </div>
             </>
@@ -952,24 +989,24 @@ export function Settings() {
             <>
               <div className="space-y-2 mb-4">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">License key</span>
+                  <span className="text-gray-500 dark:text-gray-400">{t('settings.pro.labelKey')}</span>
                   <span className="font-mono text-gray-900 dark:text-white">{maskedLicenseKey}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Status</span>
+                  <span className="text-gray-500 dark:text-gray-400">{t('settings.pro.labelStatus')}</span>
                   <span className="text-gray-900 dark:text-white capitalize">
-                    {licenseStatus ?? 'unknown'}
+                    {licenseStatus ?? t('settings.pro.statusUnknown')}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Validity</span>
+                  <span className="text-gray-500 dark:text-gray-400">{t('settings.pro.labelValidity')}</span>
                   <span className="text-gray-900 dark:text-white">
                     {formatExpiry(licenseExpiresAt)}
                   </span>
                 </div>
                 {licenseActivationLimit !== null && (
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500 dark:text-gray-400">Activations</span>
+                    <span className="text-gray-500 dark:text-gray-400">{t('settings.pro.labelActivations')}</span>
                     <span className="text-gray-900 dark:text-white">
                       {licenseActivationCount ?? 0} / {licenseActivationLimit}
                     </span>
@@ -984,10 +1021,10 @@ export function Settings() {
                 disabled={licenseLoading}
                 className="text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50"
               >
-                Deactivate this device
+                {t('settings.pro.deactivateDevice')}
               </button>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                Deactivating frees an activation slot so you can use this license on another device.
+                {t('settings.pro.deactivateHelp')}
               </p>
             </>
           )}
@@ -996,25 +1033,14 @@ export function Settings() {
         {/* Recording Trigger Section */}
         <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Recording Trigger
+            {t('settings.recordingTrigger.title')}
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            Hold to record, release to stop. Double-tap to toggle hands-free mode.
+            {t('settings.recordingTrigger.desc')}
           </p>
 
           <div className="space-y-2">
-            {(isMac
-              ? [
-                  { value: 'FnKey', label: 'Fn', desc: 'Recommended', recommended: true },
-                  { value: 'Alt+Space', label: '⌥ Space', desc: 'Option + Space' },
-                  { value: 'CmdOrCtrl+Shift+R', label: '⌘⇧ R', desc: 'Cmd + Shift + R' },
-                ]
-              : [
-                  { value: 'Ctrl+Space', label: 'Ctrl + Space', desc: 'Recommended', recommended: true },
-                  { value: 'Ctrl+Shift+Space', label: 'Ctrl + Shift + Space', desc: '' },
-                  { value: 'Super+J', label: 'Win + J', desc: 'No conflicts' },
-                ]
-            ).map((opt) => (
+            {triggerOptions.map((opt) => (
               <button
                 key={opt.value}
                 onClick={() => handleShortcutChange(opt.value)}
@@ -1063,9 +1089,9 @@ export function Settings() {
           {shortcutError && (
             <div className="mt-3 space-y-2">
               <p className="text-sm text-red-600 dark:text-red-400">
-                {shortcutError}
+                {showShortcutError}
               </p>
-              {shortcutError.includes('Input Monitoring') && (
+              {shortcutErrorIsInputMonitoring && (
                 <button
                   type="button"
                   onClick={() => {
@@ -1075,7 +1101,7 @@ export function Settings() {
                   }}
                   className="inline-flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-300 hover:bg-red-500/20 transition-colors"
                 >
-                  Open Input Monitoring settings
+                  {t('settings.recordingTrigger.openInputMonitoring')}
                 </button>
               )}
             </div>
@@ -1083,7 +1109,7 @@ export function Settings() {
 
           {shortcutSuccess && (
             <p className="text-sm text-green-600 dark:text-green-400 mt-3">
-              Shortcut updated!
+              {t('settings.recordingTrigger.successUpdated')}
             </p>
           )}
         </section>
@@ -1091,17 +1117,17 @@ export function Settings() {
         {/* Recording Mode Section */}
         <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Recording Mode
+            {t('settings.recordingMode.title')}
           </h2>
 
           {/* Hands-free mode toggle */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex-1 pr-4">
               <p className="text-gray-900 dark:text-white font-medium">
-                Hands-free mode (Toggle)
+                {t('settings.recordingMode.handsFreeLabel')}
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                When enabled, press once to start recording, press again to stop
+                {t('settings.recordingMode.handsFreeDesc')}
               </p>
             </div>
             <Toggle
@@ -1115,10 +1141,10 @@ export function Settings() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex-1 pr-4">
               <p className="text-gray-900 dark:text-white font-medium">
-                Hide pill when inactive
+                {t('settings.recordingMode.hidePillLabel')}
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Hide the recording indicator when not recording
+                {t('settings.recordingMode.hidePillDesc')}
               </p>
             </div>
             <Toggle
@@ -1132,10 +1158,10 @@ export function Settings() {
           <div className="flex items-center justify-between">
             <div className="flex-1 pr-4">
               <p className="text-gray-900 dark:text-white font-medium">
-                Launch at startup
+                {t('settings.recordingMode.launchStartupLabel')}
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Open TTP automatically when you log in
+                {t('settings.recordingMode.launchStartupDesc')}
               </p>
             </div>
             <Toggle
@@ -1149,22 +1175,22 @@ export function Settings() {
         {/* Transcription Section */}
         <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Transcription
+            {t('settings.transcription.title')}
           </h2>
 
           {/* Groq API Key */}
           <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
             <p className="text-gray-900 dark:text-white font-medium mb-2">
-              Groq API Key
+              {t('settings.transcription.groqLabel')}
             </p>
               {hasGroqKey ? (
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-green-600 dark:text-green-400">✓ Key configured</span>
+                  <span className="text-sm text-green-600 dark:text-green-400">{t('settings.transcription.keyConfigured')}</span>
                   <button
                     onClick={() => setHasGroqKey(false)}
                     className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                   >
-                    Change
+                    {t('common.change')}
                   </button>
                 </div>
               ) : (
@@ -1174,7 +1200,7 @@ export function Settings() {
                       type="password"
                       value={groqApiKey}
                       onChange={(e) => setGroqApiKey(e.target.value)}
-                      placeholder="gsk_..."
+                      placeholder={t('settings.transcription.keyPlaceholder')}
                       className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                     />
                     <button
@@ -1182,12 +1208,12 @@ export function Settings() {
                       disabled={groqKeySaving || !groqApiKey.trim()}
                       className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md transition-colors"
                     >
-                      {groqKeySaving ? 'Validating...' : 'Save'}
+                      {groqKeySaving ? t('common.validating') : t('common.save')}
                     </button>
                   </div>
                   {groqKeySuccess && (
                     <p className="text-sm text-green-600 dark:text-green-400">
-                      API key validated and saved!
+                      {t('settings.transcription.keySaved')}
                     </p>
                   )}
                   {groqKeyError && (
@@ -1196,7 +1222,7 @@ export function Settings() {
                     </p>
                   )}
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Get your free key at{' '}
+                    {t('settings.transcription.getKeyAt')}{' '}
                     <a
                       href="https://console.groq.com/keys"
                       target="_blank"
@@ -1214,10 +1240,10 @@ export function Settings() {
           <div className="flex items-center justify-between">
             <div className="flex-1 pr-4">
               <p className="text-gray-900 dark:text-white font-medium">
-                AI Polish
+                {t('settings.transcription.polishLabel')}
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Clean up transcriptions with AI (remove filler words, fix grammar)
+                {t('settings.transcription.polishDesc')}
               </p>
             </div>
             <Toggle
@@ -1232,16 +1258,16 @@ export function Settings() {
         {/* Privacy & Telemetry Section */}
         <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Privacy & Telemetry
+            {t('settings.privacy.title')}
           </h2>
 
           <div className="flex items-center justify-between mb-4">
             <div className="flex-1 pr-4">
               <p className="text-gray-900 dark:text-white font-medium">
-                Help Improve TTP
+                {t('settings.privacy.helpLabel')}
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Send anonymous crash reports and usage statistics
+                {t('settings.privacy.helpDesc')}
               </p>
             </div>
             <Toggle
@@ -1255,13 +1281,13 @@ export function Settings() {
           {showRestartBanner && (
             <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg mb-4">
               <p className="text-sm text-amber-700 dark:text-amber-400">
-                Changes take effect after restart
+                {t('settings.privacy.restartHint')}
               </p>
               <button
                 onClick={() => relaunch().catch(console.error)}
                 className="px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded-md transition-colors ml-3 whitespace-nowrap"
               >
-                Restart Now
+                {t('common.restartNow')}
               </button>
             </div>
           )}
@@ -1269,13 +1295,12 @@ export function Settings() {
           {/* Privacy explanation */}
           <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
             <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-              <span className="font-medium text-gray-700 dark:text-gray-300">What is sent:</span>{' '}
-              Crash reports (error type, OS, app version, pipeline stage)
-              and anonymous usage events (feature usage counts).
+              <span className="font-medium text-gray-700 dark:text-gray-300">{t('settings.privacy.whatSentLabel')}</span>{' '}
+              {t('settings.privacy.whatSentBody')}
             </p>
             <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed mt-2">
-              <span className="font-medium text-gray-700 dark:text-gray-300">Never sent:</span>{' '}
-              Your transcription text, API keys, file paths, or any personal data.
+              <span className="font-medium text-gray-700 dark:text-gray-300">{t('settings.privacy.neverSentLabel')}</span>{' '}
+              {t('settings.privacy.neverSentBody')}
             </p>
           </div>
         </section>
@@ -1284,14 +1309,14 @@ export function Settings() {
         <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Dictionary
+              {t('settings.dictionary.title')}
             </h2>
             {dictionary.length > 0 && (
               <button
                 onClick={() => setShowClearConfirm(true)}
                 className="text-sm text-red-600 hover:text-red-700 font-medium"
               >
-                Clear All
+                {t('common.clearAll')}
               </button>
             )}
           </div>
@@ -1299,24 +1324,24 @@ export function Settings() {
           {/* Add entry form */}
           <div className="mb-4 flex gap-2 items-end">
             <div className="flex-1">
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Misheard</label>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{t('settings.dictionary.labelMisheard')}</label>
               <input
                 type="text"
                 value={newOriginal}
                 onChange={(e) => setNewOriginal(e.target.value)}
-                placeholder="grok"
+                placeholder={t('settings.dictionary.placeholderMisheard')}
                 disabled={dictAtCap}
                 className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
               />
             </div>
             <span className="text-gray-400 pb-1.5">&rarr;</span>
             <div className="flex-1">
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Correction</label>
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{t('settings.dictionary.labelCorrection')}</label>
               <input
                 type="text"
                 value={newCorrection}
                 onChange={(e) => setNewCorrection(e.target.value)}
-                placeholder="Groq"
+                placeholder={t('settings.dictionary.placeholderCorrection')}
                 disabled={dictAtCap}
                 className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
               />
@@ -1326,12 +1351,12 @@ export function Settings() {
               disabled={!newOriginal.trim() || !newCorrection.trim() || dictAtCap}
               className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md transition-colors"
             >
-              Add
+              {t('common.add')}
             </button>
           </div>
           {dictAtCap && (
             <p className="text-amber-600 dark:text-amber-400 text-xs mb-3">
-              Free tier limit reached ({dictLimit} entries). Upgrade to TTP Pro for unlimited.
+              {t('settings.dictionary.limitReached', { limit: dictLimit })}
             </p>
           )}
           {addEntryError && (
@@ -1340,7 +1365,7 @@ export function Settings() {
 
           {dictionary.length === 0 ? (
             <p className="text-gray-500 dark:text-gray-400 text-center py-4">
-              No corrections yet
+              {t('settings.dictionary.emptyState')}
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -1348,10 +1373,10 @@ export function Settings() {
                 <thead>
                   <tr className="border-b border-gray-200 dark:border-gray-700">
                     <th className="text-left py-2 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Original
+                      {t('settings.dictionary.tableOriginal')}
                     </th>
                     <th className="text-left py-2 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Correction
+                      {t('settings.dictionary.tableCorrection')}
                     </th>
                     <th className="w-20"></th>
                   </tr>
@@ -1374,14 +1399,14 @@ export function Settings() {
         <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Transcription History
+              {t('settings.history.title')}
             </h2>
             {history.length > 0 && (
               <button
                 onClick={() => setShowClearHistoryConfirm(true)}
                 className="text-sm text-red-600 hover:text-red-700 font-medium"
               >
-                Clear History
+                {t('settings.history.clearButton')}
               </button>
             )}
           </div>
@@ -1390,10 +1415,10 @@ export function Settings() {
           <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
             <div className="flex-1 pr-4">
               <p className="text-gray-900 dark:text-white font-medium">
-                Save transcriptions
+                {t('settings.history.saveLabel')}
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                When off, new transcriptions are not saved to history
+                {t('settings.history.saveDesc')}
               </p>
             </div>
             <Toggle
@@ -1405,7 +1430,7 @@ export function Settings() {
 
           {history.length === 0 ? (
             <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-              {historyEnabled ? 'No transcriptions yet' : 'History is off'}
+              {historyEnabled ? t('settings.history.emptyEnabled') : t('settings.history.emptyDisabled')}
             </p>
           ) : (
             <div className="max-h-80 overflow-y-auto rounded-md border border-gray-200 dark:border-gray-700">
@@ -1424,55 +1449,118 @@ export function Settings() {
           <UpdateSection />
         </div>
 
+        {/* Language Section — UI/tray/notification locale.
+            'system' resolves from navigator.language at runtime (fr-* → fr, else en).
+            Saving the choice emits 'settings-changed' which the main.tsx listener
+            picks up to call i18n.changeLanguage across every open window. */}
+        <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+            {t('settings.language.title')}
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            {t('settings.language.desc')}
+          </p>
+          <div className="space-y-2">
+            {([
+              { value: 'system' as LanguageChoice, label: t('settings.language.optionSystem') },
+              { value: 'en' as LanguageChoice, label: t('settings.language.optionEnglish') },
+              { value: 'fr' as LanguageChoice, label: t('settings.language.optionFrench') },
+            ]).map((opt) => (
+              <button
+                key={opt.value}
+                onClick={async () => {
+                  if (language === opt.value) return;
+                  try {
+                    await saveSettings({ language: opt.value });
+                    trackEvent('setting_changed', {
+                      setting_name: 'language',
+                      new_value: opt.value,
+                    });
+                  } catch (error) {
+                    console.error('Failed to save language setting:', error);
+                  }
+                }}
+                disabled={loading}
+                className={`
+                  w-full flex items-center px-4 py-3 rounded-lg border-2 transition-all text-left
+                  ${language === opt.value
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                  }
+                `}
+              >
+                <span className={`
+                  w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 mr-3
+                  ${language === opt.value
+                    ? 'border-blue-500'
+                    : 'border-gray-400 dark:border-gray-500'
+                  }
+                `}>
+                  {language === opt.value && (
+                    <span className="w-2 h-2 rounded-full bg-blue-500" />
+                  )}
+                </span>
+                <span className={`text-sm font-medium ${
+                  language === opt.value
+                    ? 'text-blue-700 dark:text-blue-300'
+                    : 'text-gray-900 dark:text-white'
+                }`}>
+                  {opt.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+
         {/* Reset Section */}
         <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Reset
+            {t('settings.reset.title')}
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            Reset all settings to their default values and clear the dictionary.
+            {t('settings.reset.desc')}
           </p>
           <button
             onClick={() => setShowResetConfirm(true)}
             className="px-4 py-2 text-sm font-medium text-red-600 border border-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
           >
-            Reset to Defaults
+            {t('settings.reset.button')}
           </button>
         </section>
 
         {/* Confirmation Dialogs */}
         <ConfirmDialog
           open={showClearConfirm}
-          title="Clear Dictionary"
-          message="Are you sure you want to delete all learned corrections? This cannot be undone."
-          confirmText="Clear All"
+          title={t('dialog.clearDictionary.title')}
+          message={t('dialog.clearDictionary.message')}
+          confirmText={t('dialog.clearDictionary.confirm')}
           onConfirm={handleClearDictionary}
           onCancel={() => setShowClearConfirm(false)}
         />
 
         <ConfirmDialog
           open={showResetConfirm}
-          title="Reset to Defaults"
-          message="Are you sure you want to reset all settings and clear the dictionary? This cannot be undone."
-          confirmText="Reset"
+          title={t('dialog.reset.title')}
+          message={t('dialog.reset.message')}
+          confirmText={t('dialog.reset.confirm')}
           onConfirm={handleResetDefaults}
           onCancel={() => setShowResetConfirm(false)}
         />
 
         <ConfirmDialog
           open={showClearHistoryConfirm}
-          title="Clear History"
-          message="Are you sure you want to delete all transcription history? This cannot be undone."
-          confirmText="Clear History"
+          title={t('dialog.clearHistory.title')}
+          message={t('dialog.clearHistory.message')}
+          confirmText={t('dialog.clearHistory.confirm')}
           onConfirm={handleClearHistory}
           onCancel={() => setShowClearHistoryConfirm(false)}
         />
 
         <ConfirmDialog
           open={showDeactivateConfirm}
-          title="Deactivate License"
-          message="This will remove TTP Pro from this device and free an activation slot. You can re-activate any time with the same license key."
-          confirmText="Deactivate"
+          title={t('dialog.deactivateLicense.title')}
+          message={t('dialog.deactivateLicense.message')}
+          confirmText={t('dialog.deactivateLicense.confirm')}
           onConfirm={handleDeactivateLicense}
           onCancel={() => setShowDeactivateConfirm(false)}
         />

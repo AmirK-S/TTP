@@ -3,6 +3,7 @@
 
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useTranslation } from 'react-i18next';
 
 interface Props {
   onSuccess: () => void;
@@ -13,6 +14,7 @@ interface Props {
  * Groq is the only required key (used for transcription + text polish).
  */
 export function ApiKeyForm({ onSuccess }: Props) {
+  const { t } = useTranslation();
   const [groqKey, setGroqKey] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,11 +24,11 @@ export function ApiKeyForm({ onSuccess }: Props) {
     setError('');
 
     if (!groqKey.trim()) {
-      setError('Groq API key is required');
+      setError(t('form.apiKey.errorRequired'));
       return;
     }
     if (!groqKey.startsWith('gsk_')) {
-      setError('Groq API key should start with "gsk_"');
+      setError(t('form.apiKey.errorFormat'));
       return;
     }
 
@@ -36,7 +38,13 @@ export function ApiKeyForm({ onSuccess }: Props) {
       await invoke('set_groq_api_key', { key: groqKey });
       onSuccess();
     } catch (err) {
-      setError(String(err));
+      // Rust may return a translation key like "error.api_invalid_key";
+      // translate those defensively, otherwise show as-is.
+      setError(
+        typeof err === 'string' && (err.startsWith('error.') || err.startsWith('permission.'))
+          ? t(err)
+          : String(err),
+      );
     } finally {
       setLoading(false);
     }
@@ -50,21 +58,21 @@ export function ApiKeyForm({ onSuccess }: Props) {
           htmlFor="groq-key"
           className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
         >
-          Groq API Key <span className="text-red-500">*</span>
+          {t('form.apiKey.label')} <span className="text-red-500">*</span>
         </label>
         <input
           id="groq-key"
           type="password"
           value={groqKey}
           onChange={(e) => setGroqKey(e.target.value)}
-          placeholder="gsk_..."
+          placeholder={t('form.apiKey.placeholder')}
           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
           autoComplete="off"
           autoFocus
         />
         <ol className="mt-2 text-xs text-gray-500 dark:text-gray-400 list-decimal pl-5 space-y-1">
           <li>
-            Sign up at{' '}
+            {t('form.apiKey.stepSignup')}{' '}
             <a
               href="https://console.groq.com"
               className="text-blue-500 hover:text-blue-600 underline"
@@ -73,20 +81,19 @@ export function ApiKeyForm({ onSuccess }: Props) {
             >
               console.groq.com
             </a>{' '}
-            (free, no credit card)
+            {t('form.apiKey.stepSignupSuffix')}
           </li>
-          <li>Click "API Keys" → "Create API Key"</li>
+          <li>{t('form.apiKey.stepCreate')}</li>
           <li>
-            Copy the key starting with{' '}
+            {t('form.apiKey.stepCopy')}{' '}
             <code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-mono text-[11px]">
               gsk_
             </code>{' '}
-            and paste it above
+            {t('form.apiKey.stepCopySuffix')}
           </li>
         </ol>
         <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-          Groq's free tier covers tens of thousands of transcriptions per month — you'll never see
-          a bill from typical usage.
+          {t('form.apiKey.helpFreeTier')}
         </p>
       </div>
 
@@ -99,7 +106,7 @@ export function ApiKeyForm({ onSuccess }: Props) {
         disabled={loading || !groqKey}
         className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors disabled:cursor-not-allowed"
       >
-        {loading ? 'Validating...' : 'Get Started'}
+        {loading ? t('common.validating') : t('common.getStarted')}
       </button>
     </form>
   );
