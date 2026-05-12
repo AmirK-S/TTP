@@ -81,6 +81,7 @@ const KCG_HID_EVENT_TAP: u32 = 0;
 const KCG_TAIL_APPEND_EVENT_TAP: u32 = 1;
 const KCG_EVENT_TAP_OPTION_LISTEN_ONLY: u32 = 1;
 const KCG_EVENT_KEY_DOWN: u32 = 10;
+const KCG_EVENT_KEY_UP: u32 = 11;
 const KCG_KEYBOARD_EVENT_KEYCODE: u32 = 9;
 
 /// Whether Fn key is currently held (raw, before debounce)
@@ -101,11 +102,17 @@ static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 /// Whether Fn key monitoring is active
 static FN_MONITORING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
-/// Timestamp (ms) of the most recent F-key (F1..F12) press observed via NSEvent.
-/// The timer-based Fn detector rejects the Function modifier if an F-key fired
-/// within FKEY_VETO_WINDOW_MS — this is what stops F3/F6/etc. from being
-/// misread as "Fn held" on Macs that send the Function flag for system F-keys.
+/// Timestamp (ms) of the most recent F-key (F1..F12) event (down or up).
+/// The timer-based Fn detector rejects the Function modifier for
+/// FKEY_VETO_WINDOW_MS after this stamp — covers the brief window where the
+/// system overlay keeps the Function flag alive after the key was released.
 static LAST_FKEY_PRESS_MS: AtomicU64 = AtomicU64::new(0);
+
+/// True while a system F-key (F1..F12) is currently physically held down.
+/// While this is true, the Fn detector rejects the Function modifier
+/// unconditionally — no time window can be too short for a held key.
+/// Cleared by the KEY_UP event (or by a stale-keepalive check, see below).
+static FKEY_CURRENTLY_HELD: AtomicBool = AtomicBool::new(false);
 
 /// Double-tap detection threshold in milliseconds
 const DOUBLE_TAP_THRESHOLD_MS: u64 = 300;
@@ -124,10 +131,14 @@ const NS_MODIFIER_KEY_MASK: u64 = 0x1E0000; // Shift|Ctrl|Option|Command
 /// Debounce: Fn must be held for this long before recording starts (ms)
 const FN_DEBOUNCE_MS: u64 = 150;
 
-/// How long after an F-key press to ignore Function-flag events.
-/// Covers the brief window where the OS still reports the Function modifier
-/// after a system F-key (Mission Control, brightness, etc.) was tapped.
-const FKEY_VETO_WINDOW_MS: u64 = 250;
+/// How long after the LAST F-key event (down OR up) to ignore Function-flag
+/// events. macOS holds the Function modifier flag for the duration of system
+/// overlays (Mission Control, Launchpad, brightness HUD, etc.) — sometimes
+/// well past 250 ms — and at 250 ms the veto would expire while the flag was
+/// still set, mis-firing recording. We extend to 1500 ms and also re-stamp on
+/// key-up so a user tapping the F-key once gets the full window after release,
+/// not after press.
+const FKEY_VETO_WINDOW_MS: u64 = 1500;
 
 /// Carbon kVK_F1..kVK_F12 keycodes — any of these arriving as keyDown means
 /// the user pressed a system F-key, not the physical Fn/Globe key.
@@ -185,8 +196,16 @@ fn is_physical_fn_key(flags: u64) -> bool {
         return false;
     }
 
-    // If a system F-key (Mission Control, brightness, etc.) was just pressed,
-    // the Function flag we're seeing belongs to it — not the physical Fn key.
+    // If a system F-key (Mission Control, brightness, etc.) is currently
+    // held down, the Function flag belongs to it — reject unconditionally,
+    // even if the user has been holding F3 for 30 seconds.
+    if FKEY_CURRENTLY_HELD.load(Ordering::Relaxed) {
+        return false;
+    }
+
+    // After the F-key is released, give the system overlay a generous window
+    // to drop its Function flag. macOS holds it longer than you'd think
+    // (Mission Control HUD, Launchpad transition, etc.).
     let last_fkey = LAST_FKEY_PRESS_MS.load(Ordering::Relaxed);
     if last_fkey > 0 && now_ms().saturating_sub(last_fkey) < FKEY_VETO_WINDOW_MS {
         return false;
@@ -299,7 +318,9 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
         // Launchpad / DND BEFORE they reach NSEvent global monitors. Without
         // this, those keys hold the Function flag for the duration of the
         // system overlay and falsely trigger Fn recording.
-        let mask: u64 = 1u64 << KCG_EVENT_KEY_DOWN;
+        // Listen for both down AND up — the callback re-stamps LAST_FKEY_PRESS_MS
+        // on either, so the veto stays armed for the full release window.
+        let mask: u64 = (1u64 << KCG_EVENT_KEY_DOWN) | (1u64 << KCG_EVENT_KEY_UP);
         let tap = CGEventTapCreate(
             KCG_HID_EVENT_TAP,
             KCG_TAIL_APPEND_EVENT_TAP,
@@ -322,14 +343,22 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
 
 unsafe extern "C" fn fkey_tap_callback(
     _proxy: CGEventTapProxy,
-    _event_type: u32,
+    event_type: u32,
     event: CGEventRef,
     _user_info: *mut std::ffi::c_void,
 ) -> CGEventRef {
     if FN_MONITORING_ACTIVE.load(Ordering::Relaxed) {
         let keycode = CGEventGetIntegerValueField(event, KCG_KEYBOARD_EVENT_KEYCODE) as u16;
         if is_fkey_keycode(keycode) {
+            // Re-stamp on every event (down, up, auto-repeat) so the release
+            // window starts from the most recent activity.
             LAST_FKEY_PRESS_MS.store(now_ms(), Ordering::Relaxed);
+
+            if event_type == KCG_EVENT_KEY_DOWN {
+                FKEY_CURRENTLY_HELD.store(true, Ordering::Relaxed);
+            } else if event_type == KCG_EVENT_KEY_UP {
+                FKEY_CURRENTLY_HELD.store(false, Ordering::Relaxed);
+            }
         }
     }
     event
