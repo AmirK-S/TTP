@@ -492,6 +492,35 @@ export function Settings() {
     isAutostartEnabled().then(setAutostartOn).catch(() => {});
   }, []);
 
+  // Proactive Input Monitoring check whenever the saved shortcut is FnKey.
+  // The Fn hotkey relies on a CGEventTap that silently no-ops when Input
+  // Monitoring permission isn't granted — without this effect the user has
+  // no in-app cue that anything is wrong until they explicitly re-click the
+  // Fn radio. Now the warning + deep-link button show as soon as Settings
+  // opens with a missing permission.
+  useEffect(() => {
+    if (shortcut !== 'FnKey') {
+      // Clear any stale Input Monitoring warning if the user switched off Fn.
+      if (shortcutError.includes('Input Monitoring')) {
+        setShortcutError('');
+      }
+      return;
+    }
+    invoke<boolean>('check_input_monitoring')
+      .then((hasPermission) => {
+        if (!hasPermission) {
+          setShortcutError(
+            'Input Monitoring permission required for Fn key. Go to System Settings → Privacy & Security → Input Monitoring and enable TTP, then restart the app.'
+          );
+        } else if (shortcutError.includes('Input Monitoring')) {
+          // Permission has been re-granted while Settings was open — clear.
+          setShortcutError('');
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shortcut]);
+
   const handleAutostartToggle = async (enabled: boolean) => {
     try {
       if (enabled) await enableAutostart(); else await disableAutostart();
