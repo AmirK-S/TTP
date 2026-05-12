@@ -1032,9 +1032,24 @@ export function Settings() {
           </div>
 
           {shortcutError && (
-            <p className="text-sm text-red-600 dark:text-red-400 mt-3">
-              {shortcutError}
-            </p>
+            <div className="mt-3 space-y-2">
+              <p className="text-sm text-red-600 dark:text-red-400">
+                {shortcutError}
+              </p>
+              {shortcutError.includes('Input Monitoring') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    invoke('open_input_monitoring_settings').catch((err) => {
+                      console.error('open_input_monitoring_settings failed', err);
+                    });
+                  }}
+                  className="inline-flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-300 hover:bg-red-500/20 transition-colors"
+                >
+                  Open Input Monitoring settings
+                </button>
+              )}
+            </div>
           )}
 
           {shortcutSuccess && (

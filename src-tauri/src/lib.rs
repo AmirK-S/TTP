@@ -242,6 +242,24 @@ fn reset_to_idle(app: AppHandle) {
     }
 }
 
+/// Open macOS System Settings directly on the Input Monitoring page so the
+/// user can grant the permission without hunting through nested panes.
+///
+/// Hardcoded URL — we deliberately don't expose a generic `open_url` IPC
+/// (would let any compromised JS open arbitrary system schemes). The
+/// `x-apple.systempreferences:` scheme is the official macOS deep-link
+/// protocol for jumping to a specific Privacy & Security pane.
+#[tauri::command]
+async fn open_input_monitoring_settings(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_url(
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
+            None::<&str>,
+        )
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     use std::sync::Arc;
@@ -468,6 +486,7 @@ pub fn run() {
             check_input_monitoring,
             check_input_monitoring_permission,
             request_input_monitoring_permission,
+            open_input_monitoring_settings,
             reset_to_idle,
             check_for_updates_with_channel,
             install_update_with_channel,
