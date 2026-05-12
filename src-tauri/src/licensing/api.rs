@@ -1,8 +1,15 @@
 // TTP - Talk To Paste
 // Lemon Squeezy License API client
+//
+// Errors returned from this module's public functions are translation keys
+// (e.g. "error.license_activation_failed"). The frontend resolves them via
+// i18next. Server-supplied detail (LS error strings, HTTP status, parse
+// failures) is logged via `crate::logging::log_error` rather than surfaced
+// directly to the user.
 
 use super::types::{LicenseStatus, LsResponse};
 use crate::http_client::shared as shared_http;
+use crate::logging::log_error;
 use std::time::Duration;
 
 const ACTIVATE_URL: &str = "https://api.lemonsqueezy.com/v1/licenses/activate";
@@ -23,15 +30,21 @@ pub async fn activate(license_key: &str, instance_name: &str) -> Result<LicenseS
     .await?;
 
     if !response.activated {
-        return Err(human_error(response.error.as_deref(), "Activation failed"));
+        log_error(&format!(
+            "LS activation rejected: {}",
+            response.error.as_deref().unwrap_or("<no detail>")
+        ));
+        return Err("error.license_activation_failed".to_string());
     }
 
-    let instance = response
-        .instance
-        .ok_or_else(|| "Activation succeeded but server returned no instance".to_string())?;
-    let key = response
-        .license_key
-        .ok_or_else(|| "Activation succeeded but server returned no license info".to_string())?;
+    let instance = response.instance.ok_or_else(|| {
+        log_error("LS activation: success flag set but no instance in response");
+        "error.license_activation_failed".to_string()
+    })?;
+    let key = response.license_key.ok_or_else(|| {
+        log_error("LS activation: success flag set but no license_key in response");
+        "error.license_activation_failed".to_string()
+    })?;
 
     Ok(LicenseStatus {
         instance_id: instance.id,
@@ -54,12 +67,17 @@ pub async fn validate(license_key: &str, instance_id: &str) -> Result<LicenseSta
     .await?;
 
     if !response.valid {
-        return Err(human_error(response.error.as_deref(), "License is no longer valid"));
+        log_error(&format!(
+            "LS validation rejected: {}",
+            response.error.as_deref().unwrap_or("<no detail>")
+        ));
+        return Err("error.license_validation_failed".to_string());
     }
 
-    let key = response
-        .license_key
-        .ok_or_else(|| "Validation succeeded but server returned no license info".to_string())?;
+    let key = response.license_key.ok_or_else(|| {
+        log_error("LS validation: valid flag set but no license_key in response");
+        "error.license_validation_failed".to_string()
+    })?;
     let instance_id = response
         .instance
         .map(|i| i.id)
@@ -86,10 +104,11 @@ pub async fn deactivate(license_key: &str, instance_id: &str) -> Result<(), Stri
     .await?;
 
     if !response.deactivated {
-        return Err(human_error(
-            response.error.as_deref(),
-            "Deactivation failed",
+        log_error(&format!(
+            "LS deactivation rejected: {}",
+            response.error.as_deref().unwrap_or("<no detail>")
         ));
+        return Err("error.license_deactivation_failed".to_string());
     }
     Ok(())
 }
@@ -108,38 +127,35 @@ async fn post_form(url: &str, params: &[(&str, &str)]) -> Result<LsResponse, Str
         .await
         .map_err(|e| {
             if e.is_timeout() {
-                "Network timeout — check your internet connection".to_string()
+                log_error(&format!("LS request timeout: {}", e));
+                "error.api_timeout".to_string()
             } else {
-                format!("Network error: {}", e)
+                log_error(&format!("LS network error: {}", e));
+                "error.api_network".to_string()
             }
         })?;
 
     let status = response.status();
-    let body = response
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read response body: {}", e))?;
+    let body = response.text().await.map_err(|e| {
+        log_error(&format!("LS read body failed: {}", e));
+        "error.license_server_error".to_string()
+    })?;
 
     let parsed: LsResponse = serde_json::from_str(&body).map_err(|e| {
-        format!(
-            "Unexpected response from license server (HTTP {}): {}",
+        log_error(&format!(
+            "LS parse failed (HTTP {}): {}",
             status.as_u16(),
             e
-        )
+        ));
+        "error.license_server_error".to_string()
     })?;
 
     if !status.is_success() && parsed.error.is_none() {
-        return Err(format!("License server returned HTTP {}", status.as_u16()));
+        log_error(&format!("LS HTTP error: {}", status.as_u16()));
+        return Err("error.license_server_error".to_string());
     }
 
     Ok(parsed)
-}
-
-fn human_error(server_msg: Option<&str>, fallback: &str) -> String {
-    match server_msg {
-        Some(msg) if !msg.is_empty() => msg.to_string(),
-        _ => fallback.to_string(),
-    }
 }
 
 fn parse_timestamp(value: Option<&str>) -> Option<i64> {

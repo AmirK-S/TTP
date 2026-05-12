@@ -829,13 +829,14 @@ export function Settings() {
         { value: 'Super+J', label: t('settings.recordingTrigger.optionWinJ'), desc: t('settings.recordingTrigger.descNoConflicts'), recommended: false },
       ];
 
-  // The shortcut error string may be either a translation key (from the Rust
-  // backend or from our own internal flags) or a raw human-readable string
-  // (legacy paths still in transition). Translate keys; pass others as-is.
-  const showShortcutError =
-    shortcutError.startsWith('error.') || shortcutError.startsWith('permission.')
-      ? t(shortcutError)
-      : shortcutError;
+  // Translate keys; pass raw human-readable strings through. Used for any error
+  // surfaced from Rust commands or internal flags — Rust now emits translation
+  // keys like 'error.license_key_empty', but legacy paths may still return raw
+  // strings.
+  const translateIfKey = (s: string | null): string =>
+    s && (s.startsWith('error.') || s.startsWith('permission.')) ? t(s) : (s ?? '');
+  const showShortcutError = translateIfKey(shortcutError);
+  const showLicenseError = translateIfKey(licenseError);
   const shortcutErrorIsInputMonitoring =
     shortcutError.includes('Input Monitoring') ||
     shortcutError === 'error.input_monitoring_required';
@@ -963,7 +964,7 @@ export function Settings() {
                   }}
                 />
                 {licenseError && (
-                  <p className="text-xs text-red-600 dark:text-red-400">{licenseError}</p>
+                  <p className="text-xs text-red-600 dark:text-red-400">{showLicenseError}</p>
                 )}
               </div>
               <div className="flex items-center gap-3">
@@ -1014,7 +1015,7 @@ export function Settings() {
                 )}
               </div>
               {licenseError && (
-                <p className="text-xs text-red-600 dark:text-red-400 mb-3">{licenseError}</p>
+                <p className="text-xs text-red-600 dark:text-red-400 mb-3">{showLicenseError}</p>
               )}
               <button
                 onClick={() => setShowDeactivateConfirm(true)}

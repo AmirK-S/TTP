@@ -121,7 +121,7 @@ pub async fn activate_license(
 ) -> Result<LicenseInfo, String> {
     let key = license_key.trim().to_string();
     if key.is_empty() {
-        return Err("License key cannot be empty".to_string());
+        return Err("error.license_key_empty".to_string());
     }
 
     let instance_name = format!("TTP - {}", device_label());
@@ -166,7 +166,7 @@ pub async fn deactivate_license(app: AppHandle) -> Result<(), String> {
     };
 
     let Some(record) = snapshot else {
-        return Err("No license to deactivate".to_string());
+        return Err("error.license_none_to_deactivate".to_string());
     };
 
     if let Err(e) = api::deactivate(&record.license_key, &record.instance_id).await {

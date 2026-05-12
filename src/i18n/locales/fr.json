@@ -46,7 +46,13 @@
     "microphone_permission_denied": "Accès au micro refusé — active-le dans les Réglages Système",
     "microphone_generic": "Erreur micro : {{error}}",
     "audio_stream_interrupted": "Le micro a été pris par une autre app — réessaie",
-    "input_monitoring_required": "Permission Input Monitoring requise pour la touche Fn. Ouvre Réglages Système → Confidentialité et sécurité → Input Monitoring, active TTP, puis redémarre l'app."
+    "input_monitoring_required": "Permission Input Monitoring requise pour la touche Fn. Ouvre Réglages Système → Confidentialité et sécurité → Input Monitoring, active TTP, puis redémarre l'app.",
+    "license_key_empty": "La clé de licence ne peut pas être vide",
+    "license_none_to_deactivate": "Aucune licence à désactiver",
+    "license_activation_failed": "Échec de l'activation — réessaie ou vérifie ta clé",
+    "license_deactivation_failed": "Échec de la désactivation — réessaie",
+    "license_validation_failed": "Échec de la validation — vérifie ta connexion internet",
+    "license_server_error": "Serveur de licence injoignable — réessaie plus tard"
   },
   "progress": {
     "transcribing": "Transcription…",

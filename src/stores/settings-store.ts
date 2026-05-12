@@ -309,7 +309,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       const info = await invoke<LicenseInfo>('activate_license', { licenseKey: key });
       set({ ...applyLicenseInfo(info), licenseError: null });
     } catch (error) {
-      const message = typeof error === 'string' ? error : 'Activation failed';
+      const message = typeof error === 'string' ? error : 'error.license_activation_failed';
       set({ licenseError: message });
       throw error;
     } finally {
@@ -332,7 +332,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         licenseActivationLimit: null,
       });
     } catch (error) {
-      const message = typeof error === 'string' ? error : 'Deactivation failed';
+      const message = typeof error === 'string' ? error : 'error.license_deactivation_failed';
       set({ licenseError: message });
       throw error;
     } finally {
@@ -347,7 +347,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       const info = await invoke<LicenseInfo>('validate_license');
       set({ ...applyLicenseInfo(info), licenseError: null });
     } catch (error) {
-      const message = typeof error === 'string' ? error : 'Validation failed';
+      const message = typeof error === 'string' ? error : 'error.license_validation_failed';
       set({ licenseError: message });
     } finally {
       set({ licenseLoading: false });
