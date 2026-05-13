@@ -62,6 +62,32 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # Detect whether the current package.json version is a beta build (e.g.
+      # "2.0.2-beta.5"). The MSI bundler rejects non-numeric SemVer pre-release
+      # identifiers, so we mirror release.yml's behaviour and skip MSI on
+      # Windows when the version is beta. NSIS .exe still builds and is the
+      # primary Windows distribution channel.
+      - name: Detect beta version
+        id: beta-check
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" =~ -beta\.[0-9]+$ ]]; then
+            echo "is_beta=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_beta=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute build args
+        id: build-args
+        shell: bash
+        run: |
+          ARGS="${{ matrix.args }}"
+          if [[ "${{ matrix.platform }}" == "windows-latest" && "${{ steps.beta-check.outputs.is_beta }}" == "true" ]]; then
+            ARGS="${ARGS:+$ARGS }--bundles nsis"
+          fi
+          echo "args=$ARGS" >> "$GITHUB_OUTPUT"
+
       # Run Rust tests once on macOS — short-circuits the build if something
       # regressed. Skipped on Windows to avoid duplicating the cost.
       - name: Run Rust tests
@@ -76,7 +102,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          args: ${{ matrix.args }}
+          args: ${{ steps.build-args.outputs.args }}
 
       - name: Upload artifacts (macOS)
         if: matrix.platform == 'macos-latest'
