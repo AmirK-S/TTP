@@ -32,6 +32,15 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.0.2-beta.6" => Some(
+            "🌍 TTP now speaks French\n\
+             • Auto-detects your system language at first launch (français on a French macOS, English otherwise)\n\
+             • Switch any time from Settings → Language — every window, the tray menu, and OS notifications all flip together\n\
+             • Tutoiement throughout the French UI, with the same glossary as the landing page\n\
+             • Errors emitted by the Rust backend now flow as translation codes so the pill and notifications speak your language too\n\
+             • Internal: parity check in CI guards against missing translations; <html lang> set for screen-readers\n\
+             • CI: Windows builds no longer blocked by the MSI bundler on beta versions (NSIS .exe still ships)",
+        ),
         "1.8.1" => Some(
             "🚀 Launch polish\n\
              • Onboarding now waits for your Groq API key before closing — no more landing in the app with nothing configured.\n\
