@@ -32,6 +32,11 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.0.2-beta.8" => Some(
+            "🧪 Validation build for the Restart-After-Update fix\n\
+             • No code change — pure version bump used to verify the new LaunchServices-based restart path in beta.7 works end-to-end.\n\
+             • If the \"Restart Now\" button on this update successfully relaunches the app, the fix is confirmed.",
+        ),
         "2.0.2-beta.7" => Some(
             "🛠 Restart-after-update fixed (for real this time)\n\
              • \"Restart Now\" after an update now uses macOS LaunchServices (`open -n -a`) instead of the standard plugin-process relaunch — the old path was silently failing for beta builds: the current process died but the new one never appeared.\n\
