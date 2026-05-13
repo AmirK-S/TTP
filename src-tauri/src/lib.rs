@@ -500,7 +500,14 @@ pub fn run() {
                     {
                         if bundle.starts_with("/Applications/") {
                             let bundle = bundle.to_path_buf();
-                            std::thread::spawn(move || {
+                            // Use Tauri's runtime-attached worker pool rather
+                            // than bare std::thread::spawn. The xattr call
+                            // itself is sync, but spawning on Tauri's runtime
+                            // means any panic/instrumentation lands inside the
+                            // runtime context (sentry breadcrumbs, panic hooks)
+                            // rather than on a detached thread that can't
+                            // unwind cleanly when the app exits.
+                            tauri::async_runtime::spawn_blocking(move || {
                                 let _ = std::process::Command::new("xattr")
                                     .args(["-dr", "com.apple.quarantine"])
                                     .arg(&bundle)

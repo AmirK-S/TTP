@@ -42,8 +42,13 @@ pub fn start_correction_window(app: &AppHandle, pasted_text: String) {
         let polls = (DETECTION_WINDOW_SECS * 1000) / POLL_INTERVAL_MS;
 
         for poll in 0..polls {
-            // Read the current text from the focused UI element
-            let current_text = match tokio::task::spawn_blocking(read_focused_text).await {
+            // Read the current text from the focused UI element. Use Tauri's
+            // async_runtime spawn_blocking so the worker thread is attached
+            // to the same runtime — the bare tokio variant has been observed
+            // to panic with "no reactor running" when the surrounding
+            // tauri::async_runtime::spawn task lands on a thread Tauri
+            // routes differently than tokio's thread-local handle.
+            let current_text = match tauri::async_runtime::spawn_blocking(read_focused_text).await {
                 Ok(Some(text)) => text,
                 Ok(None) => {
                     // Field not readable (user switched app, etc.) — stop polling

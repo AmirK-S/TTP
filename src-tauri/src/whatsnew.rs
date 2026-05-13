@@ -32,6 +32,11 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.0.2-beta.9" => Some(
+            "🔬 Defensive cleanup + symbolicated crash reports\n\
+             • Three remaining raw `tokio::task::spawn_blocking` / `std::thread::spawn` call sites converted to `tauri::async_runtime::spawn_blocking` (paste pipeline, dictionary detection poll, post-update xattr cleanup). May or may not address the recurring `no reactor running` panic — telemetry will tell.\n\
+             • CI now uploads debug symbols (.dSYM/.pdb) to Sentry on every release. Future fatal stacks will resolve to real Rust function names instead of `__mh_execute_header`.",
+        ),
         "2.0.2-beta.8" => Some(
             "🧪 Validation build for the Restart-After-Update fix\n\
              • No code change — pure version bump used to verify the new LaunchServices-based restart path in beta.7 works end-to-end.\n\

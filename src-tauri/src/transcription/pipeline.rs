@@ -697,16 +697,22 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // actually read the pasteboard after Cmd+V.
     let use_direct_typing = final_text.chars().count() <= DIRECT_TYPING_MAX_CHARS;
 
-    // Use spawn_blocking to run sync paste code safely in async context
+    // Use spawn_blocking to run sync paste code safely in async context.
+    // We deliberately use tauri::async_runtime::spawn_blocking instead of the
+    // raw tokio variant because it binds the worker to the same runtime Tauri
+    // is using — bare tokio::task::spawn_blocking has been seen to panic with
+    // "there is no reactor running" on macOS when the call site is somehow
+    // detached from the active runtime (see sounds.rs / audio_monitor.rs
+    // for the same fix pattern).
     let paste_success = if has_accessibility {
         let paste_result = if use_direct_typing {
             let text_for_typing = final_text.clone();
-            tokio::task::spawn_blocking(move || {
+            tauri::async_runtime::spawn_blocking(move || {
                 std::panic::catch_unwind(|| simulate_typing(&text_for_typing))
             })
             .await
         } else {
-            tokio::task::spawn_blocking(|| {
+            tauri::async_runtime::spawn_blocking(|| {
                 std::panic::catch_unwind(|| simulate_paste())
             })
             .await
