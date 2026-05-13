@@ -256,6 +256,62 @@ async fn install_update_with_channel(
     Ok(version)
 }
 
+/// Restart the app after a self-update completes. On macOS we use
+/// `open -n -a <bundle>` instead of `app.restart()` because the standard
+/// Tauri restart relies on an exec/spawn chain that has been silently
+/// failing on freshly-installed beta builds — the old process dies but
+/// the new one never appears (Sentry shows no error; users just see the
+/// app vanish). LaunchServices via `open` handles signature/quarantine/
+/// cache hand-off correctly.
+///
+/// `-n` forces a brand-new instance (without it, LaunchServices sees the
+/// still-running current process and refuses to start a second copy).
+/// We sleep briefly to let LaunchServices register the new app before
+/// the current process exits.
+#[tauri::command]
+fn restart_app_post_update(app: AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let exe = std::env::current_exe()
+            .map_err(|e| format!("current_exe failed: {}", e))?;
+        let bundle = exe
+            .ancestors()
+            .find(|p| p.extension().and_then(|s| s.to_str()) == Some("app"))
+            .ok_or_else(|| "Not running from a .app bundle".to_string())?
+            .to_path_buf();
+
+        let status = std::process::Command::new("open")
+            .arg("-n")
+            .arg("-a")
+            .arg(&bundle)
+            .status()
+            .map_err(|e| format!("`open` command failed to spawn: {}", e))?;
+
+        if !status.success() {
+            return Err(format!(
+                "`open -n -a {}` exited with status {}",
+                bundle.display(),
+                status
+            ));
+        }
+
+        // Give LaunchServices time to register the new process before we die.
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        app.exit(0);
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        // app.restart() triggers a process exit + respawn; on Windows it
+        // works reliably because there's no Gatekeeper to negotiate.
+        app.restart();
+        // Unreachable in practice (restart() ends the process), but keeps
+        // the type checker happy if Tauri's signature changes in future.
+        #[allow(unreachable_code)]
+        Ok(())
+    }
+}
+
 /// Tauri command to reset state to Idle (used when skipping short recordings)
 #[tauri::command]
 fn reset_to_idle(app: AppHandle) {
@@ -525,6 +581,7 @@ pub fn run() {
             request_input_monitoring_permission,
             open_input_monitoring_settings,
             reset_to_idle,
+            restart_app_post_update,
             check_for_updates_with_channel,
             install_update_with_channel,
             check_microphone_permission,

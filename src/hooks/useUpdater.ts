@@ -240,7 +240,18 @@ export function useUpdater(options?: UseUpdaterOptions) {
   }, [scheduleIdleReset]);
 
   const restartApp = useCallback(async () => {
-    await relaunch();
+    // Prefer the Rust-side restart command which uses LaunchServices on
+    // macOS (`open -n -a`) — the plugin-process relaunch flow has been
+    // silently failing on beta builds: the current process dies but
+    // Gatekeeper / LaunchServices won't surface the new one, leaving
+    // users with the app simply gone. The custom command sidesteps the
+    // exec chain entirely.
+    try {
+      await invoke('restart_app_post_update');
+    } catch (e) {
+      console.error('[Updater] restart_app_post_update failed, falling back to plugin-process relaunch:', e);
+      await relaunch();
+    }
   }, []);
 
   const dismiss = useCallback(() => {

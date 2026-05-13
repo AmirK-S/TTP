@@ -32,6 +32,12 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.0.2-beta.7" => Some(
+            "🛠 Restart-after-update fixed (for real this time)\n\
+             • \"Restart Now\" after an update now uses macOS LaunchServices (`open -n -a`) instead of the standard plugin-process relaunch — the old path was silently failing for beta builds: the current process died but the new one never appeared.\n\
+             • Added the missing window:set_title permission so dynamic window titles stop throwing an ACL error on every window mount (Sentry TTP-C).\n\
+             • No new features — pure post-launch cleanup driven by Sentry telemetry.",
+        ),
         "2.0.2-beta.6" => Some(
             "🌍 TTP now speaks French\n\
              • Auto-detects your system language at first launch (français on a French macOS, English otherwise)\n\
