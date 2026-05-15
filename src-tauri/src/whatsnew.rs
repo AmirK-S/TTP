@@ -32,6 +32,11 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.0.6" => Some(
+            "🎯 Usage stats: now at the top + live refresh\n\
+             • Your usage section is now the very first thing in Settings — the about block moved below it.\n\
+             • Stats update automatically when a transcription finishes, no need to close and reopen Settings to see the new count.",
+        ),
         "2.0.5" => Some(
             "📊 Your usage, visible at last\n\
              • New Settings → \"Your usage\" section shows how much you've transcribed: words, characters, and transcriptions for this week, this month, and all time.\n\

@@ -229,11 +229,27 @@ function AnalyticsSection() {
   const { t } = useTranslation();
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
 
-  useEffect(() => {
+  const loadSummary = useCallback(() => {
     invoke<AnalyticsSummary>('get_analytics_summary')
       .then(setSummary)
       .catch((e) => console.error('[Analytics] load failed:', e));
   }, []);
+
+  useEffect(() => {
+    loadSummary();
+  }, [loadSummary]);
+
+  // Re-fetch when a transcription finishes so the panel updates live
+  // without the user having to close + reopen Settings. The pipeline
+  // transitions back to Idle right after `record_transcription` persists
+  // today's bucket, so by the time we re-invoke `get_analytics_summary`
+  // the new data is already on disk. Small delay to let the file write
+  // settle (mirrors the loadHistory/loadUsage pattern below).
+  useTauriEvent<string>('recording-state-changed', (event) => {
+    if (event.payload === 'Idle') {
+      setTimeout(loadSummary, 600);
+    }
+  });
 
   const fmt = (n: number) => n.toLocaleString();
 
@@ -924,6 +940,10 @@ export function Settings() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
       <div className="max-w-lg mx-auto">
+        {/* Your usage — pinned at the top so the first thing the user sees
+            in Settings is their own activity, not the About hero. */}
+        <AnalyticsSection />
+
         {/* Welcome / About */}
         <section className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg shadow-sm p-6 mb-6 text-white">
           <h1 className="text-xl font-bold mb-1">TTP by AmirKS</h1>
@@ -1521,9 +1541,6 @@ export function Settings() {
             </div>
           )}
         </section>
-
-        {/* Analytics Section — local-only usage stats */}
-        <AnalyticsSection />
 
         {/* Update Channel Section — beta opt-in */}
         <UpdateChannelSection />
