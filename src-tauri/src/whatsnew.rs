@@ -32,6 +32,16 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.0.2" => Some(
+            "🎉 TTP 2.0.2\n\
+             • TTP now speaks French — auto-detects your system language, switch any time from Settings → Language. UI, tray menu, and OS notifications all flip together.\n\
+             • Self-update finally relaunches the app cleanly on macOS (was silently failing on betas).\n\
+             • Gatekeeper no longer re-prompts after an update — the quarantine flag is stripped post-install.\n\
+             • Tray icon shows a red dot when Input Monitoring permission is missing — one-click deep link to System Settings.\n\
+             • macOS function keys (F3 / F4 / F6 / Mission Control / Launchpad) can no longer trigger recordings even when held.\n\
+             • Symbolicated crash reports — future panics resolve to real function names instead of raw addresses.\n\
+             • Internal: three remaining Tokio runtime call sites hardened to prevent the \"no reactor running\" panic some users hit on macOS 26.",
+        ),
         "2.0.2-beta.9" => Some(
             "🔬 Defensive cleanup + symbolicated crash reports\n\
              • Three remaining raw `tokio::task::spawn_blocking` / `std::thread::spawn` call sites converted to `tauri::async_runtime::spawn_blocking` (paste pipeline, dictionary detection poll, post-update xattr cleanup). May or may not address the recurring `no reactor running` panic — telemetry will tell.\n\
