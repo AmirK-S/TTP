@@ -212,10 +212,11 @@
       "desc": "Local-only stats from your transcription history. Nothing leaves your machine.",
       "loading": "Loading…",
       "empty": "Start using TTP to see your stats here.",
-      "thisWeek": "This week",
-      "thisMonth": "This month",
+      "thisWeek": "Week",
+      "thisMonth": "Month",
       "allTime": "All time",
       "words": "words",
+      "wordsHint": "words transcribed",
       "transcriptions": "transcriptions",
       "chars": "characters"
     },

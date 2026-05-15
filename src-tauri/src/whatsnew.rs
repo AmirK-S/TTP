@@ -32,6 +32,10 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.0.7" => Some(
+            "🪶 Compact stats row\n\
+             • Your usage section is now a single tight row of three columns (Week / Month / All time) — takes ~1/3 the vertical space of the previous card layout while keeping the same info.",
+        ),
         "2.0.6" => Some(
             "🎯 Usage stats: now at the top + live refresh\n\
              • Your usage section is now the very first thing in Settings — the about block moved below it.\n\

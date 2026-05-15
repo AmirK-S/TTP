@@ -253,49 +253,43 @@ function AnalyticsSection() {
 
   const fmt = (n: number) => n.toLocaleString();
 
-  const StatCard = ({ title, stats }: { title: string; stats: AnalyticsWindowData }) => (
-    <div className="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-4">
-      <h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">
+  const StatCol = ({ title, stats }: { title: string; stats: AnalyticsWindowData }) => (
+    <div className="text-center">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
         {title}
-      </h3>
-      <p className="text-3xl font-bold text-gray-900 dark:text-white leading-tight">
+      </p>
+      <p className="text-xl font-semibold text-gray-900 dark:text-white mt-1 leading-tight">
         {fmt(stats.words)}
       </p>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-        {t('settings.analytics.words')}
+      <p className="text-[11px] text-gray-500 dark:text-gray-400">
+        {fmt(stats.transcriptions)} {t('settings.analytics.transcriptions')}
       </p>
-      <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600 space-y-1">
-        <p className="text-sm text-gray-700 dark:text-gray-300">
-          {fmt(stats.transcriptions)} {t('settings.analytics.transcriptions')}
-        </p>
-        <p className="text-sm text-gray-700 dark:text-gray-300">
-          {fmt(stats.chars)} {t('settings.analytics.chars')}
-        </p>
-      </div>
     </div>
   );
 
   return (
-    <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
-      <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-        {t('settings.analytics.title')}
-      </h2>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        {t('settings.analytics.desc')}
-      </p>
+    <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm px-4 py-3 mb-6">
+      <div className="flex items-baseline justify-between mb-2">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+          {t('settings.analytics.title')}
+        </h2>
+        <span className="text-[10px] text-gray-400 dark:text-gray-500">
+          {t('settings.analytics.wordsHint')}
+        </span>
+      </div>
       {summary === null ? (
-        <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+        <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
           {t('settings.analytics.loading')}
         </p>
       ) : summary.all_time.transcriptions === 0 ? (
-        <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+        <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
           {t('settings.analytics.empty')}
         </p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <StatCard title={t('settings.analytics.thisWeek')} stats={summary.week} />
-          <StatCard title={t('settings.analytics.thisMonth')} stats={summary.month} />
-          <StatCard title={t('settings.analytics.allTime')} stats={summary.all_time} />
+        <div className="grid grid-cols-3 gap-2">
+          <StatCol title={t('settings.analytics.thisWeek')} stats={summary.week} />
+          <StatCol title={t('settings.analytics.thisMonth')} stats={summary.month} />
+          <StatCol title={t('settings.analytics.allTime')} stats={summary.all_time} />
         </div>
       )}
     </section>
