@@ -2,10 +2,11 @@
 // Persisted usage cache (~/.config/ttp/usage.json)
 
 use crate::licensing::TRIAL_DAYS;
-use chrono::{Datelike, Utc};
+use chrono::{Datelike, Duration, NaiveDate, Utc};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -21,6 +22,20 @@ fn machine_hmac_secret() -> [u8; 32] {
 }
 
 type HmacSha256 = Hmac<Sha256>;
+
+/// Per-day usage stats for the in-app analytics panel. One entry per day
+/// that had at least one successful transcription. Stored under a "YYYY-MM-DD"
+/// key in `UsageRecord.daily_stats`. Bumped once per successful pipeline run
+/// from `pipeline.rs`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DailyStats {
+    #[serde(default)]
+    pub transcriptions: u32,
+    #[serde(default)]
+    pub words: u64,
+    #[serde(default)]
+    pub chars: u64,
+}
 
 /// Persisted usage record.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -38,6 +53,10 @@ pub struct UsageRecord {
     /// is granted even if `trial_started_at` is reset by editing the file.
     #[serde(default)]
     pub trial_count: u32,
+    /// Per-day usage stats keyed by "YYYY-MM-DD". BTreeMap keeps keys ordered
+    /// so signature input is deterministic regardless of insertion order.
+    #[serde(default)]
+    pub daily_stats: BTreeMap<String, DailyStats>,
     /// HMAC of the other fields. Mismatch on load = file was edited.
     #[serde(default)]
     pub signature: Option<String>,
@@ -48,13 +67,29 @@ fn usage_path() -> Option<PathBuf> {
 }
 
 fn usage_signature_input(record: &UsageRecord) -> String {
-    format!(
+    let base = format!(
         "{}|{}|{}|{}",
         record.polish_month,
         record.polish_count,
         record.trial_started_at.unwrap_or(0),
         record.trial_count,
-    )
+    );
+    // Backward-compat: pre-2.0.5 records didn't include daily_stats in their
+    // signature input. Keep the old format when daily_stats is empty so an
+    // upgraded user's existing usage.json verifies on first load, then gets
+    // re-signed with the new format the first time they transcribe.
+    if record.daily_stats.is_empty() {
+        return base;
+    }
+    // BTreeMap iteration is key-ordered, so the serialized string is
+    // deterministic regardless of insertion order.
+    let daily = record
+        .daily_stats
+        .iter()
+        .map(|(date, s)| format!("{}:{}:{}:{}", date, s.transcriptions, s.words, s.chars))
+        .collect::<Vec<_>>()
+        .join(";");
+    format!("{}|{}", base, daily)
 }
 
 fn compute_usage_signature(record: &UsageRecord) -> String {
@@ -103,6 +138,10 @@ fn verify_usage_signature(record: &UsageRecord) -> SigVerify {
 pub fn current_month_key() -> String {
     let now = Utc::now();
     format!("{:04}-{:02}", now.year(), now.month())
+}
+
+fn current_day_key() -> String {
+    Utc::now().format("%Y-%m-%d").to_string()
 }
 
 pub fn load_usage() -> UsageRecord {
@@ -215,4 +254,105 @@ pub fn trial_days_left(record: &UsageRecord) -> i64 {
     let elapsed_secs = Utc::now().timestamp().saturating_sub(started);
     let elapsed_days = elapsed_secs / 86_400;
     (TRIAL_DAYS - elapsed_days).max(0)
+}
+
+/// Record a successful transcription for today's date bucket. Best-effort:
+/// failures to persist are logged but don't disrupt the pipeline (the
+/// transcription already completed, the user got their text).
+pub fn record_transcription(words: u32, chars: u32) {
+    let mut record = load_usage();
+    let today = current_day_key();
+    let entry = record.daily_stats.entry(today).or_default();
+    entry.transcriptions = entry.transcriptions.saturating_add(1);
+    entry.words = entry.words.saturating_add(words as u64);
+    entry.chars = entry.chars.saturating_add(chars as u64);
+    if let Err(e) = save_usage(&record) {
+        eprintln!("[Usage] Failed to persist daily transcription stats: {}", e);
+    }
+}
+
+/// Aggregated stats for a given time window. Counts are summed across all
+/// daily buckets that fall inside the window (inclusive of both endpoints).
+#[derive(Debug, Clone, Serialize)]
+pub struct AnalyticsWindow {
+    pub transcriptions: u32,
+    pub words: u64,
+    pub chars: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AnalyticsSummary {
+    pub week: AnalyticsWindow,
+    pub month: AnalyticsWindow,
+    pub all_time: AnalyticsWindow,
+    /// Last 30 daily buckets ordered by date ascending. Sparse: only days
+    /// with at least one transcription are present.
+    pub daily: Vec<DailyPoint>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DailyPoint {
+    pub date: String,
+    pub transcriptions: u32,
+    pub words: u64,
+    pub chars: u64,
+}
+
+fn empty_window() -> AnalyticsWindow {
+    AnalyticsWindow {
+        transcriptions: 0,
+        words: 0,
+        chars: 0,
+    }
+}
+
+fn add_to_window(window: &mut AnalyticsWindow, stats: &DailyStats) {
+    window.transcriptions = window.transcriptions.saturating_add(stats.transcriptions);
+    window.words = window.words.saturating_add(stats.words);
+    window.chars = window.chars.saturating_add(stats.chars);
+}
+
+/// Aggregate the daily buckets into rolling-window totals + a 30-day series.
+pub fn analytics_summary() -> AnalyticsSummary {
+    let record = load_usage();
+    let today = Utc::now().date_naive();
+    let week_start = today - Duration::days(6);
+    let month_start = NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap_or(today);
+    let chart_start = today - Duration::days(29);
+
+    let mut week = empty_window();
+    let mut month = empty_window();
+    let mut all_time = empty_window();
+    let mut daily = Vec::new();
+
+    for (date_key, stats) in record.daily_stats.iter() {
+        let parsed = match NaiveDate::parse_from_str(date_key, "%Y-%m-%d") {
+            Ok(d) => d,
+            // Skip malformed entries silently — we never want analytics to
+            // panic, and a bad key is unrecoverable but harmless.
+            Err(_) => continue,
+        };
+        add_to_window(&mut all_time, stats);
+        if parsed >= month_start && parsed <= today {
+            add_to_window(&mut month, stats);
+        }
+        if parsed >= week_start && parsed <= today {
+            add_to_window(&mut week, stats);
+        }
+        if parsed >= chart_start && parsed <= today {
+            daily.push(DailyPoint {
+                date: date_key.clone(),
+                transcriptions: stats.transcriptions,
+                words: stats.words,
+                chars: stats.chars,
+            });
+        }
+    }
+
+    AnalyticsSummary {
+        week,
+        month,
+        all_time,
+        daily,
+    }
 }

@@ -206,6 +206,86 @@ const HistoryRow = memo(function HistoryRow({ entry }: { entry: HistoryEntry }) 
  * dialog is acceptable for an admin-style setting; promoting it to the
  * shared ConfirmDialog is a TODO.
  */
+interface AnalyticsWindowData {
+  transcriptions: number;
+  words: number;
+  chars: number;
+}
+
+interface AnalyticsSummary {
+  week: AnalyticsWindowData;
+  month: AnalyticsWindowData;
+  all_time: AnalyticsWindowData;
+  daily: Array<{ date: string; transcriptions: number; words: number; chars: number }>;
+}
+
+/**
+ * Local-only analytics panel — pulls aggregated counts from usage.json
+ * via `get_analytics_summary`. No network, no third-party plugin (we
+ * dropped the one that crashed). User sees their own usage; nothing
+ * leaves the machine.
+ */
+function AnalyticsSection() {
+  const { t } = useTranslation();
+  const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
+
+  useEffect(() => {
+    invoke<AnalyticsSummary>('get_analytics_summary')
+      .then(setSummary)
+      .catch((e) => console.error('[Analytics] load failed:', e));
+  }, []);
+
+  const fmt = (n: number) => n.toLocaleString();
+
+  const StatCard = ({ title, stats }: { title: string; stats: AnalyticsWindowData }) => (
+    <div className="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-4">
+      <h3 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">
+        {title}
+      </h3>
+      <p className="text-3xl font-bold text-gray-900 dark:text-white leading-tight">
+        {fmt(stats.words)}
+      </p>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+        {t('settings.analytics.words')}
+      </p>
+      <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600 space-y-1">
+        <p className="text-sm text-gray-700 dark:text-gray-300">
+          {fmt(stats.transcriptions)} {t('settings.analytics.transcriptions')}
+        </p>
+        <p className="text-sm text-gray-700 dark:text-gray-300">
+          {fmt(stats.chars)} {t('settings.analytics.chars')}
+        </p>
+      </div>
+    </div>
+  );
+
+  return (
+    <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        {t('settings.analytics.title')}
+      </h2>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+        {t('settings.analytics.desc')}
+      </p>
+      {summary === null ? (
+        <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+          {t('settings.analytics.loading')}
+        </p>
+      ) : summary.all_time.transcriptions === 0 ? (
+        <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+          {t('settings.analytics.empty')}
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <StatCard title={t('settings.analytics.thisWeek')} stats={summary.week} />
+          <StatCard title={t('settings.analytics.thisMonth')} stats={summary.month} />
+          <StatCard title={t('settings.analytics.allTime')} stats={summary.all_time} />
+        </div>
+      )}
+    </section>
+  );
+}
+
 function UpdateChannelSection() {
   const { t } = useTranslation();
   const { useBetaChannel, saveSettings, loading } = useSettingsStore();
@@ -1441,6 +1521,9 @@ export function Settings() {
             </div>
           )}
         </section>
+
+        {/* Analytics Section — local-only usage stats */}
+        <AnalyticsSection />
 
         {/* Update Channel Section — beta opt-in */}
         <UpdateChannelSection />

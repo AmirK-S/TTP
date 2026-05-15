@@ -207,6 +207,18 @@
       "emptyEnabled": "Pas encore de transcriptions",
       "emptyDisabled": "L'historique est désactivé"
     },
+    "analytics": {
+      "title": "Tes statistiques",
+      "desc": "Stats locales calculées depuis ton historique de transcription. Rien ne sort de ta machine.",
+      "loading": "Chargement…",
+      "empty": "Utilise TTP pour voir tes stats ici.",
+      "thisWeek": "Cette semaine",
+      "thisMonth": "Ce mois",
+      "allTime": "Total à vie",
+      "words": "mots",
+      "transcriptions": "transcriptions",
+      "chars": "caractères"
+    },
     "updateChannel": {
       "title": "Canal de mise à jour",
       "betaBadge": "Beta",

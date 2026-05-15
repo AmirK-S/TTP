@@ -802,13 +802,16 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         }
     }
 
-    // Analytics: track successful transcription
-    crate::telemetry::analytics::track(app, "transcription_success", Some(serde_json::json!({
-        "duration_seconds": pipeline_start.elapsed().as_secs_f64(),
-        "word_count": final_text.split_whitespace().count(),
-        "polish_enabled": settings.ai_polish_enabled.to_string(),
-        "input_mode": input_mode
-    })));
+    // Record the successful transcription in the local daily-stats bucket
+    // so the in-app Analytics section can show "this week / this month".
+    // Local-only — no network. Capped at u32 to keep the on-disk payload
+    // bounded; even a power user shouldn't dent that ceiling per day.
+    let word_count = final_text.split_whitespace().count();
+    let char_count = final_text.chars().count();
+    crate::usage::record_transcription(
+        word_count.try_into().unwrap_or(u32::MAX),
+        char_count.try_into().unwrap_or(u32::MAX),
+    );
 
     // Clean up audio files after processing
     let _ = std::fs::remove_file(&audio_path);

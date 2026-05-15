@@ -32,6 +32,12 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.0.5" => Some(
+            "📊 Your usage, visible at last\n\
+             • New Settings → \"Your usage\" section shows how much you've transcribed: words, characters, and transcriptions for this week, this month, and all time.\n\
+             • 100% local — stats are computed from your existing transcription history, nothing leaves your machine.\n\
+             • Starts counting from this update; older transcriptions aren't backfilled.",
+        ),
         "2.0.4" => Some(
             "🛡 Crash class eliminated\n\
              • Removed the third-party analytics plugin that was the root cause of a recurring \"no reactor running\" panic seen since v2.0.2-beta.5 (Sentry TTP-A/B/D/E). Symbolicated stack finally fingered it: the plugin's background flush task called reqwest from outside a Tokio runtime context.\n\

@@ -207,6 +207,18 @@
       "emptyEnabled": "No transcriptions yet",
       "emptyDisabled": "History is off"
     },
+    "analytics": {
+      "title": "Your usage",
+      "desc": "Local-only stats from your transcription history. Nothing leaves your machine.",
+      "loading": "Loading…",
+      "empty": "Start using TTP to see your stats here.",
+      "thisWeek": "This week",
+      "thisMonth": "This month",
+      "allTime": "All time",
+      "words": "words",
+      "transcriptions": "transcriptions",
+      "chars": "characters"
+    },
     "updateChannel": {
       "title": "Update Channel",
       "betaBadge": "Beta",

@@ -45,7 +45,7 @@ use recording::{get_recordings_dir, RecordingContext};
 use settings::{get_settings, reset_settings, set_settings, open_settings_window};
 use state::AppState;
 use transcription::process_audio;
-use usage::get_usage_stats;
+use usage::{get_analytics_summary, get_usage_stats};
 use whatsnew::{check_whats_new, dismiss_whats_new};
 use std::sync::Mutex;
 #[cfg(target_os = "macos")]
@@ -614,6 +614,7 @@ pub fn run() {
             is_pro,
             get_license_info,
             get_usage_stats,
+            get_analytics_summary,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

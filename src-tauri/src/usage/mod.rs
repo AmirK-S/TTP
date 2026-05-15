@@ -4,8 +4,9 @@
 mod store;
 
 pub use store::{
-    UsageRecord, current_month_key, load_usage, polish_count_this_month, record_polish_success,
-    save_usage, start_trial_if_needed, trial_days_left, trial_started_at,
+    AnalyticsSummary, UsageRecord, analytics_summary, current_month_key, load_usage,
+    polish_count_this_month, record_polish_success, record_transcription, save_usage,
+    start_trial_if_needed, trial_days_left, trial_started_at,
 };
 
 use serde::Serialize;
@@ -50,6 +51,14 @@ pub fn get_usage_stats() -> UsageStats {
         history_count: crate::history::get_history().len(),
         history_limit_free: licensing::FREE_HISTORY_LIMIT,
     }
+}
+
+/// Exposed to the frontend so the Settings → Analytics section can render
+/// rolling-window totals (this week, this month, all time) plus a sparse
+/// daily series for the last 30 days. Pure read of `usage.json`, no network.
+#[tauri::command]
+pub fn get_analytics_summary() -> AnalyticsSummary {
+    analytics_summary()
 }
 
 /// Initialize trial on first launch (idempotent).
