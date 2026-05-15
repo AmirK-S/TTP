@@ -226,7 +226,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 // button uses so Gatekeeper doesn't block the relaunch.
                 let app = app.clone();
                 tauri::async_runtime::spawn_blocking(move || {
-                    let _ = crate::restart_app_post_update(app);
+                    let _ = crate::relaunch_app_via_launchservices(app);
                 });
             }
             _ => {}

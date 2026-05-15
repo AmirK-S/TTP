@@ -256,18 +256,6 @@ async fn install_update_with_channel(
     Ok(version)
 }
 
-/// Restart the app after a self-update completes. On macOS we use
-/// `open -n -a <bundle>` instead of `app.restart()` because the standard
-/// Tauri restart relies on an exec/spawn chain that has been silently
-/// failing on freshly-installed beta builds — the old process dies but
-/// the new one never appears (Sentry shows no error; users just see the
-/// app vanish). LaunchServices via `open` handles signature/quarantine/
-/// cache hand-off correctly.
-///
-/// `-n` forces a brand-new instance (without it, LaunchServices sees the
-/// still-running current process and refuses to start a second copy).
-/// We sleep briefly to let LaunchServices register the new app before
-/// the current process exits.
 /// Called by the JS side after a silent background download + install
 /// completes. The .app bundle on disk has already been replaced; this
 /// command records the version that's waiting so the tray can surface a
@@ -280,8 +268,24 @@ fn mark_update_ready(app: AppHandle, version: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-pub fn restart_app_post_update(app: AppHandle) -> Result<(), String> {
+/// Restart the app after a self-update completes. On macOS we use
+/// `open -n -a <bundle>` instead of `app.restart()` because the standard
+/// Tauri restart relies on an exec/spawn chain that has been silently
+/// failing on freshly-installed beta builds — the old process dies but
+/// the new one never appears (Sentry shows no error; users just see the
+/// app vanish). LaunchServices via `open` handles signature/quarantine/
+/// cache hand-off correctly.
+///
+/// `-n` forces a brand-new instance (without it, LaunchServices sees the
+/// still-running current process and refuses to start a second copy).
+/// We sleep briefly to let LaunchServices register the new app before
+/// the current process exits.
+///
+/// Kept as a plain `pub fn` (not a `#[tauri::command]`) so other in-process
+/// modules — e.g. the tray menu's "Install update" handler — can call it
+/// directly without going through IPC. The `#[tauri::command]` wrapper
+/// below just forwards to this so both call paths share the same code.
+pub fn relaunch_app_via_launchservices(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let exe = std::env::current_exe()
@@ -322,6 +326,11 @@ pub fn restart_app_post_update(app: AppHandle) -> Result<(), String> {
         #[allow(unreachable_code)]
         Ok(())
     }
+}
+
+#[tauri::command]
+fn restart_app_post_update(app: AppHandle) -> Result<(), String> {
+    relaunch_app_via_launchservices(app)
 }
 
 /// Tauri command to reset state to Idle (used when skipping short recordings)
