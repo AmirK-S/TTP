@@ -32,6 +32,12 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.0.4" => Some(
+            "🛡 Crash class eliminated\n\
+             • Removed the third-party analytics plugin that was the root cause of a recurring \"no reactor running\" panic seen since v2.0.2-beta.5 (Sentry TTP-A/B/D/E). Symbolicated stack finally fingered it: the plugin's background flush task called reqwest from outside a Tokio runtime context.\n\
+             • Crash reporting via Sentry is unaffected — only product analytics were removed (nobody was looking at them anyway).\n\
+             • One fewer dependency, one fewer HTTP endpoint, one fewer surface for future bugs.",
+        ),
         "2.0.3" => Some(
             "🤫 Silent auto-updates\n\
              • TTP now downloads and installs updates in the background — no more buried prompts you have to dig through Settings to find.\n\

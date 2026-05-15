@@ -34,7 +34,6 @@
     "autostart:allow-disable",
     "autostart:allow-is-enabled",
     "sentry:default",
-    "aptabase:allow-track-event",
     {
       "identifier": "http:default",
       "allow": [
@@ -42,8 +41,7 @@
         { "url": "https://github.com/*" },
         { "url": "https://api.github.com/*" },
         { "url": "https://*.ingest.sentry.io/*" },
-        { "url": "https://*.ingest.de.sentry.io/*" },
-        { "url": "https://*.aptabase.com/*" }
+        { "url": "https://*.ingest.de.sentry.io/*" }
       ]
     }
   ]

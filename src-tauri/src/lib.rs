@@ -422,26 +422,10 @@ pub fn run() {
             None,
         ));
 
-    // Note: Aptabase plugin is registered inside setup() because it requires
-    // a Tokio runtime context for HTTP client creation (which doesn't exist yet here).
-
     builder
         .manage(Mutex::new(AppState::default()))
         .manage(Mutex::new(RecordingContext::default()))
         .setup(move |app| {
-            // Register Aptabase analytics plugin
-            // Must be inside setup AND within a Tokio runtime context because
-            // the plugin spawns a polling task via tokio::spawn during init.
-            if telemetry_active {
-                let handle = app.handle().clone();
-                tauri::async_runtime::block_on(async move {
-                    let _ = handle.plugin(
-                        tauri_plugin_aptabase::Builder::new(telemetry::analytics::APTABASE_APP_KEY).build(),
-                    );
-                    handle.manage(telemetry::analytics::TelemetryActive);
-                });
-            }
-
             // Initialize license state (loads cached license + kicks off background refresh)
             licensing::init(app.handle());
 
@@ -637,12 +621,6 @@ pub fn run() {
             match event {
                 tauri::RunEvent::Ready { .. } => {
                     telemetry::analytics::track(handler, "app_started", None);
-                }
-                tauri::RunEvent::Exit { .. } => {
-                    if telemetry_active {
-                        use tauri_plugin_aptabase::EventTracker;
-                        handler.flush_events_blocking();
-                    }
                 }
                 _ => {}
             }
