@@ -1,6 +1,6 @@
 [package]
 name = "ttp"
-version = "2.0.7"
+version = "2.0.8"
 description = "Talk To Paste - Voice to text transcription"
 authors = ["TTP Team"]
 edition = "2021"

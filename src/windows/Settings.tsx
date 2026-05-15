@@ -226,7 +226,7 @@ interface AnalyticsSummary {
  * leaves the machine.
  */
 function AnalyticsSection() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
 
   const loadSummary = useCallback(() => {
@@ -251,7 +251,15 @@ function AnalyticsSection() {
     }
   });
 
-  const fmt = (n: number) => n.toLocaleString();
+  // Compact notation (1.2K, 234K, 1.2M) keeps the column readable at any
+  // scale — a year-long power user can hit millions of words otherwise the
+  // full "1 234 567" overflows the 3-col grid. Locale-aware: French uses
+  // "1,2 k" / "1,2 M", English uses "1.2K" / "1.2M".
+  const compactFormatter = new Intl.NumberFormat(i18n.language, {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  });
+  const fmt = (n: number) => compactFormatter.format(n);
 
   const StatCol = ({ title, stats }: { title: string; stats: AnalyticsWindowData }) => (
     <div className="text-center">

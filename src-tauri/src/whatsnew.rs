@@ -32,6 +32,10 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.0.8" => Some(
+            "🔢 Big numbers stay legible\n\
+             • Usage stats now use compact notation (1.2K, 234K, 1.2M) so a power user with millions of words doesn't overflow the column. Locale-aware: French shows \"1,2 M\", English shows \"1.2M\".",
+        ),
         "2.0.7" => Some(
             "🪶 Compact stats row\n\
              • Your usage section is now a single tight row of three columns (Week / Month / All time) — takes ~1/3 the vertical space of the previous card layout while keeping the same info.",
