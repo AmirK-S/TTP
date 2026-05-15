@@ -268,8 +268,20 @@ async fn install_update_with_channel(
 /// still-running current process and refuses to start a second copy).
 /// We sleep briefly to let LaunchServices register the new app before
 /// the current process exits.
+/// Called by the JS side after a silent background download + install
+/// completes. The .app bundle on disk has already been replaced; this
+/// command records the version that's waiting so the tray can surface a
+/// blue dot + "Install update (vX.Y.Z)" menu item — the user's only
+/// visible signal that an update is ready to take effect on next relaunch.
 #[tauri::command]
-fn restart_app_post_update(app: AppHandle) -> Result<(), String> {
+fn mark_update_ready(app: AppHandle, version: String) -> Result<(), String> {
+    crate::tray::set_pending_update(Some(version));
+    crate::tray::refresh_tray(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn restart_app_post_update(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let exe = std::env::current_exe()
@@ -591,6 +603,7 @@ pub fn run() {
             restart_app_post_update,
             check_for_updates_with_channel,
             install_update_with_channel,
+            mark_update_ready,
             check_microphone_permission,
             is_first_launch_cmd,
             mark_first_launch_complete_cmd,

@@ -44,10 +44,17 @@ function scrubUpdateError(msg: string): string {
 
 interface UseUpdaterOptions {
   autoCheck?: boolean;
+  /// When true, the hook will silently call `downloadAndInstall()` as soon
+  /// as `checkForUpdates()` reports a new version available (gated on
+  /// recordingState === 'Idle'). Used by the main App so a menu-bar user
+  /// who never opens the window still gets updates — install completes in
+  /// the background and the tray shows a blue dot + "Install update" menu
+  /// item nudging the user to relaunch when convenient.
+  autoInstall?: boolean;
 }
 
 export function useUpdater(options?: UseUpdaterOptions) {
-  const { autoCheck = false } = options ?? {};
+  const { autoCheck = false, autoInstall = false } = options ?? {};
 
   const [status, setStatus] = useState<UpdateStatus>('idle');
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -65,6 +72,15 @@ export function useUpdater(options?: UseUpdaterOptions) {
   // tear them down even if React unmounts mid-download.
   const progressUnlistenRef = useRef<UnlistenFn | null>(null);
   const finishUnlistenRef = useRef<UnlistenFn | null>(null);
+
+  // Tauri's update check compares the manifest version with the *running*
+  // process version, not the on-disk bundle. After a silent install the
+  // running process is still old, so subsequent 4h checks would keep
+  // reporting "available" and we'd re-download + re-install the same
+  // update every cycle. This ref guards against that — once we've
+  // successfully installed in this session, we stop auto-triggering until
+  // the user relaunches.
+  const autoInstalledThisSessionRef = useRef(false);
 
   // Read the user's channel preference. We pull it on demand at click time
   // (from the store's getState) so that toggling beta does not require the
@@ -208,6 +224,16 @@ export function useUpdater(options?: UseUpdaterOptions) {
 
       setStatus('ready');
 
+      // Notify the Rust side so the tray surfaces the "Install update" menu
+      // item with a blue-dot icon overlay. Best-effort — if this fails the
+      // in-app "Restart" prompt still works, the user just loses the tray
+      // shortcut.
+      try {
+        await invoke('mark_update_ready', { version: installedVersion });
+      } catch (e) {
+        console.warn('[Updater] mark_update_ready failed:', e);
+      }
+
       getVersion()
         .then((currentVersion) => {
           trackEvent('update_completed', {
@@ -238,6 +264,31 @@ export function useUpdater(options?: UseUpdaterOptions) {
       scheduleIdleReset(5000);
     }
   }, [scheduleIdleReset]);
+
+  // Silent auto-install: once a check reports a version available and the
+  // user is idle, immediately download + install in the background. The
+  // tray then exposes the "Install update" menu item via mark_update_ready.
+  // The ref guard prevents re-installing on every 4h cycle (Tauri compares
+  // the manifest against the running process, which is still old until
+  // the user actually relaunches).
+  useEffect(() => {
+    if (!autoInstall) return;
+    if (status !== 'available') return;
+    if (recordingState !== 'Idle') return;
+    if (autoInstalledThisSessionRef.current) return;
+    autoInstalledThisSessionRef.current = true;
+    downloadAndInstall();
+  }, [autoInstall, status, recordingState, downloadAndInstall]);
+
+  // If the auto-install attempt errored (network blip, disk full, etc.),
+  // clear the guard so the next 4h check can retry. We deliberately do
+  // not clear it on success — once installed, the running process is
+  // still old and would otherwise re-install the same update every cycle.
+  useEffect(() => {
+    if (status === 'error') {
+      autoInstalledThisSessionRef.current = false;
+    }
+  }, [status]);
 
   const restartApp = useCallback(async () => {
     // Prefer the Rust-side restart command which uses LaunchServices on

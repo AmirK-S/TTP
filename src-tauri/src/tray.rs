@@ -12,57 +12,143 @@ use tauri::{
     AppHandle, Listener, Manager,
 };
 
-/// Cached PNG bytes of the warning-state idle icon (icon-idle.png with a
-/// red dot composited in the bottom-right corner). Generated lazily on the
-/// first request and reused for the rest of the session.
+/// Cached PNG bytes of each composited idle-icon variant. Built lazily on
+/// first use and reused for the rest of the session. Four cells: warning
+/// only (red dot bottom-right), update only (blue dot top-right), both,
+/// and the plain idle bytes inline since they're already static.
 static WARNING_ICON_BYTES: OnceLock<Vec<u8>> = OnceLock::new();
+static UPDATE_ICON_BYTES: OnceLock<Vec<u8>> = OnceLock::new();
+static WARNING_UPDATE_ICON_BYTES: OnceLock<Vec<u8>> = OnceLock::new();
 
-/// Build the warning-state tray icon by overlaying a red dot on
-/// icon-idle.png. Returns PNG bytes ready for `Image::from_bytes`. Falls
-/// back to the original idle bytes on encode failure so the tray never
-/// goes blank.
-fn warning_idle_icon_bytes() -> &'static [u8] {
+/// Version string of a pending update that has already been downloaded +
+/// installed in the background (the .app bundle on disk is already the new
+/// version, but the running process is still old). When `Some`, the tray
+/// shows a blue dot + "Install update" menu item; clicking it relaunches
+/// into the new binary. Reset to `None` once the update is consumed.
+static PENDING_UPDATE_VERSION: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+#[derive(Clone, Copy)]
+enum DotPosition {
+    BottomRight,
+    TopRight,
+}
+
+#[derive(Clone, Copy)]
+struct DotConfig {
+    color: [u8; 4],
+    position: DotPosition,
+}
+
+const RED_DOT: DotConfig = DotConfig {
+    color: [220, 38, 38, 255],
+    position: DotPosition::BottomRight,
+};
+const BLUE_DOT: DotConfig = DotConfig {
+    color: [37, 99, 235, 255],
+    position: DotPosition::TopRight,
+};
+
+/// Composite a list of colored dots onto icon-idle.png. Returns the encoded
+/// PNG bytes ready for `Image::from_bytes`. Falls back to the original idle
+/// bytes if anything in the pipeline fails so the tray never goes blank.
+fn compose_idle_icon(dots: &[DotConfig]) -> Vec<u8> {
     const IDLE_BYTES: &[u8] = include_bytes!("../icons/icon-idle.png");
-    WARNING_ICON_BYTES.get_or_init(|| {
-        match image::load_from_memory(IDLE_BYTES) {
-            Ok(img) => {
-                let mut rgba = img.to_rgba8();
-                let (w, h) = rgba.dimensions();
-                // Red-600 (#dc2626). Dot sized for a 44x44 retina tray icon;
-                // scales proportionally to other sizes.
-                let dot_r = (w.min(h) as i32) / 5;
-                let cx = w as i32 - dot_r - 2;
-                let cy = h as i32 - dot_r - 2;
-                let r_sq = dot_r * dot_r;
-                let outer_sq = (dot_r + 1) * (dot_r + 1);
-                for y in 0..h as i32 {
-                    for x in 0..w as i32 {
-                        let dx = x - cx;
-                        let dy = y - cy;
-                        let d_sq = dx * dx + dy * dy;
-                        if d_sq <= r_sq {
-                            rgba.put_pixel(x as u32, y as u32, image::Rgba([220, 38, 38, 255]));
-                        } else if d_sq <= outer_sq {
-                            // 1-pixel-wide soft edge for anti-aliasing.
-                            rgba.put_pixel(x as u32, y as u32, image::Rgba([220, 38, 38, 160]));
-                        }
-                    }
-                }
-                let mut buf = Vec::new();
-                let encoder = image::codecs::png::PngEncoder::new(&mut buf);
-                use image::ImageEncoder;
-                if encoder
-                    .write_image(rgba.as_raw(), w, h, image::ExtendedColorType::Rgba8)
-                    .is_ok()
-                {
-                    buf
-                } else {
-                    IDLE_BYTES.to_vec()
+    let img = match image::load_from_memory(IDLE_BYTES) {
+        Ok(img) => img,
+        Err(_) => return IDLE_BYTES.to_vec(),
+    };
+    let mut rgba = img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    // Dot sized for a 44x44 retina tray icon; scales with image dimensions.
+    let dot_r = (w.min(h) as i32) / 5;
+    let r_sq = dot_r * dot_r;
+    let outer_sq = (dot_r + 1) * (dot_r + 1);
+    for dot in dots {
+        let (cx, cy) = match dot.position {
+            DotPosition::BottomRight => (w as i32 - dot_r - 2, h as i32 - dot_r - 2),
+            DotPosition::TopRight => (w as i32 - dot_r - 2, dot_r + 2),
+        };
+        let solid = image::Rgba(dot.color);
+        let soft = image::Rgba([dot.color[0], dot.color[1], dot.color[2], 160]);
+        for y in 0..h as i32 {
+            for x in 0..w as i32 {
+                let dx = x - cx;
+                let dy = y - cy;
+                let d_sq = dx * dx + dy * dy;
+                if d_sq <= r_sq {
+                    rgba.put_pixel(x as u32, y as u32, solid);
+                } else if d_sq <= outer_sq {
+                    // 1-pixel-wide soft edge for anti-aliasing.
+                    rgba.put_pixel(x as u32, y as u32, soft);
                 }
             }
-            Err(_) => IDLE_BYTES.to_vec(),
         }
-    })
+    }
+    let mut buf = Vec::new();
+    let encoder = image::codecs::png::PngEncoder::new(&mut buf);
+    use image::ImageEncoder;
+    if encoder
+        .write_image(rgba.as_raw(), w, h, image::ExtendedColorType::Rgba8)
+        .is_ok()
+    {
+        buf
+    } else {
+        IDLE_BYTES.to_vec()
+    }
+}
+
+fn warning_idle_icon_bytes() -> &'static [u8] {
+    WARNING_ICON_BYTES.get_or_init(|| compose_idle_icon(&[RED_DOT]))
+}
+
+fn update_idle_icon_bytes() -> &'static [u8] {
+    UPDATE_ICON_BYTES.get_or_init(|| compose_idle_icon(&[BLUE_DOT]))
+}
+
+fn warning_update_idle_icon_bytes() -> &'static [u8] {
+    WARNING_UPDATE_ICON_BYTES.get_or_init(|| compose_idle_icon(&[RED_DOT, BLUE_DOT]))
+}
+
+fn pending_update_lock() -> &'static Mutex<Option<String>> {
+    PENDING_UPDATE_VERSION.get_or_init(|| Mutex::new(None))
+}
+
+fn update_ready_active() -> bool {
+    pending_update_lock()
+        .lock()
+        .ok()
+        .map(|g| g.is_some())
+        .unwrap_or(false)
+}
+
+fn pending_update_version() -> Option<String> {
+    pending_update_lock().lock().ok().and_then(|g| g.clone())
+}
+
+/// Record that an update has been silently downloaded + installed and is
+/// waiting for the user to relaunch. Pass `None` to clear (e.g. after the
+/// app has been relaunched and the new binary is now running).
+pub fn set_pending_update(version: Option<String>) {
+    if let Ok(mut g) = pending_update_lock().lock() {
+        *g = version;
+    }
+}
+
+/// Re-evaluate the tray icon and menu without changing recording state.
+/// Called from the JS side after a silent install completes so the new
+/// "Install update" menu item appears immediately.
+pub fn refresh_tray(app: &AppHandle) {
+    let is_recording = app
+        .try_state::<Mutex<AppState>>()
+        .and_then(|state| {
+            state
+                .try_lock()
+                .ok()
+                .map(|guard| guard.recording_state == RecordingState::Recording)
+        })
+        .unwrap_or(false);
+    set_recording_icon(app, is_recording);
+    update_tray_menu(app, is_recording);
 }
 
 /// True when Fn is the active hotkey AND Input Monitoring is missing.
@@ -82,10 +168,13 @@ fn input_monitoring_warning_active() -> bool {
 /// otherwise the plain idle icon.
 fn idle_icon_bytes() -> &'static [u8] {
     const IDLE_BYTES: &[u8] = include_bytes!("../icons/icon-idle.png");
-    if input_monitoring_warning_active() {
-        warning_idle_icon_bytes()
-    } else {
-        IDLE_BYTES
+    let warn = input_monitoring_warning_active();
+    let update = update_ready_active();
+    match (warn, update) {
+        (false, false) => IDLE_BYTES,
+        (true, false) => warning_idle_icon_bytes(),
+        (false, true) => update_idle_icon_bytes(),
+        (true, true) => warning_update_idle_icon_bytes(),
     }
 }
 
@@ -128,6 +217,17 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
                     None::<&str>,
                 );
+            }
+            "install_update" => {
+                // The update was already downloaded + installed silently in
+                // the background; the .app bundle on disk is the new version.
+                // All we need to do is relaunch into it. Reuse the same
+                // LaunchServices-based restart path the in-app "Restart Now"
+                // button uses so Gatekeeper doesn't block the relaunch.
+                let app = app.clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    let _ = crate::restart_app_post_update(app);
+                });
             }
             _ => {}
         })
@@ -229,23 +329,81 @@ fn build_tray_menu(
         }
     };
 
-    if needs_input_monitoring {
-        let warn = MenuItem::with_id(
-            app,
-            "fix_input_monitoring",
-            crate::i18n::tr("tray.fixInputMonitoring"),
-            true,
-            None::<&str>,
-        )?;
-        let warn_separator = PredefinedMenuItem::separator(app)?;
-        let menu = Menu::with_items(
-            app,
-            &[&warn, &warn_separator, &record, &separator, &settings, &quit],
-        )?;
-        Ok(menu)
-    } else {
-        let menu = Menu::with_items(app, &[&record, &separator, &settings, &quit])?;
-        Ok(menu)
+    let pending_version = pending_update_version();
+    let needs_install_update = pending_version.is_some();
+
+    match (needs_install_update, needs_input_monitoring) {
+        (true, true) => {
+            let install_label = crate::i18n::tr_with(
+                "tray.installUpdate",
+                &[("version", pending_version.as_deref().unwrap_or(""))],
+            );
+            let install =
+                MenuItem::with_id(app, "install_update", &install_label, true, None::<&str>)?;
+            let install_separator = PredefinedMenuItem::separator(app)?;
+            let warn = MenuItem::with_id(
+                app,
+                "fix_input_monitoring",
+                crate::i18n::tr("tray.fixInputMonitoring"),
+                true,
+                None::<&str>,
+            )?;
+            let warn_separator = PredefinedMenuItem::separator(app)?;
+            let menu = Menu::with_items(
+                app,
+                &[
+                    &install,
+                    &install_separator,
+                    &warn,
+                    &warn_separator,
+                    &record,
+                    &separator,
+                    &settings,
+                    &quit,
+                ],
+            )?;
+            Ok(menu)
+        }
+        (true, false) => {
+            let install_label = crate::i18n::tr_with(
+                "tray.installUpdate",
+                &[("version", pending_version.as_deref().unwrap_or(""))],
+            );
+            let install =
+                MenuItem::with_id(app, "install_update", &install_label, true, None::<&str>)?;
+            let install_separator = PredefinedMenuItem::separator(app)?;
+            let menu = Menu::with_items(
+                app,
+                &[
+                    &install,
+                    &install_separator,
+                    &record,
+                    &separator,
+                    &settings,
+                    &quit,
+                ],
+            )?;
+            Ok(menu)
+        }
+        (false, true) => {
+            let warn = MenuItem::with_id(
+                app,
+                "fix_input_monitoring",
+                crate::i18n::tr("tray.fixInputMonitoring"),
+                true,
+                None::<&str>,
+            )?;
+            let warn_separator = PredefinedMenuItem::separator(app)?;
+            let menu = Menu::with_items(
+                app,
+                &[&warn, &warn_separator, &record, &separator, &settings, &quit],
+            )?;
+            Ok(menu)
+        }
+        (false, false) => {
+            let menu = Menu::with_items(app, &[&record, &separator, &settings, &quit])?;
+            Ok(menu)
+        }
     }
 }
 

@@ -32,6 +32,13 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.0.3" => Some(
+            "🤫 Silent auto-updates\n\
+             • TTP now downloads and installs updates in the background — no more buried prompts you have to dig through Settings to find.\n\
+             • When an update is ready, the menu-bar icon gets a small blue dot and the tray menu shows \"🆕 Install update (vX.Y.Z)\". One click and TTP relaunches into the new version.\n\
+             • Even if you ignore the dot, the new version takes effect automatically the next time you quit and reopen TTP — the .app on disk has already been updated in place.\n\
+             • Same idle-aware gating as before: updates never install while you're recording.",
+        ),
         "2.0.2" => Some(
             "🎉 TTP 2.0.2\n\
              • TTP now speaks French — auto-detects your system language, switch any time from Settings → Language. UI, tray menu, and OS notifications all flip together.\n\

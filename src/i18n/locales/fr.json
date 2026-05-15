@@ -69,6 +69,7 @@
     "settings": "Paramètres…",
     "quit": "Quitter TTP",
     "fixInputMonitoring": "⚠ Permission Input Monitoring requise",
+    "installUpdate": "🆕 Installer la mise à jour (v{{version}})",
     "tooltip": "TTP by AmirKS — Talk To Paste"
   },
   "notification": {

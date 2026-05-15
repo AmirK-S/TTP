@@ -40,29 +40,14 @@ function App() {
     });
   }, []);
 
-  // Auto-check for updates on launch and every 4 hours
-  // shouldNotify becomes true when update is available AND app is idle
-  const { shouldNotify, updateInfo } = useUpdater({ autoCheck: true });
-
-  // When an update is found and the app is idle, open Settings and emit event
-  useEffect(() => {
-    if (shouldNotify && updateInfo) {
-      (async () => {
-        try {
-          const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-          const { emit } = await import('@tauri-apps/api/event');
-          const settingsWindow = await WebviewWindow.getByLabel('settings');
-          if (settingsWindow) {
-            await settingsWindow.show();
-            await settingsWindow.setFocus();
-          }
-          await emit('update-available', { version: updateInfo.version, body: updateInfo.body });
-        } catch (e) {
-          console.error('[Updater] Failed to show update notification:', e);
-        }
-      })();
-    }
-  }, [shouldNotify, updateInfo]);
+  // Auto-check + silent auto-install on launch and every 4 hours.
+  // The previous flow popped open the Settings window every time an update
+  // was found, but TTP is a menu-bar app — most users never open the main
+  // window, so they never saw the update banner. The new flow downloads +
+  // installs silently in the background, then the Rust tray displays a
+  // blue-dot icon overlay + "Install update (vX.Y.Z)" menu item visible
+  // in the menu bar at all times. No more Settings window popups.
+  useUpdater({ autoCheck: true, autoInstall: true });
 
   // Window is hidden - TTP runs from the system tray
   return null;
