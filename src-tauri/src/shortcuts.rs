@@ -1,7 +1,14 @@
 // TTP - Talk To Paste
 // Global keyboard shortcut handling with push-to-talk and double-tap toggle
+//
+// Hands-free semantics:
+//   * Settings toggle `hands_free_mode` = persistent preference. When true,
+//     every single press is a toggle (press to start, press to stop).
+//   * Double-tap = TRANSIENT override for one recording. Sets in-memory
+//     `state.hands_free_mode` only — never touches the persisted setting.
+//     After the recording ends, in-memory state is restored from settings.
 
-use crate::settings::{get_settings, set_settings};
+use crate::settings::get_settings;
 use crate::sounds::{play_start_sound, play_stop_sound};
 use crate::state::{AppState, RecordingState};
 use crate::tray::{set_recording_icon, should_show_pill, show_pill, hide_pill};
@@ -12,13 +19,6 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 /// Double-tap detection threshold in milliseconds
 const DOUBLE_TAP_THRESHOLD_MS: u128 = 300;
-
-/// Persist hands_free_mode to settings when it changes
-fn persist_hands_free_mode(app: &AppHandle, hands_free_mode: bool) {
-    let mut settings = get_settings();
-    settings.hands_free_mode = hands_free_mode;
-    let _ = set_settings(settings, app.clone());
-}
 
 /// Set up global keyboard shortcuts for recording control
 pub fn setup_shortcuts(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
@@ -97,14 +97,21 @@ pub fn handle_fn_double_tap(app: &AppHandle) {
         return;
     };
 
+    let settings_hands_free = get_settings().hands_free_mode;
+
     match app_state.recording_state {
         RecordingState::Idle => {
+            // Transient: enter hands-free for this recording only. The persisted
+            // setting is unchanged — we just override in-memory state.
             app_state.hands_free_mode = true;
             start_recording(&mut app_state, app);
         }
         RecordingState::Recording if app_state.hands_free_mode => {
             stop_recording(&mut app_state, app);
-            app_state.hands_free_mode = false;
+            // Restore to whatever the user's persistent preference is, not a
+            // hardcoded false — otherwise a user who has settings hands-free=true
+            // gets bumped out of toggle mode by a single double-tap.
+            app_state.hands_free_mode = settings_hands_free;
         }
         _ => {}
     }
@@ -126,18 +133,17 @@ fn handle_shortcut_pressed(state: &mut AppState, app: &AppHandle) {
     if is_double_tap {
         match state.recording_state {
             RecordingState::Idle => {
+                // Transient: hands-free for this recording only. We deliberately
+                // do NOT persist to settings — double-tap is a per-recording
+                // override, not a permanent preference change. (Before, persisting
+                // here meant every subsequent single-press also entered hands-free
+                // until the user manually toggled it off in the UI.)
                 state.hands_free_mode = true;
-                if !settings_hands_free {
-                    persist_hands_free_mode(app, true);
-                }
                 start_recording(state, app);
             }
             RecordingState::Recording if state.hands_free_mode => {
                 stop_recording(state, app);
                 state.hands_free_mode = settings_hands_free;
-                if !settings_hands_free {
-                    persist_hands_free_mode(app, false);
-                }
             }
             _ => {}
         }

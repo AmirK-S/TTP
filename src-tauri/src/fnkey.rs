@@ -288,12 +288,26 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
                         handle_shortcut_event_public(app, ShortcutState::Released);
                     }
                 } else {
-                    // Released before debounce — ignore (system emoji tap)
-                    // But track this as a potential double-tap candidate
+                    // Released before debounce — too short to start recording
+                    // (system emoji tap, or first half of a double-tap).
+                    //
+                    // We still register this as a double-tap candidate. The
+                    // previous lower bound of FN_DEBOUNCE_MS (150 ms) silently
+                    // killed double-tap detection: a natural double-tap is
+                    // ~50–100 ms per tap, so the first tap was always discarded
+                    // and the second tap never saw a `LAST_FN_PRESS_TIME_MS`
+                    // to compare against — `is_double_tap` could not become
+                    // true on macOS even when the user did exactly what was
+                    // supposed to trigger hands-free mode.
+                    //
+                    // 20 ms is enough to filter hardware/HID jitter (the timer
+                    // itself polls at 20 ms) while accepting any deliberate
+                    // tap. The 500 ms upper bound is moot in practice — at
+                    // anything ≥150 ms the recording branch above fires first
+                    // and we never reach this else — but kept defensively.
                     let press_time = FN_PRESS_TIME_MS.load(Ordering::Relaxed);
                     let elapsed = now_ms() - press_time;
-                    if elapsed >= FN_DEBOUNCE_MS && elapsed < 500 {
-                        // Valid press (not too short, not too long) — track for double-tap
+                    if elapsed >= 20 && elapsed < 500 {
                         LAST_FN_PRESS_TIME_MS.store(press_time, Ordering::Relaxed);
                     }
                     fnlog!("[FnKey] Fn key UP ({}ms, flags=0x{:X}, ignored — too short)", elapsed, flags);

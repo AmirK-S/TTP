@@ -32,6 +32,12 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.0.9" => Some(
+            "🎤 Hands-free mode behaves like you'd expect\n\
+             • macOS: double-tap Fn now actually enters hands-free mode. The previous detection threshold required each tap to last at least 150 ms — natural double-taps are ~50–100 ms, so the gesture silently never registered. Lowered the candidate threshold to 20 ms.\n\
+             • Windows / cross-platform: double-tap is now a TRANSIENT override for one recording, not a permanent settings change. Before, a single double-tap quietly flipped the persisted preference to hands-free, so every subsequent single press also entered hands-free until you dug into Settings to turn it back off — while the Settings panel still showed it as disabled. State and behavior now match.\n\
+             • The Settings → \"Hands-free mode\" toggle is unchanged: that's still the persistent preference (single press to start/stop). Double-tap just lets you opt into hands-free for one recording without touching it.",
+        ),
         "2.0.8" => Some(
             "🔢 Big numbers stay legible\n\
              • Usage stats now use compact notation (1.2K, 234K, 1.2M) so a power user with millions of words doesn't overflow the column. Locale-aware: French shows \"1,2 M\", English shows \"1.2M\".",
