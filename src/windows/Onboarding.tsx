@@ -96,7 +96,7 @@ export default function Onboarding() {
   useEffect(() => { refreshAll(); }, [refreshAll]);
 
   // Re-check whenever the window regains focus — catches returns from System
-  // Settings without a polling timer.
+  // Settings without polling overhead.
   useEffect(() => {
     try {
       const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
@@ -104,10 +104,20 @@ export default function Onboarding() {
       });
       return () => { unlisten.then(fn => fn()); };
     } catch {
-      // Non-Tauri runtime (dev preview): focus events are skipped.
       return undefined;
     }
   }, [refreshAll]);
+
+  // Permissions step: poll once per second so the user can toggle Accessibility
+  // / Input Monitoring in System Settings and see the wizard update LIVE
+  // without coming back to the TTP window first. This is the Wispr-style
+  // seamless flow — the user never has to confirm "I did it"; the wizard
+  // detects the grant itself and reflects it.
+  useEffect(() => {
+    if (step !== 1) return;
+    const id = window.setInterval(refreshAll, 1000);
+    return () => window.clearInterval(id);
+  }, [step, refreshAll]);
 
   const openSettings = async (key: PermKey) => {
     try { await invoke(SETTINGS_COMMAND[key]); }

@@ -1,71 +1,63 @@
 // TTP - Talk To Paste
-// Tutorial pill component - shows keyboard shortcut hint in user's language
+// Tutorial pill — short hint above the recording pill on first launch.
+// Lives inside the transparent floating-bar window so it picks up the same
+// dark chrome as the recording pill (system theme is irrelevant here —
+// the pill needs to read on any background the user is over).
 
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface TutorialPillProps {
   shortcutText?: string;
-  _onDismiss?: () => void;
 }
 
-/** LocalStorage key for tutorial dismissal */
 const TUTORIAL_DISMISSED_KEY = 'tutorial_pill_dismissed';
 
-/**
- * Tutorial pill - simple dark pill showing keyboard shortcut hint
- */
 export function TutorialPill({ shortcutText = 'fn' }: TutorialPillProps) {
   const { t } = useTranslation();
   const [isVisible, setIsVisible] = useState(false);
-  const [isDismissed, setIsDismissed] = useState(true); // Start dismissed, check on mount
+  const [isDismissed, setIsDismissed] = useState(true);
 
   useEffect(() => {
     const dismissed = localStorage.getItem(TUTORIAL_DISMISSED_KEY) === 'true';
     setIsDismissed(dismissed);
-
     if (!dismissed) {
       const timer = setTimeout(() => setIsVisible(true), 100);
       return () => clearTimeout(timer);
     }
   }, []);
 
-  if (isDismissed) {
-    return null;
-  }
+  if (isDismissed) return null;
 
   return (
     <div
-      className="mb-2 flex items-center gap-2 rounded-2xl bg-black/90 px-4 py-2 shadow-xl backdrop-blur-sm"
+      className={
+        'mb-2 flex items-center gap-1.5 rounded-full bg-black/90 ring-1 ring-white/10 backdrop-blur-md ' +
+        'px-3.5 py-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.4),0_2px_4px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.08)] ' +
+        'transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]'
+      }
       style={{
         opacity: isVisible ? 1 : 0,
         transform: isVisible ? 'translateY(0)' : 'translateY(8px)',
-        transition: 'all 0.3s ease-out',
         pointerEvents: isVisible ? 'auto' : 'none',
       }}
+      role="status"
     >
-      <span style={{
-        fontSize: '13px',
-        fontWeight: '500',
-        color: 'rgba(255,255,255,0.8)',
-        userSelect: 'none',
-      }}>
-        {t('floatingBar.tutorialPrefix')}{' '}
-        <span style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderRadius: '4px',
-          backgroundColor: 'rgba(255,255,255,0.2)',
-          padding: '2px 6px',
-          fontSize: '11px',
-          fontWeight: '700',
-          color: '#fff',
-          lineHeight: 1,
-        }}>
-          {shortcutText.toUpperCase()}
-        </span>
-        {' '}{t('floatingBar.tutorialSuffix')}
+      <span className="text-[12px] font-medium text-white/85 select-none tracking-[-0.005em]">
+        {t('floatingBar.tutorialPrefix')}
+      </span>
+      <kbd
+        className={
+          'inline-flex items-center justify-center min-w-[20px] h-[18px] px-1.5 ' +
+          'rounded-[5px] bg-white/15 text-[10px] font-semibold text-white/95 ' +
+          'shadow-[inset_0_-1px_0_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.15)] ' +
+          'tabular-nums tracking-wide font-mono'
+        }
+      >
+        {shortcutText.toUpperCase()}
+      </kbd>
+      <span className="text-[12px] font-medium text-white/85 select-none tracking-[-0.005em]">
+        {t('floatingBar.tutorialSuffix')}
       </span>
     </div>
   );

@@ -1,58 +1,66 @@
 // TTP - Talk To Paste
-// First-run API key setup window
+// First-run API key setup window. Reached when the user has finished
+// onboarding (or skipped it past v1.x) but cleared their Groq key — the
+// fallback recovery path. Visually matches the onboarding wizard's API
+// key step so the experience is one coherent flow.
 
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ApiKeyForm } from '../components/ApiKeyForm';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
+import { ApiKeyForm } from '../components/ApiKeyForm';
+import { cn } from '../lib/cn';
 
-/**
- * ApiKeySetup is the first-run experience window.
- * Prompts users for their Groq API key (free, used for transcription + polish).
- * After successful setup, opens settings window and closes itself.
- */
 export function ApiKeySetup() {
   const { t } = useTranslation();
 
-  // Keep the OS window title in sync with the active language.
   useEffect(() => {
-    getCurrentWindow().setTitle(t('windowTitle.setup'));
+    try { getCurrentWindow().setTitle(t('windowTitle.setup')); }
+    catch { /* not in Tauri (dev preview) */ }
   });
 
   const handleSuccess = async () => {
-    // Open settings window after successful save
+    try { await invoke('open_settings_window'); }
+    catch (e) { console.error('Failed to open settings window:', e); }
     try {
-      await invoke('open_settings_window');
-    } catch (e) {
-      console.error('Failed to open settings window:', e);
-    }
-
-    // Close setup window
-    const window = getCurrentWindow();
-    await window.close();
+      const window = getCurrentWindow();
+      await window.close();
+    } catch { /* not in Tauri */ }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
-      <div className="max-w-md mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            {t('setup.title')}
-          </h1>
-          <p className="mt-2 text-gray-600 dark:text-gray-400">
-            {t('setup.description')}
-          </p>
-        </div>
+    <div className="min-h-screen flex flex-col bg-app-bg bg-noise">
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-xl mx-auto px-8 pt-16 pb-8">
+          <section className="anim-fade-up max-w-md mx-auto">
+            <div
+              className={cn(
+                'relative mx-auto size-16 rounded-app-xl mb-7 shine-sm border border-app-border',
+                'bg-app-surface grid place-items-center',
+              )}
+            >
+              <span className="text-app-text font-semibold text-[18px] tracking-[-0.022em]">TTP</span>
+              <span
+                aria-hidden
+                className="absolute top-[10px] right-[10px] size-[6px] rounded-full bg-app-accent shadow-[0_0_0_3px_rgba(76,139,245,0.18)]"
+              />
+            </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
-          <ApiKeyForm onSuccess={handleSuccess} />
-        </div>
+            <h1 className="text-display-md text-app-text text-center">
+              {t('setup.title')}
+            </h1>
+            <p className="mt-2 text-[13px] text-app-muted leading-relaxed text-center">
+              {t('setup.description')}
+            </p>
 
-        <div className="mt-4 text-center">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {t('setup.localStorage')}
-          </p>
+            <div className="mt-7">
+              <ApiKeyForm onSuccess={handleSuccess} submitLabel={t('common.getStarted')} />
+            </div>
+
+            <p className="mt-6 text-[11px] text-app-faint leading-relaxed text-center">
+              {t('setup.localStorage')}
+            </p>
+          </section>
         </div>
       </div>
     </div>

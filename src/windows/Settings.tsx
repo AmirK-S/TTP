@@ -3,7 +3,11 @@
 
 import { useEffect, useState, useCallback, useRef, memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Copy, Check, Download, RefreshCw, Crown, Loader2 } from 'lucide-react';
+import {
+  Copy, Check, Download, RefreshCw, Crown, Loader2,
+  Activity, User, Mic, Languages, BookOpen, Clock, Globe, SlidersHorizontal,
+} from 'lucide-react';
+import { cn } from '../lib/cn';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useTauriEvent } from '../hooks/useTauriEvent';
@@ -35,8 +39,8 @@ function Toggle({
       onClick={() => !disabled && onChange(!enabled)}
       className={`
         relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent
-        transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-        ${enabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'}
+        transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-app-accent focus:ring-offset-2
+        ${enabled ? 'bg-app-accent' : 'bg-app-raised'}
         ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
       `}
       disabled={disabled}
@@ -77,15 +81,15 @@ function ConfirmDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm mx-4">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+      <div className="bg-app-surface rounded-lg shadow-xl p-6 max-w-sm mx-4">
+        <h3 className="text-lg font-semibold text-app-text mb-2">
           {title}
         </h3>
-        <p className="text-gray-600 dark:text-gray-400 mb-4">{message}</p>
+        <p className="text-app-muted mb-4">{message}</p>
         <div className="flex justify-end gap-3">
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+            className="px-4 py-2 text-sm font-medium text-app-text hover:bg-app-raised rounded-md transition-colors"
           >
             {t('common.cancel')}
           </button>
@@ -117,11 +121,11 @@ const DictionaryRow = memo(function DictionaryRow({
 }) {
   const { t } = useTranslation();
   return (
-    <tr className="border-b border-gray-200 dark:border-gray-700">
-      <td className="py-3 px-4 text-gray-900 dark:text-white font-mono text-sm">
+    <tr className="border-b border-app-border">
+      <td className="py-3 px-4 text-app-text font-mono text-sm">
         {entry.original}
       </td>
-      <td className="py-3 px-4 text-gray-900 dark:text-white font-mono text-sm">
+      <td className="py-3 px-4 text-app-text font-mono text-sm">
         {entry.correction}
       </td>
       <td className="py-3 px-4 text-right">
@@ -172,18 +176,18 @@ const HistoryRow = memo(function HistoryRow({ entry }: { entry: HistoryEntry }) 
     entry.text.length > 100 ? entry.text.slice(0, 100) + '...' : entry.text;
 
   return (
-    <div className="flex items-start gap-3 p-3 odd:bg-gray-50 dark:odd:bg-gray-800/50">
+    <div className="flex items-start gap-3 p-3 odd:bg-app-raised">
       <div className="flex-1 min-w-0">
-        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+        <p className="text-xs text-app-muted mb-1">
           {formatTimestamp(entry.timestamp)}
         </p>
-        <p className="text-sm text-gray-900 dark:text-white break-words">
+        <p className="text-sm text-app-text break-words">
           {preview}
         </p>
       </div>
       <button
         onClick={handleCopy}
-        className="flex-shrink-0 p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+        className="flex-shrink-0 p-2 text-app-muted hover:text-app-text rounded-md hover:bg-app-raised transition-colors"
         title={t('settings.dictionary.copyTooltip')}
       >
         {copied ? (
@@ -264,34 +268,34 @@ function AnalyticsSection() {
 
   const StatCol = ({ title, stats }: { title: string; stats: AnalyticsWindowData }) => (
     <div className="text-center">
-      <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-app-muted">
         {title}
       </p>
-      <p className="text-xl font-semibold text-gray-900 dark:text-white mt-1 leading-tight">
+      <p className="text-xl font-semibold text-app-text mt-1 leading-tight">
         {fmt(stats.words)}
       </p>
-      <p className="text-[11px] text-gray-500 dark:text-gray-400">
+      <p className="text-[11px] text-app-muted">
         {fmt(stats.transcriptions)} {t('settings.analytics.transcriptions')}
       </p>
     </div>
   );
 
   return (
-    <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm px-4 py-3 mb-6">
+    <section className="bg-app-surface rounded-app-lg shine-sm border border-app-border px-4 py-3 mb-6">
       <div className="flex items-baseline justify-between mb-2">
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+        <h2 className="text-sm font-semibold text-app-text">
           {t('settings.analytics.title')}
         </h2>
-        <span className="text-[10px] text-gray-400 dark:text-gray-500">
+        <span className="text-[10px] text-app-faint">
           {t('settings.analytics.wordsHint')}
         </span>
       </div>
       {summary === null ? (
-        <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
+        <p className="text-xs text-app-muted text-center py-3">
           {t('settings.analytics.loading')}
         </p>
       ) : summary.all_time.transcriptions === 0 ? (
-        <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
+        <p className="text-xs text-app-muted text-center py-3">
           {t('settings.analytics.empty')}
         </p>
       ) : (
@@ -339,9 +343,9 @@ function UpdateChannelSection() {
   };
 
   return (
-    <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
+    <section className="bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+        <h2 className="text-lg font-semibold text-app-text">
           {t('settings.updateChannel.title')}
         </h2>
         {isOnBetaBuild && (
@@ -353,10 +357,10 @@ function UpdateChannelSection() {
 
       <div className="flex items-center justify-between mt-4">
         <div className="flex-1 pr-4">
-          <p className="text-gray-900 dark:text-white font-medium">
+          <p className="text-app-text font-medium">
             {useBetaChannel ? t('settings.updateChannel.labelBeta') : t('settings.updateChannel.labelStable')}
           </p>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-sm text-app-muted mt-1">
             {useBetaChannel
               ? t('settings.updateChannel.descBeta')
               : t('settings.updateChannel.descStable')}
@@ -370,7 +374,7 @@ function UpdateChannelSection() {
       </div>
 
       {useBetaChannel && (
-        <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+        <div className="mt-4 p-3 bg-app-warning-tint rounded-lg">
           <p className="text-sm text-amber-700 dark:text-amber-400">
             {t('settings.updateChannel.warning')}
           </p>
@@ -408,8 +412,8 @@ function UpdateSection() {
   });
 
   return (
-    <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
-      <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+    <section className="bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
+      <h2 className="text-lg font-semibold text-app-text mb-4">
         {t('settings.updates.title')}
       </h2>
 
@@ -417,7 +421,7 @@ function UpdateSection() {
         {status === 'idle' && (
           <button
             onClick={checkForUpdates}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-app-text border border-app-border hover:bg-app-raised rounded-md transition-colors"
           >
             <RefreshCw className="w-4 h-4" />
             {t('settings.updates.checkButton')}
@@ -425,14 +429,14 @@ function UpdateSection() {
         )}
 
         {status === 'up-to-date' && (
-          <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm">
+          <div className="flex items-center gap-2 text-app-success text-sm">
             <span>✓</span>
             {t('settings.updates.upToDate', { version: appVersion })}
           </div>
         )}
 
         {status === 'checking' && (
-          <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+          <div className="flex items-center gap-2 text-app-muted">
             <RefreshCw className="w-4 h-4 animate-spin" />
             {t('settings.updates.checking')}
           </div>
@@ -440,12 +444,12 @@ function UpdateSection() {
 
         {status === 'available' && updateInfo && (
           <div className="space-y-3">
-            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-              <p className="text-sm font-medium text-blue-700 dark:text-blue-400">
+            <div className="p-3 bg-app-accent-tint rounded-lg">
+              <p className="text-sm font-medium text-blue-700 dark:text-app-accent">
                 {t('settings.updates.available', { version: updateInfo.version })}
               </p>
               {updateInfo.body && (
-                <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">
+                <p className="text-xs text-app-accent dark:text-blue-300 mt-1">
                   {updateInfo.body}
                 </p>
               )}
@@ -453,14 +457,14 @@ function UpdateSection() {
             <div className="flex gap-2">
               <button
                 onClick={downloadAndInstall}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-app-accent hover:bg-app-accent-hover rounded-md transition-colors"
               >
                 <Download className="w-4 h-4" />
                 {t('settings.updates.downloadInstall')}
               </button>
               <button
                 onClick={dismiss}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md transition-colors"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-app-text border border-app-border hover:bg-app-raised rounded-md transition-colors"
               >
                 {t('common.later')}
               </button>
@@ -470,13 +474,13 @@ function UpdateSection() {
 
         {status === 'downloading' && (
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+            <div className="flex items-center gap-2 text-app-muted">
               <Download className="w-4 h-4 animate-pulse" />
               {t('settings.updates.downloading', { progress: Math.round(progress) })}
             </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+            <div className="w-full bg-app-raised rounded-full h-2">
               <div
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                className="bg-app-accent h-2 rounded-full transition-all duration-300"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -485,7 +489,7 @@ function UpdateSection() {
 
         {status === 'ready' && (
           <div className="space-y-3">
-            <p className="text-sm text-green-600 dark:text-green-400">
+            <p className="text-sm text-app-success">
               {t('settings.updates.ready')}
             </p>
             <button
@@ -499,19 +503,19 @@ function UpdateSection() {
 
         {status === 'error' && (
           <div className="space-y-2">
-            <p className="text-sm text-red-600 dark:text-red-400">
+            <p className="text-sm text-app-danger">
               {error || t('settings.updates.errorDefault')}
             </p>
             <button
               onClick={checkForUpdates}
-              className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400"
+              className="text-sm text-app-accent hover:text-app-accent-hover dark:text-app-accent"
             >
               {t('common.tryAgain')}
             </button>
           </div>
         )}
 
-        <p className="text-xs text-gray-400 dark:text-gray-500">
+        <p className="text-xs text-app-faint">
           {t('settings.updates.currentVersion', { version: appVersion })}
         </p>
       </div>
@@ -571,9 +575,11 @@ export function Settings() {
 
   // Keep the OS window title in sync with the current language. No deps array
   // intentionally — the call is cheap and ensures we don't desync after a
-  // language switch (re-running on every render is acceptable here).
+  // language switch (re-running on every render is acceptable here). Wrapped
+  // for the ?preview= dev path where getCurrentWindow throws.
   useEffect(() => {
-    getCurrentWindow().setTitle(t('windowTitle.settings'));
+    try { getCurrentWindow().setTitle(t('windowTitle.settings')); }
+    catch { /* not in Tauri (dev preview) */ }
   });
 
   // Scroll to update section when update-available event fires
@@ -941,20 +947,24 @@ export function Settings() {
     shortcutError === 'error.input_monitoring_required';
 
   return (
-    <div className="min-h-screen bg-app-bg p-6 text-app-text">
-      <div className="max-w-lg mx-auto">
-        {/* Permission warning sits above everything else — silent permission
-            loss (esp. Accessibility after an update) was the most-reported
-            class of "TTP isn't working" issues. */}
-        <PermissionBanner />
+    <div className="min-h-screen flex bg-app-bg text-app-text bg-noise">
+      <SettingsSidebar />
+      <main className="flex-1 min-w-0 overflow-y-auto">
+        <div className="max-w-2xl mx-auto px-8 pt-8 pb-12">
+          {/* Permission warning sits above everything else — silent permission
+              loss (esp. Accessibility after an update) was the most-reported
+              class of "TTP isn't working" issues. */}
+          <PermissionBanner />
 
-        {/* Your usage — pinned at the top so the first thing the user sees
-            in Settings is their own activity, not the About hero. */}
-        <AnalyticsSection />
+          {/* Your usage — pinned at the top so the first thing the user sees
+              in Settings is their own activity, not the About hero. */}
+          <div id="usage" data-section="usage" className="scroll-mt-6">
+          <AnalyticsSection />
+          </div>
 
         {/* Welcome / About — flat token-driven card (the old radial gradient
             clashed against the rest of the surface chrome). */}
-        <section className="bg-app-surface border border-app-border rounded-app-lg shine-sm p-6 mb-6">
+        <section id="account" data-section="account" className="scroll-mt-6 bg-app-surface border border-app-border rounded-app-lg shine-sm p-6 mb-6">
           <h1 className="text-xl font-semibold tracking-tight mb-1 text-app-text">TTP by AmirKS</h1>
           <p className="text-app-accent text-xs font-medium mb-3">{t('settings.about.subtitle', { version: appVersion })}</p>
           <p className="text-sm text-app-muted leading-relaxed mb-3">
@@ -990,11 +1000,11 @@ export function Settings() {
         </section>
 
         {/* TTP Pro Section */}
-        <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
+        <section id="pro" data-section="pro" className="scroll-mt-6 bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <Crown className={`w-5 h-5 ${isPro || isInTrial ? 'text-amber-500' : 'text-gray-400'}`} />
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              <Crown className={`w-5 h-5 ${isPro || isInTrial ? 'text-amber-500' : 'text-app-faint'}`} />
+              <h2 className="text-lg font-semibold text-app-text">
                 {t('settings.pro.title')}
               </h2>
               {isPro && (
@@ -1003,7 +1013,7 @@ export function Settings() {
                 </span>
               )}
               {!isPro && isInTrial && (
-                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
+                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-app-accent-tint text-app-accent">
                   {t('settings.pro.badgeTrial', { days: trialDaysLeft })}
                 </span>
               )}
@@ -1012,7 +1022,7 @@ export function Settings() {
               <button
                 onClick={validateLicense}
                 disabled={licenseLoading}
-                className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 flex items-center gap-1 disabled:opacity-50"
+                className="text-xs text-app-muted hover:text-app-text flex items-center gap-1 disabled:opacity-50"
                 title={t('settings.pro.refreshTitle')}
               >
                 {licenseLoading ? (
@@ -1027,7 +1037,7 @@ export function Settings() {
 
           {!isPro ? (
             <>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              <p className="text-sm text-app-muted mb-4">
                 {isInTrial
                   ? t('settings.pro.descTrial', { days: trialDaysLeft })
                   : t('settings.pro.descFree')}
@@ -1035,22 +1045,22 @@ export function Settings() {
 
               {/* Free tier usage counters */}
               {!isInTrial && (
-                <div className="space-y-2 mb-4 p-3 bg-gray-50 dark:bg-gray-900/40 rounded-md">
+                <div className="space-y-2 mb-4 p-3 bg-app-bg/40 rounded-md">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-500 dark:text-gray-400">{t('settings.pro.usagePolish')}</span>
-                    <span className={`font-mono ${polishAtCap ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-900 dark:text-white'}`}>
+                    <span className="text-app-muted">{t('settings.pro.usagePolish')}</span>
+                    <span className={`font-mono ${polishAtCap ? 'text-app-danger font-semibold' : 'text-app-text'}`}>
                       {polishUsed} / {polishLimit}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-500 dark:text-gray-400">{t('settings.pro.usageDictionary')}</span>
-                    <span className={`font-mono ${dictAtCap ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-900 dark:text-white'}`}>
+                    <span className="text-app-muted">{t('settings.pro.usageDictionary')}</span>
+                    <span className={`font-mono ${dictAtCap ? 'text-app-danger font-semibold' : 'text-app-text'}`}>
                       {dictCount} / {dictLimit}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-500 dark:text-gray-400">{t('settings.pro.usageHistory')}</span>
-                    <span className={`font-mono ${histAtCap ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-900 dark:text-white'}`}>
+                    <span className="text-app-muted">{t('settings.pro.usageHistory')}</span>
+                    <span className={`font-mono ${histAtCap ? 'text-app-danger font-semibold' : 'text-app-text'}`}>
                       {histCount} / {histLimit}
                     </span>
                   </div>
@@ -1064,7 +1074,7 @@ export function Settings() {
                   onChange={(e) => setLicenseInput(e.target.value)}
                   placeholder={t('settings.pro.inputPlaceholder')}
                   spellCheck={false}
-                  className="w-full px-3 py-2 text-sm font-mono border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm font-mono border border-app-border rounded-md bg-app-surface text-app-text focus:outline-none focus:ring-2 focus:ring-app-accent"
                   disabled={licenseLoading}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && licenseInput.trim()) {
@@ -1073,14 +1083,14 @@ export function Settings() {
                   }}
                 />
                 {licenseError && (
-                  <p className="text-xs text-red-600 dark:text-red-400">{showLicenseError}</p>
+                  <p className="text-xs text-app-danger">{showLicenseError}</p>
                 )}
               </div>
               <div className="flex items-center gap-3">
                 <button
                   onClick={handleActivateLicense}
                   disabled={licenseLoading || !licenseInput.trim()}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors flex items-center gap-2"
+                  className="px-4 py-2 text-sm font-medium text-white bg-app-accent hover:bg-app-accent-hover disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors flex items-center gap-2"
                 >
                   {licenseLoading && <Loader2 className="w-4 h-4 animate-spin" />}
                   {t('settings.pro.activate')}
@@ -1089,7 +1099,7 @@ export function Settings() {
                   href="https://amirks.lemonsqueezy.com/buy/dcc74241-21ae-4d20-8a3c-90bf8d842bae"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                  className="text-sm font-medium text-app-accent hover:text-app-accent-hover dark:text-app-accent dark:hover:text-blue-300"
                 >
                   {t('settings.pro.buyLink')}
                 </a>
@@ -1099,32 +1109,32 @@ export function Settings() {
             <>
               <div className="space-y-2 mb-4">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">{t('settings.pro.labelKey')}</span>
-                  <span className="font-mono text-gray-900 dark:text-white">{maskedLicenseKey}</span>
+                  <span className="text-app-muted">{t('settings.pro.labelKey')}</span>
+                  <span className="font-mono text-app-text">{maskedLicenseKey}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">{t('settings.pro.labelStatus')}</span>
-                  <span className="text-gray-900 dark:text-white capitalize">
+                  <span className="text-app-muted">{t('settings.pro.labelStatus')}</span>
+                  <span className="text-app-text capitalize">
                     {licenseStatus ?? t('settings.pro.statusUnknown')}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">{t('settings.pro.labelValidity')}</span>
-                  <span className="text-gray-900 dark:text-white">
+                  <span className="text-app-muted">{t('settings.pro.labelValidity')}</span>
+                  <span className="text-app-text">
                     {formatExpiry(licenseExpiresAt)}
                   </span>
                 </div>
                 {licenseActivationLimit !== null && (
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500 dark:text-gray-400">{t('settings.pro.labelActivations')}</span>
-                    <span className="text-gray-900 dark:text-white">
+                    <span className="text-app-muted">{t('settings.pro.labelActivations')}</span>
+                    <span className="text-app-text">
                       {licenseActivationCount ?? 0} / {licenseActivationLimit}
                     </span>
                   </div>
                 )}
               </div>
               {licenseError && (
-                <p className="text-xs text-red-600 dark:text-red-400 mb-3">{showLicenseError}</p>
+                <p className="text-xs text-app-danger mb-3">{showLicenseError}</p>
               )}
               <button
                 onClick={() => setShowDeactivateConfirm(true)}
@@ -1133,7 +1143,7 @@ export function Settings() {
               >
                 {t('settings.pro.deactivateDevice')}
               </button>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              <p className="text-xs text-app-muted mt-2">
                 {t('settings.pro.deactivateHelp')}
               </p>
             </>
@@ -1141,11 +1151,11 @@ export function Settings() {
         </section>
 
         {/* Recording Trigger Section */}
-        <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        <section id="recording" data-section="recording" className="scroll-mt-6 bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
+          <h2 className="text-lg font-semibold text-app-text mb-4">
             {t('settings.recordingTrigger.title')}
           </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          <p className="text-sm text-app-muted mb-4">
             {t('settings.recordingTrigger.desc')}
           </p>
 
@@ -1158,8 +1168,8 @@ export function Settings() {
                 className={`
                   w-full flex items-center justify-between px-4 py-3 rounded-lg border-2 transition-all text-left
                   ${shortcut === opt.value
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                    ? 'border-app-accent bg-app-accent-tint'
+                    : 'border-app-border hover:border-app-border-strong'
                   }
                 `}
               >
@@ -1167,18 +1177,18 @@ export function Settings() {
                   <span className={`
                     w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0
                     ${shortcut === opt.value
-                      ? 'border-blue-500'
-                      : 'border-gray-400 dark:border-gray-500'
+                      ? 'border-app-accent'
+                      : 'border-app-border'
                     }
                   `}>
                     {shortcut === opt.value && (
-                      <span className="w-2 h-2 rounded-full bg-blue-500" />
+                      <span className="w-2 h-2 rounded-full bg-app-accent" />
                     )}
                   </span>
                   <span className={`font-mono text-sm font-semibold ${
                     shortcut === opt.value
-                      ? 'text-blue-700 dark:text-blue-300'
-                      : 'text-gray-900 dark:text-white'
+                      ? 'text-app-accent'
+                      : 'text-app-text'
                   }`}>
                     {opt.label}
                   </span>
@@ -1186,8 +1196,8 @@ export function Settings() {
                 {opt.desc && (
                   <span className={`text-xs ${
                     opt.recommended
-                      ? 'text-blue-600 dark:text-blue-400 font-medium'
-                      : 'text-gray-400 dark:text-gray-500'
+                      ? 'text-app-accent dark:text-app-accent font-medium'
+                      : 'text-app-faint'
                   }`}>
                     {opt.desc}
                   </span>
@@ -1198,7 +1208,7 @@ export function Settings() {
 
           {shortcutError && (
             <div className="mt-3 space-y-2">
-              <p className="text-sm text-red-600 dark:text-red-400">
+              <p className="text-sm text-app-danger">
                 {showShortcutError}
               </p>
               {shortcutErrorIsInputMonitoring && (
@@ -1218,25 +1228,25 @@ export function Settings() {
           )}
 
           {shortcutSuccess && (
-            <p className="text-sm text-green-600 dark:text-green-400 mt-3">
+            <p className="text-sm text-app-success mt-3">
               {t('settings.recordingTrigger.successUpdated')}
             </p>
           )}
         </section>
 
         {/* Recording Mode Section */}
-        <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        <section className="bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
+          <h2 className="text-lg font-semibold text-app-text mb-4">
             {t('settings.recordingMode.title')}
           </h2>
 
           {/* Hands-free mode toggle */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex-1 pr-4">
-              <p className="text-gray-900 dark:text-white font-medium">
+              <p className="text-app-text font-medium">
                 {t('settings.recordingMode.handsFreeLabel')}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              <p className="text-sm text-app-muted mt-1">
                 {t('settings.recordingMode.handsFreeDesc')}
               </p>
             </div>
@@ -1250,10 +1260,10 @@ export function Settings() {
           {/* Hide pill when inactive toggle */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex-1 pr-4">
-              <p className="text-gray-900 dark:text-white font-medium">
+              <p className="text-app-text font-medium">
                 {t('settings.recordingMode.hidePillLabel')}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              <p className="text-sm text-app-muted mt-1">
                 {t('settings.recordingMode.hidePillDesc')}
               </p>
             </div>
@@ -1267,10 +1277,10 @@ export function Settings() {
           {/* Launch at startup toggle */}
           <div className="flex items-center justify-between">
             <div className="flex-1 pr-4">
-              <p className="text-gray-900 dark:text-white font-medium">
+              <p className="text-app-text font-medium">
                 {t('settings.recordingMode.launchStartupLabel')}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              <p className="text-sm text-app-muted mt-1">
                 {t('settings.recordingMode.launchStartupDesc')}
               </p>
             </div>
@@ -1283,22 +1293,22 @@ export function Settings() {
         </section>
 
         {/* Transcription Section */}
-        <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        <section id="transcription" data-section="transcription" className="scroll-mt-6 bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
+          <h2 className="text-lg font-semibold text-app-text mb-4">
             {t('settings.transcription.title')}
           </h2>
 
           {/* Groq API Key */}
-          <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-            <p className="text-gray-900 dark:text-white font-medium mb-2">
+          <div className="mb-6 p-4 bg-app-raised rounded-lg">
+            <p className="text-app-text font-medium mb-2">
               {t('settings.transcription.groqLabel')}
             </p>
               {hasGroqKey ? (
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-green-600 dark:text-green-400">{t('settings.transcription.keyConfigured')}</span>
+                  <span className="text-sm text-app-success">{t('settings.transcription.keyConfigured')}</span>
                   <button
                     onClick={() => setHasGroqKey(false)}
-                    className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    className="text-sm text-app-muted hover:text-app-text"
                   >
                     {t('common.change')}
                   </button>
@@ -1311,33 +1321,33 @@ export function Settings() {
                       value={groqApiKey}
                       onChange={(e) => setGroqApiKey(e.target.value)}
                       placeholder={t('settings.transcription.keyPlaceholder')}
-                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      className="flex-1 px-3 py-2 border border-app-border rounded-md bg-app-surface text-app-text focus:outline-none focus:ring-2 focus:ring-app-accent text-sm"
                     />
                     <button
                       onClick={handleGroqKeySave}
                       disabled={groqKeySaving || !groqApiKey.trim()}
-                      className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md transition-colors"
+                      className="px-4 py-2 text-sm font-medium text-white bg-app-accent hover:bg-app-accent-hover disabled:bg-app-raised disabled:cursor-not-allowed rounded-md transition-colors"
                     >
                       {groqKeySaving ? t('common.validating') : t('common.save')}
                     </button>
                   </div>
                   {groqKeySuccess && (
-                    <p className="text-sm text-green-600 dark:text-green-400">
+                    <p className="text-sm text-app-success">
                       {t('settings.transcription.keySaved')}
                     </p>
                   )}
                   {groqKeyError && (
-                    <p className="text-sm text-red-600 dark:text-red-400">
+                    <p className="text-sm text-app-danger">
                       {groqKeyError}
                     </p>
                   )}
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                  <p className="text-xs text-app-muted">
                     {t('settings.transcription.getKeyAt')}{' '}
                     <a
                       href="https://console.groq.com/keys"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-500 hover:underline"
+                      className="text-app-accent hover:underline"
                     >
                       console.groq.com
                     </a>
@@ -1349,10 +1359,10 @@ export function Settings() {
           {/* AI Polish Toggle */}
           <div className="flex items-center justify-between">
             <div className="flex-1 pr-4">
-              <p className="text-gray-900 dark:text-white font-medium">
+              <p className="text-app-text font-medium">
                 {t('settings.transcription.polishLabel')}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              <p className="text-sm text-app-muted mt-1">
                 {t('settings.transcription.polishDesc')}
               </p>
             </div>
@@ -1366,17 +1376,17 @@ export function Settings() {
         </section>
 
         {/* Privacy & Telemetry Section */}
-        <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        <section id="privacy" data-section="privacy" className="scroll-mt-6 bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
+          <h2 className="text-lg font-semibold text-app-text mb-4">
             {t('settings.privacy.title')}
           </h2>
 
           <div className="flex items-center justify-between mb-4">
             <div className="flex-1 pr-4">
-              <p className="text-gray-900 dark:text-white font-medium">
+              <p className="text-app-text font-medium">
                 {t('settings.privacy.helpLabel')}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              <p className="text-sm text-app-muted mt-1">
                 {t('settings.privacy.helpDesc')}
               </p>
             </div>
@@ -1389,7 +1399,7 @@ export function Settings() {
 
           {/* Restart banner -- shown after toggling */}
           {showRestartBanner && (
-            <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg mb-4">
+            <div className="flex items-center justify-between p-3 bg-app-warning-tint rounded-lg mb-4">
               <p className="text-sm text-amber-700 dark:text-amber-400">
                 {t('settings.privacy.restartHint')}
               </p>
@@ -1403,22 +1413,22 @@ export function Settings() {
           )}
 
           {/* Privacy explanation */}
-          <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-              <span className="font-medium text-gray-700 dark:text-gray-300">{t('settings.privacy.whatSentLabel')}</span>{' '}
+          <div className="p-3 bg-app-raised rounded-lg">
+            <p className="text-xs text-app-muted leading-relaxed">
+              <span className="font-medium text-app-text">{t('settings.privacy.whatSentLabel')}</span>{' '}
               {t('settings.privacy.whatSentBody')}
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed mt-2">
-              <span className="font-medium text-gray-700 dark:text-gray-300">{t('settings.privacy.neverSentLabel')}</span>{' '}
+            <p className="text-xs text-app-muted leading-relaxed mt-2">
+              <span className="font-medium text-app-text">{t('settings.privacy.neverSentLabel')}</span>{' '}
               {t('settings.privacy.neverSentBody')}
             </p>
           </div>
         </section>
 
         {/* Dictionary Section */}
-        <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
+        <section id="dictionary" data-section="dictionary" className="scroll-mt-6 bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            <h2 className="text-lg font-semibold text-app-text">
               {t('settings.dictionary.title')}
             </h2>
             {dictionary.length > 0 && (
@@ -1434,32 +1444,32 @@ export function Settings() {
           {/* Add entry form */}
           <div className="mb-4 flex gap-2 items-end">
             <div className="flex-1">
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{t('settings.dictionary.labelMisheard')}</label>
+              <label className="block text-xs text-app-muted mb-1">{t('settings.dictionary.labelMisheard')}</label>
               <input
                 type="text"
                 value={newOriginal}
                 onChange={(e) => setNewOriginal(e.target.value)}
                 placeholder={t('settings.dictionary.placeholderMisheard')}
                 disabled={dictAtCap}
-                className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                className="w-full px-3 py-1.5 border border-app-border rounded-md bg-app-surface text-app-text text-sm focus:outline-none focus:ring-2 focus:ring-app-accent disabled:opacity-50"
               />
             </div>
-            <span className="text-gray-400 pb-1.5">&rarr;</span>
+            <span className="text-app-faint pb-1.5">&rarr;</span>
             <div className="flex-1">
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{t('settings.dictionary.labelCorrection')}</label>
+              <label className="block text-xs text-app-muted mb-1">{t('settings.dictionary.labelCorrection')}</label>
               <input
                 type="text"
                 value={newCorrection}
                 onChange={(e) => setNewCorrection(e.target.value)}
                 placeholder={t('settings.dictionary.placeholderCorrection')}
                 disabled={dictAtCap}
-                className="w-full px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                className="w-full px-3 py-1.5 border border-app-border rounded-md bg-app-surface text-app-text text-sm focus:outline-none focus:ring-2 focus:ring-app-accent disabled:opacity-50"
               />
             </div>
             <button
               onClick={handleAddEntry}
               disabled={!newOriginal.trim() || !newCorrection.trim() || dictAtCap}
-              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed rounded-md transition-colors"
+              className="px-3 py-1.5 text-sm font-medium text-white bg-app-accent hover:bg-app-accent-hover disabled:bg-app-raised disabled:cursor-not-allowed rounded-md transition-colors"
             >
               {t('common.add')}
             </button>
@@ -1474,18 +1484,18 @@ export function Settings() {
           )}
 
           {dictionary.length === 0 ? (
-            <p className="text-gray-500 dark:text-gray-400 text-center py-4">
+            <p className="text-app-muted text-center py-4">
               {t('settings.dictionary.emptyState')}
             </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-200 dark:border-gray-700">
-                    <th className="text-left py-2 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <tr className="border-b border-app-border">
+                    <th className="text-left py-2 px-4 text-xs font-medium text-app-muted uppercase tracking-wider">
                       {t('settings.dictionary.tableOriginal')}
                     </th>
-                    <th className="text-left py-2 px-4 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    <th className="text-left py-2 px-4 text-xs font-medium text-app-muted uppercase tracking-wider">
                       {t('settings.dictionary.tableCorrection')}
                     </th>
                     <th className="w-20"></th>
@@ -1506,9 +1516,9 @@ export function Settings() {
         </section>
 
         {/* History Section */}
-        <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
+        <section id="history" data-section="history" className="scroll-mt-6 bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            <h2 className="text-lg font-semibold text-app-text">
               {t('settings.history.title')}
             </h2>
             {history.length > 0 && (
@@ -1522,12 +1532,12 @@ export function Settings() {
           </div>
 
           {/* Save history toggle */}
-          <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between mb-4 pb-4 border-b border-app-border">
             <div className="flex-1 pr-4">
-              <p className="text-gray-900 dark:text-white font-medium">
+              <p className="text-app-text font-medium">
                 {t('settings.history.saveLabel')}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              <p className="text-sm text-app-muted mt-1">
                 {t('settings.history.saveDesc')}
               </p>
             </div>
@@ -1539,11 +1549,11 @@ export function Settings() {
           </div>
 
           {history.length === 0 ? (
-            <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+            <p className="text-app-muted text-center py-8">
               {historyEnabled ? t('settings.history.emptyEnabled') : t('settings.history.emptyDisabled')}
             </p>
           ) : (
-            <div className="max-h-80 overflow-y-auto rounded-md border border-gray-200 dark:border-gray-700">
+            <div className="max-h-80 overflow-y-auto rounded-md border border-app-border">
               {history.map((entry, index) => (
                 <HistoryRow key={`${entry.timestamp}-${index}`} entry={entry} />
               ))}
@@ -1552,6 +1562,7 @@ export function Settings() {
         </section>
 
         {/* Update Channel Section — beta opt-in */}
+        <div id="updates" data-section="updates" className="scroll-mt-6">
         <UpdateChannelSection />
 
         {/* Updates Section */}
@@ -1559,15 +1570,17 @@ export function Settings() {
           <UpdateSection />
         </div>
 
+        </div>
+
         {/* Language Section — UI/tray/notification locale.
             'system' resolves from navigator.language at runtime (fr-* → fr, else en).
             Saving the choice emits 'settings-changed' which the main.tsx listener
             picks up to call i18n.changeLanguage across every open window. */}
-        <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        <section id="language" data-section="language" className="scroll-mt-6 bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
+          <h2 className="text-lg font-semibold text-app-text mb-2">
             {t('settings.language.title')}
           </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          <p className="text-sm text-app-muted mb-4">
             {t('settings.language.desc')}
           </p>
           <div className="space-y-2">
@@ -1594,26 +1607,26 @@ export function Settings() {
                 className={`
                   w-full flex items-center px-4 py-3 rounded-lg border-2 transition-all text-left
                   ${language === opt.value
-                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                    ? 'border-app-accent bg-app-accent-tint'
+                    : 'border-app-border hover:border-app-border-strong'
                   }
                 `}
               >
                 <span className={`
                   w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 mr-3
                   ${language === opt.value
-                    ? 'border-blue-500'
-                    : 'border-gray-400 dark:border-gray-500'
+                    ? 'border-app-accent'
+                    : 'border-app-border'
                   }
                 `}>
                   {language === opt.value && (
-                    <span className="w-2 h-2 rounded-full bg-blue-500" />
+                    <span className="w-2 h-2 rounded-full bg-app-accent" />
                   )}
                 </span>
                 <span className={`text-sm font-medium ${
                   language === opt.value
-                    ? 'text-blue-700 dark:text-blue-300'
-                    : 'text-gray-900 dark:text-white'
+                    ? 'text-app-accent'
+                    : 'text-app-text'
                 }`}>
                   {opt.label}
                 </span>
@@ -1623,16 +1636,16 @@ export function Settings() {
         </section>
 
         {/* Reset Section */}
-        <section className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        <section id="advanced" data-section="advanced" className="scroll-mt-6 bg-app-surface rounded-app-lg shine-sm border border-app-border p-6">
+          <h2 className="text-lg font-semibold text-app-text mb-4">
             {t('settings.reset.title')}
           </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          <p className="text-sm text-app-muted mb-4">
             {t('settings.reset.desc')}
           </p>
           <button
             onClick={() => setShowResetConfirm(true)}
-            className="px-4 py-2 text-sm font-medium text-red-600 border border-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
+            className="px-4 py-2 text-sm font-medium text-red-600 border border-red-600 hover:bg-app-danger-tint rounded-md transition-colors"
           >
             {t('settings.reset.button')}
           </button>
@@ -1676,8 +1689,125 @@ export function Settings() {
         />
 
         <WhatsNew />
-      </div>
+        </div>
+      </main>
     </div>
+  );
+}
+
+/* ----------------------------------------------------------------------------
+   SettingsSidebar — left nav rail. Compact icon+label list, sticks to viewport.
+   Click scrolls the matching section into view; active state tracks via
+   IntersectionObserver so scroll position highlights the right row.
+   ------------------------------------------------------------------------- */
+
+interface SidebarItem {
+  id: string;
+  labelKey: string;
+  icon: typeof Crown;
+}
+
+function SettingsSidebar() {
+  const { t } = useTranslation();
+  const [appVersion, setAppVersion] = useState('');
+  const [active, setActive] = useState('usage');
+
+  useEffect(() => {
+    getVersion().then((v) => setAppVersion(v)).catch(() => {});
+  }, []);
+
+  // Track which section is currently in view. The rootMargin biases the
+  // detection to the upper third — feels right because users typically
+  // scroll a section into the top half before scanning down.
+  useEffect(() => {
+    const targets = document.querySelectorAll('[data-section]');
+    if (targets.length === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const id = (entry.target as HTMLElement).dataset.section;
+            if (id) setActive(id);
+            break;
+          }
+        }
+      },
+      { rootMargin: '-20% 0px -60% 0px', threshold: 0.01 },
+    );
+    targets.forEach((t) => observer.observe(t));
+    return () => observer.disconnect();
+  }, []);
+
+  const items: SidebarItem[] = [
+    { id: 'usage', labelKey: 'settings.nav.usage', icon: Activity },
+    { id: 'account', labelKey: 'settings.nav.account', icon: User },
+    { id: 'pro', labelKey: 'settings.nav.pro', icon: Crown },
+    { id: 'recording', labelKey: 'settings.nav.recording', icon: Mic },
+    { id: 'transcription', labelKey: 'settings.nav.transcription', icon: Languages },
+    { id: 'dictionary', labelKey: 'settings.nav.dictionary', icon: BookOpen },
+    { id: 'history', labelKey: 'settings.nav.history', icon: Clock },
+    { id: 'updates', labelKey: 'settings.nav.updates', icon: Download },
+    { id: 'language', labelKey: 'settings.nav.language', icon: Globe },
+    { id: 'advanced', labelKey: 'settings.nav.advanced', icon: SlidersHorizontal },
+  ];
+
+  const onSelect = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setActive(id);
+    }
+  };
+
+  return (
+    <aside className="w-56 shrink-0 bg-app-dim border-r border-app-border flex flex-col h-screen sticky top-0">
+      <div className="px-5 pt-6 pb-4">
+        <div className="flex items-center gap-2.5">
+          <div className="relative size-7 rounded-app-sm bg-app-surface border border-app-border grid place-items-center shine-sm">
+            <span className="text-app-text font-semibold text-[10px] tracking-[-0.02em]">TTP</span>
+            <span
+              aria-hidden
+              className="absolute top-[5px] right-[5px] size-[3px] rounded-full bg-app-accent"
+            />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[12px] font-semibold text-app-text leading-tight">TTP by AmirKS</div>
+            <div className="text-[10px] text-app-faint tabular-nums leading-tight">v{appVersion || '…'}</div>
+          </div>
+        </div>
+      </div>
+
+      <nav className="flex-1 overflow-y-auto px-2 py-2">
+        <ul className="space-y-px">
+          {items.map((it) => {
+            const Icon = it.icon;
+            const isActive = active === it.id;
+            return (
+              <li key={it.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(it.id)}
+                  className={cn(
+                    'w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-app-sm text-[12px] font-medium',
+                    'transition-colors duration-100',
+                    isActive
+                      ? 'bg-app-surface text-app-text shine-sm'
+                      : 'text-app-muted hover:text-app-text hover:bg-app-surface',
+                  )}
+                >
+                  <Icon
+                    className={cn('size-3.5 shrink-0', isActive ? 'text-app-accent' : 'text-app-faint')}
+                    strokeWidth={1.75}
+                    aria-hidden
+                  />
+                  <span className="truncate text-left">{t(it.labelKey)}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+    </aside>
   );
 }
 

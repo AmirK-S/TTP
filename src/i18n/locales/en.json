@@ -111,6 +111,18 @@
     }
   },
   "settings": {
+    "nav": {
+      "usage": "Usage",
+      "account": "Account",
+      "pro": "TTP Pro",
+      "recording": "Recording",
+      "transcription": "Transcription",
+      "dictionary": "Dictionary",
+      "history": "History",
+      "updates": "Updates",
+      "language": "Language",
+      "advanced": "Advanced"
+    },
     "about": {
       "subtitle": "Talk To Paste — v{{version}}",
       "description": "Thanks for using TTP! This is a free, open-source app I built to make voice-to-text effortless. Just press your hotkey, speak, and your words are transcribed and pasted instantly — powered by Groq's fast AI, with smart polish to clean up filler words and grammar. TTP also learns from your corrections over time.",

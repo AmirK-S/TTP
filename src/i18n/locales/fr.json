@@ -111,6 +111,18 @@
     }
   },
   "settings": {
+    "nav": {
+      "usage": "Activité",
+      "account": "Compte",
+      "pro": "TTP Pro",
+      "recording": "Enregistrement",
+      "transcription": "Transcription",
+      "dictionary": "Dictionnaire",
+      "history": "Historique",
+      "updates": "Mises à jour",
+      "language": "Langue",
+      "advanced": "Avancé"
+    },
     "about": {
       "subtitle": "Talk To Paste — v{{version}}",
       "description": "Merci d'utiliser TTP ! C'est une app gratuite et open-source que j'ai construite pour rendre la dictée vocale ultra fluide. Tu appuies sur ton raccourci, tu parles, et tes mots sont transcrits et collés instantanément — propulsé par l'IA rapide de Groq, avec une correction intelligente qui retire les mots de remplissage et fixe la grammaire. TTP apprend aussi de tes corrections au fil du temps.",

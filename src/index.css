@@ -167,6 +167,20 @@
   color: inherit;
 }
 
+/* WebKit paints the selection rectangle the FULL width of the containing
+   block, not the width of the actual glyph runs. On multi-line text inside
+   a block container that's wider than the longest line, the selection
+   highlight bleeds out to the right (and to the left on subsequent lines).
+   Forcing text-bearing wrappers to size to their content tames this — the
+   line box now hugs the text. Applied via `.text-block` which we sprinkle
+   on transcript / changelog / description blocks. */
+.text-block {
+  display: inline-block;
+  max-width: 100%;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
 /* The floating-bar / pill window stays transparent; every other window
    inherits the token bg from :root. */
 html.floating-bar,
