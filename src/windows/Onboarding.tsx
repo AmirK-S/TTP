@@ -162,9 +162,12 @@ export default function Onboarding() {
   const micGranted = permStatus.microphone === 'Granted';
 
   return (
-    <div className="min-h-screen flex flex-col bg-app-bg">
+    <div className="min-h-screen flex flex-col bg-app-bg bg-noise">
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-xl mx-auto px-8 pt-16 pb-8">
+        {/* `key={step}` forces the step container to remount on each step
+            change, replaying the anim-fade-up entry — a poor man's
+            crossfade without bringing in framer-motion. */}
+        <div key={step} className="max-w-xl mx-auto px-8 pt-16 pb-8">
           {step === 0 && <WelcomeStep />}
           {step === 1 && (
             <PermissionsStep
@@ -243,14 +246,19 @@ function WelcomeStep() {
       {/* Hero tile — surface ladder + inset highlight + accent glyph. The
           earlier flat white block was the brightest pixel on screen,
           punching above the H1. Now the tile sits IN the page surface
-          with the wordmark in accent. */}
+          with the wordmark in accent and a tiny dot echoing the brand
+          icon's signature blue dot in the top-right. */}
       <div
         className={cn(
-          'mx-auto size-16 rounded-app-xl mb-7 shine-sm border border-app-border',
+          'relative mx-auto size-16 rounded-app-xl mb-7 shine-sm border border-app-border',
           'bg-app-surface grid place-items-center',
         )}
       >
-        <span className="text-app-accent font-semibold text-[18px] tracking-[-0.022em]">TTP</span>
+        <span className="text-app-text font-semibold text-[18px] tracking-[-0.022em]">TTP</span>
+        <span
+          aria-hidden
+          className="absolute top-[10px] right-[10px] size-[6px] rounded-full bg-app-accent shadow-[0_0_0_3px_rgba(76,139,245,0.18)]"
+        />
       </div>
       <h1 className="text-display-md text-app-text">
         {t('onboarding.wizard.welcomeTitle')}
@@ -344,7 +352,11 @@ function PermissionRow({ permKey, status, isChecking, onClick, delay }: PermRowP
   return (
     <Card
       elevation="sm"
-      className="anim-fade-up flex items-center gap-4 px-5 py-4"
+      className={cn(
+        'anim-fade-up flex items-center gap-4 px-5 py-4',
+        'transition-[background-color,transform] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)]',
+        !granted && 'hover:bg-app-raised',
+      )}
       style={{ animationDelay: `${0.06 + delay * 0.05}s` }}
     >
       <div className={cn(
@@ -352,7 +364,7 @@ function PermissionRow({ permKey, status, isChecking, onClick, delay }: PermRowP
         granted ? 'bg-app-success-tint text-app-success' : PERM_TILE[permKey],
       )}>
         {granted
-          ? <CheckCircle2 className="size-[18px]" aria-hidden />
+          ? <CheckCircle2 key="granted" className="size-[18px] anim-check-pop" aria-hidden />
           : <Icon className="size-[18px]" strokeWidth={1.75} aria-hidden />}
       </div>
       <div className="flex-1 min-w-0">

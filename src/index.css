@@ -180,6 +180,16 @@ body {
   min-height: 100vh;
 }
 
+/* Micro-noise texture on the canvas — Vercel / Linear use a faint grain to
+   stop large dark panels from looking like flat plastic. SVG inline so we
+   don't ship a binary, and the opacity is low enough (~2%) that it reads
+   as paper rather than noise. */
+.bg-noise {
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1   0 0 0 0 1   0 0 0 0 1   0 0 0 0.03 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-repeat: repeat;
+}
+
 /* Custom focus rings — 2px tinted accent, 2px offset from the element.
    Falls back gracefully on dark surfaces because we add an inset spacer
    ring in the canvas color before the accent ring. Same pattern Linear and
@@ -209,6 +219,11 @@ body {
 @keyframes app-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes app-scale-in { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
 @keyframes app-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@keyframes app-check-pop {
+  0% { opacity: 0; transform: scale(0.4) rotate(-12deg); }
+  60% { opacity: 1; transform: scale(1.12) rotate(0); }
+  100% { opacity: 1; transform: scale(1); }
+}
 
 /* Skeleton shimmer — token-tinted gradient sweep. Replaces `animate-pulse`
    opacity flicker (the "loading state" tell from every shadcn project). */
@@ -221,6 +236,7 @@ body {
 .anim-fade-up { animation: app-fade-up 0.28s var(--ease-app-out) both; }
 .anim-scale-in { animation: app-scale-in 0.20s var(--ease-app-out) both; }
 .anim-pulse { animation: app-pulse 1.4s ease-in-out infinite; }
+.anim-check-pop { animation: app-check-pop 0.35s var(--ease-app-spring) both; }
 
 .anim-delay-1 { animation-delay: 0.04s; }
 .anim-delay-2 { animation-delay: 0.08s; }
