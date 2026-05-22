@@ -1,587 +1,413 @@
 // TTP - Talk To Paste
-// Onboarding component - checklist flow for permissions and setup
+// First-launch onboarding wizard.
+//
+// Three steps: Welcome → Permissions → API key. Gating is intentionally soft:
+// only Microphone and the API key are required to finish. Accessibility +
+// Input Monitoring are strong recommendations but skippable — the user can
+// grant them later from the in-app permission banner. Forcing them at
+// install-time bricks the wizard for users who don't realise they have to
+// re-click into System Settings to flip a toggle.
 
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useTranslation } from 'react-i18next';
+import {
+  Mic,
+  Accessibility as AccessibilityIcon,
+  Keyboard,
+  CheckCircle2,
+  ChevronRight,
+  ChevronLeft,
+  ExternalLink,
+} from 'lucide-react';
+import { Button, Card } from '../components/ui';
+import { ApiKeyForm } from '../components/ApiKeyForm';
+import { cn } from '../lib/cn';
 
-/** Permission status from the Rust backend */
 type PermissionStatus = 'Granted' | 'Denied' | 'Undetermined';
+type PermKey = 'microphone' | 'accessibility' | 'inputMonitoring';
 
-// Help text for each step is sourced from i18n via `onboarding.help.<key>` —
-// resolved inline at the call site so we can use the active language at render.
-
-/** macOS-only — TTP doesn't surface this step on Windows. */
 const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.startsWith('Mac');
 
-/**
- * Map each onboarding step to the Rust command that opens its System Settings
- * pane. We can't call `plugin:opener|open_url` directly from the WebView for
- * `x-apple.systempreferences:` URLs — the opener plugin's IPC scope rejects
- * non-http(s) schemes, so the click was silently no-op'ing. Going through
- * dedicated Rust commands (which call OpenerExt internally) bypasses that ACL.
- */
-const SETTINGS_COMMAND: Record<string, string> = {
+const SETTINGS_COMMAND: Record<PermKey, string> = {
   microphone: 'open_microphone_settings',
   accessibility: 'open_accessibility_settings',
   inputMonitoring: 'open_input_monitoring_settings',
 };
 
-/**
- * Onboarding window component - shown on first launch
- * Guides user through all setup steps as a checklist
- */
+const PERM_ICON: Record<PermKey, typeof Mic> = {
+  microphone: Mic,
+  accessibility: AccessibilityIcon,
+  inputMonitoring: Keyboard,
+};
+
 export default function Onboarding() {
   const { t } = useTranslation();
-  const [checklist, setChecklist] = useState<Record<string, boolean>>({});
-  const [permissionStatus, setPermissionStatus] = useState<Record<string, PermissionStatus>>({});
-  const [checking, setChecking] = useState<string | null>(null);
-  const [apiKeyInput, setApiKeyInput] = useState('');
-  const [isSavingKey, setIsSavingKey] = useState(false);
-  const [apiKeyError, setApiKeyError] = useState('');
+  const [step, setStep] = useState<0 | 1 | 2>(0);
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [permStatus, setPermStatus] = useState<Record<PermKey, PermissionStatus>>({
+    microphone: 'Undetermined',
+    accessibility: 'Denied',
+    inputMonitoring: 'Denied',
+  });
+  const [checking, setChecking] = useState<PermKey | null>(null);
 
-  // Keep the window title in sync with the active language.
+  // Keep window title in sync with the active language.
   useEffect(() => {
     getCurrentWindow().setTitle(t('windowTitle.onboarding'));
   });
 
-  const checkAllItems = useCallback(async () => {
+  const refreshAll = useCallback(async () => {
     try {
-      // Input Monitoring is mac-only; on Windows we treat it as already passed
-      // so the rest of the checklist gating logic is uniform.
-      const inputMonitoringPromise = IS_MAC
+      const inputMonProm = IS_MAC
         ? invoke<boolean>('check_input_monitoring_permission')
         : Promise.resolve(true);
-
-      const [micStatus, hasApiKey, accessibilityStatus, hasInputMonitoring] = await Promise.all([
+      const [mic, key, ax, im] = await Promise.all([
         invoke<PermissionStatus>('check_microphone_permission'),
         invoke<boolean>('has_groq_api_key'),
         invoke<PermissionStatus>('check_accessibility_permission'),
-        inputMonitoringPromise,
+        inputMonProm,
       ]);
-
-      setChecklist({
-        microphone: micStatus === 'Granted',
-        apikey: hasApiKey,
-        accessibility: accessibilityStatus === 'Granted',
-        inputMonitoring: hasInputMonitoring,
+      setHasApiKey(key);
+      setPermStatus({
+        microphone: mic,
+        accessibility: ax,
+        inputMonitoring: im ? 'Granted' : 'Denied',
       });
-      setPermissionStatus({
-        microphone: micStatus,
-        accessibility: accessibilityStatus,
-        // Input Monitoring doesn't expose Granted/Denied/Undetermined like AVFoundation —
-        // the OS just returns a bool. We map it to Granted/Denied for the UI to render
-        // the same "tap to enable / tap to open Settings" pattern as the other items.
-        inputMonitoring: hasInputMonitoring ? 'Granted' : 'Denied',
-      });
-    } catch (error) {
-      console.error('Failed to check items:', error);
+    } catch (e) {
+      console.error('Onboarding refresh failed:', e);
     }
   }, []);
 
-  // Check on mount, then re-check whenever the window regains focus (covers
-  // returns from System Settings). 2-second polling was removed — the focus
-  // listener catches every realistic case without UI flicker.
-  useEffect(() => {
-    checkAllItems();
-  }, [checkAllItems]);
+  useEffect(() => { refreshAll(); }, [refreshAll]);
 
+  // Re-check whenever the window regains focus — catches returns from System
+  // Settings without a polling timer.
   useEffect(() => {
     const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
-      if (focused) checkAllItems();
+      if (focused) refreshAll();
     });
     return () => { unlisten.then(fn => fn()); };
-  }, [checkAllItems]);
+  }, [refreshAll]);
 
-  const openSettingsPane = async (key: 'microphone' | 'accessibility' | 'inputMonitoring') => {
-    try {
-      await invoke(SETTINGS_COMMAND[key]);
-    } catch (e) {
-      console.error('Failed to open settings pane:', e);
-    }
+  const openSettings = async (key: PermKey) => {
+    try { await invoke(SETTINGS_COMMAND[key]); }
+    catch (e) { console.error('Failed to open settings pane:', e); }
   };
 
-  // Request microphone permission - first time triggers the system dialog,
-  // already-denied jumps straight to System Settings.
   const requestMicrophone = async () => {
     setChecking('microphone');
     try {
-      if (permissionStatus.microphone === 'Denied') {
-        await openSettingsPane('microphone');
-      } else {
-        await invoke('request_microphone_permission');
-      }
+      if (permStatus.microphone === 'Denied') await openSettings('microphone');
+      else await invoke('request_microphone_permission');
     } catch (e) {
       console.log('Microphone permission result:', e);
     } finally {
       setChecking(null);
+      // Race the OS prompt — refresh after a beat so the dot flips.
+      setTimeout(refreshAll, 250);
     }
   };
 
   const requestAccessibility = async () => {
     setChecking('accessibility');
     try {
-      if (permissionStatus.accessibility === 'Denied') {
-        await openSettingsPane('accessibility');
-      } else {
-        await invoke('request_accessibility_permission');
-      }
+      if (permStatus.accessibility === 'Denied') await openSettings('accessibility');
+      else await invoke('request_accessibility_permission');
     } catch (e) {
       console.log('Accessibility permission result:', e);
     } finally {
       setChecking(null);
+      setTimeout(refreshAll, 250);
     }
   };
 
-  // Input Monitoring: macOS only. The first request triggers the system prompt;
-  // any subsequent denial means we have to send the user to System Settings,
-  // because macOS won't re-prompt once the user has answered once.
   const requestInputMonitoring = async () => {
     setChecking('inputMonitoring');
     try {
       const granted = await invoke<boolean>('request_input_monitoring_permission');
-      if (!granted) {
-        // System won't re-prompt — open the right Settings pane so the user
-        // can flip the toggle themselves.
-        await openSettingsPane('inputMonitoring');
-      }
+      if (!granted) await openSettings('inputMonitoring');
     } catch (e) {
       console.log('Input Monitoring permission result:', e);
     } finally {
       setChecking(null);
+      setTimeout(refreshAll, 250);
     }
   };
 
-  // Validate and save API key
-  const saveApiKey = async () => {
-    if (!apiKeyInput.trim()) {
-      setApiKeyError(t('onboarding.apiKey.enterValid'));
-      return;
-    }
-
-    setIsSavingKey(true);
-    setApiKeyError('');
-
-    try {
-      await invoke('validate_groq_api_key', { key: apiKeyInput.trim() });
-      await invoke('set_groq_api_key', { key: apiKeyInput.trim() });
-      setChecklist(prev => ({ ...prev, apikey: true }));
-      setApiKeyInput('');
-    } catch (e) {
-      // Rust may return a translation key like "error.api_invalid_key";
-      // translate those defensively, otherwise show as-is.
-      setApiKeyError(
-        typeof e === 'string' && (e.startsWith('error.') || e.startsWith('permission.'))
-          ? t(e)
-          : String(e),
-      );
-    } finally {
-      setIsSavingKey(false);
-    }
+  const finish = async () => {
+    try { await invoke('close_onboarding'); }
+    catch (e) { console.error('Failed to close onboarding:', e); }
   };
 
-  const handleGetStarted = async () => {
-    try {
-      await invoke('close_onboarding');
-    } catch (e) {
-      console.error('Failed to close onboarding:', e);
-    }
-  };
-
-  // Input Monitoring only counts on macOS — Windows doesn't have an equivalent
-  // permission and we treat it as passed in checkAllItems().
-  const allChecked =
-    !!checklist.microphone &&
-    !!checklist.apikey &&
-    !!checklist.accessibility &&
-    (!IS_MAC || !!checklist.inputMonitoring);
-
-  // Build a list of which items are still missing — surfaced as a subtitle
-  // under the disabled CTA so the user knows what's blocking them.
-  const missingLabels: string[] = [];
-  if (!checklist.microphone) missingLabels.push(t('onboarding.item.microphone'));
-  if (!checklist.accessibility) missingLabels.push(t('onboarding.item.accessibility'));
-  if (IS_MAC && !checklist.inputMonitoring) missingLabels.push(t('onboarding.item.inputMonitoring'));
-  if (!checklist.apikey) missingLabels.push(t('onboarding.item.apikey'));
-
-  // Explicit ordering — Microphone → Accessibility → Input Monitoring (mac) → API key —
-  // so the user always knows which step is next instead of guessing.
-  type ItemKey = 'microphone' | 'accessibility' | 'inputMonitoring' | 'apikey';
-  const items: Array<{ key: ItemKey; label: string }> = [
-    { key: 'microphone', label: t('onboarding.item.microphone') },
-    { key: 'accessibility', label: t('onboarding.item.accessibility') },
-    ...(IS_MAC ? [{ key: 'inputMonitoring' as const, label: t('onboarding.item.inputMonitoring') }] : []),
-    { key: 'apikey', label: t('onboarding.item.apikey') },
-  ];
+  const micGranted = permStatus.microphone === 'Granted';
 
   return (
-    <div style={styles.container}>
-      <div style={styles.content}>
-        <div style={styles.header}>
-          <h1 style={styles.title}>{t('onboarding.title')}</h1>
-          <p style={styles.subtitle}>{t('onboarding.subtitle')}</p>
+    <div className="min-h-screen flex flex-col bg-app-bg">
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-xl mx-auto px-8 pt-16 pb-8">
+          {step === 0 && <WelcomeStep />}
+          {step === 1 && (
+            <PermissionsStep
+              permStatus={permStatus}
+              checking={checking}
+              onRequest={(key) => {
+                if (key === 'microphone') return requestMicrophone();
+                if (key === 'accessibility') return requestAccessibility();
+                return requestInputMonitoring();
+              }}
+            />
+          )}
+          {step === 2 && (
+            <ApiKeyStep
+              hasApiKey={hasApiKey}
+              onSaved={() => { setHasApiKey(true); finish(); }}
+            />
+          )}
         </div>
-
-        <div style={styles.checklist}>
-          {items.map((item) => {
-            const isChecked = !!checklist[item.key];
-            const itemStyle = {
-              ...(item.key === 'apikey' ? styles.checkItemColumn : styles.checkItem),
-              ...(isChecked ? styles.checkItemCompleted : {}),
-            };
-
-            if (item.key === 'apikey') {
-              return (
-                <div key={item.key} style={itemStyle}>
-                  <div style={styles.checkItemTop}>
-                    <div style={{
-                      ...styles.statusDot,
-                      backgroundColor: isChecked ? '#22c55e' : '#ef4444',
-                    }} />
-                    <div style={styles.checkContent}>
-                      <div style={styles.checkLabel}>{item.label}</div>
-                      <div style={{
-                        ...styles.checkDesc,
-                        color: isChecked ? '#22c55e' : '#ef4444',
-                      }}>
-                        {isChecked ? t('onboarding.apiKey.saved') : t('onboarding.apiKey.missing')}
-                      </div>
-                      {!isChecked && (
-                        <ol style={styles.helpSteps}>
-                          <li>
-                            {t('onboarding.apiKey.stepSignup')}{' '}
-                            <a
-                              href="https://console.groq.com"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={styles.helpLink}
-                            >
-                              console.groq.com
-                            </a>
-                            {' '}{t('onboarding.apiKey.stepSignupSuffix')}
-                          </li>
-                          <li>{t('onboarding.apiKey.stepCreate')}</li>
-                          <li>{t('onboarding.apiKey.stepCopy')} <code style={styles.helpCode}>gsk_</code> {t('onboarding.apiKey.stepCopySuffix')}</li>
-                        </ol>
-                      )}
-                      <div style={styles.helpText}>{t(`onboarding.help.${item.key}`)}</div>
-                    </div>
-                  </div>
-
-                  {!isChecked && (
-                    <div style={styles.apiKeyInput}>
-                      <input
-                        type="password"
-                        placeholder="gsk_..."
-                        value={apiKeyInput}
-                        onChange={(e) => setApiKeyInput(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && saveApiKey()}
-                        style={styles.input}
-                      />
-                      <button
-                        style={styles.saveButton}
-                        onClick={saveApiKey}
-                        disabled={isSavingKey}
-                      >
-                        {isSavingKey ? t('common.validating') : t('common.save')}
-                      </button>
-                    </div>
-                  )}
-                  {apiKeyError && <div style={styles.error}>{apiKeyError}</div>}
-                </div>
-              );
-            }
-
-            const onClick =
-              item.key === 'microphone'
-                ? requestMicrophone
-                : item.key === 'accessibility'
-                  ? requestAccessibility
-                  : requestInputMonitoring;
-            const denied = permissionStatus[item.key] === 'Denied';
-            return (
-              <div key={item.key} style={itemStyle}>
-                <div style={{
-                  ...styles.statusDot,
-                  backgroundColor: isChecked ? '#22c55e' : '#ef4444',
-                }} />
-                <div style={styles.checkContent}>
-                  <div style={styles.checkLabel}>{item.label}</div>
-                  <div style={{
-                    ...styles.checkDesc,
-                    color: isChecked ? '#22c55e' : '#ef4444',
-                  }}>
-                    {isChecked
-                      ? t('onboarding.status.enabled')
-                      : denied
-                        ? t('onboarding.status.denied')
-                        : t('onboarding.status.notEnabled')}
-                  </div>
-                  <div style={styles.helpText}>{t(`onboarding.help.${item.key}`)}</div>
-                </div>
-                {!isChecked && (
-                  <button
-                    style={{
-                      ...styles.actionButton,
-                      opacity: checking === item.key ? 0.5 : 1,
-                    }}
-                    onClick={onClick}
-                    disabled={checking === item.key}
-                  >
-                    {checking === item.key
-                      ? t('onboarding.button.checking')
-                      : denied
-                        ? t('onboarding.button.openSettings')
-                        : t('onboarding.button.enable')}
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {allChecked && (
-          <div style={styles.trialBanner}>
-            <div style={styles.trialBannerEmoji}>✨</div>
-            <div>
-              <div style={styles.trialBannerTitle}>{t('onboarding.trial.title')}</div>
-              <div style={styles.trialBannerSubtitle}>
-                {t('onboarding.trial.subtitle')}
-              </div>
-            </div>
-          </div>
-        )}
-
-        <button
-          style={{
-            ...styles.continueButton,
-            ...(allChecked ? {} : styles.continueButtonDisabled),
-          }}
-          disabled={!allChecked}
-          onClick={handleGetStarted}
-          title={
-            allChecked
-              ? undefined
-              : t('onboarding.cta.stillMissing', { items: missingLabels.join(', ') })
-          }
-        >
-          {allChecked ? t('onboarding.cta.getStarted') : t('onboarding.cta.completeSteps')}
-        </button>
-
-        {!allChecked && missingLabels.length > 0 && (
-          <p style={styles.missingHint}>
-            {t('onboarding.cta.stillMissing', { items: missingLabels.join(', ') })}
-          </p>
-        )}
-
-        <p style={styles.hint}>
-          {t('onboarding.cta.reopenHint')}
-        </p>
       </div>
+
+      <footer className="shrink-0 border-t border-app-border bg-app-surface">
+        <div className="max-w-xl mx-auto px-8 py-4 flex items-center justify-between gap-4">
+          <StepDots current={step} total={3} />
+          <div className="flex items-center gap-2">
+            {step > 0 && (
+              <Button
+                variant="ghost"
+                size="md"
+                leftIcon={<ChevronLeft className="size-4" />}
+                onClick={() => setStep((s) => (s - 1) as 0 | 1 | 2)}
+              >
+                {t('onboarding.wizard.back')}
+              </Button>
+            )}
+            {step === 0 && (
+              <Button
+                size="md"
+                rightIcon={<ChevronRight className="size-4" />}
+                onClick={() => setStep(1)}
+              >
+                {t('onboarding.wizard.next')}
+              </Button>
+            )}
+            {step === 1 && (
+              <Button
+                size="md"
+                rightIcon={<ChevronRight className="size-4" />}
+                onClick={() => setStep(2)}
+                disabled={!micGranted}
+                title={!micGranted ? t('onboarding.cta.stillMissing', { items: t('onboarding.item.microphone') }) : undefined}
+              >
+                {t('onboarding.wizard.next')}
+              </Button>
+            )}
+            {step === 2 && hasApiKey && (
+              <Button size="md" onClick={finish}>
+                {t('onboarding.wizard.finish')}
+              </Button>
+            )}
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    minHeight: '100vh',
-    backgroundColor: '#0a0a0a',
-    color: '#fff',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '16px',
-  },
-  content: {
-    width: '100%',
-    maxWidth: '380px',
-  },
-  header: {
-    textAlign: 'center',
-    marginBottom: '20px',
-  },
-  title: {
-    fontSize: '22px',
-    fontWeight: '700',
-    margin: '0 0 4px 0',
-    color: '#fff',
-  },
-  subtitle: {
-    fontSize: '13px',
-    color: '#666',
-    margin: 0,
-  },
-  checklist: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '10px',
-    marginBottom: '20px',
-  },
-  checkItem: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: '12px',
-    backgroundColor: '#141414',
-    borderRadius: '10px',
-    padding: '14px 16px',
-    border: '1px solid #222',
-    transition: 'opacity 0.2s',
-  },
-  checkItemColumn: {
-    backgroundColor: '#141414',
-    borderRadius: '10px',
-    padding: '14px 16px',
-    border: '1px solid #222',
-    transition: 'opacity 0.2s',
-  },
-  checkItemCompleted: {
-    opacity: 0.55,
-  },
-  checkItemTop: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: '12px',
-  },
-  statusDot: {
-    width: '10px',
-    height: '10px',
-    borderRadius: '50%',
-    flexShrink: 0,
-    marginTop: '4px',
-  },
-  checkContent: {
-    flex: 1,
-  },
-  checkLabel: {
-    fontSize: '14px',
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: '2px',
-  },
-  checkDesc: {
-    fontSize: '12px',
-    fontWeight: '500',
-  },
-  helpText: {
-    fontSize: '11px',
-    color: '#888',
-    marginTop: '4px',
-    lineHeight: 1.4,
-  },
-  helpSteps: {
-    fontSize: '11px',
-    color: '#aaa',
-    margin: '6px 0 4px 0',
-    paddingLeft: '18px',
-    lineHeight: 1.5,
-  },
-  helpLink: {
-    color: '#60a5fa',
-    textDecoration: 'underline',
-  },
-  helpCode: {
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-    fontSize: '10.5px',
-    backgroundColor: '#0a0a0a',
-    border: '1px solid #2a2a2a',
-    borderRadius: '3px',
-    padding: '0 4px',
-  },
-  missingHint: {
-    textAlign: 'center',
-    fontSize: '11px',
-    color: '#888',
-    marginTop: '8px',
-    marginBottom: 0,
-  },
-  actionButton: {
-    padding: '8px 16px',
-    backgroundColor: '#2563eb',
-    border: 'none',
-    borderRadius: '6px',
-    color: '#fff',
-    fontSize: '12px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    flexShrink: 0,
-  },
-  apiKeyInput: {
-    display: 'flex',
-    gap: '8px',
-    marginTop: '12px',
-  },
-  input: {
-    flex: 1,
-    padding: '10px 12px',
-    backgroundColor: '#0a0a0a',
-    border: '1px solid #333',
-    borderRadius: '6px',
-    color: '#fff',
-    fontSize: '12px',
-    outline: 'none',
-  },
-  saveButton: {
-    padding: '10px 16px',
-    backgroundColor: '#2563eb',
-    border: 'none',
-    borderRadius: '6px',
-    color: '#fff',
-    fontSize: '12px',
-    fontWeight: '600',
-    cursor: 'pointer',
-  },
-  error: {
-    color: '#ef4444',
-    fontSize: '11px',
-    marginTop: '6px',
-  },
-  trialBanner: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px',
-    backgroundColor: '#0f2a1a',
-    border: '1px solid #1f5d3a',
-    borderRadius: '10px',
-    padding: '12px 14px',
-    marginBottom: '14px',
-  },
-  trialBannerEmoji: {
-    fontSize: '20px',
-    flexShrink: 0,
-  },
-  trialBannerTitle: {
-    fontSize: '13px',
-    fontWeight: '600',
-    color: '#4ade80',
-    marginBottom: '2px',
-  },
-  trialBannerSubtitle: {
-    fontSize: '11px',
-    color: '#86efac',
-  },
-  continueButton: {
-    width: '100%',
-    padding: '16px 20px',
-    backgroundColor: '#2563eb',
-    border: 'none',
-    borderRadius: '10px',
-    color: '#fff',
-    fontSize: '14px',
-    fontWeight: '600',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-  },
-  continueButtonDisabled: {
-    backgroundColor: '#222',
-    color: '#555',
-    cursor: 'not-allowed',
-  },
-  hint: {
-    textAlign: 'center',
-    fontSize: '11px',
-    color: '#555',
-    marginTop: '12px',
-  },
-};
+/* ----------------------------- Step 0: Welcome ---------------------------- */
+
+function WelcomeStep() {
+  const { t } = useTranslation();
+  return (
+    <section className="anim-fade-up text-center">
+      <div className="mx-auto size-20 rounded-app-xl bg-app-text text-app-bg grid place-items-center mb-6 shadow-app-md">
+        <span className="font-bold text-2xl tracking-tight">TTP</span>
+      </div>
+      <h1 className="text-2xl font-semibold tracking-tight text-app-text">
+        {t('onboarding.wizard.welcomeTitle')}
+      </h1>
+      <p className="mt-2 text-app-muted">{t('onboarding.wizard.welcomeSubtitle')}</p>
+
+      <ul className="mt-10 text-left space-y-3">
+        {[
+          t('onboarding.wizard.welcomeBullet1'),
+          t('onboarding.wizard.welcomeBullet2'),
+          t('onboarding.wizard.welcomeBullet3'),
+        ].map((bullet, i) => (
+          <li key={i} className="flex items-start gap-3 anim-fade-up" style={{ animationDelay: `${0.08 + i * 0.06}s` }}>
+            <CheckCircle2 className="size-4 mt-0.5 shrink-0 text-app-accent" aria-hidden />
+            <span className="text-sm text-app-text">{bullet}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/* --------------------------- Step 1: Permissions -------------------------- */
+
+interface PermStepProps {
+  permStatus: Record<PermKey, PermissionStatus>;
+  checking: PermKey | null;
+  onRequest: (key: PermKey) => void;
+}
+
+function PermissionsStep({ permStatus, checking, onRequest }: PermStepProps) {
+  const { t } = useTranslation();
+  const items: PermKey[] = IS_MAC
+    ? ['microphone', 'accessibility', 'inputMonitoring']
+    : ['microphone'];
+
+  return (
+    <section className="anim-fade-up">
+      <h2 className="text-xl font-semibold tracking-tight text-app-text">
+        {t('onboarding.wizard.permissionsTitle')}
+      </h2>
+      <p className="mt-2 text-sm text-app-muted">
+        {t('onboarding.wizard.permissionsSubtitle')}
+      </p>
+
+      <div className="mt-6 space-y-2.5">
+        {items.map((key, i) => (
+          <PermissionRow
+            key={key}
+            permKey={key}
+            status={permStatus[key]}
+            isChecking={checking === key}
+            onClick={() => onRequest(key)}
+            delay={i}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+interface PermRowProps {
+  permKey: PermKey;
+  status: PermissionStatus;
+  isChecking: boolean;
+  onClick: () => void;
+  delay: number;
+}
+
+function PermissionRow({ permKey, status, isChecking, onClick, delay }: PermRowProps) {
+  const { t } = useTranslation();
+  const Icon = PERM_ICON[permKey];
+  const granted = status === 'Granted';
+  const denied = status === 'Denied';
+
+  return (
+    <Card
+      elevation="sm"
+      className={cn('anim-fade-up flex items-start gap-4 px-4 py-3.5')}
+      style={{ animationDelay: `${0.06 + delay * 0.05}s` }}
+    >
+      <div className={cn(
+        'shrink-0 mt-0.5 size-9 rounded-app-md grid place-items-center transition-colors',
+        granted ? 'bg-app-success-soft text-app-success' : 'bg-app-surface-hover text-app-muted',
+      )}>
+        {granted ? <CheckCircle2 className="size-5" aria-hidden /> : <Icon className="size-5" aria-hidden />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-app-text">
+            {t(`onboarding.item.${permKey}`)}
+          </span>
+          <span className={cn(
+            'text-xs px-1.5 py-0.5 rounded-app-sm',
+            granted && 'bg-app-success-soft text-app-success',
+            !granted && denied && 'bg-app-danger-soft text-app-danger',
+            !granted && !denied && 'bg-app-surface-hover text-app-muted',
+          )}>
+            {granted
+              ? t('onboarding.status.enabled')
+              : denied
+                ? t('onboarding.status.denied')
+                : t('onboarding.status.notEnabled')}
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-app-muted leading-relaxed">
+          {t(`onboarding.help.${permKey}`)}
+        </p>
+      </div>
+      {!granted && (
+        <Button
+          size="sm"
+          variant="secondary"
+          loading={isChecking}
+          onClick={onClick}
+          rightIcon={denied ? <ExternalLink className="size-3" /> : undefined}
+        >
+          {denied ? t('onboarding.button.openSettings') : t('onboarding.button.enable')}
+        </Button>
+      )}
+    </Card>
+  );
+}
+
+/* ---------------------------- Step 2: API key ----------------------------- */
+
+interface ApiKeyStepProps {
+  hasApiKey: boolean;
+  onSaved: () => void;
+}
+
+function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
+  const { t } = useTranslation();
+  if (hasApiKey) {
+    return (
+      <section className="anim-fade-up text-center py-12">
+        <div className="mx-auto size-14 rounded-full bg-app-success-soft grid place-items-center mb-4">
+          <CheckCircle2 className="size-7 text-app-success" aria-hidden />
+        </div>
+        <h2 className="text-xl font-semibold tracking-tight text-app-text">
+          {t('onboarding.apiKey.saved')}
+        </h2>
+        <p className="mt-2 text-sm text-app-muted">{t('onboarding.cta.reopenHint')}</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="anim-fade-up">
+      <h2 className="text-xl font-semibold tracking-tight text-app-text">
+        {t('onboarding.wizard.apiKeyTitle')}
+      </h2>
+      <p className="mt-2 text-sm text-app-muted">
+        {t('onboarding.wizard.apiKeySubtitle')}
+      </p>
+      <div className="mt-6">
+        <ApiKeyForm onSuccess={onSaved} submitLabel={t('onboarding.wizard.finish')} />
+      </div>
+    </section>
+  );
+}
+
+/* ---------------------------- Footer dots ------------------------------- */
+
+interface StepDotsProps { current: number; total: number; }
+
+function StepDots({ current, total }: StepDotsProps) {
+  const { t } = useTranslation();
+  return (
+    <div
+      className="flex items-center gap-1.5"
+      role="progressbar"
+      aria-valuenow={current + 1}
+      aria-valuemin={1}
+      aria-valuemax={total}
+      aria-label={t('onboarding.wizard.stepIndicatorLabel', { current: current + 1, total })}
+    >
+      {Array.from({ length: total }).map((_, i) => (
+        <span
+          key={i}
+          className={cn(
+            'h-1.5 rounded-full transition-all duration-300',
+            i === current ? 'w-6 bg-app-accent' : i < current ? 'w-1.5 bg-app-accent/50' : 'w-1.5 bg-app-border-strong',
+          )}
+        />
+      ))}
+    </div>
+  );
+}

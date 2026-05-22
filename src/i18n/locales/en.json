@@ -68,9 +68,9 @@
     "stopRecording": "Stop Recording",
     "settings": "Settings…",
     "quit": "Quit TTP",
-    "fixAccessibility": "⚠ Fix Accessibility permission",
-    "fixInputMonitoring": "⚠ Fix Input Monitoring permission",
-    "installUpdate": "🆕 Install update (v{{version}})",
+    "fixAccessibility": "Fix Accessibility permission",
+    "fixInputMonitoring": "Fix Input Monitoring permission",
+    "installUpdate": "Install update (v{{version}})",
     "tooltip": "TTP by AmirKS — Talk To Paste"
   },
   "notification": {
@@ -228,7 +228,7 @@
       "labelStable": "Stable",
       "descBeta": "You test new releases before public launch",
       "descStable": "You receive stable, reliable releases",
-      "warning": "⚠️ Beta builds may contain bugs. You can switch back to stable at any time."
+      "warning": "Beta builds may contain bugs. You can switch back to stable at any time."
     },
     "updates": {
       "title": "Updates",
@@ -299,6 +299,21 @@
       "completeSteps": "Complete all steps",
       "stillMissing": "Still missing: {{items}}",
       "reopenHint": "You can reopen settings anytime by right-clicking the TTP icon in the menu bar."
+    },
+    "wizard": {
+      "back": "Back",
+      "next": "Next",
+      "finish": "Finish",
+      "welcomeTitle": "Welcome to Talk To Paste",
+      "welcomeSubtitle": "Voice in, text out — anywhere on your Mac.",
+      "welcomeBullet1": "Hold a hotkey, speak naturally — TTP transcribes and pastes into the active app.",
+      "welcomeBullet2": "Lives in the menu bar. No window to manage, no dock icon.",
+      "welcomeBullet3": "Stays local — your voice is sent only to Groq for transcription.",
+      "permissionsTitle": "Grant access",
+      "permissionsSubtitle": "TTP needs these macOS permissions to record and paste. We'll take you straight to the right Settings pane.",
+      "apiKeyTitle": "Connect to Groq",
+      "apiKeySubtitle": "Free transcription API — Groq's free tier covers tens of thousands of dictations per month.",
+      "stepIndicatorLabel": "Step {{current}} of {{total}}"
     }
   },
   "setup": {
@@ -325,6 +340,10 @@
     "tutorialSuffix": "to dictate",
     "errorFallback": "Error",
     "statusTranscribing": "Transcription…"
+  },
+  "permissionBanner": {
+    "titleOne": "{{item}} permission missing",
+    "titleMany": "Some macOS permissions are missing"
   },
   "whatsNew": {
     "title": "What's New in v{{version}}",

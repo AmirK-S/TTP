@@ -1,25 +1,29 @@
-// TTP - Talk To Paste
-// API key input form component for first-run setup
-
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
+import { Key, ExternalLink } from 'lucide-react';
+import { Button, Input } from './ui';
 
 interface Props {
   onSuccess: () => void;
+  /** Override the submit button label (defaults to common.getStarted). */
+  submitLabel?: string;
+  /** Tightens vertical rhythm when embedded inside a wizard step. */
+  compact?: boolean;
 }
 
 /**
- * Form component for entering Groq API key.
- * Groq is the only required key (used for transcription + text polish).
+ * Shared API-key input + validation form. Used in both the standalone
+ * Setup window and inside the onboarding wizard step. Single source of
+ * truth — previously this logic was duplicated inline in Onboarding.
  */
-export function ApiKeyForm({ onSuccess }: Props) {
+export function ApiKeyForm({ onSuccess, submitLabel, compact = false }: Props) {
   const { t } = useTranslation();
   const [groqKey, setGroqKey] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -38,8 +42,8 @@ export function ApiKeyForm({ onSuccess }: Props) {
       await invoke('set_groq_api_key', { key: groqKey });
       onSuccess();
     } catch (err) {
-      // Rust may return a translation key like "error.api_invalid_key";
-      // translate those defensively, otherwise show as-is.
+      // Rust may surface a translation key like "error.api_invalid_key";
+      // translate those defensively, otherwise show the raw string.
       setError(
         typeof err === 'string' && (err.startsWith('error.') || err.startsWith('permission.'))
           ? t(err)
@@ -51,63 +55,64 @@ export function ApiKeyForm({ onSuccess }: Props) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      {/* Groq - Required */}
+    <form onSubmit={handleSubmit} className={compact ? 'space-y-3' : 'space-y-4'}>
       <div>
         <label
           htmlFor="groq-key"
-          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+          className="block text-xs font-medium text-app-muted mb-1.5"
         >
-          {t('form.apiKey.label')} <span className="text-red-500">*</span>
+          {t('form.apiKey.label')}
         </label>
-        <input
+        <Input
           id="groq-key"
           type="password"
           value={groqKey}
           onChange={(e) => setGroqKey(e.target.value)}
           placeholder={t('form.apiKey.placeholder')}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
           autoComplete="off"
           autoFocus
+          invalid={Boolean(error)}
+          leftIcon={<Key className="size-4" aria-hidden />}
         />
-        <ol className="mt-2 text-xs text-gray-500 dark:text-gray-400 list-decimal pl-5 space-y-1">
-          <li>
-            {t('form.apiKey.stepSignup')}{' '}
-            <a
-              href="https://console.groq.com"
-              className="text-blue-500 hover:text-blue-600 underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              console.groq.com
-            </a>{' '}
-            {t('form.apiKey.stepSignupSuffix')}
-          </li>
-          <li>{t('form.apiKey.stepCreate')}</li>
-          <li>
-            {t('form.apiKey.stepCopy')}{' '}
-            <code className="px-1 py-0.5 rounded bg-gray-100 dark:bg-gray-800 font-mono text-[11px]">
-              gsk_
-            </code>{' '}
-            {t('form.apiKey.stepCopySuffix')}
-          </li>
-        </ol>
-        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-          {t('form.apiKey.helpFreeTier')}
-        </p>
       </div>
 
-      {error && (
-        <p className="text-red-500 dark:text-red-400 text-sm">{error}</p>
+      <ol className="text-xs text-app-muted list-decimal pl-5 space-y-1.5">
+        <li>
+          {t('form.apiKey.stepSignup')}{' '}
+          <a
+            href="https://console.groq.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-app-accent hover:underline inline-flex items-center gap-1"
+          >
+            console.groq.com
+            <ExternalLink className="size-3" aria-hidden />
+          </a>{' '}
+          {t('form.apiKey.stepSignupSuffix')}
+        </li>
+        <li>{t('form.apiKey.stepCreate')}</li>
+        <li>
+          {t('form.apiKey.stepCopy')}{' '}
+          <code className="px-1 py-0.5 rounded bg-app-surface-hover font-mono text-[11px] text-app-text">
+            gsk_
+          </code>{' '}
+          {t('form.apiKey.stepCopySuffix')}
+        </li>
+      </ol>
+
+      {!compact && (
+        <p className="text-xs text-app-faint">{t('form.apiKey.helpFreeTier')}</p>
       )}
 
-      <button
-        type="submit"
-        disabled={loading || !groqKey}
-        className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors disabled:cursor-not-allowed"
-      >
-        {loading ? t('common.validating') : t('common.getStarted')}
-      </button>
+      {error && (
+        <p className="text-sm text-app-danger" role="alert">
+          {error}
+        </p>
+      )}
+
+      <Button type="submit" disabled={!groqKey} loading={loading} fullWidth size="lg">
+        {submitLabel ?? (loading ? t('common.validating') : t('common.getStarted'))}
+      </Button>
     </form>
   );
 }

@@ -13,6 +13,7 @@ import { enable as enableAutostart, disable as disableAutostart, isEnabled as is
 import { trackEvent } from '../lib/analytics';
 import { useUpdater } from '../hooks/useUpdater';
 import { useSettingsStore, DictionaryEntry, HistoryEntry } from '../stores/settings-store';
+import { PermissionBanner } from '../components/PermissionBanner';
 import type { LanguageChoice } from '../i18n/config';
 import WhatsNew from '../components/WhatsNew';
 
@@ -940,25 +941,31 @@ export function Settings() {
     shortcutError === 'error.input_monitoring_required';
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
+    <div className="min-h-screen bg-app-bg p-6 text-app-text">
       <div className="max-w-lg mx-auto">
+        {/* Permission warning sits above everything else — silent permission
+            loss (esp. Accessibility after an update) was the most-reported
+            class of "TTP isn't working" issues. */}
+        <PermissionBanner />
+
         {/* Your usage — pinned at the top so the first thing the user sees
             in Settings is their own activity, not the About hero. */}
         <AnalyticsSection />
 
-        {/* Welcome / About */}
-        <section className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg shadow-sm p-6 mb-6 text-white">
-          <h1 className="text-xl font-bold mb-1">TTP by AmirKS</h1>
-          <p className="text-blue-400 text-xs font-medium mb-3">{t('settings.about.subtitle', { version: appVersion })}</p>
-          <p className="text-sm text-gray-300 leading-relaxed mb-3">
+        {/* Welcome / About — flat token-driven card (the old radial gradient
+            clashed against the rest of the surface chrome). */}
+        <section className="bg-app-surface border border-app-border rounded-app-md shadow-app-sm p-6 mb-6">
+          <h1 className="text-xl font-semibold tracking-tight mb-1 text-app-text">TTP by AmirKS</h1>
+          <p className="text-app-accent text-xs font-medium mb-3">{t('settings.about.subtitle', { version: appVersion })}</p>
+          <p className="text-sm text-app-muted leading-relaxed mb-3">
             {t('settings.about.description')}
           </p>
-          <p className="text-sm text-gray-300 leading-relaxed mb-3">
+          <p className="text-sm text-app-muted leading-relaxed mb-3">
             {t('settings.about.author')}
           </p>
-          <div className="p-3 bg-gray-700/50 rounded-lg mb-4">
-            <p className="text-xs text-gray-400 leading-relaxed">
-              <span className="text-green-400 font-medium">{t('settings.about.privacyLabel')}</span>{' '}
+          <div className="p-3 bg-app-surface-hover border border-app-border rounded-app-sm mb-4">
+            <p className="text-xs text-app-muted leading-relaxed">
+              <span className="text-app-success font-medium">{t('settings.about.privacyLabel')}</span>{' '}
               {t('settings.about.privacyBody')}
             </p>
           </div>
@@ -967,7 +974,7 @@ export function Settings() {
               href="https://amirks.eu"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+              className="px-3 py-1.5 text-xs font-medium bg-app-accent hover:bg-app-accent-hover text-app-accent-fg rounded-app-sm transition-colors"
             >
               amirks.eu
             </a>
@@ -975,7 +982,7 @@ export function Settings() {
               href="https://www.linkedin.com/in/amirks/"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3 py-1.5 text-xs font-medium bg-gray-700 hover:bg-gray-600 rounded-md transition-colors"
+              className="px-3 py-1.5 text-xs font-medium bg-app-surface-hover hover:bg-app-border text-app-text rounded-app-sm transition-colors"
             >
               LinkedIn
             </a>

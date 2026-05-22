@@ -68,9 +68,9 @@
     "stopRecording": "Arrêter l'enregistrement",
     "settings": "Paramètres…",
     "quit": "Quitter TTP",
-    "fixAccessibility": "⚠ Permission Accessibility requise",
-    "fixInputMonitoring": "⚠ Permission Input Monitoring requise",
-    "installUpdate": "🆕 Installer la mise à jour (v{{version}})",
+    "fixAccessibility": "Fix Accessibility permission",
+    "fixInputMonitoring": "Fix Input Monitoring permission",
+    "installUpdate": "Install update (v{{version}})",
     "tooltip": "TTP by AmirKS — Talk To Paste"
   },
   "notification": {
@@ -228,7 +228,7 @@
       "labelStable": "Stable",
       "descBeta": "Tu testes les nouvelles versions avant la sortie publique",
       "descStable": "Tu reçois les versions stables et fiables",
-      "warning": "⚠️ Les versions beta peuvent contenir des bugs. Tu pourras revenir en stable à tout moment."
+      "warning": "Les versions beta peuvent contenir des bugs. Tu pourras revenir en stable à tout moment."
     },
     "updates": {
       "title": "Mises à jour",
@@ -299,6 +299,21 @@
       "completeSteps": "Termine toutes les étapes",
       "stillMissing": "Il manque encore : {{items}}",
       "reopenHint": "Tu peux rouvrir les paramètres à tout moment en cliquant droit sur l'icône TTP dans la barre de menus."
+    },
+    "wizard": {
+      "back": "Retour",
+      "next": "Suivant",
+      "finish": "Terminer",
+      "welcomeTitle": "Bienvenue dans Talk To Paste",
+      "welcomeSubtitle": "Voix en entrée, texte en sortie — partout sur ton Mac.",
+      "welcomeBullet1": "Maintiens un raccourci, parle naturellement — TTP transcrit et colle dans l'app active.",
+      "welcomeBullet2": "Vit dans la barre de menus. Aucune fenêtre à gérer, aucune icône dans le dock.",
+      "welcomeBullet3": "Reste en local — ta voix n'est envoyée qu'à Groq pour la transcription.",
+      "permissionsTitle": "Autoriser les accès",
+      "permissionsSubtitle": "TTP a besoin de ces permissions macOS pour enregistrer et coller. On t'amène directement au bon panneau des Réglages.",
+      "apiKeyTitle": "Connecter à Groq",
+      "apiKeySubtitle": "API de transcription gratuite — le tier gratuit de Groq couvre des dizaines de milliers de dictées par mois.",
+      "stepIndicatorLabel": "Étape {{current}} sur {{total}}"
     }
   },
   "setup": {
@@ -325,6 +340,10 @@
     "tutorialSuffix": "pour dicter",
     "errorFallback": "Erreur",
     "statusTranscribing": "Transcription…"
+  },
+  "permissionBanner": {
+    "titleOne": "Permission {{item}} manquante",
+    "titleMany": "Certaines permissions macOS manquent"
   },
   "whatsNew": {
     "title": "Nouveautés de la v{{version}}",
