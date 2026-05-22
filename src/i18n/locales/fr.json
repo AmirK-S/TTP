@@ -283,6 +283,7 @@
     "status": {
       "enabled": "Activé",
       "denied": "Refusé — clique pour ouvrir les Réglages",
+      "deniedShort": "Refusé",
       "notEnabled": "Non activé"
     },
     "button": {

@@ -283,6 +283,7 @@
     "status": {
       "enabled": "Enabled",
       "denied": "Denied — tap to open Settings",
+      "deniedShort": "Denied",
       "notEnabled": "Not enabled"
     },
     "button": {

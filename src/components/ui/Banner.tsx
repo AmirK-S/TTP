@@ -14,19 +14,19 @@ interface BannerProps {
 
 const tones: Record<Tone, { wrap: string; icon: ReactNode }> = {
   info: {
-    wrap: 'bg-app-accent-soft text-app-text border-app-accent/30',
+    wrap: 'bg-app-accent-tint border-app-accent/25',
     icon: <Info className="size-4 text-app-accent" aria-hidden />,
   },
   warning: {
-    wrap: 'bg-app-warning-soft text-app-text border-app-warning/40',
+    wrap: 'bg-app-warning-tint border-app-warning/30',
     icon: <AlertTriangle className="size-4 text-app-warning" aria-hidden />,
   },
   success: {
-    wrap: 'bg-app-success-soft text-app-text border-app-success/30',
+    wrap: 'bg-app-success-tint border-app-success/25',
     icon: <CheckCircle2 className="size-4 text-app-success" aria-hidden />,
   },
   danger: {
-    wrap: 'bg-app-danger-soft text-app-text border-app-danger/30',
+    wrap: 'bg-app-danger-tint border-app-danger/30',
     icon: <XCircle className="size-4 text-app-danger" aria-hidden />,
   },
 };
@@ -37,14 +37,14 @@ export function Banner({ tone = 'info', title, children, action, className }: Ba
     <div
       role={tone === 'danger' || tone === 'warning' ? 'alert' : 'status'}
       className={cn(
-        'flex items-start gap-3 px-4 py-3 rounded-app-md border',
+        'flex items-start gap-3 px-4 py-3 rounded-app-md border shine',
         t.wrap,
         className,
       )}
     >
       <span className="mt-0.5 shrink-0">{t.icon}</span>
-      <div className="flex-1 min-w-0 text-sm">
-        {title && <div className="font-medium">{title}</div>}
+      <div className="flex-1 min-w-0 text-[13px]">
+        {title && <div className="font-medium text-app-text">{title}</div>}
         {children && <div className={cn(title && 'mt-0.5', 'text-app-muted')}>{children}</div>}
       </div>
       {action && <div className="shrink-0">{action}</div>}

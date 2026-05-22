@@ -954,7 +954,7 @@ export function Settings() {
 
         {/* Welcome / About — flat token-driven card (the old radial gradient
             clashed against the rest of the surface chrome). */}
-        <section className="bg-app-surface border border-app-border rounded-app-md shadow-app-sm p-6 mb-6">
+        <section className="bg-app-surface border border-app-border rounded-app-lg shine-sm p-6 mb-6">
           <h1 className="text-xl font-semibold tracking-tight mb-1 text-app-text">TTP by AmirKS</h1>
           <p className="text-app-accent text-xs font-medium mb-3">{t('settings.about.subtitle', { version: appVersion })}</p>
           <p className="text-sm text-app-muted leading-relaxed mb-3">
@@ -963,7 +963,7 @@ export function Settings() {
           <p className="text-sm text-app-muted leading-relaxed mb-3">
             {t('settings.about.author')}
           </p>
-          <div className="p-3 bg-app-surface-hover border border-app-border rounded-app-sm mb-4">
+          <div className="p-3 bg-app-raised border border-app-border rounded-app-sm mb-4">
             <p className="text-xs text-app-muted leading-relaxed">
               <span className="text-app-success font-medium">{t('settings.about.privacyLabel')}</span>{' '}
               {t('settings.about.privacyBody')}
@@ -982,7 +982,7 @@ export function Settings() {
               href="https://www.linkedin.com/in/amirks/"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3 py-1.5 text-xs font-medium bg-app-surface-hover hover:bg-app-border text-app-text rounded-app-sm transition-colors"
+              className="px-3 py-1.5 text-xs font-medium bg-app-raised hover:bg-app-border text-app-text rounded-app-sm transition-colors"
             >
               LinkedIn
             </a>

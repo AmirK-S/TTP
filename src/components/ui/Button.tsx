@@ -13,24 +13,48 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   fullWidth?: boolean;
 }
 
-const base =
-  'inline-flex items-center justify-center gap-2 font-medium transition-colors select-none disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]';
+/**
+ * Hover lifts via brightness, press via scale 0.98 over 80ms — the Apple
+ * standard tactile feedback. Transitions enumerate the properties they
+ * touch (background-color, transform, color) rather than `transition: all`
+ * which is a vibe-coded tell.
+ */
+const base = cn(
+  'inline-flex items-center justify-center gap-2 select-none',
+  'font-medium tracking-[-0.005em]',
+  'transition-[background-color,color,transform,filter] duration-150',
+  'ease-[cubic-bezier(0.32,0.72,0,1)]',
+  'active:scale-[0.98] active:duration-75',
+  'disabled:cursor-not-allowed disabled:pointer-events-none',
+);
 
 const variants: Record<Variant, string> = {
-  primary:
-    'bg-app-accent text-app-accent-fg hover:bg-app-accent-hover shadow-app-sm',
-  secondary:
-    'bg-app-surface text-app-text border border-app-border hover:bg-app-surface-hover',
-  ghost:
-    'bg-transparent text-app-text hover:bg-app-surface-hover',
-  danger:
-    'bg-app-danger text-white hover:opacity-90 shadow-app-sm',
+  primary: cn(
+    'bg-app-accent text-app-accent-fg shine-sm',
+    'hover:brightness-110 hover:bg-app-accent-hover',
+    'disabled:bg-app-raised disabled:text-app-faint disabled:shadow-none',
+  ),
+  secondary: cn(
+    'bg-app-surface text-app-text shine-sm border border-app-border',
+    'hover:bg-app-raised',
+    'disabled:text-app-faint disabled:shadow-none',
+  ),
+  ghost: cn(
+    'bg-transparent text-app-text',
+    'hover:bg-app-raised',
+    'disabled:text-app-faint',
+  ),
+  danger: cn(
+    'bg-app-danger text-white shine-sm',
+    'hover:brightness-110',
+    'disabled:bg-app-raised disabled:text-app-faint disabled:shadow-none',
+  ),
 };
 
 const sizes: Record<Size, string> = {
   sm: 'h-7 px-2.5 text-xs rounded-app-sm',
-  md: 'h-9 px-3.5 text-sm rounded-app-md',
-  lg: 'h-11 px-5 text-sm rounded-app-md',
+  md: 'h-8 px-3 text-[13px] rounded-app-md',
+  lg: 'h-9 px-4 text-sm rounded-app-md',
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(

@@ -186,7 +186,9 @@ export default function Onboarding() {
         </div>
       </div>
 
-      <footer className="shrink-0 border-t border-app-border bg-app-surface">
+      {/* Footer is intentionally DIMMER than the canvas — chrome recedes,
+          content stays the brightest area (Linear 2026 refresh pattern). */}
+      <footer className="shrink-0 border-t border-app-border bg-app-dim">
         <div className="max-w-xl mx-auto px-8 py-4 flex items-center justify-between gap-4">
           <StepDots current={step} total={3} />
           <div className="flex items-center gap-2">
@@ -237,24 +239,39 @@ export default function Onboarding() {
 function WelcomeStep() {
   const { t } = useTranslation();
   return (
-    <section className="anim-fade-up text-center">
-      <div className="mx-auto size-20 rounded-app-xl bg-app-text text-app-bg grid place-items-center mb-6 shadow-app-md">
-        <span className="font-bold text-2xl tracking-tight">TTP</span>
+    <section className="anim-fade-up text-center max-w-md mx-auto">
+      {/* Hero tile — surface ladder + inset highlight + accent glyph. The
+          earlier flat white block was the brightest pixel on screen,
+          punching above the H1. Now the tile sits IN the page surface
+          with the wordmark in accent. */}
+      <div
+        className={cn(
+          'mx-auto size-16 rounded-app-xl mb-7 shine-sm border border-app-border',
+          'bg-app-surface grid place-items-center',
+        )}
+      >
+        <span className="text-app-accent font-semibold text-[18px] tracking-[-0.022em]">TTP</span>
       </div>
-      <h1 className="text-2xl font-semibold tracking-tight text-app-text">
+      <h1 className="text-display-md text-app-text">
         {t('onboarding.wizard.welcomeTitle')}
       </h1>
-      <p className="mt-2 text-app-muted">{t('onboarding.wizard.welcomeSubtitle')}</p>
+      <p className="mt-2 text-[13px] text-app-muted leading-relaxed">
+        {t('onboarding.wizard.welcomeSubtitle')}
+      </p>
 
-      <ul className="mt-10 text-left space-y-3">
+      <ul className="mt-8 text-left space-y-3.5">
         {[
           t('onboarding.wizard.welcomeBullet1'),
           t('onboarding.wizard.welcomeBullet2'),
           t('onboarding.wizard.welcomeBullet3'),
         ].map((bullet, i) => (
-          <li key={i} className="flex items-start gap-3 anim-fade-up" style={{ animationDelay: `${0.08 + i * 0.06}s` }}>
+          <li
+            key={i}
+            className="flex items-start gap-3 anim-fade-up"
+            style={{ animationDelay: `${0.08 + i * 0.06}s` }}
+          >
             <CheckCircle2 className="size-4 mt-0.5 shrink-0 text-app-accent" aria-hidden />
-            <span className="text-sm text-app-text">{bullet}</span>
+            <span className="text-[13px] text-app-text leading-relaxed">{bullet}</span>
           </li>
         ))}
       </ul>
@@ -278,14 +295,14 @@ function PermissionsStep({ permStatus, checking, onRequest }: PermStepProps) {
 
   return (
     <section className="anim-fade-up">
-      <h2 className="text-xl font-semibold tracking-tight text-app-text">
+      <h2 className="text-display-sm text-app-text">
         {t('onboarding.wizard.permissionsTitle')}
       </h2>
-      <p className="mt-2 text-sm text-app-muted">
+      <p className="mt-2 text-[13px] text-app-muted leading-relaxed">
         {t('onboarding.wizard.permissionsSubtitle')}
       </p>
 
-      <div className="mt-6 space-y-2.5">
+      <div className="mt-7 space-y-2">
         {items.map((key, i) => (
           <PermissionRow
             key={key}
@@ -309,6 +326,15 @@ interface PermRowProps {
   delay: number;
 }
 
+/* Per-permission icon-tile tint. Borrowed from Raycast's settings layout
+   where each row gets a distinctive accent so the column scans at a glance
+   rather than reading as a uniform gray list. */
+const PERM_TILE: Record<PermKey, string> = {
+  microphone: 'bg-app-danger-tint text-app-danger',
+  accessibility: 'bg-app-accent-tint text-app-accent',
+  inputMonitoring: 'bg-app-success-tint text-app-success',
+};
+
 function PermissionRow({ permKey, status, isChecking, onClick, delay }: PermRowProps) {
   const { t } = useTranslation();
   const Icon = PERM_ICON[permKey];
@@ -318,34 +344,46 @@ function PermissionRow({ permKey, status, isChecking, onClick, delay }: PermRowP
   return (
     <Card
       elevation="sm"
-      className={cn('anim-fade-up flex items-start gap-4 px-4 py-3.5')}
+      className="anim-fade-up flex items-center gap-4 px-5 py-4"
       style={{ animationDelay: `${0.06 + delay * 0.05}s` }}
     >
       <div className={cn(
-        'shrink-0 mt-0.5 size-9 rounded-app-md grid place-items-center transition-colors',
-        granted ? 'bg-app-success-soft text-app-success' : 'bg-app-surface-hover text-app-muted',
+        'shrink-0 size-9 rounded-app-md grid place-items-center transition-colors duration-200',
+        granted ? 'bg-app-success-tint text-app-success' : PERM_TILE[permKey],
       )}>
-        {granted ? <CheckCircle2 className="size-5" aria-hidden /> : <Icon className="size-5" aria-hidden />}
+        {granted
+          ? <CheckCircle2 className="size-[18px]" aria-hidden />
+          : <Icon className="size-[18px]" strokeWidth={1.75} aria-hidden />}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-app-text">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[13px] font-medium text-app-text tracking-[-0.005em]">
             {t(`onboarding.item.${permKey}`)}
           </span>
+          {/* Status: tiny dot + short label. The previous "Denied — tap to
+              open Settings" pill wrapped to two lines on long labels. The
+              CTA-bearing button right of the row is now the only place
+              with action copy; the status itself is just a state badge. */}
           <span className={cn(
-            'text-xs px-1.5 py-0.5 rounded-app-sm',
-            granted && 'bg-app-success-soft text-app-success',
-            !granted && denied && 'bg-app-danger-soft text-app-danger',
-            !granted && !denied && 'bg-app-surface-hover text-app-muted',
+            'inline-flex items-center gap-1.5 text-[11px] font-medium',
+            granted && 'text-app-success',
+            !granted && denied && 'text-app-danger',
+            !granted && !denied && 'text-app-faint',
           )}>
+            <span className={cn(
+              'size-1.5 rounded-full',
+              granted && 'bg-app-success',
+              !granted && denied && 'bg-app-danger',
+              !granted && !denied && 'bg-app-faint',
+            )} aria-hidden />
             {granted
               ? t('onboarding.status.enabled')
               : denied
-                ? t('onboarding.status.denied')
+                ? t('onboarding.status.deniedShort')
                 : t('onboarding.status.notEnabled')}
           </span>
         </div>
-        <p className="mt-1 text-xs text-app-muted leading-relaxed">
+        <p className="mt-1 text-[12px] text-app-muted leading-snug">
           {t(`onboarding.help.${permKey}`)}
         </p>
       </div>
@@ -389,13 +427,13 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
 
   return (
     <section className="anim-fade-up">
-      <h2 className="text-xl font-semibold tracking-tight text-app-text">
+      <h2 className="text-display-sm text-app-text">
         {t('onboarding.wizard.apiKeyTitle')}
       </h2>
-      <p className="mt-2 text-sm text-app-muted">
+      <p className="mt-2 text-[13px] text-app-muted leading-relaxed">
         {t('onboarding.wizard.apiKeySubtitle')}
       </p>
-      <div className="mt-6">
+      <div className="mt-7">
         <ApiKeyForm onSuccess={onSaved} submitLabel={t('onboarding.wizard.finish')} />
       </div>
     </section>
@@ -406,26 +444,43 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
 
 interface StepDotsProps { current: number; total: number; }
 
+/* 4×4 dot indicators with a 1px ring around the active step. The previous
+   stretched-bar pattern (24×6 active, 6×6 inactive) was the shadcn-form
+   2020 default — Raycast and Linear keep all dots the same size and signal
+   active state via a faint accent ring instead. */
 function StepDots({ current, total }: StepDotsProps) {
   const { t } = useTranslation();
   return (
     <div
-      className="flex items-center gap-1.5"
+      className="flex items-center gap-2"
       role="progressbar"
       aria-valuenow={current + 1}
       aria-valuemin={1}
       aria-valuemax={total}
       aria-label={t('onboarding.wizard.stepIndicatorLabel', { current: current + 1, total })}
     >
-      {Array.from({ length: total }).map((_, i) => (
-        <span
-          key={i}
-          className={cn(
-            'h-1.5 rounded-full transition-all duration-300',
-            i === current ? 'w-6 bg-app-accent' : i < current ? 'w-1.5 bg-app-accent/50' : 'w-1.5 bg-app-border-strong',
-          )}
-        />
-      ))}
+      {Array.from({ length: total }).map((_, i) => {
+        const isActive = i === current;
+        const isDone = i < current;
+        return (
+          <span
+            key={i}
+            className={cn(
+              'relative size-1.5 rounded-full transition-colors duration-200 ease-[cubic-bezier(0.32,0.72,0,1)]',
+              isActive && 'bg-app-accent',
+              isDone && 'bg-app-accent/40',
+              !isActive && !isDone && 'bg-app-border-strong',
+            )}
+          >
+            {isActive && (
+              <span
+                aria-hidden
+                className="absolute -inset-1 rounded-full ring-1 ring-app-accent/30"
+              />
+            )}
+          </span>
+        );
+      })}
     </div>
   );
 }

@@ -1,19 +1,26 @@
 @import "tailwindcss";
 
 /* ----------------------------------------------------------------------------
-   Design tokens.
+   Design tokens — TTP v2.1.
 
-   One source of truth for color/radius/shadow across every TTP window.
-   Tailwind v4 reads `@theme inline { --color-* }` and exposes them as utility
-   classes (e.g. `bg-app-surface`, `text-app-muted`). Token bodies resolve via
-   CSS custom properties defined on :root, so prefers-color-scheme just swaps
-   the values — no class-based dark-mode plumbing needed.
+   Built on the Linear / Raycast / Vercel codebook:
+   • A 5-step surface ladder (canvas → base → raised → overlay → dim) so
+     depth comes from luminance, not drop-shadows. Cards lift via a 1px
+     inset highlight, not a halo.
+   • Footer / chrome surfaces are DIMMER than canvas (Linear refresh 2026):
+     the content area should be the brightest thing in the window.
+   • Accent is LCH-derived desaturated blue (~#4c8bf5 dark / #2563eb light),
+     not the Tailwind default `#3b82f6` which screams "shadcn template".
+   • Soft variants are alpha-mixed against the page background so semantic
+     pills (accent / success / warning / danger) don't punch holes in dark.
    ------------------------------------------------------------------------- */
 
 @theme inline {
   --color-app-bg: var(--bg);
   --color-app-surface: var(--surface);
-  --color-app-surface-hover: var(--surface-hover);
+  --color-app-raised: var(--raised);
+  --color-app-overlay: var(--overlay);
+  --color-app-dim: var(--dim);
   --color-app-border: var(--border);
   --color-app-border-strong: var(--border-strong);
   --color-app-text: var(--text);
@@ -22,53 +29,83 @@
   --color-app-accent: var(--accent);
   --color-app-accent-hover: var(--accent-hover);
   --color-app-accent-soft: var(--accent-soft);
+  --color-app-accent-tint: var(--accent-tint);
   --color-app-accent-fg: var(--accent-fg);
   --color-app-success: var(--success);
   --color-app-success-soft: var(--success-soft);
+  --color-app-success-tint: var(--success-tint);
   --color-app-warning: var(--warning);
   --color-app-warning-soft: var(--warning-soft);
+  --color-app-warning-tint: var(--warning-tint);
   --color-app-danger: var(--danger);
   --color-app-danger-soft: var(--danger-soft);
+  --color-app-danger-tint: var(--danger-tint);
 
+  --radius-app-xs: 4px;
   --radius-app-sm: 6px;
-  --radius-app-md: 10px;
-  --radius-app-lg: 14px;
-  --radius-app-xl: 20px;
+  --radius-app-md: 8px;
+  --radius-app-lg: 12px;
+  --radius-app-xl: 16px;
 
-  --shadow-app-sm: 0 1px 2px rgb(0 0 0 / 0.05);
-  --shadow-app-md: 0 4px 14px rgb(0 0 0 / 0.08), 0 1px 3px rgb(0 0 0 / 0.04);
-  --shadow-app-lg: 0 16px 40px rgb(0 0 0 / 0.12), 0 4px 10px rgb(0 0 0 / 0.06);
-
-  --ease-app-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-app-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  /* `cubic-bezier(0.32, 0.72, 0, 1)` is Apple's "ease-out emphasized"
+     curve — short anticipation, long settle. Pairs with ~150ms durations
+     for hover, ~80ms for press, ~200ms for modal entries. */
+  --ease-app-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-app-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 :root {
-  /* Light theme — calm warm grays, blue accent matching the icon. */
-  --bg: #f8f8f9;
-  --surface: #ffffff;
-  --surface-hover: #f4f4f5;
-  --border: #e7e7ea;
-  --border-strong: #d4d4d8;
+  /* Light theme. */
+  --bg: #ffffff;
+  --surface: #fafafa;
+  --raised: #f5f5f6;
+  --overlay: #ffffff;
+  --dim: #f0f0f1;
+  --border: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.14);
   --text: #18181b;
-  --muted: #62626a;
-  --faint: #9a9aa3;
+  --muted: #5b5b62;
+  --faint: #8a8a92;
   --accent: #2563eb;
   --accent-hover: #1d4ed8;
-  --accent-soft: #dbeafe;
+  --accent-soft: rgba(37, 99, 235, 0.10);
+  --accent-tint: rgba(37, 99, 235, 0.06);
   --accent-fg: #ffffff;
-  --success: #16a34a;
-  --success-soft: #dcfce7;
-  --warning: #d97706;
-  --warning-soft: #fef3c7;
-  --danger: #dc2626;
-  --danger-soft: #fee2e2;
+  --success: #15803d;
+  --success-soft: rgba(21, 128, 61, 0.10);
+  --success-tint: rgba(21, 128, 61, 0.06);
+  --warning: #b45309;
+  --warning-soft: rgba(180, 83, 9, 0.10);
+  --warning-tint: rgba(180, 83, 9, 0.06);
+  --danger: #b91c1c;
+  --danger-soft: rgba(185, 28, 28, 0.10);
+  --danger-tint: rgba(185, 28, 28, 0.06);
 
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  /* The "specular highlight" — a 1px top inset that mimics zenith lighting
+     on lifted surfaces. Without it, cards read as flat rectangles. */
+  --highlight: inset 0 1px 0 0 rgba(0, 0, 0, 0.03);
+
+  /* Stacked tinted shadows. Three layers (close + medium + ambient), each
+     darker than what `shadow-lg` would produce, never pure black. */
+  --shadow-sm:
+    0 1px 2px rgba(16, 24, 40, 0.06),
+    0 1px 1px rgba(16, 24, 40, 0.04);
+  --shadow-md:
+    0 2px 4px rgba(16, 24, 40, 0.04),
+    0 6px 16px rgba(16, 24, 40, 0.08);
+  --shadow-lg:
+    0 4px 8px rgba(16, 24, 40, 0.04),
+    0 16px 36px rgba(16, 24, 40, 0.12);
+
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  /* ss03 = single-story 'g' (Raycast signature). cv11 = single-story 'a'.
+     calt + kern + liga ON site-wide so " — " and ligatures render correctly.
+     tnum makes numeric columns line up (counters, timers, prices). */
+  font-feature-settings: 'ss03', 'cv11', 'calt', 'kern', 'liga';
+  font-variant-numeric: tabular-nums;
   font-size: 14px;
-  line-height: 1.5;
-  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
-  font-synthesis: none;
+  line-height: 1.45;
+  font-weight: 400;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -79,34 +116,59 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0b0b0d;
-    --surface: #141417;
-    --surface-hover: #1c1c20;
-    --border: #26262a;
-    --border-strong: #36363c;
+    /* 5-step dark surface ladder. Each step is ~+3% perceptual lightness,
+       not RGB-additive. Footer is DIMMER than canvas — content is the
+       brightest thing on screen. */
+    --bg: #0a0a0c;
+    --surface: #111114;
+    --raised: #16161a;
+    --overlay: #1c1c21;
+    --dim: #08080a;
+    --border: rgba(255, 255, 255, 0.06);
+    --border-strong: rgba(255, 255, 255, 0.12);
     --text: #ededee;
-    --muted: #9090a0;
+    --muted: #a1a1aa;
     --faint: #6b6b73;
-    --accent: #3b82f6;
-    --accent-hover: #60a5fa;
-    --accent-soft: #1e3a8a40;
-    --accent-fg: #ffffff;
-    --success: #22c55e;
-    --success-soft: #16a34a30;
-    --warning: #f59e0b;
-    --warning-soft: #d9770630;
-    --danger: #ef4444;
-    --danger-soft: #dc262630;
+    /* Desaturated blue derived in LCH space. Bluer than indigo, calmer
+       than Tailwind blue-500. Won't read as "AI default". */
+    --accent: #4c8bf5;
+    --accent-hover: #6da0f7;
+    --accent-soft: rgba(76, 139, 245, 0.16);
+    --accent-tint: rgba(76, 139, 245, 0.10);
+    --accent-fg: #0a0a0c;
+    --success: #4ade80;
+    --success-soft: rgba(74, 222, 128, 0.14);
+    --success-tint: rgba(74, 222, 128, 0.08);
+    --warning: #fbbf24;
+    --warning-soft: rgba(251, 191, 36, 0.14);
+    --warning-tint: rgba(251, 191, 36, 0.08);
+    --danger: #f87171;
+    --danger-soft: rgba(248, 113, 113, 0.14);
+    --danger-tint: rgba(248, 113, 113, 0.08);
+
+    --highlight: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+
+    --shadow-sm:
+      0 1px 2px rgba(0, 0, 0, 0.30),
+      0 1px 1px rgba(0, 0, 0, 0.20);
+    --shadow-md:
+      0 2px 4px rgba(0, 0, 0, 0.30),
+      0 8px 20px rgba(0, 0, 0, 0.40);
+    --shadow-lg:
+      0 4px 8px rgba(0, 0, 0, 0.30),
+      0 20px 40px rgba(0, 0, 0, 0.50);
   }
 }
 
+/* Selection — accent-tinted, subtle. Default browser selection is jarring
+   on dark surfaces. */
 ::selection {
-  background-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background-color: color-mix(in srgb, var(--accent) 30%, transparent);
   color: inherit;
 }
 
-/* Pill / floating-bar window is rendered transparent — every other window
-   uses the standard token-driven background applied via :root above. */
+/* The floating-bar / pill window stays transparent; every other window
+   inherits the token bg from :root. */
 html.floating-bar,
 html.floating-bar body,
 html.floating-bar #root {
@@ -118,82 +180,82 @@ body {
   min-height: 100vh;
 }
 
-/* Focus ring — consistent across every interactive element. We rely on
-   `:focus-visible` so keyboard nav gets the ring but pointer clicks don't. */
-*:focus {
-  outline: none;
-}
+/* Custom focus rings — 2px tinted accent, 2px offset from the element.
+   Falls back gracefully on dark surfaces because we add an inset spacer
+   ring in the canvas color before the accent ring. Same pattern Linear and
+   Raycast use. */
+*:focus { outline: none; }
 *:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: var(--radius-app-sm);
+  border-radius: var(--radius-app-xs);
 }
 
-/* Scrollbar — slimmer + token-aware. macOS draws overlay scrollbars by
-   default; this kicks in for trackpad-less / mouse users. */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* Custom scrollbar — 6px thin, tinted. macOS draws overlay scrollbars by
+   default; this kicks in for mouse users + non-overlay surfaces. */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: var(--border-strong);
-  border-radius: 4px;
+  border-radius: 999px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: var(--muted);
-}
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
 /* ----------------------------------------------------------------------------
-   Animations.
-   Centralised so every window picks the same easing + duration grammar.
+   Animations
    ------------------------------------------------------------------------- */
 
-@keyframes app-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
+@keyframes app-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes app-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes app-scale-in { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+@keyframes app-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 
-@keyframes app-fade-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes app-scale-in {
-  from { opacity: 0; transform: scale(0.96); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-@keyframes app-pulse {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 1; }
-}
-
+/* Skeleton shimmer — token-tinted gradient sweep. Replaces `animate-pulse`
+   opacity flicker (the "loading state" tell from every shadcn project). */
 @keyframes app-shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
 
-.anim-fade-in { animation: app-fade-in 0.25s var(--ease-app-out) both; }
-.anim-fade-up { animation: app-fade-up 0.35s var(--ease-app-out) both; }
-.anim-scale-in { animation: app-scale-in 0.25s var(--ease-app-out) both; }
+.anim-fade-in { animation: app-fade-in 0.20s var(--ease-app-out) both; }
+.anim-fade-up { animation: app-fade-up 0.28s var(--ease-app-out) both; }
+.anim-scale-in { animation: app-scale-in 0.20s var(--ease-app-out) both; }
 .anim-pulse { animation: app-pulse 1.4s ease-in-out infinite; }
 
-.anim-delay-1 { animation-delay: 0.05s; }
-.anim-delay-2 { animation-delay: 0.10s; }
-.anim-delay-3 { animation-delay: 0.15s; }
-.anim-delay-4 { animation-delay: 0.20s; }
+.anim-delay-1 { animation-delay: 0.04s; }
+.anim-delay-2 { animation-delay: 0.08s; }
+.anim-delay-3 { animation-delay: 0.12s; }
+.anim-delay-4 { animation-delay: 0.16s; }
 
-/* Shimmer fill — used for "transcribing" state on the pill. */
 .shimmer {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    color-mix(in srgb, var(--accent) 35%, transparent) 50%,
+    color-mix(in srgb, var(--accent) 30%, transparent) 50%,
     transparent 100%
   );
   background-size: 200% 100%;
-  animation: app-shimmer 1.6s ease-in-out infinite;
+  animation: app-shimmer 1.6s linear infinite;
 }
+
+/* Specular highlight utility. Applied via the `.shine` class so primitives
+   can opt in (cards, buttons, footer chrome). */
+.shine {
+  box-shadow: var(--highlight);
+}
+.shine-sm {
+  box-shadow: var(--highlight), var(--shadow-sm);
+}
+.shine-md {
+  box-shadow: var(--highlight), var(--shadow-md);
+}
+.shine-lg {
+  box-shadow: var(--highlight), var(--shadow-lg);
+}
+
+/* Display headings — tighter tracking, larger weight. Headlines below 20px
+   use body tracking (0); display tracking starts at 20px+. */
+.text-display-xs { font-size: 18px; line-height: 1.25; letter-spacing: -0.011em; font-weight: 600; }
+.text-display-sm { font-size: 20px; line-height: 1.20; letter-spacing: -0.016em; font-weight: 600; }
+.text-display-md { font-size: 24px; line-height: 1.15; letter-spacing: -0.022em; font-weight: 600; }
+.text-display-lg { font-size: 32px; line-height: 1.10; letter-spacing: -0.028em; font-weight: 600; }

@@ -93,7 +93,7 @@ export function ApiKeyForm({ onSuccess, submitLabel, compact = false }: Props) {
         <li>{t('form.apiKey.stepCreate')}</li>
         <li>
           {t('form.apiKey.stepCopy')}{' '}
-          <code className="px-1 py-0.5 rounded bg-app-surface-hover font-mono text-[11px] text-app-text">
+          <code className="px-1 py-0.5 rounded bg-app-raised font-mono text-[11px] text-app-text">
             gsk_
           </code>{' '}
           {t('form.apiKey.stepCopySuffix')}
