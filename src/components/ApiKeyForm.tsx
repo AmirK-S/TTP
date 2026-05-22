@@ -76,28 +76,43 @@ export function ApiKeyForm({ onSuccess, submitLabel, compact = false }: Props) {
         />
       </div>
 
-      <ol className="text-xs text-app-muted list-decimal pl-5 space-y-1.5">
-        <li>
-          {t('form.apiKey.stepSignup')}{' '}
-          <a
-            href="https://console.groq.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-app-accent hover:underline inline-flex items-center gap-1"
+      {/* Custom counter so the digits sit in a tinted chip — `list-decimal`
+          default gives mismatched browser numerals that read as form-101. */}
+      <ol className="text-[12px] text-app-muted space-y-2 [counter-reset:step]">
+        {([
+          (
+            <>
+              {t('form.apiKey.stepSignup')}{' '}
+              <a
+                href="https://console.groq.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-app-accent hover:underline inline-flex items-center gap-1"
+              >
+                console.groq.com
+                <ExternalLink className="size-3" aria-hidden />
+              </a>{' '}
+              {t('form.apiKey.stepSignupSuffix')}
+            </>
+          ),
+          (<>{t('form.apiKey.stepCreate')}</>),
+          (
+            <>
+              {t('form.apiKey.stepCopy')}{' '}
+              <code className="px-1.5 py-0.5 rounded-app-sm bg-app-accent-tint font-mono text-[11px] text-app-accent">
+                gsk_
+              </code>{' '}
+              {t('form.apiKey.stepCopySuffix')}
+            </>
+          ),
+        ] as const).map((node, i) => (
+          <li
+            key={i}
+            className="flex items-start gap-2.5 [counter-increment:step] before:content-[counter(step)] before:size-4 before:rounded-full before:bg-app-raised before:text-app-faint before:text-[10px] before:font-medium before:tabular-nums before:grid before:place-items-center before:shrink-0 before:mt-0.5"
           >
-            console.groq.com
-            <ExternalLink className="size-3" aria-hidden />
-          </a>{' '}
-          {t('form.apiKey.stepSignupSuffix')}
-        </li>
-        <li>{t('form.apiKey.stepCreate')}</li>
-        <li>
-          {t('form.apiKey.stepCopy')}{' '}
-          <code className="px-1 py-0.5 rounded bg-app-raised font-mono text-[11px] text-app-text">
-            gsk_
-          </code>{' '}
-          {t('form.apiKey.stepCopySuffix')}
-        </li>
+            <span className="leading-relaxed">{node}</span>
+          </li>
+        ))}
       </ol>
 
       {!compact && (
