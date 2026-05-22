@@ -362,6 +362,28 @@ async fn open_input_monitoring_settings(app: AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn open_microphone_settings(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_url(
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+            None::<&str>,
+        )
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn open_accessibility_settings(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_url(
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+            None::<&str>,
+        )
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     use std::sync::Arc;
@@ -592,6 +614,8 @@ pub fn run() {
             check_input_monitoring_permission,
             request_input_monitoring_permission,
             open_input_monitoring_settings,
+            open_microphone_settings,
+            open_accessibility_settings,
             reset_to_idle,
             restart_app_post_update,
             check_for_updates_with_channel,

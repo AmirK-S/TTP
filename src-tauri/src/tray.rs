@@ -163,12 +163,29 @@ fn input_monitoring_warning_active() -> bool {
     false
 }
 
+/// True when Accessibility permission is missing — required for paste
+/// simulation, so it blocks the core workflow regardless of hotkey config.
+#[cfg(target_os = "macos")]
+fn accessibility_warning_active() -> bool {
+    !crate::paste::check_accessibility()
+}
+#[cfg(not(target_os = "macos"))]
+fn accessibility_warning_active() -> bool {
+    false
+}
+
+/// True when any required permission is missing — drives the red-dot icon
+/// overlay.
+fn permission_warning_active() -> bool {
+    accessibility_warning_active() || input_monitoring_warning_active()
+}
+
 /// Bytes of the idle icon to display in the current state. Returns the
-/// warning variant if Input Monitoring is missing for the Fn hotkey,
-/// otherwise the plain idle icon.
+/// warning variant if any required permission is missing, otherwise the
+/// plain idle icon.
 fn idle_icon_bytes() -> &'static [u8] {
     const IDLE_BYTES: &[u8] = include_bytes!("../icons/icon-idle.png");
-    let warn = input_monitoring_warning_active();
+    let warn = permission_warning_active();
     let update = update_ready_active();
     match (warn, update) {
         (false, false) => IDLE_BYTES,
@@ -215,6 +232,13 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 use tauri_plugin_opener::OpenerExt;
                 let _ = app.opener().open_url(
                     "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
+                    None::<&str>,
+                );
+            }
+            "fix_accessibility" => {
+                use tauri_plugin_opener::OpenerExt;
+                let _ = app.opener().open_url(
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
                     None::<&str>,
                 );
             }
@@ -297,10 +321,9 @@ fn update_tray_menu(app: &AppHandle, is_recording: bool) {
 }
 
 /// Build the tray context menu. Always contains record / settings / quit;
-/// prepends a "⚠ Fix Input Monitoring permission" entry when Fn is the
-/// configured hotkey and the OS hasn't granted that permission yet — the
-/// only silent-failure case in the app, so the most important one to
-/// surface where the user actually looks (the tray, not buried in Settings).
+/// prepends "Install update" and/or permission-fix entries when relevant.
+/// We surface permission issues here because the tray is where users look
+/// when something silently isn't working, not buried in Settings.
 fn build_tray_menu(
     app: &AppHandle,
     is_recording: bool,
@@ -315,96 +338,68 @@ fn build_tray_menu(
     let settings = MenuItem::with_id(app, "settings", crate::i18n::tr("tray.settings"), true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", crate::i18n::tr("tray.quit"), true, None::<&str>)?;
 
-    // Only show the permission warning when Fn is the active hotkey AND
-    // the OS hasn't granted Input Monitoring. Other hotkeys don't depend
-    // on this permission, so the warning would be misleading noise.
-    let needs_input_monitoring = {
-        #[cfg(target_os = "macos")]
-        {
-            get_settings().fn_key_enabled && !crate::fnkey::has_input_monitoring()
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            false
-        }
-    };
-
     let pending_version = pending_update_version();
     let needs_install_update = pending_version.is_some();
+    let needs_accessibility = accessibility_warning_active();
+    let needs_input_monitoring = input_monitoring_warning_active();
 
-    match (needs_install_update, needs_input_monitoring) {
-        (true, true) => {
-            let install_label = crate::i18n::tr_with(
-                "tray.installUpdate",
-                &[("version", pending_version.as_deref().unwrap_or(""))],
-            );
-            let install =
-                MenuItem::with_id(app, "install_update", &install_label, true, None::<&str>)?;
-            let install_separator = PredefinedMenuItem::separator(app)?;
-            let warn = MenuItem::with_id(
-                app,
-                "fix_input_monitoring",
-                crate::i18n::tr("tray.fixInputMonitoring"),
-                true,
-                None::<&str>,
-            )?;
-            let warn_separator = PredefinedMenuItem::separator(app)?;
-            let menu = Menu::with_items(
-                app,
-                &[
-                    &install,
-                    &install_separator,
-                    &warn,
-                    &warn_separator,
-                    &record,
-                    &separator,
-                    &settings,
-                    &quit,
-                ],
-            )?;
-            Ok(menu)
-        }
-        (true, false) => {
-            let install_label = crate::i18n::tr_with(
-                "tray.installUpdate",
-                &[("version", pending_version.as_deref().unwrap_or(""))],
-            );
-            let install =
-                MenuItem::with_id(app, "install_update", &install_label, true, None::<&str>)?;
-            let install_separator = PredefinedMenuItem::separator(app)?;
-            let menu = Menu::with_items(
-                app,
-                &[
-                    &install,
-                    &install_separator,
-                    &record,
-                    &separator,
-                    &settings,
-                    &quit,
-                ],
-            )?;
-            Ok(menu)
-        }
-        (false, true) => {
-            let warn = MenuItem::with_id(
-                app,
-                "fix_input_monitoring",
-                crate::i18n::tr("tray.fixInputMonitoring"),
-                true,
-                None::<&str>,
-            )?;
-            let warn_separator = PredefinedMenuItem::separator(app)?;
-            let menu = Menu::with_items(
-                app,
-                &[&warn, &warn_separator, &record, &separator, &settings, &quit],
-            )?;
-            Ok(menu)
-        }
-        (false, false) => {
-            let menu = Menu::with_items(app, &[&record, &separator, &settings, &quit])?;
-            Ok(menu)
-        }
-    }
+    // Build optional items first; keep them owned in named bindings so the
+    // refs vector below can borrow into them (Tauri's Menu::with_items takes
+    // `&[&dyn IsMenuItem<R>]` and we need stable addresses).
+    let install_item = if needs_install_update {
+        let label = crate::i18n::tr_with(
+            "tray.installUpdate",
+            &[("version", pending_version.as_deref().unwrap_or(""))],
+        );
+        Some(MenuItem::with_id(app, "install_update", &label, true, None::<&str>)?)
+    } else {
+        None
+    };
+    let install_sep = if needs_install_update {
+        Some(PredefinedMenuItem::separator(app)?)
+    } else {
+        None
+    };
+    let accessibility_item = if needs_accessibility {
+        Some(MenuItem::with_id(
+            app,
+            "fix_accessibility",
+            crate::i18n::tr("tray.fixAccessibility"),
+            true,
+            None::<&str>,
+        )?)
+    } else {
+        None
+    };
+    let input_mon_item = if needs_input_monitoring {
+        Some(MenuItem::with_id(
+            app,
+            "fix_input_monitoring",
+            crate::i18n::tr("tray.fixInputMonitoring"),
+            true,
+            None::<&str>,
+        )?)
+    } else {
+        None
+    };
+    let perm_sep = if needs_accessibility || needs_input_monitoring {
+        Some(PredefinedMenuItem::separator(app)?)
+    } else {
+        None
+    };
+
+    let mut refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = Vec::new();
+    if let Some(i) = install_item.as_ref() { refs.push(i); }
+    if let Some(s) = install_sep.as_ref() { refs.push(s); }
+    if let Some(i) = accessibility_item.as_ref() { refs.push(i); }
+    if let Some(i) = input_mon_item.as_ref() { refs.push(i); }
+    if let Some(s) = perm_sep.as_ref() { refs.push(s); }
+    refs.push(&record);
+    refs.push(&separator);
+    refs.push(&settings);
+    refs.push(&quit);
+
+    Ok(Menu::with_items(app, &refs)?)
 }
 
 /// Update the tray icon to reflect recording state. When not recording,

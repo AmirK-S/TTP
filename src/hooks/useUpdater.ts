@@ -305,6 +305,22 @@ export function useUpdater(options?: UseUpdaterOptions) {
     }
   }, []);
 
+  // Auto-relaunch right after a silent install completes. The window
+  // between "install done" and "user clicks Restart" leaves the running
+  // process in a zombie state: old code in RAM, new bundle on disk —
+  // macOS can revoke the mic TCC grant (bundle signature changed under
+  // the process) and the audio plugin's lazy-loaded resources point at
+  // files that no longer match. Symptom users hit: pill shows up on
+  // hotkey press but no audio reaches transcription. Relaunching as
+  // soon as status flips to 'ready' (gated on idle so we never yank a
+  // recording out from under the user) closes that window.
+  useEffect(() => {
+    if (!autoInstall) return;
+    if (status !== 'ready') return;
+    if (recordingState !== 'Idle') return;
+    restartApp();
+  }, [autoInstall, status, recordingState, restartApp]);
+
   const dismiss = useCallback(() => {
     setDismissed(true);
   }, []);

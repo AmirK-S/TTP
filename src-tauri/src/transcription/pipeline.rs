@@ -9,6 +9,8 @@ use crate::dictionary::detection::start_correction_window;
 use crate::dictionary::apply_dictionary;
 use crate::history::add_history_entry;
 use crate::paste::{check_accessibility, simulate_paste, simulate_typing, ClipboardGuard};
+#[cfg(target_os = "macos")]
+use crate::paste::{probe_accessibility, reset_accessibility_tcc};
 // Pill stays visible - no hide needed
 use crate::settings::get_settings;
 use crate::state::{AppState, RecordingState};
@@ -678,7 +680,34 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         return Err(e);
     }
 
-    // Check accessibility permission and try to paste
+    // Check accessibility permission and try to paste.
+    //
+    // On macOS we use `probe_accessibility()` — a real AXUIElement API call —
+    // instead of just `check_accessibility()` (which only reads the TCC grant
+    // flag). After an in-place app-bundle replacement (auto-updater), macOS
+    // commonly leaves the TCC entry marked "trusted" while the actual AX API
+    // is silently rejected. The cheap check then lies: pipeline thinks paste
+    // will work, simulate_typing/paste calls CGEventPost which returns void
+    // (no error), and the user sees clipboard + history populated but no
+    // keystroke ever delivered. The probe catches this stale state.
+    //
+    // If we detect the stale state, also call `reset_accessibility_tcc()` so
+    // the entry gets wiped — the user's next interaction will re-prompt
+    // cleanly via the System Settings deep link below instead of looking at
+    // a "TTP is enabled but not really" entry.
+    #[cfg(target_os = "macos")]
+    let has_accessibility = {
+        let trusted_flag = check_accessibility();
+        let actually_works = probe_accessibility();
+        if trusted_flag && !actually_works {
+            eprintln!("[Pipeline] Accessibility TCC entry is stale — resetting so user can re-grant.");
+            if let Err(e) = reset_accessibility_tcc() {
+                eprintln!("[Pipeline] reset_accessibility_tcc failed: {}", e);
+            }
+        }
+        actually_works
+    };
+    #[cfg(not(target_os = "macos"))]
     let has_accessibility = check_accessibility();
 
     // Pick the paste strategy based on length.

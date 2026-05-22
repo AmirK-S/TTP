@@ -15,12 +15,17 @@ type PermissionStatus = 'Granted' | 'Denied' | 'Undetermined';
 /** macOS-only — TTP doesn't surface this step on Windows. */
 const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.startsWith('Mac');
 
-/** Direct deep-links to the right System Settings pane on macOS. */
-const SETTINGS_URL: Record<string, string> = {
-  microphone: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone',
-  accessibility: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
-  inputMonitoring:
-    'x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent',
+/**
+ * Map each onboarding step to the Rust command that opens its System Settings
+ * pane. We can't call `plugin:opener|open_url` directly from the WebView for
+ * `x-apple.systempreferences:` URLs — the opener plugin's IPC scope rejects
+ * non-http(s) schemes, so the click was silently no-op'ing. Going through
+ * dedicated Rust commands (which call OpenerExt internally) bypasses that ACL.
+ */
+const SETTINGS_COMMAND: Record<string, string> = {
+  microphone: 'open_microphone_settings',
+  accessibility: 'open_accessibility_settings',
+  inputMonitoring: 'open_input_monitoring_settings',
 };
 
 /**
@@ -89,10 +94,9 @@ export default function Onboarding() {
     return () => { unlisten.then(fn => fn()); };
   }, [checkAllItems]);
 
-  // Open the System Settings pane via the opener plugin (already registered).
   const openSettingsPane = async (key: 'microphone' | 'accessibility' | 'inputMonitoring') => {
     try {
-      await invoke('plugin:opener|open_url', { url: SETTINGS_URL[key] });
+      await invoke(SETTINGS_COMMAND[key]);
     } catch (e) {
       console.error('Failed to open settings pane:', e);
     }

@@ -68,6 +68,7 @@
     "stopRecording": "Stop Recording",
     "settings": "Settings…",
     "quit": "Quit TTP",
+    "fixAccessibility": "⚠ Fix Accessibility permission",
     "fixInputMonitoring": "⚠ Fix Input Monitoring permission",
     "installUpdate": "🆕 Install update (v{{version}})",
     "tooltip": "TTP by AmirKS — Talk To Paste"
