@@ -304,8 +304,16 @@
       "checking": "…"
     },
     "trial": {
-      "title": "Bienvenue — essai Pro de 7 jours démarré",
-      "subtitle": "Correction, dictionnaire et historique illimités. Le tier gratuit prend le relais après."
+      "title": "Tu es prêt",
+      "subtitle": "Ton essai TTP Pro de 7 jours vient de démarrer. Aucune carte requise — le tier gratuit prend le relais automatiquement après.",
+      "perksHeader": "Inclus pendant 7 jours",
+      "perkPolish": "Correction AI Polish illimitée sur chaque transcription",
+      "perkDictionary": "Dictionnaire perso jusqu'à 500 entrées",
+      "perkHistory": "Historique complet de chaque transcription, cherchable",
+      "fallback": "Après l'essai, TTP continue de marcher — le tier gratuit couvre la plupart des usages quotidiens.",
+      "upgradeTitle": "Garde Pro à vie — 17€ une fois",
+      "upgradeSubtitle": "Correction, dictionnaire et historique illimités. Aucun abonnement.",
+      "upgradeCta": "Upgrader"
     },
     "cta": {
       "getStarted": "Commencer",

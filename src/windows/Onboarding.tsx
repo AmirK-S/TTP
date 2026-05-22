@@ -20,6 +20,7 @@ import {
   ChevronRight,
   ChevronLeft,
   ExternalLink,
+  Sparkles,
 } from 'lucide-react';
 import { Button, Card } from '../components/ui';
 import { ApiKeyForm } from '../components/ApiKeyForm';
@@ -54,7 +55,11 @@ export default function Onboarding() {
     return n === 1 || n === 2 ? n : 0;
   })();
   const [step, setStep] = useState<0 | 1 | 2>(initialStep as 0 | 1 | 2);
-  const [hasApiKey, setHasApiKey] = useState(false);
+  // Initial-trial preview hack: `?trial=1` forces the post-save success view
+  // so the screenshot tooling can capture it without actually saving a key.
+  const initialHasKey = typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('trial') === '1';
+  const [hasApiKey, setHasApiKey] = useState(initialHasKey);
   const [permStatus, setPermStatus] = useState<Record<PermKey, PermissionStatus>>({
     microphone: 'Undetermined',
     accessibility: 'Denied',
@@ -193,7 +198,7 @@ export default function Onboarding() {
           {step === 2 && (
             <ApiKeyStep
               hasApiKey={hasApiKey}
-              onSaved={() => { setHasApiKey(true); finish(); }}
+              onSaved={() => setHasApiKey(true)}
             />
           )}
         </div>
@@ -435,14 +440,73 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
   const { t } = useTranslation();
   if (hasApiKey) {
     return (
-      <section className="anim-fade-up text-center py-12">
-        <div className="mx-auto size-14 rounded-full bg-app-success-soft grid place-items-center mb-4">
-          <CheckCircle2 className="size-7 text-app-success" aria-hidden />
+      <section className="anim-fade-up max-w-md mx-auto">
+        <div className="text-center">
+          <div className="mx-auto size-14 rounded-full bg-app-success-soft grid place-items-center mb-5 shine-sm">
+            <CheckCircle2 className="size-7 text-app-success anim-check-pop" aria-hidden />
+          </div>
+          <h2 className="text-display-md text-app-text">
+            {t('onboarding.trial.title')}
+          </h2>
+          <p className="mt-2 text-[13px] text-app-muted leading-relaxed">
+            {t('onboarding.trial.subtitle')}
+          </p>
         </div>
-        <h2 className="text-xl font-semibold tracking-tight text-app-text">
-          {t('onboarding.apiKey.saved')}
-        </h2>
-        <p className="mt-2 text-sm text-app-muted">{t('onboarding.cta.reopenHint')}</p>
+
+        {/* Trial perk recap — concrete features unlocked during the 7-day
+            trial, so the user knows what they're getting before deciding
+            whether to upgrade. */}
+        <div className="mt-7 rounded-app-lg border border-app-border bg-app-surface shine-sm p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="size-4 text-app-accent" aria-hidden />
+            <span className="text-[12px] font-semibold text-app-text uppercase tracking-wide">
+              {t('onboarding.trial.perksHeader')}
+            </span>
+          </div>
+          <ul className="space-y-2.5">
+            {[
+              t('onboarding.trial.perkPolish'),
+              t('onboarding.trial.perkDictionary'),
+              t('onboarding.trial.perkHistory'),
+            ].map((perk, i) => (
+              <li key={i} className="flex items-start gap-2.5 text-[13px] text-app-text">
+                <CheckCircle2 className="size-3.5 mt-0.5 shrink-0 text-app-success" aria-hidden />
+                <span>{perk}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <p className="mt-4 text-center text-[11px] text-app-faint">
+          {t('onboarding.trial.fallback')}
+        </p>
+
+        {/* Outbound CTA — opens the upgrade page in the user's browser.
+            Non-blocking: the wizard footer still has Finish; this is a
+            soft incentive, not a paywall. */}
+        <a
+          href="https://amirks.eu/ttp/pro"
+          target="_blank"
+          rel="noopener noreferrer"
+          className={
+            'mt-5 flex items-center justify-between rounded-app-md border border-app-accent/30 ' +
+            'bg-app-accent-tint hover:bg-app-accent-soft px-4 py-3 ' +
+            'transition-colors duration-150 group'
+          }
+        >
+          <div className="min-w-0">
+            <div className="text-[13px] font-medium text-app-text">
+              {t('onboarding.trial.upgradeTitle')}
+            </div>
+            <div className="text-[11px] text-app-muted mt-0.5">
+              {t('onboarding.trial.upgradeSubtitle')}
+            </div>
+          </div>
+          <span className="ml-3 inline-flex items-center gap-1 text-[12px] font-medium text-app-accent shrink-0">
+            {t('onboarding.trial.upgradeCta')}
+            <ExternalLink className="size-3" aria-hidden />
+          </span>
+        </a>
       </section>
     );
   }

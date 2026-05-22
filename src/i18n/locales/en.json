@@ -304,8 +304,16 @@
       "checking": "…"
     },
     "trial": {
-      "title": "Welcome — 7-day Pro trial just started",
-      "subtitle": "Unlimited polish, dictionary, history. Free tier kicks in after."
+      "title": "You're all set",
+      "subtitle": "Your 7-day TTP Pro trial just started. No card needed — the free tier kicks in automatically after.",
+      "perksHeader": "Included for 7 days",
+      "perkPolish": "Unlimited AI Polish on every transcription",
+      "perkDictionary": "Custom dictionary up to 500 entries",
+      "perkHistory": "Full history of every transcription, searchable",
+      "fallback": "After the trial, TTP keeps working — free tier covers most daily use.",
+      "upgradeTitle": "Keep Pro forever — €17 one-time",
+      "upgradeSubtitle": "Unlimited polish, dictionary, history. No subscription.",
+      "upgradeCta": "Upgrade"
     },
     "cta": {
       "getStarted": "Get Started",
