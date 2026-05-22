@@ -23,30 +23,43 @@ import './index.css';
  * - main (or others): Renders the main App component (hidden for tray app)
  */
 async function main() {
-  // Fire-and-forget: gates itself on user telemetry consent (queried via
-  // get_settings IPC); never throws, never blocks rendering.
-  void initSentryIfConsented();
+  // `?preview=onboarding|settings|pill|setup` is a dev-only override that
+  // lets us inspect a window's UI in a plain browser (vite dev, screenshots,
+  // visual diffs). When set, we skip every Tauri IPC + window probe — those
+  // throw in a non-Tauri runtime and would crash the bootstrap. Production
+  // builds never carry this query string.
+  const previewLabel = new URLSearchParams(window.location.search).get('preview');
+  const isPreview = previewLabel !== null;
+
+  if (!isPreview) {
+    // Fire-and-forget: gates itself on user telemetry consent (queried via
+    // get_settings IPC); never throws, never blocks rendering.
+    void initSentryIfConsented();
+  }
 
   // Initialize i18n synchronously with the persisted language choice (or
   // 'system' if first launch). We read settings once here to avoid a render
   // flash; further changes propagate via the 'settings-changed' event below.
   let initialLang: LanguageChoice = 'system';
-  try {
-    const s = await invoke<{ language?: string | null }>('get_settings');
-    initialLang = ((s?.language ?? 'system') as LanguageChoice);
-  } catch {
-    // get_settings may fail on very first launch — defaults to 'system'.
+  if (!isPreview) {
+    try {
+      const s = await invoke<{ language?: string | null }>('get_settings');
+      initialLang = ((s?.language ?? 'system') as LanguageChoice);
+    } catch {
+      // get_settings may fail on very first launch — defaults to 'system'.
+    }
   }
   initI18n(initialLang);
 
-  // Cross-window language sync: when any window saves a new language choice
-  // via settings-store, every other window picks it up and re-renders.
-  listen<{ language?: string | null }>('settings-changed', (event) => {
-    setLanguage((event.payload?.language ?? 'system') as LanguageChoice);
-  }).catch(() => {});
+  if (!isPreview) {
+    // Cross-window language sync: when any window saves a new language choice
+    // via settings-store, every other window picks it up and re-renders.
+    listen<{ language?: string | null }>('settings-changed', (event) => {
+      setLanguage((event.payload?.language ?? 'system') as LanguageChoice);
+    }).catch(() => {});
+  }
 
-  const currentWindow = getCurrentWebviewWindow();
-  const windowLabel = currentWindow.label;
+  const windowLabel = isPreview ? previewLabel : getCurrentWebviewWindow().label;
 
   const rootElement = document.getElementById('root') as HTMLElement;
 

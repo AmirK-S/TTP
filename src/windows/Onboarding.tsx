@@ -44,7 +44,16 @@ const PERM_ICON: Record<PermKey, typeof Mic> = {
 
 export default function Onboarding() {
   const { t } = useTranslation();
-  const [step, setStep] = useState<0 | 1 | 2>(0);
+  // Allow the dev-only `?preview=onboarding&step=N` URL to jump straight to
+  // a step for visual inspection (used by the screenshot tooling). Default
+  // remains step 0 — production code never carries this query string.
+  const initialStep = (() => {
+    if (typeof window === 'undefined') return 0;
+    const p = new URLSearchParams(window.location.search).get('step');
+    const n = p ? Number(p) : NaN;
+    return n === 1 || n === 2 ? n : 0;
+  })();
+  const [step, setStep] = useState<0 | 1 | 2>(initialStep as 0 | 1 | 2);
   const [hasApiKey, setHasApiKey] = useState(false);
   const [permStatus, setPermStatus] = useState<Record<PermKey, PermissionStatus>>({
     microphone: 'Undetermined',
@@ -53,9 +62,13 @@ export default function Onboarding() {
   });
   const [checking, setChecking] = useState<PermKey | null>(null);
 
-  // Keep window title in sync with the active language.
+  // Keep window title in sync with the active language. Wrapped because
+  // getCurrentWindow() throws when the bundle is opened outside Tauri (the
+  // ?preview= dev path used for screenshots), and the wizard should still
+  // render for visual inspection.
   useEffect(() => {
-    getCurrentWindow().setTitle(t('windowTitle.onboarding'));
+    try { getCurrentWindow().setTitle(t('windowTitle.onboarding')); }
+    catch { /* not in Tauri (dev preview) */ }
   });
 
   const refreshAll = useCallback(async () => {
@@ -85,10 +98,15 @@ export default function Onboarding() {
   // Re-check whenever the window regains focus — catches returns from System
   // Settings without a polling timer.
   useEffect(() => {
-    const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
-      if (focused) refreshAll();
-    });
-    return () => { unlisten.then(fn => fn()); };
+    try {
+      const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+        if (focused) refreshAll();
+      });
+      return () => { unlisten.then(fn => fn()); };
+    } catch {
+      // Non-Tauri runtime (dev preview): focus events are skipped.
+      return undefined;
+    }
   }, [refreshAll]);
 
   const openSettings = async (key: PermKey) => {
