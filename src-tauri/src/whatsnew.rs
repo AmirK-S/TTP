@@ -32,6 +32,11 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.1.4" => Some(
+            "One-click uninstall.\n\
+             • Settings → Advanced → \"Uninstall TTP completely\" now actually removes everything: the .app from /Applications, your settings, history, dictionary, license, all three Keychain entries, the LaunchAgent if autostart was on, WebKit caches, and the macOS TCC permissions. The previous answer was \"drag to trash and hope\" which left half a dozen things behind.\n\
+             • macOS-only for now. Windows / Linux still need manual removal (the README has the paths).",
+        ),
         "2.1.3" => Some(
             "Onboarding fixes + Settings sidebar gets your stats.\n\
              • Preferences toggles in the wizard actually persist now. Two of three (hide pill, crash reports) were silently bouncing back because they bypassed the settings store and called the backend with a partial Settings object the Rust side couldn't deserialize. Routed through the same store the Settings panel uses.\n\

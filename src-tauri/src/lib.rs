@@ -23,6 +23,7 @@ mod state;
 mod telemetry;
 mod transcription;
 mod tray;
+mod uninstall;
 mod usage;
 mod whatsnew;
 
@@ -656,6 +657,7 @@ pub fn run() {
             get_license_info,
             get_usage_stats,
             get_analytics_summary,
+            uninstall::uninstall_app,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

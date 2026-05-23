@@ -294,6 +294,8 @@ export function Settings() {
   const [showRestartBanner, setShowRestartBanner] = useState(false);
   const [licenseInput, setLicenseInput] = useState('');
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
+  const [showUninstallConfirm, setShowUninstallConfirm] = useState(false);
+  const [uninstalling, setUninstalling] = useState(false);
   const [autostartOn, setAutostartOn] = useState(false);
 
   useEffect(() => { isAutostartEnabled().then(setAutostartOn).catch(() => {}); }, []);
@@ -455,6 +457,20 @@ export function Settings() {
       await deactivateLicense(); setShowDeactivateConfirm(false);
       trackEvent('license_deactivated', {});
     } catch (error) { console.error('Deactivation failed:', error); }
+  };
+
+  const handleUninstall = async () => {
+    setUninstalling(true);
+    try {
+      // Rust will wipe keychain, spawn the detached uninstaller script,
+      // and exit the process. Anything below this line on a successful
+      // path won't run.
+      await invoke('uninstall_app');
+    } catch (error) {
+      console.error('Uninstall failed:', error);
+      setUninstalling(false);
+      setShowUninstallConfirm(false);
+    }
   };
 
   const formatExpiry = (ts: number | null): string => {
@@ -901,6 +917,20 @@ export function Settings() {
                 {t('settings.reset.button')}
               </Button>
             </SettingsSection>
+
+            {/* Danger zone — full uninstall. Bottom of Advanced so users
+                have to scroll past everything else to reach it. */}
+            <SettingsSection
+              title={t('settings.uninstall.title')}
+              description={t('settings.uninstall.desc')}
+            >
+              <Button
+                variant="danger"
+                onClick={() => setShowUninstallConfirm(true)}
+              >
+                {t('settings.uninstall.button')}
+              </Button>
+            </SettingsSection>
           </div>
 
           <ConfirmDialog
@@ -929,6 +959,16 @@ export function Settings() {
             cancelText={t('common.cancel')}
             onConfirm={handleClearHistory}
             onCancel={() => setShowClearHistoryConfirm(false)}
+          />
+          <ConfirmDialog
+            open={showUninstallConfirm}
+            title={t('dialog.uninstall.title')}
+            message={t('dialog.uninstall.message')}
+            confirmText={uninstalling ? t('dialog.uninstall.uninstalling') : t('dialog.uninstall.confirm')}
+            cancelText={t('common.cancel')}
+            tone="danger"
+            onConfirm={handleUninstall}
+            onCancel={() => !uninstalling && setShowUninstallConfirm(false)}
           />
           <ConfirmDialog
             open={showDeactivateConfirm}

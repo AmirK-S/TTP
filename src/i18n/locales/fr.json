@@ -110,6 +110,12 @@
     "downgradeBeta": {
       "title": "Quitter la version beta ?",
       "message": "Tu es actuellement sur une version beta qui peut être plus récente que la dernière version stable. Tu n'auras pas de mises à jour jusqu'à une nouvelle version stable. Continuer ?"
+    },
+    "uninstall": {
+      "title": "Désinstaller TTP complètement ?",
+      "message": "Cela retire le .app de /Applications et efface tout : tes paramètres, l'historique de transcriptions, le dictionnaire, la licence, les entrées Keychain, et les permissions macOS. Cette action est irréversible. TTP va se fermer et se supprimer lui-même.",
+      "confirm": "Désinstaller et quitter",
+      "uninstalling": "Désinstallation…"
     }
   },
   "settings": {
@@ -261,6 +267,11 @@
       "title": "Réinitialisation",
       "desc": "Réinitialise tous les paramètres aux valeurs par défaut et efface le dictionnaire.",
       "button": "Réinitialiser"
+    },
+    "uninstall": {
+      "title": "Désinstaller TTP",
+      "desc": "Supprime l'application et toutes tes données : paramètres, historique, dictionnaire, licence, entrées Keychain, et permissions macOS.",
+      "button": "Désinstaller TTP complètement"
     },
     "language": {
       "title": "Langue",
