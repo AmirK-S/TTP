@@ -344,7 +344,31 @@
       "permissionsSubtitle": "TTP a besoin de ces permissions macOS pour enregistrer et coller. On t'amène directement au bon panneau des Réglages.",
       "apiKeyTitle": "Connecter à Groq",
       "apiKeySubtitle": "API de transcription gratuite. Le tier gratuit de Groq couvre des dizaines de milliers de dictées par mois.",
+      "preferencesTitle": "Quelques choix rapides",
+      "preferencesSubtitle": "Les bases maintenant. Tout ça se retrouve dans Paramètres si tu changes d'avis.",
+      "tourTitle": "Voici comment ça marche",
+      "tourSubtitle": "Trois choses à savoir avant de partir. Ça prend dix secondes.",
       "stepIndicatorLabel": "Étape {{current}} sur {{total}}"
+    },
+    "preferences": {
+      "hidePillLabel": "Cacher le pill quand tu n'enregistres pas",
+      "hidePillDesc": "L'indicateur flottant disparaît jusqu'à ce que tu appuies sur ton raccourci.",
+      "autostartLabel": "Lancer TTP au démarrage",
+      "autostartDesc": "S'éveille avec ton Mac pour que le raccourci soit prêt quand tu l'es.",
+      "telemetryLabel": "Partager les crash reports anonymes",
+      "telemetryDesc": "Uniquement les signaux de crash et des compteurs de features. Jamais tes transcriptions.",
+      "footnote": "Tu peux modifier tout ça à tout moment dans Paramètres."
+    },
+    "tour": {
+      "pressLabel": "Maintiens",
+      "orLabel": "ou",
+      "step1Title": "Maintiens ton raccourci pour parler",
+      "step1Body": "Appuie et maintiens. Parle. Relâche. TTP enregistre tant que la touche est enfoncée.",
+      "step2Title": "Regarde le pill en bas",
+      "step2Body": "Un petit pill sombre indique l'enregistrement, puis devient un indicateur de progression pendant que Groq transcrit.",
+      "step3Title": "Retrouve TTP à tout moment",
+      "step3Body": "Clique l'icône micro dans la barre de menu, ou cherche \"TTP\" dans Spotlight (⌘Espace).",
+      "closeReassurance": "Tu peux fermer cette fenêtre avec ×. TTP continue de tourner."
     }
   },
   "setup": {

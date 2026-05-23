@@ -344,7 +344,31 @@
       "permissionsSubtitle": "TTP needs these macOS permissions to record and paste. We'll take you straight to the right Settings pane.",
       "apiKeyTitle": "Connect to Groq",
       "apiKeySubtitle": "Free transcription API. Groq's free tier covers tens of thousands of dictations per month.",
+      "preferencesTitle": "A few quick choices",
+      "preferencesSubtitle": "Set the basics now. All of these live in Settings if you change your mind later.",
+      "tourTitle": "Here's how it works",
+      "tourSubtitle": "Three things to know before you go. Take ten seconds.",
       "stepIndicatorLabel": "Step {{current}} of {{total}}"
+    },
+    "preferences": {
+      "hidePillLabel": "Hide the pill when you're not recording",
+      "hidePillDesc": "The floating indicator stays out of sight until you press your shortcut.",
+      "autostartLabel": "Launch TTP at startup",
+      "autostartDesc": "Wakes up with your Mac so the shortcut is ready when you are.",
+      "telemetryLabel": "Share anonymous crash reports",
+      "telemetryDesc": "Only crash signals and feature counters. Never your transcripts.",
+      "footnote": "You can change all of these any time in Settings."
+    },
+    "tour": {
+      "pressLabel": "Hold",
+      "orLabel": "or",
+      "step1Title": "Hold your shortcut to talk",
+      "step1Body": "Press and hold. Speak. Release. TTP records while the key is down.",
+      "step2Title": "Watch the pill at the bottom",
+      "step2Body": "A small dark pill shows you're recording, then turns into a progress indicator while Groq transcribes.",
+      "step3Title": "Find TTP again any time",
+      "step3Body": "Click the mic icon in the menu bar, or search \"TTP\" in Spotlight (⌘Space).",
+      "closeReassurance": "You can close this window with ×. TTP keeps running."
     }
   },
   "setup": {

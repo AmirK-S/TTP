@@ -32,6 +32,12 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.1.2" => Some(
+            "Onboarding gets a Preferences step and a Tour.\n\
+             • New \"A few quick choices\" step before the finish line: three opt-in toggles for hiding the pill when inactive, launching TTP at startup, and sharing anonymous crash reports. All default OFF (privacy first); change later from Settings.\n\
+             • New \"Here's how it works\" tour at the end: three illustrated cards walking you through hold-to-talk, the pill states, and where to find TTP later (menu bar + Spotlight). Closes the \"I finished the wizard, now what?\" gap.\n\
+             • Onboarding wizard is now five steps (Welcome → Permissions → Groq → Preferences → Tour) instead of three. Step dots updated to match.",
+        ),
         "2.1.1" => Some(
             "Settings rebuilt. New icon. Pill goes smooth.\n\
              • Settings is now five clear sections (General, Capture, Pro, Data, Advanced) instead of eleven stacked panels. Launch-at-startup moved out of Recording Mode where it never belonged.\n\
