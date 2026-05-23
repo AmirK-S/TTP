@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { Button, Card, BrandTile, Toggle, DarkPill } from '../components/ui';
 import { ApiKeyForm } from '../components/ApiKeyForm';
+import { useSettingsStore } from '../stores/settings-store';
 import { cn } from '../lib/cn';
 
 type PermissionStatus = 'Granted' | 'Denied' | 'Undetermined';
@@ -527,26 +528,25 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
  */
 function PreferencesStep() {
   const { t } = useTranslation();
-  const [hidePill, setHidePill] = useState(false);
+  // Route through the store so saveSettings merges with the current Settings
+  // object before invoking the Rust command. The Rust `set_settings` expects
+  // the FULL Settings struct; calling it with a partial corrupts the file
+  // and silently fails — which is exactly the bug v2.1.2 shipped with.
+  const {
+    hidePillWhenInactive, telemetryEnabled, loadSettings, saveSettings,
+  } = useSettingsStore();
   const [autostart, setAutostart] = useState(false);
-  const [telemetry, setTelemetry] = useState(false);
 
   // Hydrate from the actual app state so the toggles reflect reality if the
   // user navigates back to this step after changing something.
   useEffect(() => {
-    invoke<{ hide_pill_when_inactive?: boolean; telemetry_enabled?: boolean }>('get_settings')
-      .then((s) => {
-        setHidePill(!!s.hide_pill_when_inactive);
-        setTelemetry(!!s.telemetry_enabled);
-      })
-      .catch(() => {});
+    loadSettings();
     isAutostartEnabled().then(setAutostart).catch(() => {});
-  }, []);
+  }, [loadSettings]);
 
   const onHidePill = async (v: boolean) => {
-    setHidePill(v);
-    try { await invoke('set_settings', { settings: { hide_pill_when_inactive: v } }); }
-    catch (e) { console.error('Failed to save hide_pill:', e); setHidePill(!v); }
+    try { await saveSettings({ hide_pill_when_inactive: v }); }
+    catch (e) { console.error('Failed to save hide_pill:', e); }
   };
 
   const onAutostart = async (v: boolean) => {
@@ -556,9 +556,8 @@ function PreferencesStep() {
   };
 
   const onTelemetry = async (v: boolean) => {
-    setTelemetry(v);
-    try { await invoke('set_settings', { settings: { telemetry_enabled: v } }); }
-    catch (e) { console.error('Failed to save telemetry:', e); setTelemetry(!v); }
+    try { await saveSettings({ telemetry_enabled: v }); }
+    catch (e) { console.error('Failed to save telemetry:', e); }
   };
 
   return (
@@ -574,7 +573,7 @@ function PreferencesStep() {
           tile="bg-app-accent-tint text-app-accent"
           label={t('onboarding.preferences.hidePillLabel')}
           desc={t('onboarding.preferences.hidePillDesc')}
-          enabled={hidePill}
+          enabled={hidePillWhenInactive}
           onChange={onHidePill}
           delay={0}
         />
@@ -592,7 +591,7 @@ function PreferencesStep() {
           tile="bg-app-warning-tint text-app-warning"
           label={t('onboarding.preferences.telemetryLabel')}
           desc={t('onboarding.preferences.telemetryDesc')}
-          enabled={telemetry}
+          enabled={telemetryEnabled}
           onChange={onTelemetry}
           delay={2}
         />
@@ -691,13 +690,25 @@ function TourStep() {
         <TourCard
           delay={2}
           illustration={
-            <div className="flex items-center justify-center gap-3 px-5 py-4 bg-app-raised border border-app-border rounded-app-md">
-              <div className="size-9 rounded-app-sm bg-app-surface border border-app-border grid place-items-center">
-                <Mic className="size-4 text-app-accent" strokeWidth={1.75} aria-hidden />
+            <div className="px-5 py-4 bg-app-raised border border-app-border rounded-app-md">
+              {/* Mini macOS menu-bar mockup with the TTP brand mark highlighted.
+                  Way clearer than a microphone glyph, which read as the
+                  keyboard mic key rather than the menu bar location. */}
+              <div className="relative h-7 bg-app-overlay border border-app-border-strong rounded-app-xs flex items-center justify-end gap-2 px-2 shine-sm">
+                <span className="size-1.5 rounded-full bg-app-faint/35" aria-hidden />
+                <span className="size-1.5 rounded-full bg-app-faint/35" aria-hidden />
+                <span className="size-1.5 rounded-full bg-app-faint/35" aria-hidden />
+                <div className="relative size-4 rounded-app-xs bg-app-surface border border-app-accent/40 grid place-items-center">
+                  <span className="text-app-text font-semibold text-[6px] tracking-tighter leading-none">TTP</span>
+                  <span className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-app-accent ring-2 ring-app-overlay" aria-hidden />
+                </div>
               </div>
-              <span className="text-[11px] text-app-muted">{t('onboarding.tour.orLabel')}</span>
-              <div className="size-9 rounded-app-sm bg-app-surface border border-app-border grid place-items-center">
-                <Search className="size-4 text-app-accent" strokeWidth={1.75} aria-hidden />
+              <div className="mt-2.5 flex items-center justify-center gap-2 text-[10px] text-app-faint">
+                <span aria-hidden>↑</span>
+                <span>{t('onboarding.tour.menuBarHint')}</span>
+                <span aria-hidden className="text-app-faint/40">·</span>
+                <Search className="size-3" aria-hidden />
+                <span>{t('onboarding.tour.spotlightHint')}</span>
               </div>
             </div>
           }

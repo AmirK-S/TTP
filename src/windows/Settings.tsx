@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback, useRef, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Copy, Check, Download, RefreshCw, Crown, ArrowRight, ExternalLink,
-  Activity, User, Mic, SlidersHorizontal, Database, BookOpen,
+  User, Mic, SlidersHorizontal, Database, BookOpen,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { invoke } from '@tauri-apps/api/core';
@@ -109,59 +109,11 @@ interface AnalyticsSummary {
   daily: Array<{ date: string; transcriptions: number; words: number; chars: number }>;
 }
 
-function AnalyticsCard() {
-  const { t, i18n } = useTranslation();
-  const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
-
-  const loadSummary = useCallback(() => {
-    invoke<AnalyticsSummary>('get_analytics_summary')
-      .then(setSummary)
-      .catch((e) => console.error('[Analytics] load failed:', e));
-  }, []);
-
-  useEffect(() => { loadSummary(); }, [loadSummary]);
-
-  useTauriEvent<string>('recording-state-changed', (event) => {
-    if (event.payload === 'Idle') setTimeout(loadSummary, 600);
-  });
-
-  const fmt = new Intl.NumberFormat(i18n.language, { notation: 'compact', maximumFractionDigits: 1 }).format;
-
-  const StatCol = ({ title, stats }: { title: string; stats: AnalyticsWindowData }) => (
-    <div>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-app-faint">{title}</p>
-      <p className="text-display-sm text-app-text mt-1 leading-tight">{fmt(stats.words)}</p>
-      <p className="text-[11px] text-app-muted">
-        {fmt(stats.transcriptions)} {t('settings.analytics.transcriptions')}
-      </p>
-    </div>
-  );
-
-  return (
-    <SettingsSection
-      title={t('settings.analytics.title')}
-      action={<span className="text-[11px] text-app-faint">{t('settings.analytics.wordsHint')}</span>}
-    >
-      {summary === null ? (
-        <div className="flex items-center justify-center py-6 text-[12px] text-app-muted gap-2">
-          <Spinner size={14} /> {t('settings.analytics.loading')}
-        </div>
-      ) : summary.all_time.transcriptions === 0 ? (
-        <EmptyState
-          icon={<Activity />}
-          title={t('settings.analytics.emptyTitle')}
-          description={t('settings.analytics.empty')}
-        />
-      ) : (
-        <div className="grid grid-cols-3 gap-6">
-          <StatCol title={t('settings.analytics.thisWeek')} stats={summary.week} />
-          <StatCol title={t('settings.analytics.thisMonth')} stats={summary.month} />
-          <StatCol title={t('settings.analytics.allTime')} stats={summary.all_time} />
-        </div>
-      )}
-    </SettingsSection>
-  );
-}
+/* The full analytics card (3-column week/month/all-time) was removed from the
+   Pro section in v2.1.3 — user feedback said it sat at the bottom of the
+   scroll where it never got read. SidebarStats (at the bottom of the sidebar)
+   shows a sleek one-line summary that's always visible instead. Type kept
+   above so SidebarStats can reuse the IPC return shape. */
 
 /* ----------------------------------------------------------------------------
    Update channel (beta opt-in)
@@ -732,10 +684,11 @@ export function Settings() {
             </SettingsSection>
           </div>
 
-          {/* ===== PRO ===== */}
+          {/* ===== PRO =====
+              Analytics moved to the sidebar footer (SidebarStats) — keeps
+              "your numbers" visible at all times without making the user
+              scroll past it. */}
           <div id="pro" data-section="pro" className="scroll-mt-6">
-            <AnalyticsCard />
-
             <SettingsSection
               title={t('settings.pro.title')}
               action={
@@ -1107,18 +1060,72 @@ function SettingsSidebar() {
         </ul>
       </nav>
 
+      <SidebarStats />
+
       <div className="border-t border-app-border px-4 py-3 bg-app-bg">
         <div className="flex items-center justify-between gap-2 text-[11px] text-app-faint">
           <a href="https://amirks.eu" target="_blank" rel="noopener noreferrer" className="hover:text-app-text transition-colors">
             amirks.eu
           </a>
-          <span aria-hidden>·</span>
-          <a href="https://www.linkedin.com/in/amirks/" target="_blank" rel="noopener noreferrer" className="hover:text-app-text transition-colors">
-            LinkedIn
+          <a
+            href="https://www.linkedin.com/in/amirks/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 hover:text-app-text transition-colors"
+          >
+            <span>{t('settings.sidebar.followLinkedIn')}</span>
+            <ExternalLink className="size-2.5" aria-hidden />
           </a>
         </div>
       </div>
     </aside>
+  );
+}
+
+/* ----------------------------------------------------------------------------
+   SidebarStats — sleek mini display of this-month transcription activity.
+   Lives in the sidebar so users see their numbers at all times without
+   scrolling. Refreshes live when a transcription completes.
+   ------------------------------------------------------------------------- */
+
+function SidebarStats() {
+  const { t, i18n } = useTranslation();
+  const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
+
+  const load = useCallback(() => {
+    invoke<AnalyticsSummary>('get_analytics_summary')
+      .then(setSummary)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  useTauriEvent<string>('recording-state-changed', (event) => {
+    if (event.payload === 'Idle') setTimeout(load, 600);
+  });
+
+  if (!summary || summary.all_time.transcriptions === 0) return null;
+
+  const fmt = new Intl.NumberFormat(i18n.language, { notation: 'compact', maximumFractionDigits: 1 }).format;
+
+  return (
+    <div className="border-t border-app-border px-4 py-3 bg-app-bg/50">
+      <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-app-faint mb-1.5">
+        {t('settings.sidebar.thisMonth')}
+      </p>
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-[15px] font-semibold text-app-text tabular-nums leading-none tracking-[-0.01em]">
+          {fmt(summary.month.words)}
+        </span>
+        <span className="text-[10px] text-app-muted">{t('settings.sidebar.words')}</span>
+      </div>
+      <div className="mt-1 flex items-center gap-1.5 text-[10px] text-app-faint">
+        <span className="size-1 rounded-full bg-app-accent" aria-hidden />
+        <span className="tabular-nums">
+          {t('settings.sidebar.transcriptions', { count: summary.month.transcriptions })}
+        </span>
+      </div>
+    </div>
   );
 }
 

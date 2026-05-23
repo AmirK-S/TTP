@@ -268,6 +268,12 @@
       "optionSystem": "System default",
       "optionEnglish": "English",
       "optionFrench": "Français"
+    },
+    "sidebar": {
+      "thisMonth": "This month",
+      "words": "words",
+      "transcriptions": "{{count}} transcriptions",
+      "followLinkedIn": "Follow on LinkedIn"
     }
   },
   "onboarding": {
@@ -367,7 +373,9 @@
       "step2Title": "Watch the pill at the bottom",
       "step2Body": "A small dark pill shows you're recording, then turns into a progress indicator while Groq transcribes.",
       "step3Title": "Find TTP again any time",
-      "step3Body": "Click the mic icon in the menu bar, or search \"TTP\" in Spotlight (⌘Space).",
+      "step3Body": "TTP lives in the menu bar at the top of your screen. You can also search \"TTP\" in Spotlight (⌘Space).",
+      "menuBarHint": "Menu bar",
+      "spotlightHint": "Spotlight",
       "closeReassurance": "You can close this window with ×. TTP keeps running."
     }
   },

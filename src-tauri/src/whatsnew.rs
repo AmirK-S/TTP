@@ -32,6 +32,13 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.1.3" => Some(
+            "Onboarding fixes + Settings sidebar gets your stats.\n\
+             • Preferences toggles in the wizard actually persist now. Two of three (hide pill, crash reports) were silently bouncing back because they bypassed the settings store and called the backend with a partial Settings object the Rust side couldn't deserialize. Routed through the same store the Settings panel uses.\n\
+             • Tour step 3 illustration is now a mini macOS menu bar mockup with the TTP icon highlighted, instead of a microphone glyph that read as the keyboard mic key.\n\
+             • Your stats moved to the bottom-left sidebar in Settings (sleek one-liner: words this month + transcription count). No more scrolling past the Pro section to find your numbers.\n\
+             • Sidebar LinkedIn link relabelled \"Follow on LinkedIn\" with an external-link glyph so it's obviously an outbound action.",
+        ),
         "2.1.2" => Some(
             "Onboarding gets a Preferences step and a Tour.\n\
              • New \"A few quick choices\" step before the finish line: three opt-in toggles for hiding the pill when inactive, launching TTP at startup, and sharing anonymous crash reports. All default OFF (privacy first); change later from Settings.\n\
