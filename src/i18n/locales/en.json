@@ -280,6 +280,13 @@
       "optionEnglish": "English",
       "optionFrench": "Français"
     },
+    "theme": {
+      "title": "Appearance",
+      "desc": "Use light, dark, or follow your macOS system setting.",
+      "optionSystem": "System",
+      "optionLight": "Light",
+      "optionDark": "Dark"
+    },
     "sidebar": {
       "thisMonth": "This month",
       "words": "words",

@@ -38,6 +38,10 @@ pub struct Settings {
     /// (follow navigator.language at first launch — resolved to en or fr in JS).
     #[serde(default)]
     pub language: Option<String>,
+    /// User theme preference: "system", "light", or "dark". None means system
+    /// (follow the OS `prefers-color-scheme` media query — resolved in JS).
+    #[serde(default)]
+    pub theme: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -72,6 +76,7 @@ impl Default for Settings {
             history_enabled: true,
             use_beta_channel: false,
             language: None,
+            theme: None,
         }
     }
 }

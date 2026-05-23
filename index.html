@@ -5,6 +5,24 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tauri + React + Typescript</title>
+    <!-- Anti-flash theme bootstrap.
+         Runs BEFORE any CSS is parsed so the first paint already carries the
+         user's forced theme. Without this, a user who set "Dark" while on a
+         light-mode macOS would see a white flash every time a window opens.
+         The mirror in localStorage is written by src/lib/theme.ts whenever
+         the user changes their preference. "system" mode stores nothing
+         here — the CSS media query handles it. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('ttp-theme');
+          if (stored === 'light' || stored === 'dark') {
+            document.documentElement.setAttribute('data-theme', stored);
+            document.documentElement.style.colorScheme = stored;
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
 
   <body>

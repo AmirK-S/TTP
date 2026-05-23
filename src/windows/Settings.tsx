@@ -20,6 +20,7 @@ import { useUpdater } from '../hooks/useUpdater';
 import { useSettingsStore, DictionaryEntry, HistoryEntry } from '../stores/settings-store';
 import { PermissionBanner } from '../components/PermissionBanner';
 import type { LanguageChoice } from '../i18n/config';
+import type { ThemeChoice } from '../lib/theme';
 import WhatsNew from '../components/WhatsNew';
 import {
   Button, Input, Banner, Spinner, Toggle, ConfirmDialog,
@@ -253,7 +254,7 @@ export function Settings() {
   const { t } = useTranslation();
   const {
     aiPolishEnabled, telemetryEnabled, shortcut, handsFreeMode, hidePillWhenInactive,
-    historyEnabled, language, dictionary, history, loading, isPro, licenseKey,
+    historyEnabled, language, theme, dictionary, history, loading, isPro, licenseKey,
     licenseStatus, licenseExpiresAt, licenseActivationCount, licenseActivationLimit,
     licenseLoading, licenseError, usage,
     loadSettings, saveSettings, resetSettings, loadDictionary, deleteEntry,
@@ -517,8 +518,14 @@ export function Settings() {
     { value: 'fr', label: t('settings.language.optionFrench') },
   ];
 
+  const themeOptions: { value: ThemeChoice; label: string }[] = [
+    { value: 'system', label: t('settings.theme.optionSystem') },
+    { value: 'light', label: t('settings.theme.optionLight') },
+    { value: 'dark', label: t('settings.theme.optionDark') },
+  ];
+
   return (
-    <div className="min-h-screen flex bg-app-bg text-app-text bg-noise">
+    <div className="h-screen flex bg-app-bg text-app-text bg-noise">
       <SettingsSidebar />
       <main className="flex-1 min-w-0 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-8 pt-8 pb-12">
@@ -549,6 +556,26 @@ export function Settings() {
                         await saveSettings({ language: opt.value });
                         trackEvent('setting_changed', { setting_name: 'language', new_value: opt.value });
                       } catch (error) { console.error('Failed to save language setting:', error); }
+                    }}
+                    label={opt.label}
+                    disabled={loading}
+                  />
+                ))}
+              </div>
+            </SettingsSection>
+
+            <SettingsSection title={t('settings.theme.title')} description={t('settings.theme.desc')}>
+              <div className="space-y-2">
+                {themeOptions.map((opt) => (
+                  <RadioOption
+                    key={opt.value}
+                    selected={theme === opt.value}
+                    onSelect={async () => {
+                      if (theme === opt.value) return;
+                      try {
+                        await saveSettings({ theme: opt.value });
+                        trackEvent('setting_changed', { setting_name: 'theme', new_value: opt.value });
+                      } catch (error) { console.error('Failed to save theme setting:', error); }
                     }}
                     label={opt.label}
                     disabled={loading}

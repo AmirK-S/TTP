@@ -18,6 +18,7 @@ import { listen } from '@tauri-apps/api/event';
 import { ErrorBoundary } from './lib/ErrorBoundary';
 import { captureExceptionIfActive, initSentryIfConsented } from './lib/sentry';
 import { initI18n, setLanguage, resolveLanguage, type LanguageChoice } from './i18n/config';
+import { applyTheme, installSystemThemeListener, type ThemeChoice } from './lib/theme';
 import './index.css';
 
 // Lazy chunks: each window only fetches its own JS. The pill in particular
@@ -56,24 +57,40 @@ function main() {
   const systemLang = resolveLanguage('system');
   initI18n(systemLang);
 
+  // Live theme tracker — the matchMedia listener in lib/theme.ts checks this
+  // before re-applying `color-scheme` so it only acts when we're in "system"
+  // mode. Mutated below by the settings reconciliation + cross-window sync.
+  let currentTheme: ThemeChoice = 'system';
+  installSystemThemeListener(() => currentTheme);
+
   if (!isPreview) {
-    // Reconcile with the persisted language choice in the background.
-    invoke<{ language?: string | null }>('get_settings')
+    // Reconcile with the persisted language + theme choice in the background.
+    // The anti-flash <script> in index.html already painted the right theme
+    // from localStorage; this round-trip catches the case where the on-disk
+    // setting was changed by another install (rare) or by `reset_settings`.
+    invoke<{ language?: string | null; theme?: string | null }>('get_settings')
       .then((s) => {
         const stored = (s?.language ?? 'system') as LanguageChoice;
         const resolved = resolveLanguage(stored);
         if (resolved !== systemLang) {
           setLanguage(stored);
         }
+        const storedTheme = (s?.theme ?? 'system') as ThemeChoice;
+        currentTheme = storedTheme;
+        applyTheme(storedTheme);
       })
       .catch(() => {
         // get_settings may fail on very first launch — defaults stay in place.
       });
 
-    // Cross-window language sync: when any window saves a new language choice
-    // via settings-store, every other window picks it up and re-renders.
-    listen<{ language?: string | null }>('settings-changed', (event) => {
+    // Cross-window settings sync: when any window saves a new language or
+    // theme choice via settings-store, every other window picks it up and
+    // re-renders without an IPC round-trip.
+    listen<{ language?: string | null; theme?: string | null }>('settings-changed', (event) => {
       setLanguage((event.payload?.language ?? 'system') as LanguageChoice);
+      const nextTheme = (event.payload?.theme ?? 'system') as ThemeChoice;
+      currentTheme = nextTheme;
+      applyTheme(nextTheme);
     }).catch(() => {});
 
     // Fire-and-forget: gates itself on user telemetry consent (queried via

@@ -280,6 +280,13 @@
       "optionEnglish": "English",
       "optionFrench": "Français"
     },
+    "theme": {
+      "title": "Apparence",
+      "desc": "Choisis le thème clair, sombre, ou suis le réglage macOS.",
+      "optionSystem": "Système",
+      "optionLight": "Clair",
+      "optionDark": "Sombre"
+    },
     "sidebar": {
       "thisMonth": "Ce mois",
       "words": "mots",

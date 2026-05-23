@@ -114,8 +114,14 @@
   background-color: var(--bg);
 }
 
+/* Dark token block lives in TWO selectors so the user can either follow the
+   OS (via the media query, default) OR force dark explicitly via
+   `<html data-theme="dark">` even on a light-mode OS. The `:not([data-theme="light"])`
+   guard on the media query lets a user force light on a dark-mode OS. The
+   inline bootstrap script in index.html sets `data-theme` BEFORE first paint
+   so there is no flash of wrong-theme content. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     /* 5-step dark surface ladder. Each step is ~+3% perceptual lightness,
        not RGB-additive. Footer is DIMMER than canvas — content is the
        brightest thing on screen. */
@@ -158,6 +164,47 @@
       0 4px 8px rgba(0, 0, 0, 0.30),
       0 20px 40px rgba(0, 0, 0, 0.50);
   }
+}
+
+/* Forced dark — applies regardless of the OS preference. Kept in sync with
+   the media-query block above. If you change one, change the other. */
+:root[data-theme="dark"] {
+  --bg: #0a0a0c;
+  --surface: #111114;
+  --raised: #16161a;
+  --overlay: #1c1c21;
+  --dim: #08080a;
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --text: #ededee;
+  --muted: #a1a1aa;
+  --faint: #6b6b73;
+  --accent: #4c8bf5;
+  --accent-hover: #6da0f7;
+  --accent-soft: rgba(76, 139, 245, 0.16);
+  --accent-tint: rgba(76, 139, 245, 0.10);
+  --accent-fg: #0a0a0c;
+  --success: #4ade80;
+  --success-soft: rgba(74, 222, 128, 0.14);
+  --success-tint: rgba(74, 222, 128, 0.08);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.14);
+  --warning-tint: rgba(251, 191, 36, 0.08);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.14);
+  --danger-tint: rgba(248, 113, 113, 0.08);
+
+  --highlight: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+
+  --shadow-sm:
+    0 1px 2px rgba(0, 0, 0, 0.30),
+    0 1px 1px rgba(0, 0, 0, 0.20);
+  --shadow-md:
+    0 2px 4px rgba(0, 0, 0, 0.30),
+    0 8px 20px rgba(0, 0, 0, 0.40);
+  --shadow-lg:
+    0 4px 8px rgba(0, 0, 0, 0.30),
+    0 20px 40px rgba(0, 0, 0, 0.50);
 }
 
 /* Selection — accent-tinted, subtle. Default browser selection is jarring

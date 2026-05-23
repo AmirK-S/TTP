@@ -32,6 +32,13 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.1.5" => Some(
+            "Light / Dark / System appearance switcher + sticky Settings sidebar.\n\
+             • New Settings → General → Appearance section: pick System (follows macOS, default), Light, or Dark and the choice sticks across launches.\n\
+             • Inline bootstrap script reads the saved choice before any CSS paints, so opening a window in forced-dark on a light macOS no longer flashes white.\n\
+             • Choice syncs across every TTP window in real time. Change it in Settings and the pill, onboarding, and tray all flip together.\n\
+             • Settings sidebar (logo, version, nav) is now truly fixed — it no longer drifts upward when you scroll deep sections like Pro or Advanced. The right pane scrolls on its own.",
+        ),
         "2.1.4" => Some(
             "One-click uninstall.\n\
              • Settings → Advanced → \"Uninstall TTP completely\" now actually removes everything: the .app from /Applications, your settings, history, dictionary, license, all three Keychain entries, the LaunchAgent if autostart was on, WebKit caches, and the macOS TCC permissions. The previous answer was \"drag to trash and hope\" which left half a dozen things behind.\n\

@@ -6,6 +6,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { safeInvoke } from '../lib/safeInvoke';
 import { emit } from '@tauri-apps/api/event';
 import { setLanguage, type LanguageChoice } from '../i18n/config';
+import { applyTheme, type ThemeChoice } from '../lib/theme';
 
 /** Dictionary entry structure matching Rust backend */
 export interface DictionaryEntry {
@@ -33,6 +34,8 @@ export interface Settings {
   use_beta_channel: boolean;
   /** 'en' | 'fr' | 'system' | null. null is treated as 'system' (autodetect). */
   language: string | null;
+  /** 'system' | 'light' | 'dark' | null. null is treated as 'system' (follow OS). */
+  theme: string | null;
 }
 
 /** License info returned by Rust backend */
@@ -71,6 +74,7 @@ interface SettingsStore {
   historyEnabled: boolean;
   useBetaChannel: boolean;
   language: LanguageChoice;
+  theme: ThemeChoice;
   dictionary: DictionaryEntry[];
   history: HistoryEntry[];
   loading: boolean;
@@ -128,6 +132,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   historyEnabled: true,
   useBetaChannel: false,
   language: 'system',
+  theme: 'system',
   dictionary: [],
   history: [],
   loading: false,
@@ -151,6 +156,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     try {
       const settings = await safeInvoke<Settings>('get_settings');
       const lang = (settings.language ?? 'system') as LanguageChoice;
+      const theme = (settings.theme ?? 'system') as ThemeChoice;
       set({
         aiPolishEnabled: settings.ai_polish_enabled,
         shortcut: settings.shortcut || 'Alt+Space',
@@ -161,8 +167,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         historyEnabled: settings.history_enabled ?? true,
         useBetaChannel: settings.use_beta_channel ?? false,
         language: lang,
+        theme,
       });
       setLanguage(lang);
+      applyTheme(theme);
     } catch (error) {
       console.error('Failed to load settings:', error);
     } finally {
@@ -183,6 +191,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         history_enabled: get().historyEnabled,
         use_beta_channel: get().useBetaChannel,
         language: get().language,
+        theme: get().theme,
       };
 
       const newSettings: Settings = {
@@ -194,6 +203,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       // Emit event so other components (like pill, other windows) can react to settings changes
       emit('settings-changed', newSettings);
       const newLang = (newSettings.language ?? 'system') as LanguageChoice;
+      const newTheme = (newSettings.theme ?? 'system') as ThemeChoice;
       set({
         aiPolishEnabled: newSettings.ai_polish_enabled,
         shortcut: newSettings.shortcut,
@@ -204,8 +214,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         historyEnabled: newSettings.history_enabled,
         useBetaChannel: newSettings.use_beta_channel,
         language: newLang,
+        theme: newTheme,
       });
       setLanguage(newLang);
+      applyTheme(newTheme);
     } catch (error) {
       console.error('Failed to save settings:', error);
       throw error;
@@ -226,8 +238,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         historyEnabled: true,
         useBetaChannel: false,
         language: 'system',
+        theme: 'system',
       }); // Default values
       setLanguage('system');
+      applyTheme('system');
     } catch (error) {
       console.error('Failed to reset settings:', error);
       throw error;
