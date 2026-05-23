@@ -8,31 +8,31 @@ const t = useTranslations(lang);
 const buyUrl = 'https://amirks.lemonsqueezy.com/buy/dcc74241-21ae-4d20-8a3c-90bf8d842bae';
 ---
 
-<nav class="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-slate-950/80 backdrop-blur-lg">
+<nav class="fixed top-0 left-0 right-0 z-50 border-b border-black/[0.06] bg-white/80 backdrop-blur-lg dark:border-white/5 dark:bg-slate-950/80">
   <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
     <!-- Logo -->
-    <a href={getLocalizedPath(lang)} class="text-xl font-bold tracking-tight text-white">
+    <a href={getLocalizedPath(lang)} class="text-xl font-bold tracking-tight text-zinc-900 dark:text-white">
       TTP
     </a>
 
     <!-- Desktop navigation -->
     <div class="hidden items-center gap-8 md:flex">
-      <a href={getLocalizedPath(lang, '#features')} class="text-sm text-slate-400 transition-colors hover:text-white">
+      <a href={getLocalizedPath(lang, '#features')} class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white">
         {t('nav.features')}
       </a>
-      <a href={getLocalizedPath(lang, '#how-it-works')} class="text-sm text-slate-400 transition-colors hover:text-white">
+      <a href={getLocalizedPath(lang, '#how-it-works')} class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white">
         {t('nav.howItWorks')}
       </a>
-      <a href={getLocalizedPath(lang, '#changelog')} class="text-sm text-slate-400 transition-colors hover:text-white">
+      <a href={getLocalizedPath(lang, '#changelog')} class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white">
         {t('nav.changelog')}
       </a>
-      <a href={getLocalizedPath(lang, '#about')} class="text-sm text-slate-400 transition-colors hover:text-white">
+      <a href={getLocalizedPath(lang, '#about')} class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white">
         {t('nav.about')}
       </a>
       <LanguagePicker />
       <a
         href={getLocalizedPath(lang, '#install')}
-            class="rounded-full border border-white/10 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-white/5"
+            class="rounded-full border border-black/[0.08] px-4 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-black/[0.04] dark:border-white/10 dark:text-white dark:hover:bg-white/5"
       >
         {t('nav.download')}
       </a>
@@ -40,7 +40,7 @@ const buyUrl = 'https://amirks.lemonsqueezy.com/buy/dcc74241-21ae-4d20-8a3c-90bf
         href={buyUrl}
         target="_blank"
         rel="noopener"
-        class="rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-1.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 transition-all hover:from-violet-400 hover:to-fuchsia-400 hover:shadow-violet-500/40"
+        class="rounded-full bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white shadow-md shadow-blue-600/20 transition-all hover:bg-blue-700 hover:shadow-blue-600/30 dark:bg-gradient-to-r dark:from-violet-500 dark:to-fuchsia-500 dark:shadow-violet-500/25 dark:hover:from-violet-400 dark:hover:to-fuchsia-400 dark:hover:shadow-violet-500/40"
       >
         {t('nav.getPro')}
       </a>
@@ -49,7 +49,7 @@ const buyUrl = 'https://amirks.lemonsqueezy.com/buy/dcc74241-21ae-4d20-8a3c-90bf
     <!-- Mobile hamburger button -->
     <button
       id="mobile-menu-btn"
-      class="md:hidden p-2 text-white"
+      class="md:hidden p-2 text-zinc-900 dark:text-white"
       aria-label="Toggle menu"
       aria-expanded="false"
       aria-controls="mobile-menu"
@@ -70,25 +70,25 @@ const buyUrl = 'https://amirks.lemonsqueezy.com/buy/dcc74241-21ae-4d20-8a3c-90bf
 <!-- Mobile overlay menu -->
 <div
   id="mobile-menu"
-  class="fixed inset-0 z-40 hidden flex-col items-center justify-center gap-8 bg-slate-950/95 backdrop-blur-lg md:hidden"
+  class="fixed inset-0 z-40 hidden flex-col items-center justify-center gap-8 bg-white/95 backdrop-blur-lg dark:bg-slate-950/95 md:hidden"
   aria-hidden="true"
 >
-  <a href={getLocalizedPath(lang, '#features')} class="mobile-nav-link text-2xl font-medium text-white transition-colors hover:text-slate-300">
+  <a href={getLocalizedPath(lang, '#features')} class="mobile-nav-link text-2xl font-medium text-zinc-900 transition-colors hover:text-zinc-600 dark:text-white dark:hover:text-slate-300">
     {t('nav.features')}
   </a>
-  <a href={getLocalizedPath(lang, '#how-it-works')} class="mobile-nav-link text-2xl font-medium text-white transition-colors hover:text-slate-300">
+  <a href={getLocalizedPath(lang, '#how-it-works')} class="mobile-nav-link text-2xl font-medium text-zinc-900 transition-colors hover:text-zinc-600 dark:text-white dark:hover:text-slate-300">
     {t('nav.howItWorks')}
   </a>
-  <a href={getLocalizedPath(lang, '#changelog')} class="mobile-nav-link text-2xl font-medium text-white transition-colors hover:text-slate-300">
+  <a href={getLocalizedPath(lang, '#changelog')} class="mobile-nav-link text-2xl font-medium text-zinc-900 transition-colors hover:text-zinc-600 dark:text-white dark:hover:text-slate-300">
     {t('nav.changelog')}
   </a>
-  <a href={getLocalizedPath(lang, '#about')} class="mobile-nav-link text-2xl font-medium text-white transition-colors hover:text-slate-300">
+  <a href={getLocalizedPath(lang, '#about')} class="mobile-nav-link text-2xl font-medium text-zinc-900 transition-colors hover:text-zinc-600 dark:text-white dark:hover:text-slate-300">
     {t('nav.about')}
   </a>
   <LanguagePicker />
   <a
     href={getLocalizedPath(lang, '#install')}
-    class="mobile-nav-link rounded-full border border-white/10 px-6 py-2.5 text-lg font-medium text-white transition-colors hover:bg-white/5"
+    class="mobile-nav-link rounded-full border border-black/[0.08] px-6 py-2.5 text-lg font-medium text-zinc-900 transition-colors hover:bg-black/[0.04] dark:border-white/10 dark:text-white dark:hover:bg-white/5"
   >
     {t('nav.download')}
   </a>
@@ -96,7 +96,7 @@ const buyUrl = 'https://amirks.lemonsqueezy.com/buy/dcc74241-21ae-4d20-8a3c-90bf
     href={buyUrl}
     target="_blank"
     rel="noopener"
-    class="mobile-nav-link rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-6 py-2.5 text-lg font-semibold text-white shadow-lg shadow-violet-500/25 transition-all hover:from-violet-400 hover:to-fuchsia-400"
+    class="mobile-nav-link rounded-full bg-blue-600 px-6 py-2.5 text-lg font-semibold text-white shadow-md shadow-blue-600/20 transition-all hover:bg-blue-700 dark:bg-gradient-to-r dark:from-violet-500 dark:to-fuchsia-500 dark:shadow-violet-500/25 dark:hover:from-violet-400 dark:hover:to-fuchsia-400"
   >
     {t('nav.getPro')}
   </a>

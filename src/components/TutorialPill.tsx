@@ -6,6 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { DarkPill } from './ui';
 
 interface TutorialPillProps {
   shortcutText?: string;
@@ -22,20 +23,17 @@ export function TutorialPill({ shortcutText = 'fn' }: TutorialPillProps) {
     const dismissed = localStorage.getItem(TUTORIAL_DISMISSED_KEY) === 'true';
     setIsDismissed(dismissed);
     if (!dismissed) {
-      const timer = setTimeout(() => setIsVisible(true), 100);
-      return () => clearTimeout(timer);
+      const raf = requestAnimationFrame(() => setIsVisible(true));
+      return () => cancelAnimationFrame(raf);
     }
   }, []);
 
   if (isDismissed) return null;
 
   return (
-    <div
-      className={
-        'mb-2 flex items-center gap-1.5 rounded-full bg-black/90 ring-1 ring-white/10 backdrop-blur-md ' +
-        'px-3.5 py-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.4),0_2px_4px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.08)] ' +
-        'transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]'
-      }
+    <DarkPill
+      tone="active"
+      className="mb-2 flex items-center gap-1.5 px-3.5 py-1.5 transition-[opacity,transform] duration-modal ease-app-out"
       style={{
         opacity: isVisible ? 1 : 0,
         transform: isVisible ? 'translateY(0)' : 'translateY(8px)',
@@ -49,7 +47,7 @@ export function TutorialPill({ shortcutText = 'fn' }: TutorialPillProps) {
       <kbd
         className={
           'inline-flex items-center justify-center min-w-[20px] h-[18px] px-1.5 ' +
-          'rounded-[5px] bg-white/15 text-[10px] font-semibold text-white/95 ' +
+          'rounded-app-xs bg-white/15 text-[10px] font-semibold text-white/95 ' +
           'shadow-[inset_0_-1px_0_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.15)] ' +
           'tabular-nums tracking-wide font-mono'
         }
@@ -59,7 +57,7 @@ export function TutorialPill({ shortcutText = 'fn' }: TutorialPillProps) {
       <span className="text-[12px] font-medium text-white/85 select-none tracking-[-0.005em]">
         {t('floatingBar.tutorialSuffix')}
       </span>
-    </div>
+    </DarkPill>
   );
 }
 

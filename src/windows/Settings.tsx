@@ -1,11 +1,12 @@
 // TTP - Talk To Paste
-// Settings window - configure app behavior and manage dictionary
+// Settings window — configure app behavior, manage dictionary/history, manage
+// the Pro license. Five IA groups: General / Capture / Pro / Data / Advanced.
 
 import { useEffect, useState, useCallback, useRef, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Copy, Check, Download, RefreshCw, Crown, Loader2,
-  Activity, User, Mic, Languages, BookOpen, Clock, Globe, SlidersHorizontal,
+  Copy, Check, Download, RefreshCw, Crown, ArrowRight, ExternalLink,
+  Activity, User, Mic, SlidersHorizontal, Database, BookOpen,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { invoke } from '@tauri-apps/api/core';
@@ -20,145 +21,51 @@ import { useSettingsStore, DictionaryEntry, HistoryEntry } from '../stores/setti
 import { PermissionBanner } from '../components/PermissionBanner';
 import type { LanguageChoice } from '../i18n/config';
 import WhatsNew from '../components/WhatsNew';
+import {
+  Button, Input, Banner, Spinner, Toggle, ConfirmDialog,
+  EmptyState, SettingsSection, SettingsRow, RadioOption, BrandTile,
+} from '../components/ui';
 
-/**
- * Toggle switch component for settings
- */
-function Toggle({
-  enabled,
-  onChange,
-  disabled = false,
-}: {
-  enabled: boolean;
-  onChange: (value: boolean) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => !disabled && onChange(!enabled)}
-      className={`
-        relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent
-        transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-app-accent focus:ring-offset-2
-        ${enabled ? 'bg-app-accent' : 'bg-app-raised'}
-        ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
-      `}
-      disabled={disabled}
-      role="switch"
-      aria-checked={enabled}
-    >
-      <span
-        className={`
-          pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0
-          transition duration-200 ease-in-out
-          ${enabled ? 'translate-x-5' : 'translate-x-0'}
-        `}
-      />
-    </button>
-  );
+/* ----------------------------------------------------------------------------
+   Small leaf components
+   ------------------------------------------------------------------------- */
+
+function formatTimestamp(timestamp: number, locale: string): string {
+  return new Date(timestamp).toLocaleString(locale, {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
+  });
 }
 
 /**
- * Confirmation dialog component
- */
-function ConfirmDialog({
-  open,
-  title,
-  message,
-  confirmText,
-  onConfirm,
-  onCancel,
-}: {
-  open: boolean;
-  title: string;
-  message: string;
-  confirmText: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const { t } = useTranslation();
-  if (!open) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-app-surface rounded-lg shadow-xl p-6 max-w-sm mx-4">
-        <h3 className="text-lg font-semibold text-app-text mb-2">
-          {title}
-        </h3>
-        <p className="text-app-muted mb-4">{message}</p>
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-app-text hover:bg-app-raised rounded-md transition-colors"
-          >
-            {t('common.cancel')}
-          </button>
-          <button
-            onClick={onConfirm}
-            className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors"
-          >
-            {confirmText}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Dictionary table row component (memoised).
- *
- * onDelete takes the entry's `original` so callers can pass a stable callback
- * — without that, every parent re-render would create a fresh closure and
- * defeat React.memo.
+ * Dictionary table row — stable identity for memo via the `original` key.
  */
 const DictionaryRow = memo(function DictionaryRow({
-  entry,
-  onDelete,
+  entry, onDelete,
 }: {
   entry: DictionaryEntry;
   onDelete: (original: string) => void;
 }) {
   const { t } = useTranslation();
   return (
-    <tr className="border-b border-app-border">
-      <td className="py-3 px-4 text-app-text font-mono text-sm">
-        {entry.original}
-      </td>
-      <td className="py-3 px-4 text-app-text font-mono text-sm">
-        {entry.correction}
-      </td>
-      <td className="py-3 px-4 text-right">
-        <button
-          onClick={() => onDelete(entry.original)}
-          className="text-red-600 hover:text-red-700 text-sm font-medium"
-        >
-          {t('common.delete')}
-        </button>
-      </td>
-    </tr>
+    <div className="group flex items-center gap-3 px-4 py-2.5 hover:bg-app-raised transition-colors duration-hover">
+      <div className="flex-1 min-w-0 grid grid-cols-2 gap-3 items-center">
+        <code className="text-[12px] text-app-muted font-mono truncate">{entry.original}</code>
+        <code className="text-[12px] text-app-text font-mono truncate">{entry.correction}</code>
+      </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => onDelete(entry.original)}
+        className="opacity-0 group-hover:opacity-100 text-app-danger hover:text-app-danger hover:bg-app-danger-tint"
+      >
+        {t('common.delete')}
+      </Button>
+    </div>
   );
 });
 
-/**
- * Format timestamp to readable date string
- */
-function formatTimestamp(timestamp: number): string {
-  const date = new Date(timestamp);
-  return date.toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
-}
-
-/**
- * History entry row component
- */
 const HistoryRow = memo(function HistoryRow({ entry }: { entry: HistoryEntry }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -166,57 +73,35 @@ const HistoryRow = memo(function HistoryRow({ entry }: { entry: HistoryEntry }) 
       await navigator.clipboard.writeText(entry.text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy:', error);
-    }
+    } catch (error) { console.error('Failed to copy:', error); }
   };
 
-  // Preview: first ~100 characters with ellipsis
-  const preview =
-    entry.text.length > 100 ? entry.text.slice(0, 100) + '...' : entry.text;
+  const preview = entry.text.length > 100 ? entry.text.slice(0, 100) + '…' : entry.text;
 
   return (
-    <div className="flex items-start gap-3 p-3 odd:bg-app-raised">
+    <div className="group flex items-start gap-3 px-4 py-3 hover:bg-app-raised transition-colors duration-hover">
       <div className="flex-1 min-w-0">
-        <p className="text-xs text-app-muted mb-1">
-          {formatTimestamp(entry.timestamp)}
-        </p>
-        <p className="text-sm text-app-text break-words">
-          {preview}
-        </p>
+        <p className="text-[11px] text-app-faint mb-1 tabular-nums">{formatTimestamp(entry.timestamp, i18n.language)}</p>
+        <p className="text-[13px] text-app-text break-words leading-relaxed">{preview}</p>
       </div>
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={handleCopy}
-        className="flex-shrink-0 p-2 text-app-muted hover:text-app-text rounded-md hover:bg-app-raised transition-colors"
+        className="opacity-0 group-hover:opacity-100 shrink-0"
         title={t('settings.dictionary.copyTooltip')}
       >
-        {copied ? (
-          <Check className="w-4 h-4 text-green-500" />
-        ) : (
-          <Copy className="w-4 h-4" />
-        )}
-      </button>
+        {copied ? <Check className="size-3.5 text-app-success" /> : <Copy className="size-3.5" />}
+      </Button>
     </div>
   );
 });
 
-/**
- * Update Channel section — lets the user opt into beta builds.
- *
- * Toggling OFF while running a beta build shows a warning: until the next
- * stable release catches up, the user will not receive updates (their build
- * is "ahead" of stable). We use window.confirm intentionally — the rest of
- * the app uses a custom ConfirmDialog, but wiring that in here would require
- * refactoring the modal out of the parent Settings component. The native
- * dialog is acceptable for an admin-style setting; promoting it to the
- * shared ConfirmDialog is a TODO.
- */
-interface AnalyticsWindowData {
-  transcriptions: number;
-  words: number;
-  chars: number;
-}
+/* ----------------------------------------------------------------------------
+   Analytics — user's own usage stats. Local-only.
+   ------------------------------------------------------------------------- */
 
+interface AnalyticsWindowData { transcriptions: number; words: number; chars: number; }
 interface AnalyticsSummary {
   week: AnalyticsWindowData;
   month: AnalyticsWindowData;
@@ -224,13 +109,7 @@ interface AnalyticsSummary {
   daily: Array<{ date: string; transcriptions: number; words: number; chars: number }>;
 }
 
-/**
- * Local-only analytics panel — pulls aggregated counts from usage.json
- * via `get_analytics_summary`. No network, no third-party plugin (we
- * dropped the one that crashed). User sees their own usage; nothing
- * leaves the machine.
- */
-function AnalyticsSection() {
+function AnalyticsCard() {
   const { t, i18n } = useTranslation();
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
 
@@ -240,40 +119,18 @@ function AnalyticsSection() {
       .catch((e) => console.error('[Analytics] load failed:', e));
   }, []);
 
-  useEffect(() => {
-    loadSummary();
-  }, [loadSummary]);
+  useEffect(() => { loadSummary(); }, [loadSummary]);
 
-  // Re-fetch when a transcription finishes so the panel updates live
-  // without the user having to close + reopen Settings. The pipeline
-  // transitions back to Idle right after `record_transcription` persists
-  // today's bucket, so by the time we re-invoke `get_analytics_summary`
-  // the new data is already on disk. Small delay to let the file write
-  // settle (mirrors the loadHistory/loadUsage pattern below).
   useTauriEvent<string>('recording-state-changed', (event) => {
-    if (event.payload === 'Idle') {
-      setTimeout(loadSummary, 600);
-    }
+    if (event.payload === 'Idle') setTimeout(loadSummary, 600);
   });
 
-  // Compact notation (1.2K, 234K, 1.2M) keeps the column readable at any
-  // scale — a year-long power user can hit millions of words otherwise the
-  // full "1 234 567" overflows the 3-col grid. Locale-aware: French uses
-  // "1,2 k" / "1,2 M", English uses "1.2K" / "1.2M".
-  const compactFormatter = new Intl.NumberFormat(i18n.language, {
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  });
-  const fmt = (n: number) => compactFormatter.format(n);
+  const fmt = new Intl.NumberFormat(i18n.language, { notation: 'compact', maximumFractionDigits: 1 }).format;
 
   const StatCol = ({ title, stats }: { title: string; stats: AnalyticsWindowData }) => (
-    <div className="text-center">
-      <p className="text-[10px] font-medium uppercase tracking-wider text-app-muted">
-        {title}
-      </p>
-      <p className="text-xl font-semibold text-app-text mt-1 leading-tight">
-        {fmt(stats.words)}
-      </p>
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-app-faint">{title}</p>
+      <p className="text-display-sm text-app-text mt-1 leading-tight">{fmt(stats.words)}</p>
       <p className="text-[11px] text-app-muted">
         {fmt(stats.transcriptions)} {t('settings.analytics.transcriptions')}
       </p>
@@ -281,308 +138,190 @@ function AnalyticsSection() {
   );
 
   return (
-    <section className="bg-app-surface rounded-app-lg shine-sm border border-app-border px-4 py-3 mb-6">
-      <div className="flex items-baseline justify-between mb-2">
-        <h2 className="text-sm font-semibold text-app-text">
-          {t('settings.analytics.title')}
-        </h2>
-        <span className="text-[10px] text-app-faint">
-          {t('settings.analytics.wordsHint')}
-        </span>
-      </div>
+    <SettingsSection
+      title={t('settings.analytics.title')}
+      action={<span className="text-[11px] text-app-faint">{t('settings.analytics.wordsHint')}</span>}
+    >
       {summary === null ? (
-        <p className="text-xs text-app-muted text-center py-3">
-          {t('settings.analytics.loading')}
-        </p>
+        <div className="flex items-center justify-center py-6 text-[12px] text-app-muted gap-2">
+          <Spinner size={14} /> {t('settings.analytics.loading')}
+        </div>
       ) : summary.all_time.transcriptions === 0 ? (
-        <p className="text-xs text-app-muted text-center py-3">
-          {t('settings.analytics.empty')}
-        </p>
+        <EmptyState
+          icon={<Activity />}
+          title={t('settings.analytics.emptyTitle')}
+          description={t('settings.analytics.empty')}
+        />
       ) : (
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-6">
           <StatCol title={t('settings.analytics.thisWeek')} stats={summary.week} />
           <StatCol title={t('settings.analytics.thisMonth')} stats={summary.month} />
           <StatCol title={t('settings.analytics.allTime')} stats={summary.all_time} />
         </div>
       )}
-    </section>
+    </SettingsSection>
   );
 }
 
-function UpdateChannelSection() {
+/* ----------------------------------------------------------------------------
+   Update channel (beta opt-in)
+   ------------------------------------------------------------------------- */
+
+function UpdateChannelCard() {
   const { t } = useTranslation();
   const { useBetaChannel, saveSettings, loading } = useSettingsStore();
   const [appVersion, setAppVersion] = useState('...');
+  const [pendingDowngrade, setPendingDowngrade] = useState(false);
 
-  useEffect(() => {
-    getVersion().then((v) => setAppVersion(v)).catch(() => {});
-  }, []);
+  useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
 
   const isOnBetaBuild = appVersion.includes('-beta');
 
-  const handleToggle = async (enabled: boolean) => {
-    // Downgrade safeguard: if the user is currently on a beta build and
-    // disabling beta, warn them that they are "ahead of" the stable channel
-    // and will see no updates until a new stable release ships.
-    if (!enabled && isOnBetaBuild) {
-      // TODO: replace window.confirm with the shared ConfirmDialog component
-      // once we refactor it out of the parent Settings scope.
-      const ok = window.confirm(t('dialog.downgradeBeta.message'));
-      if (!ok) return;
-    }
-
+  const persist = async (enabled: boolean) => {
     try {
       await saveSettings({ use_beta_channel: enabled });
-      trackEvent('setting_changed', {
-        setting_name: 'use_beta_channel',
-        new_value: String(enabled),
-      });
-    } catch (error) {
-      console.error('Failed to save update channel setting:', error);
-    }
+      trackEvent('setting_changed', { setting_name: 'use_beta_channel', new_value: String(enabled) });
+    } catch (error) { console.error('Failed to save update channel setting:', error); }
+  };
+
+  const handleToggle = (enabled: boolean) => {
+    if (!enabled && isOnBetaBuild) { setPendingDowngrade(true); return; }
+    persist(enabled);
   };
 
   return (
-    <section className="bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-lg font-semibold text-app-text">
-          {t('settings.updateChannel.title')}
-        </h2>
-        {isOnBetaBuild && (
-          <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300">
-            {t('settings.updateChannel.betaBadge')}
-          </span>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between mt-4">
-        <div className="flex-1 pr-4">
-          <p className="text-app-text font-medium">
-            {useBetaChannel ? t('settings.updateChannel.labelBeta') : t('settings.updateChannel.labelStable')}
-          </p>
-          <p className="text-sm text-app-muted mt-1">
-            {useBetaChannel
-              ? t('settings.updateChannel.descBeta')
-              : t('settings.updateChannel.descStable')}
-          </p>
-        </div>
-        <Toggle
-          enabled={useBetaChannel}
-          onChange={handleToggle}
-          disabled={loading}
-        />
-      </div>
-
+    <SettingsSection
+      title={t('settings.updateChannel.title')}
+      action={isOnBetaBuild ? (
+        <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-app-accent-tint text-app-accent">
+          {t('settings.updateChannel.betaBadge')}
+        </span>
+      ) : undefined}
+    >
+      <SettingsRow
+        label={useBetaChannel ? t('settings.updateChannel.labelBeta') : t('settings.updateChannel.labelStable')}
+        description={useBetaChannel ? t('settings.updateChannel.descBeta') : t('settings.updateChannel.descStable')}
+        control={<Toggle enabled={useBetaChannel} onChange={handleToggle} disabled={loading} />}
+      />
       {useBetaChannel && (
-        <div className="mt-4 p-3 bg-app-warning-tint rounded-lg">
-          <p className="text-sm text-amber-700 dark:text-amber-400">
-            {t('settings.updateChannel.warning')}
-          </p>
-        </div>
+        <Banner tone="warning" className="mt-4">{t('settings.updateChannel.warning')}</Banner>
       )}
-    </section>
+      <ConfirmDialog
+        open={pendingDowngrade}
+        title={t('dialog.downgradeBeta.title')}
+        message={t('dialog.downgradeBeta.message')}
+        confirmText={t('common.continue')}
+        cancelText={t('common.cancel')}
+        tone="warning"
+        onConfirm={() => { setPendingDowngrade(false); persist(false); }}
+        onCancel={() => setPendingDowngrade(false)}
+      />
+    </SettingsSection>
   );
 }
 
-/**
- * Update section component
- */
-function UpdateSection() {
-  const { t } = useTranslation();
-  const {
-    status,
-    updateInfo,
-    progress,
-    error,
-    checkForUpdates,
-    downloadAndInstall,
-    restartApp,
-    dismiss,
-  } = useUpdater();
+/* ----------------------------------------------------------------------------
+   Updates (check-for-update)
+   ------------------------------------------------------------------------- */
 
+function UpdatesCard() {
+  const { t } = useTranslation();
+  const { status, updateInfo, progress, error, checkForUpdates, downloadAndInstall, restartApp, dismiss } = useUpdater();
   const [appVersion, setAppVersion] = useState('...');
 
-  useEffect(() => {
-    getVersion().then(v => setAppVersion(v)).catch(() => {});
-  }, []);
-
-  // Auto-trigger check when main window detects an update and emits the event
-  useTauriEvent('update-available', () => {
-    checkForUpdates();
-  });
+  useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
+  useTauriEvent('update-available', () => { checkForUpdates(); });
 
   return (
-    <section className="bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
-      <h2 className="text-lg font-semibold text-app-text mb-4">
-        {t('settings.updates.title')}
-      </h2>
-
+    <SettingsSection
+      title={t('settings.updates.title')}
+      action={<span className="text-[11px] text-app-faint tabular-nums">v{appVersion}</span>}
+    >
       <div className="space-y-3">
         {status === 'idle' && (
-          <button
-            onClick={checkForUpdates}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-app-text border border-app-border hover:bg-app-raised rounded-md transition-colors"
-          >
-            <RefreshCw className="w-4 h-4" />
+          <Button variant="secondary" size="md" onClick={checkForUpdates} leftIcon={<RefreshCw className="size-3.5" />}>
             {t('settings.updates.checkButton')}
-          </button>
+          </Button>
         )}
-
         {status === 'up-to-date' && (
-          <div className="flex items-center gap-2 text-app-success text-sm">
-            <span>✓</span>
-            {t('settings.updates.upToDate', { version: appVersion })}
+          <div className="flex items-center gap-2 text-[13px] text-app-success">
+            <Check className="size-4" /> {t('settings.updates.upToDate', { version: appVersion })}
           </div>
         )}
-
         {status === 'checking' && (
-          <div className="flex items-center gap-2 text-app-muted">
-            <RefreshCw className="w-4 h-4 animate-spin" />
-            {t('settings.updates.checking')}
+          <div className="flex items-center gap-2 text-[13px] text-app-muted">
+            <Spinner size={14} /> {t('settings.updates.checking')}
           </div>
         )}
-
         {status === 'available' && updateInfo && (
           <div className="space-y-3">
-            <div className="p-3 bg-app-accent-tint rounded-lg">
-              <p className="text-sm font-medium text-blue-700 dark:text-app-accent">
-                {t('settings.updates.available', { version: updateInfo.version })}
-              </p>
-              {updateInfo.body && (
-                <p className="text-xs text-app-accent dark:text-blue-300 mt-1">
-                  {updateInfo.body}
-                </p>
-              )}
-            </div>
+            <Banner tone="info" title={t('settings.updates.available', { version: updateInfo.version })}>
+              {updateInfo.body}
+            </Banner>
             <div className="flex gap-2">
-              <button
-                onClick={downloadAndInstall}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-app-accent hover:bg-app-accent-hover rounded-md transition-colors"
-              >
-                <Download className="w-4 h-4" />
+              <Button onClick={downloadAndInstall} leftIcon={<Download className="size-3.5" />}>
                 {t('settings.updates.downloadInstall')}
-              </button>
-              <button
-                onClick={dismiss}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-app-text border border-app-border hover:bg-app-raised rounded-md transition-colors"
-              >
-                {t('common.later')}
-              </button>
+              </Button>
+              <Button variant="secondary" onClick={dismiss}>{t('common.later')}</Button>
             </div>
           </div>
         )}
-
         {status === 'downloading' && (
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-app-muted">
-              <Download className="w-4 h-4 animate-pulse" />
-              {t('settings.updates.downloading', { progress: Math.round(progress) })}
+            <div className="flex items-center gap-2 text-[13px] text-app-muted">
+              <Spinner size={14} /> {t('settings.updates.downloading', { progress: Math.round(progress) })}
             </div>
-            <div className="w-full bg-app-raised rounded-full h-2">
-              <div
-                className="bg-app-accent h-2 rounded-full transition-all duration-300"
-                style={{ width: `${progress}%` }}
-              />
+            <div className="w-full h-1.5 rounded-full bg-app-raised overflow-hidden shadow-[inset_0_1px_2px_rgba(0,0,0,0.15)]">
+              <div className="h-full bg-app-accent rounded-full transition-[width] duration-300 ease-app-out" style={{ width: `${progress}%` }} />
             </div>
           </div>
         )}
-
         {status === 'ready' && (
           <div className="space-y-3">
-            <p className="text-sm text-app-success">
-              {t('settings.updates.ready')}
-            </p>
-            <button
-              onClick={restartApp}
-              className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md transition-colors"
-            >
-              {t('common.restartNow')}
-            </button>
+            <p className="text-[13px] text-app-success">{t('settings.updates.ready')}</p>
+            <Button onClick={restartApp}>{t('common.restartNow')}</Button>
           </div>
         )}
-
         {status === 'error' && (
           <div className="space-y-2">
-            <p className="text-sm text-app-danger">
-              {error || t('settings.updates.errorDefault')}
-            </p>
-            <button
-              onClick={checkForUpdates}
-              className="text-sm text-app-accent hover:text-app-accent-hover dark:text-app-accent"
-            >
-              {t('common.tryAgain')}
-            </button>
+            <p className="text-[13px] text-app-danger">{error || t('settings.updates.errorDefault')}</p>
+            <Button variant="ghost" onClick={checkForUpdates}>{t('common.tryAgain')}</Button>
           </div>
         )}
-
-        <p className="text-xs text-app-faint">
-          {t('settings.updates.currentVersion', { version: appVersion })}
-        </p>
       </div>
-    </section>
+    </SettingsSection>
   );
 }
 
-/**
- * Settings window component
- */
+/* ----------------------------------------------------------------------------
+   Main Settings component
+   ------------------------------------------------------------------------- */
+
 export function Settings() {
   const { t } = useTranslation();
   const {
-    aiPolishEnabled,
-    telemetryEnabled,
-    shortcut,
-    handsFreeMode,
-    hidePillWhenInactive,
-    historyEnabled,
-    language,
-    dictionary,
-    history,
-    loading,
-    isPro,
-    licenseKey,
-    licenseStatus,
-    licenseExpiresAt,
-    licenseActivationCount,
-    licenseActivationLimit,
-    licenseLoading,
-    licenseError,
-    usage,
-    loadSettings,
-    saveSettings,
-    resetSettings,
-    loadDictionary,
-    deleteEntry,
-    clearDictionary,
-    loadHistory,
-    clearHistory,
-    loadLicense,
-    activateLicense,
-    deactivateLicense,
-    validateLicense,
-    loadUsage,
+    aiPolishEnabled, telemetryEnabled, shortcut, handsFreeMode, hidePillWhenInactive,
+    historyEnabled, language, dictionary, history, loading, isPro, licenseKey,
+    licenseStatus, licenseExpiresAt, licenseActivationCount, licenseActivationLimit,
+    licenseLoading, licenseError, usage,
+    loadSettings, saveSettings, resetSettings, loadDictionary, deleteEntry,
+    clearDictionary, loadHistory, clearHistory, loadLicense, activateLicense,
+    deactivateLicense, validateLicense, loadUsage,
   } = useSettingsStore();
 
   const isMac = navigator.platform.startsWith('Mac');
-
   const [appVersion, setAppVersion] = useState('...');
   const updateSectionRef = useRef<HTMLDivElement>(null);
 
-  // Load dynamic app version
-  useEffect(() => {
-    getVersion().then(v => setAppVersion(v)).catch(() => {});
-  }, []);
+  useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
 
-  // Keep the OS window title in sync with the current language. No deps array
-  // intentionally — the call is cheap and ensures we don't desync after a
-  // language switch (re-running on every render is acceptable here). Wrapped
-  // for the ?preview= dev path where getCurrentWindow throws.
+  // Keep window title in sync with the active language. Deps include `t` so
+  // the effect re-fires only on language change, not every render.
   useEffect(() => {
     try { getCurrentWindow().setTitle(t('windowTitle.settings')); }
     catch { /* not in Tauri (dev preview) */ }
-  });
+  }, [t]);
 
-  // Scroll to update section when update-available event fires
   useTauriEvent<{ version: string; body?: string }>('update-available', () => {
     updateSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
@@ -605,37 +344,20 @@ export function Settings() {
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
   const [autostartOn, setAutostartOn] = useState(false);
 
-  // Read the current OS-level autostart status on mount.
-  useEffect(() => {
-    isAutostartEnabled().then(setAutostartOn).catch(() => {});
-  }, []);
+  useEffect(() => { isAutostartEnabled().then(setAutostartOn).catch(() => {}); }, []);
 
-  // Proactive Input Monitoring check whenever the saved shortcut is FnKey.
-  // The Fn hotkey relies on a CGEventTap that silently no-ops when Input
-  // Monitoring permission isn't granted — without this effect the user has
-  // no in-app cue that anything is wrong until they explicitly re-click the
-  // Fn radio. Now the warning + deep-link button show as soon as Settings
-  // opens with a missing permission.
+  // Proactive Input Monitoring check when the saved shortcut is FnKey.
   useEffect(() => {
     if (shortcut !== 'FnKey') {
-      // Clear any stale Input Monitoring warning if the user switched off Fn.
-      if (
-        shortcutError.includes('Input Monitoring') ||
-        shortcutError === 'error.input_monitoring_required'
-      ) {
+      if (shortcutError.includes('Input Monitoring') || shortcutError === 'error.input_monitoring_required') {
         setShortcutError('');
       }
       return;
     }
     invoke<boolean>('check_input_monitoring')
       .then((hasPermission) => {
-        if (!hasPermission) {
-          setShortcutError('error.input_monitoring_required');
-        } else if (
-          shortcutError.includes('Input Monitoring') ||
-          shortcutError === 'error.input_monitoring_required'
-        ) {
-          // Permission has been re-granted while Settings was open — clear.
+        if (!hasPermission) setShortcutError('error.input_monitoring_required');
+        else if (shortcutError.includes('Input Monitoring') || shortcutError === 'error.input_monitoring_required') {
           setShortcutError('');
         }
       })
@@ -647,36 +369,20 @@ export function Settings() {
     try {
       if (enabled) await enableAutostart(); else await disableAutostart();
       setAutostartOn(enabled);
-      trackEvent("setting_changed", { setting_name: "autostart_enabled", new_value: String(enabled) });
-    } catch (error) {
-      console.error('Failed to update autostart:', error);
-    }
+      trackEvent('setting_changed', { setting_name: 'autostart_enabled', new_value: String(enabled) });
+    } catch (error) { console.error('Failed to update autostart:', error); }
   };
 
-  // Check API key status
   const checkApiKeys = useCallback(() => {
     invoke<boolean>('has_groq_api_key').then(setHasGroqKey).catch(console.error);
   }, []);
 
-  // Load settings, dictionary, and history on mount
   useEffect(() => {
-    loadSettings();
-    loadDictionary();
-    loadHistory();
-    loadLicense();
-    loadUsage();
-    checkApiKeys();
+    loadSettings(); loadDictionary(); loadHistory(); loadLicense(); loadUsage(); checkApiKeys();
   }, [loadSettings, loadDictionary, loadHistory, loadLicense, loadUsage, checkApiKeys]);
 
-  // React to license changes emitted by the backend (e.g. background re-validate)
-  useTauriEvent('license-changed', () => {
-    loadLicense();
-    loadUsage();
-  });
+  useTauriEvent('license-changed', () => { loadLicense(); loadUsage(); });
 
-  // Refresh usage and history when a transcription completes.
-  // Single listener intentionally — two competing useEffects on the same event
-  // were the suspected source of the listener race in TTP-5.
   useTauriEvent<string>('recording-state-changed', (event) => {
     if (event.payload === 'Idle') {
       setTimeout(() => loadHistory(), 500);
@@ -684,120 +390,65 @@ export function Settings() {
     }
   });
 
-  // Re-check API keys when window gets focus (e.g. after setup popup).
-  // Window.onFocusChanged uses a different (synchronous) API so the legacy
-  // pattern is OK here.
   useEffect(() => {
     const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
       if (focused) checkApiKeys();
     });
-    return () => { unlisten.then(fn => fn()); };
+    return () => { unlisten.then((fn) => fn()); };
   }, [checkApiKeys]);
 
-  // Refresh dictionary when backend auto-detects corrections
-  useTauriEvent('dictionary-changed', () => {
-    loadDictionary();
-    loadUsage();
-  });
+  useTauriEvent('dictionary-changed', () => { loadDictionary(); loadUsage(); });
 
-  // Handle AI polish toggle
-  const handlePolishToggle = async (enabled: boolean) => {
-    try {
-      await saveSettings({ ai_polish_enabled: enabled });
-      trackEvent("setting_changed", { setting_name: "ai_polish_enabled", new_value: String(enabled) });
-    } catch (error) {
-      console.error('Failed to save AI polish setting:', error);
-    }
-  };
+  /* ---- Generic toggle factory: cuts 6 near-identical handlers down to 1 --- */
+  const makeToggle = useCallback(
+    <K extends 'ai_polish_enabled' | 'telemetry_enabled' | 'hands_free_mode' | 'hide_pill_when_inactive' | 'history_enabled'>(
+      key: K,
+      sideEffect?: () => void,
+    ) => async (enabled: boolean) => {
+      try {
+        await saveSettings({ [key]: enabled } as Partial<Record<K, boolean>>);
+        trackEvent('setting_changed', { setting_name: key, new_value: String(enabled) });
+        sideEffect?.();
+      } catch (error) { console.error(`Failed to save ${key}:`, error); }
+    },
+    [saveSettings],
+  );
 
-  // Handle telemetry toggle
-  const handleTelemetryToggle = async () => {
-    try {
-      await saveSettings({ telemetry_enabled: !telemetryEnabled });
-      trackEvent("setting_changed", { setting_name: "telemetry_enabled", new_value: String(!telemetryEnabled) });
-      setShowRestartBanner(true);
-    } catch (error) {
-      console.error('Failed to save telemetry setting:', error);
-    }
-  };
+  const handlePolishToggle = makeToggle('ai_polish_enabled');
+  const handleTelemetryToggle = makeToggle('telemetry_enabled', () => setShowRestartBanner(true));
+  const handleHandsFreeModeToggle = makeToggle('hands_free_mode');
+  const handleHidePillWhenInactiveToggle = makeToggle('hide_pill_when_inactive');
+  const handleHistoryEnabledToggle = makeToggle('history_enabled');
 
-  // Handle hands-free mode toggle
-  const handleHandsFreeModeToggle = async (enabled: boolean) => {
-    try {
-      await saveSettings({ hands_free_mode: enabled });
-      trackEvent("setting_changed", { setting_name: "hands_free_mode", new_value: String(enabled) });
-    } catch (error) {
-      console.error('Failed to save hands-free mode setting:', error);
-    }
-  };
-
-  // Handle hide pill when inactive toggle
-  const handleHidePillWhenInactiveToggle = async (enabled: boolean) => {
-    try {
-      await saveSettings({ hide_pill_when_inactive: enabled });
-      trackEvent("setting_changed", { setting_name: "hide_pill_when_inactive", new_value: String(enabled) });
-    } catch (error) {
-      console.error('Failed to save hide pill when inactive setting:', error);
-    }
-  };
-
-  // Handle history enabled toggle
-  const handleHistoryEnabledToggle = async (enabled: boolean) => {
-    try {
-      await saveSettings({ history_enabled: enabled });
-      trackEvent("setting_changed", { setting_name: "history_enabled", new_value: String(enabled) });
-    } catch (error) {
-      console.error('Failed to save history enabled setting:', error);
-    }
-  };
-
-  // Handle Groq API key save (validates before saving)
   const handleGroqKeySave = async () => {
     if (!groqApiKey.trim()) return;
-    setGroqKeySaving(true);
-    setGroqKeyError('');
-    setGroqKeySuccess(false);
+    setGroqKeySaving(true); setGroqKeyError(''); setGroqKeySuccess(false);
     try {
       await invoke('validate_groq_api_key', { key: groqApiKey });
       await invoke('set_groq_api_key', { key: groqApiKey });
-      setHasGroqKey(true);
-      setGroqApiKey('');
-      setGroqKeySuccess(true);
+      setHasGroqKey(true); setGroqApiKey(''); setGroqKeySuccess(true);
       setTimeout(() => setGroqKeySuccess(false), 3000);
-    } catch (error) {
-      setGroqKeyError(String(error));
-    } finally {
-      setGroqKeySaving(false);
-    }
+    } catch (error) { setGroqKeyError(String(error)); }
+    finally { setGroqKeySaving(false); }
   };
 
-  // Handle shortcut change from dropdown (includes Fn Key option)
   const handleShortcutChange = async (newShortcut: string) => {
-    setShortcutError('');
-    setShortcutSuccess(false);
-
+    setShortcutError(''); setShortcutSuccess(false);
     try {
       const isFnKey = newShortcut === 'FnKey';
-
       if (isFnKey) {
-        // Request Input Monitoring permission (needed for Fn key detection)
         const hasPermission = await invoke<boolean>('check_input_monitoring');
-        if (!hasPermission) {
-          setShortcutError('error.input_monitoring_required');
-          return;
-        }
-        // Unregister any existing global shortcut before enabling Fn mode
+        if (!hasPermission) { setShortcutError('error.input_monitoring_required'); return; }
         try { await invoke('unregister_shortcuts_cmd'); } catch {}
         await invoke('set_fn_key_enabled', { enabled: true });
         await saveSettings({ shortcut: 'FnKey', fn_key_enabled: true });
-        trackEvent("setting_changed", { setting_name: "shortcut", new_value: "FnKey" });
+        trackEvent('setting_changed', { setting_name: 'shortcut', new_value: 'FnKey' });
       } else {
         await invoke('set_fn_key_enabled', { enabled: false });
         await invoke('update_shortcut_cmd', { shortcut: newShortcut });
         await saveSettings({ shortcut: newShortcut, fn_key_enabled: false });
-        trackEvent("setting_changed", { setting_name: "shortcut", new_value: newShortcut });
+        trackEvent('setting_changed', { setting_name: 'shortcut', new_value: newShortcut });
       }
-
       setShortcutSuccess(true);
       setTimeout(() => setShortcutSuccess(false), 3000);
     } catch (error) {
@@ -806,105 +457,60 @@ export function Settings() {
     }
   };
 
-  // Handle clear dictionary
   const handleClearDictionary = async () => {
-    try {
-      await clearDictionary();
-      setShowClearConfirm(false);
-    } catch (error) {
-      console.error('Failed to clear dictionary:', error);
-    }
+    try { await clearDictionary(); setShowClearConfirm(false); }
+    catch (error) { console.error('Failed to clear dictionary:', error); }
   };
 
-  // Handle reset to defaults
   const handleResetDefaults = async () => {
-    try {
-      await resetSettings();
-      await clearDictionary();
-      setShowResetConfirm(false);
-    } catch (error) {
-      console.error('Failed to reset settings:', error);
-    }
+    try { await resetSettings(); await clearDictionary(); setShowResetConfirm(false); }
+    catch (error) { console.error('Failed to reset settings:', error); }
   };
 
-  // Handle add dictionary entry
   const handleAddEntry = async () => {
     setAddEntryError('');
-    const orig = newOriginal.trim();
-    const corr = newCorrection.trim();
-    if (!orig || !corr) {
-      setAddEntryError(t('settings.dictionary.bothRequired'));
-      return;
-    }
-    if (orig === corr) {
-      setAddEntryError(t('settings.dictionary.mustBeDifferent'));
-      return;
-    }
+    const orig = newOriginal.trim(); const corr = newCorrection.trim();
+    if (!orig || !corr) { setAddEntryError(t('settings.dictionary.bothRequired')); return; }
+    if (orig === corr) { setAddEntryError(t('settings.dictionary.mustBeDifferent')); return; }
     try {
       await invoke('add_dictionary_entry', { original: orig, correction: corr });
-      setNewOriginal('');
-      setNewCorrection('');
-      await loadDictionary();
-      await loadUsage();
-    } catch (error) {
-      setAddEntryError(String(error));
-    }
+      setNewOriginal(''); setNewCorrection('');
+      await loadDictionary(); await loadUsage();
+    } catch (error) { setAddEntryError(String(error)); }
   };
 
-  // Handle delete single entry — stable ref so DictionaryRow's React.memo holds.
   const handleDeleteEntry = useCallback(async (original: string) => {
-    try {
-      await deleteEntry(original);
-    } catch (error) {
-      console.error('Failed to delete entry:', error);
-    }
+    try { await deleteEntry(original); }
+    catch (error) { console.error('Failed to delete entry:', error); }
   }, [deleteEntry]);
 
-  // Handle clear history
   const handleClearHistory = async () => {
-    try {
-      await clearHistory();
-      setShowClearHistoryConfirm(false);
-    } catch (error) {
-      console.error('Failed to clear history:', error);
-    }
+    try { await clearHistory(); setShowClearHistoryConfirm(false); }
+    catch (error) { console.error('Failed to clear history:', error); }
   };
 
-  // Handle license activation
   const handleActivateLicense = async () => {
     const key = licenseInput.trim();
     if (!key) return;
     try {
-      await activateLicense(key);
-      setLicenseInput('');
+      await activateLicense(key); setLicenseInput('');
       trackEvent('license_activated', {});
-    } catch (error) {
-      console.error('Activation failed:', error);
-    }
+    } catch (error) { console.error('Activation failed:', error); }
   };
 
-  // Handle license deactivation
   const handleDeactivateLicense = async () => {
     try {
-      await deactivateLicense();
-      setShowDeactivateConfirm(false);
+      await deactivateLicense(); setShowDeactivateConfirm(false);
       trackEvent('license_deactivated', {});
-    } catch (error) {
-      console.error('Deactivation failed:', error);
-    }
+    } catch (error) { console.error('Deactivation failed:', error); }
   };
 
-  // Format expiration timestamp into a readable date
   const formatExpiry = (ts: number | null): string => {
     if (!ts) return t('settings.pro.neverExpires');
-    const date = new Date(ts * 1000);
-    return t('settings.pro.expiresOn', { date: date.toLocaleDateString() });
+    return t('settings.pro.expiresOn', { date: new Date(ts * 1000).toLocaleDateString() });
   };
 
-  // Mask the license key for display (show first/last 4 chars)
-  const maskedLicenseKey = licenseKey
-    ? `${licenseKey.slice(0, 4)}…${licenseKey.slice(-4)}`
-    : '';
+  const maskedLicenseKey = licenseKey ? `${licenseKey.slice(0, 4)}…${licenseKey.slice(-4)}` : '';
 
   const isInTrial = !!usage?.is_in_trial && !isPro;
   const trialDaysLeft = usage?.trial_days_left ?? 0;
@@ -918,10 +524,6 @@ export function Settings() {
   const histAtCap = !isPro && !isInTrial && histCount >= histLimit;
   const polishAtCap = !isPro && !isInTrial && polishUsed >= polishLimit;
 
-  // Build the recording-trigger options at render time so labels and descriptions
-  // re-translate when the language changes. Keeping the structure as plain
-  // objects (rather than translating inside the JSX) keeps the .map() loop
-  // small and easy to follow.
   const triggerOptions = isMac
     ? [
         { value: 'FnKey', label: t('settings.recordingTrigger.optionFn'), desc: t('settings.recordingTrigger.descRecommended'), recommended: true },
@@ -934,761 +536,459 @@ export function Settings() {
         { value: 'Super+J', label: t('settings.recordingTrigger.optionWinJ'), desc: t('settings.recordingTrigger.descNoConflicts'), recommended: false },
       ];
 
-  // Translate keys; pass raw human-readable strings through. Used for any error
-  // surfaced from Rust commands or internal flags — Rust now emits translation
-  // keys like 'error.license_key_empty', but legacy paths may still return raw
-  // strings.
   const translateIfKey = (s: string | null): string =>
     s && (s.startsWith('error.') || s.startsWith('permission.')) ? t(s) : (s ?? '');
   const showShortcutError = translateIfKey(shortcutError);
   const showLicenseError = translateIfKey(licenseError);
   const shortcutErrorIsInputMonitoring =
-    shortcutError.includes('Input Monitoring') ||
-    shortcutError === 'error.input_monitoring_required';
+    shortcutError.includes('Input Monitoring') || shortcutError === 'error.input_monitoring_required';
+
+  const languageOptions: { value: LanguageChoice; label: string }[] = [
+    { value: 'system', label: t('settings.language.optionSystem') },
+    { value: 'en', label: t('settings.language.optionEnglish') },
+    { value: 'fr', label: t('settings.language.optionFrench') },
+  ];
 
   return (
     <div className="min-h-screen flex bg-app-bg text-app-text bg-noise">
       <SettingsSidebar />
       <main className="flex-1 min-w-0 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-8 pt-8 pb-12">
-          {/* Permission warning sits above everything else — silent permission
-              loss (esp. Accessibility after an update) was the most-reported
-              class of "TTP isn't working" issues. */}
           <PermissionBanner />
 
-          {/* Your usage — pinned at the top so the first thing the user sees
-              in Settings is their own activity, not the About hero. */}
-          <div id="usage" data-section="usage" className="scroll-mt-6">
-          <AnalyticsSection />
-          </div>
+          {/* ===== GENERAL ===== */}
+          <div id="general" data-section="general" className="scroll-mt-6">
+            <SettingsSection bare>
+              <div className="flex items-start gap-4 mb-4">
+                <BrandTile size="md" />
+                <div className="min-w-0">
+                  <h1 className="text-display-sm text-app-text">TTP by AmirKS</h1>
+                  <p className="text-[12px] text-app-accent font-medium">{t('settings.about.subtitle', { version: appVersion })}</p>
+                </div>
+              </div>
+              <p className="text-[13px] text-app-muted leading-relaxed">{t('settings.about.description')}</p>
+            </SettingsSection>
 
-        {/* Welcome / About — flat token-driven card (the old radial gradient
-            clashed against the rest of the surface chrome). */}
-        <section id="account" data-section="account" className="scroll-mt-6 bg-app-surface border border-app-border rounded-app-lg shine-sm p-6 mb-6">
-          <h1 className="text-xl font-semibold tracking-tight mb-1 text-app-text">TTP by AmirKS</h1>
-          <p className="text-app-accent text-xs font-medium mb-3">{t('settings.about.subtitle', { version: appVersion })}</p>
-          <p className="text-sm text-app-muted leading-relaxed mb-3">
-            {t('settings.about.description')}
-          </p>
-          <p className="text-sm text-app-muted leading-relaxed mb-3">
-            {t('settings.about.author')}
-          </p>
-          <div className="p-3 bg-app-raised border border-app-border rounded-app-sm mb-4">
-            <p className="text-xs text-app-muted leading-relaxed">
-              <span className="text-app-success font-medium">{t('settings.about.privacyLabel')}</span>{' '}
-              {t('settings.about.privacyBody')}
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <a
-              href="https://amirks.eu"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-3 py-1.5 text-xs font-medium bg-app-accent hover:bg-app-accent-hover text-app-accent-fg rounded-app-sm transition-colors"
-            >
-              amirks.eu
-            </a>
-            <a
-              href="https://www.linkedin.com/in/amirks/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-3 py-1.5 text-xs font-medium bg-app-raised hover:bg-app-border text-app-text rounded-app-sm transition-colors"
-            >
-              LinkedIn
-            </a>
-          </div>
-        </section>
+            <SettingsSection title={t('settings.language.title')} description={t('settings.language.desc')}>
+              <div className="space-y-2">
+                {languageOptions.map((opt) => (
+                  <RadioOption
+                    key={opt.value}
+                    selected={language === opt.value}
+                    onSelect={async () => {
+                      if (language === opt.value) return;
+                      try {
+                        await saveSettings({ language: opt.value });
+                        trackEvent('setting_changed', { setting_name: 'language', new_value: opt.value });
+                      } catch (error) { console.error('Failed to save language setting:', error); }
+                    }}
+                    label={opt.label}
+                    disabled={loading}
+                  />
+                ))}
+              </div>
+            </SettingsSection>
 
-        {/* TTP Pro Section */}
-        <section id="pro" data-section="pro" className="scroll-mt-6 bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Crown className={`w-5 h-5 ${isPro || isInTrial ? 'text-amber-500' : 'text-app-faint'}`} />
-              <h2 className="text-lg font-semibold text-app-text">
-                {t('settings.pro.title')}
-              </h2>
-              {isPro && (
-                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                  {t('settings.pro.badgeActive')}
-                </span>
-              )}
-              {!isPro && isInTrial && (
-                <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-app-accent-tint text-app-accent">
-                  {t('settings.pro.badgeTrial', { days: trialDaysLeft })}
-                </span>
-              )}
+            <SettingsSection title={t('settings.startup.title')}>
+              <SettingsRow
+                label={t('settings.recordingMode.launchStartupLabel')}
+                description={t('settings.recordingMode.launchStartupDesc')}
+                control={<Toggle enabled={autostartOn} onChange={handleAutostartToggle} disabled={loading} />}
+              />
+            </SettingsSection>
+
+            <div ref={updateSectionRef}>
+              <UpdatesCard />
             </div>
-            {isPro && (
-              <button
-                onClick={validateLicense}
-                disabled={licenseLoading}
-                className="text-xs text-app-muted hover:text-app-text flex items-center gap-1 disabled:opacity-50"
-                title={t('settings.pro.refreshTitle')}
-              >
-                {licenseLoading ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <RefreshCw className="w-3.5 h-3.5" />
-                )}
-                {t('common.refresh')}
-              </button>
-            )}
-          </div>
 
-          {!isPro ? (
-            <>
-              <p className="text-sm text-app-muted mb-4">
-                {isInTrial
-                  ? t('settings.pro.descTrial', { days: trialDaysLeft })
-                  : t('settings.pro.descFree')}
-              </p>
-
-              {/* Free tier usage counters */}
-              {!isInTrial && (
-                <div className="space-y-2 mb-4 p-3 bg-app-bg/40 rounded-md">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-app-muted">{t('settings.pro.usagePolish')}</span>
-                    <span className={`font-mono ${polishAtCap ? 'text-app-danger font-semibold' : 'text-app-text'}`}>
-                      {polishUsed} / {polishLimit}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-app-muted">{t('settings.pro.usageDictionary')}</span>
-                    <span className={`font-mono ${dictAtCap ? 'text-app-danger font-semibold' : 'text-app-text'}`}>
-                      {dictCount} / {dictLimit}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-app-muted">{t('settings.pro.usageHistory')}</span>
-                    <span className={`font-mono ${histAtCap ? 'text-app-danger font-semibold' : 'text-app-text'}`}>
-                      {histCount} / {histLimit}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2 mb-4">
-                <input
-                  type="text"
-                  value={licenseInput}
-                  onChange={(e) => setLicenseInput(e.target.value)}
-                  placeholder={t('settings.pro.inputPlaceholder')}
-                  spellCheck={false}
-                  className="w-full px-3 py-2 text-sm font-mono border border-app-border rounded-md bg-app-surface text-app-text focus:outline-none focus:ring-2 focus:ring-app-accent"
-                  disabled={licenseLoading}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && licenseInput.trim()) {
-                      handleActivateLicense();
-                    }
-                  }}
-                />
-                {licenseError && (
-                  <p className="text-xs text-app-danger">{showLicenseError}</p>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleActivateLicense}
-                  disabled={licenseLoading || !licenseInput.trim()}
-                  className="px-4 py-2 text-sm font-medium text-white bg-app-accent hover:bg-app-accent-hover disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors flex items-center gap-2"
-                >
-                  {licenseLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {t('settings.pro.activate')}
-                </button>
-                <a
-                  href="https://amirks.lemonsqueezy.com/buy/dcc74241-21ae-4d20-8a3c-90bf8d842bae"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm font-medium text-app-accent hover:text-app-accent-hover dark:text-app-accent dark:hover:text-blue-300"
-                >
-                  {t('settings.pro.buyLink')}
-                </a>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="space-y-2 mb-4">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-app-muted">{t('settings.pro.labelKey')}</span>
-                  <span className="font-mono text-app-text">{maskedLicenseKey}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-app-muted">{t('settings.pro.labelStatus')}</span>
-                  <span className="text-app-text capitalize">
-                    {licenseStatus ?? t('settings.pro.statusUnknown')}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-app-muted">{t('settings.pro.labelValidity')}</span>
-                  <span className="text-app-text">
-                    {formatExpiry(licenseExpiresAt)}
-                  </span>
-                </div>
-                {licenseActivationLimit !== null && (
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-app-muted">{t('settings.pro.labelActivations')}</span>
-                    <span className="text-app-text">
-                      {licenseActivationCount ?? 0} / {licenseActivationLimit}
-                    </span>
-                  </div>
-                )}
-              </div>
-              {licenseError && (
-                <p className="text-xs text-app-danger mb-3">{showLicenseError}</p>
-              )}
-              <button
-                onClick={() => setShowDeactivateConfirm(true)}
-                disabled={licenseLoading}
-                className="text-sm font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50"
-              >
-                {t('settings.pro.deactivateDevice')}
-              </button>
-              <p className="text-xs text-app-muted mt-2">
-                {t('settings.pro.deactivateHelp')}
-              </p>
-            </>
-          )}
-        </section>
-
-        {/* Recording Trigger Section */}
-        <section id="recording" data-section="recording" className="scroll-mt-6 bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
-          <h2 className="text-lg font-semibold text-app-text mb-4">
-            {t('settings.recordingTrigger.title')}
-          </h2>
-          <p className="text-sm text-app-muted mb-4">
-            {t('settings.recordingTrigger.desc')}
-          </p>
-
-          <div className="space-y-2">
-            {triggerOptions.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => handleShortcutChange(opt.value)}
-                disabled={loading}
-                className={`
-                  w-full flex items-center justify-between px-4 py-3 rounded-lg border-2 transition-all text-left
-                  ${shortcut === opt.value
-                    ? 'border-app-accent bg-app-accent-tint'
-                    : 'border-app-border hover:border-app-border-strong'
+            <SettingsSection title={t('settings.privacy.title')}>
+              {showRestartBanner && (
+                <Banner
+                  tone="warning"
+                  className="mb-4"
+                  action={
+                    <Button variant="secondary" size="sm" onClick={() => relaunch().catch(console.error)}>
+                      {t('common.restartNow')}
+                    </Button>
                   }
-                `}
-              >
-                <div className="flex items-center gap-3">
-                  <span className={`
-                    w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0
-                    ${shortcut === opt.value
-                      ? 'border-app-accent'
-                      : 'border-app-border'
-                    }
-                  `}>
-                    {shortcut === opt.value && (
-                      <span className="w-2 h-2 rounded-full bg-app-accent" />
-                    )}
-                  </span>
-                  <span className={`font-mono text-sm font-semibold ${
-                    shortcut === opt.value
-                      ? 'text-app-accent'
-                      : 'text-app-text'
-                  }`}>
-                    {opt.label}
-                  </span>
-                </div>
-                {opt.desc && (
-                  <span className={`text-xs ${
-                    opt.recommended
-                      ? 'text-app-accent dark:text-app-accent font-medium'
-                      : 'text-app-faint'
-                  }`}>
-                    {opt.desc}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-
-          {shortcutError && (
-            <div className="mt-3 space-y-2">
-              <p className="text-sm text-app-danger">
-                {showShortcutError}
-              </p>
-              {shortcutErrorIsInputMonitoring && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    invoke('open_input_monitoring_settings').catch((err) => {
-                      console.error('open_input_monitoring_settings failed', err);
-                    });
-                  }}
-                  className="inline-flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-300 hover:bg-red-500/20 transition-colors"
                 >
-                  {t('settings.recordingTrigger.openInputMonitoring')}
-                </button>
+                  {t('settings.privacy.restartHint')}
+                </Banner>
               )}
-            </div>
-          )}
-
-          {shortcutSuccess && (
-            <p className="text-sm text-app-success mt-3">
-              {t('settings.recordingTrigger.successUpdated')}
-            </p>
-          )}
-        </section>
-
-        {/* Recording Mode Section */}
-        <section className="bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
-          <h2 className="text-lg font-semibold text-app-text mb-4">
-            {t('settings.recordingMode.title')}
-          </h2>
-
-          {/* Hands-free mode toggle */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex-1 pr-4">
-              <p className="text-app-text font-medium">
-                {t('settings.recordingMode.handsFreeLabel')}
-              </p>
-              <p className="text-sm text-app-muted mt-1">
-                {t('settings.recordingMode.handsFreeDesc')}
-              </p>
-            </div>
-            <Toggle
-              enabled={handsFreeMode}
-              onChange={handleHandsFreeModeToggle}
-              disabled={loading}
-            />
+              <SettingsRow
+                label={t('settings.privacy.helpLabel')}
+                description={t('settings.privacy.helpDesc')}
+                control={<Toggle enabled={telemetryEnabled} onChange={handleTelemetryToggle} disabled={loading} />}
+              />
+              <div className="mt-4 p-3 bg-app-raised rounded-app-sm border border-app-border">
+                <p className="text-[12px] text-app-muted leading-relaxed">
+                  <span className="font-medium text-app-text">{t('settings.privacy.whatSentLabel')}</span>{' '}
+                  {t('settings.privacy.whatSentBody')}
+                </p>
+                <p className="text-[12px] text-app-muted leading-relaxed mt-2">
+                  <span className="font-medium text-app-text">{t('settings.privacy.neverSentLabel')}</span>{' '}
+                  {t('settings.privacy.neverSentBody')}
+                </p>
+              </div>
+            </SettingsSection>
           </div>
 
-          {/* Hide pill when inactive toggle */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex-1 pr-4">
-              <p className="text-app-text font-medium">
-                {t('settings.recordingMode.hidePillLabel')}
-              </p>
-              <p className="text-sm text-app-muted mt-1">
-                {t('settings.recordingMode.hidePillDesc')}
-              </p>
-            </div>
-            <Toggle
-              enabled={hidePillWhenInactive}
-              onChange={handleHidePillWhenInactiveToggle}
-              disabled={loading}
-            />
-          </div>
+          {/* ===== CAPTURE ===== */}
+          <div id="capture" data-section="capture" className="scroll-mt-6">
+            <SettingsSection title={t('settings.recordingTrigger.title')} description={t('settings.recordingTrigger.desc')}>
+              <div className="space-y-2">
+                {triggerOptions.map((opt) => (
+                  <RadioOption
+                    key={opt.value}
+                    selected={shortcut === opt.value}
+                    onSelect={() => handleShortcutChange(opt.value)}
+                    label={<span className="font-mono">{opt.label}</span>}
+                    trailing={opt.desc ? <span className={opt.recommended ? 'text-app-accent font-medium' : undefined}>{opt.desc}</span> : undefined}
+                    disabled={loading}
+                  />
+                ))}
+              </div>
 
-          {/* Launch at startup toggle */}
-          <div className="flex items-center justify-between">
-            <div className="flex-1 pr-4">
-              <p className="text-app-text font-medium">
-                {t('settings.recordingMode.launchStartupLabel')}
-              </p>
-              <p className="text-sm text-app-muted mt-1">
-                {t('settings.recordingMode.launchStartupDesc')}
-              </p>
-            </div>
-            <Toggle
-              enabled={autostartOn}
-              onChange={handleAutostartToggle}
-              disabled={loading}
-            />
-          </div>
-        </section>
-
-        {/* Transcription Section */}
-        <section id="transcription" data-section="transcription" className="scroll-mt-6 bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
-          <h2 className="text-lg font-semibold text-app-text mb-4">
-            {t('settings.transcription.title')}
-          </h2>
-
-          {/* Groq API Key */}
-          <div className="mb-6 p-4 bg-app-raised rounded-lg">
-            <p className="text-app-text font-medium mb-2">
-              {t('settings.transcription.groqLabel')}
-            </p>
-              {hasGroqKey ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-app-success">{t('settings.transcription.keyConfigured')}</span>
-                  <button
-                    onClick={() => setHasGroqKey(false)}
-                    className="text-sm text-app-muted hover:text-app-text"
-                  >
-                    {t('common.change')}
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="flex gap-2">
-                    <input
-                      type="password"
-                      value={groqApiKey}
-                      onChange={(e) => setGroqApiKey(e.target.value)}
-                      placeholder={t('settings.transcription.keyPlaceholder')}
-                      className="flex-1 px-3 py-2 border border-app-border rounded-md bg-app-surface text-app-text focus:outline-none focus:ring-2 focus:ring-app-accent text-sm"
-                    />
-                    <button
-                      onClick={handleGroqKeySave}
-                      disabled={groqKeySaving || !groqApiKey.trim()}
-                      className="px-4 py-2 text-sm font-medium text-white bg-app-accent hover:bg-app-accent-hover disabled:bg-app-raised disabled:cursor-not-allowed rounded-md transition-colors"
+              {shortcutError && (
+                <div className="mt-4 space-y-2">
+                  <p className="text-[13px] text-app-danger">{showShortcutError}</p>
+                  {shortcutErrorIsInputMonitoring && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => invoke('open_input_monitoring_settings').catch(console.error)}
+                      leftIcon={<ExternalLink className="size-3" />}
                     >
-                      {groqKeySaving ? t('common.validating') : t('common.save')}
-                    </button>
+                      {t('settings.recordingTrigger.openInputMonitoring')}
+                    </Button>
+                  )}
+                </div>
+              )}
+              {shortcutSuccess && (
+                <p className="mt-3 text-[13px] text-app-success">{t('settings.recordingTrigger.successUpdated')}</p>
+              )}
+            </SettingsSection>
+
+            <SettingsSection title={t('settings.recordingMode.title')}>
+              <SettingsRow
+                label={t('settings.recordingMode.handsFreeLabel')}
+                description={t('settings.recordingMode.handsFreeDesc')}
+                control={<Toggle enabled={handsFreeMode} onChange={handleHandsFreeModeToggle} disabled={loading} />}
+              />
+              <div className="border-t border-app-border my-1" />
+              <SettingsRow
+                label={t('settings.recordingMode.hidePillLabel')}
+                description={t('settings.recordingMode.hidePillDesc')}
+                control={<Toggle enabled={hidePillWhenInactive} onChange={handleHidePillWhenInactiveToggle} disabled={loading} />}
+              />
+            </SettingsSection>
+
+            <SettingsSection title={t('settings.transcription.title')}>
+              <div className="space-y-3 mb-5">
+                <p className="text-[13px] font-medium text-app-text">{t('settings.transcription.groqLabel')}</p>
+                {hasGroqKey ? (
+                  <div className="flex items-center gap-3">
+                    <span className="text-[13px] text-app-success">{t('settings.transcription.keyConfigured')}</span>
+                    <Button variant="ghost" size="sm" onClick={() => setHasGroqKey(false)}>
+                      {t('common.change')}
+                    </Button>
                   </div>
-                  {groqKeySuccess && (
-                    <p className="text-sm text-app-success">
-                      {t('settings.transcription.keySaved')}
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      <Input
+                        type="password"
+                        value={groqApiKey}
+                        onChange={(e) => setGroqApiKey(e.target.value)}
+                        placeholder={t('settings.transcription.keyPlaceholder')}
+                        className="flex-1"
+                      />
+                      <Button
+                        onClick={handleGroqKeySave}
+                        disabled={groqKeySaving || !groqApiKey.trim()}
+                        loading={groqKeySaving}
+                      >
+                        {groqKeySaving ? t('common.validating') : t('common.save')}
+                      </Button>
+                    </div>
+                    {groqKeySuccess && <p className="text-[13px] text-app-success">{t('settings.transcription.keySaved')}</p>}
+                    {groqKeyError && <p className="text-[13px] text-app-danger">{groqKeyError}</p>}
+                    <p className="text-[12px] text-app-muted">
+                      {t('settings.transcription.getKeyAt')}{' '}
+                      <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-app-accent hover:underline">
+                        console.groq.com
+                      </a>
                     </p>
+                  </>
+                )}
+              </div>
+              <div className="border-t border-app-border pt-4">
+                <SettingsRow
+                  label={t('settings.transcription.polishLabel')}
+                  description={t('settings.transcription.polishDesc')}
+                  control={<Toggle enabled={aiPolishEnabled} onChange={handlePolishToggle} disabled={loading} />}
+                />
+              </div>
+            </SettingsSection>
+          </div>
+
+          {/* ===== PRO ===== */}
+          <div id="pro" data-section="pro" className="scroll-mt-6">
+            <AnalyticsCard />
+
+            <SettingsSection
+              title={t('settings.pro.title')}
+              action={
+                <div className="flex items-center gap-2">
+                  <Crown className={cn('size-4', isPro || isInTrial ? 'text-app-warning' : 'text-app-faint')} />
+                  {isPro && (
+                    <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-app-warning-tint text-app-warning">
+                      {t('settings.pro.badgeActive')}
+                    </span>
                   )}
-                  {groqKeyError && (
-                    <p className="text-sm text-app-danger">
-                      {groqKeyError}
-                    </p>
+                  {!isPro && isInTrial && (
+                    <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-app-accent-tint text-app-accent">
+                      {t('settings.pro.badgeTrial', { days: trialDaysLeft })}
+                    </span>
                   )}
-                  <p className="text-xs text-app-muted">
-                    {t('settings.transcription.getKeyAt')}{' '}
+                </div>
+              }
+            >
+              {!isPro ? (
+                <>
+                  <p className="text-[13px] text-app-muted mb-4">
+                    {isInTrial ? t('settings.pro.descTrial', { days: trialDaysLeft }) : t('settings.pro.descFree')}
+                  </p>
+                  {!isInTrial && (
+                    <div className="space-y-2 mb-4 p-3 bg-app-raised rounded-app-sm border border-app-border">
+                      <UsageRow label={t('settings.pro.usagePolish')} used={polishUsed} limit={polishLimit} atCap={polishAtCap} />
+                      <UsageRow label={t('settings.pro.usageDictionary')} used={dictCount} limit={dictLimit} atCap={dictAtCap} />
+                      <UsageRow label={t('settings.pro.usageHistory')} used={histCount} limit={histLimit} atCap={histAtCap} />
+                    </div>
+                  )}
+                  <div className="space-y-2 mb-4">
+                    <Input
+                      type="text"
+                      value={licenseInput}
+                      onChange={(e) => setLicenseInput(e.target.value)}
+                      placeholder={t('settings.pro.inputPlaceholder')}
+                      spellCheck={false}
+                      disabled={licenseLoading}
+                      className="font-mono"
+                      onKeyDown={(e) => { if (e.key === 'Enter' && licenseInput.trim()) handleActivateLicense(); }}
+                    />
+                    {licenseError && <p className="text-[12px] text-app-danger">{showLicenseError}</p>}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Button onClick={handleActivateLicense} disabled={licenseLoading || !licenseInput.trim()} loading={licenseLoading}>
+                      {t('settings.pro.activate')}
+                    </Button>
                     <a
-                      href="https://console.groq.com/keys"
+                      href="https://amirks.lemonsqueezy.com/buy/dcc74241-21ae-4d20-8a3c-90bf8d842bae"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-app-accent hover:underline"
+                      className="inline-flex items-center gap-1 text-[13px] font-medium text-app-accent hover:text-app-accent-hover"
                     >
-                      console.groq.com
+                      {t('settings.pro.buyLink')}
+                      <ArrowRight className="size-3.5" />
                     </a>
-                  </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-2 mb-4">
+                    <ProInfoRow label={t('settings.pro.labelKey')} value={<span className="font-mono">{maskedLicenseKey}</span>} />
+                    <ProInfoRow label={t('settings.pro.labelStatus')} value={<span className="capitalize">{licenseStatus ?? t('settings.pro.statusUnknown')}</span>} />
+                    <ProInfoRow label={t('settings.pro.labelValidity')} value={formatExpiry(licenseExpiresAt)} />
+                    {licenseActivationLimit !== null && (
+                      <ProInfoRow label={t('settings.pro.labelActivations')} value={`${licenseActivationCount ?? 0} / ${licenseActivationLimit}`} />
+                    )}
+                  </div>
+                  {licenseError && <p className="text-[12px] text-app-danger mb-3">{showLicenseError}</p>}
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowDeactivateConfirm(true)}
+                      disabled={licenseLoading}
+                      className="text-app-danger hover:text-app-danger hover:bg-app-danger-tint"
+                    >
+                      {t('settings.pro.deactivateDevice')}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={validateLicense}
+                      disabled={licenseLoading}
+                      leftIcon={licenseLoading ? <Spinner size={12} /> : <RefreshCw className="size-3" />}
+                    >
+                      {t('common.refresh')}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </SettingsSection>
+          </div>
+
+          {/* ===== DATA ===== */}
+          <div id="data" data-section="data" className="scroll-mt-6">
+            <SettingsSection
+              title={t('settings.dictionary.title')}
+              action={dictionary.length > 0 ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowClearConfirm(true)}
+                  className="text-app-danger hover:text-app-danger hover:bg-app-danger-tint"
+                >
+                  {t('common.clearAll')}
+                </Button>
+              ) : undefined}
+            >
+              <div className="mb-4 flex gap-2 items-end">
+                <div className="flex-1">
+                  <label className="block text-[11px] text-app-muted mb-1 font-medium">{t('settings.dictionary.labelMisheard')}</label>
+                  <Input
+                    type="text"
+                    value={newOriginal}
+                    onChange={(e) => setNewOriginal(e.target.value)}
+                    placeholder={t('settings.dictionary.placeholderMisheard')}
+                    disabled={dictAtCap}
+                  />
+                </div>
+                <ArrowRight className="size-4 text-app-faint shrink-0 mb-2.5" aria-hidden />
+                <div className="flex-1">
+                  <label className="block text-[11px] text-app-muted mb-1 font-medium">{t('settings.dictionary.labelCorrection')}</label>
+                  <Input
+                    type="text"
+                    value={newCorrection}
+                    onChange={(e) => setNewCorrection(e.target.value)}
+                    placeholder={t('settings.dictionary.placeholderCorrection')}
+                    disabled={dictAtCap}
+                  />
+                </div>
+                <Button onClick={handleAddEntry} disabled={!newOriginal.trim() || !newCorrection.trim() || dictAtCap}>
+                  {t('common.add')}
+                </Button>
+              </div>
+              {dictAtCap && (
+                <Banner tone="warning" className="mb-3">
+                  {t('settings.dictionary.limitReached', { limit: dictLimit })}
+                </Banner>
+              )}
+              {addEntryError && <p className="text-[13px] text-app-danger mb-3">{addEntryError}</p>}
+
+              {dictionary.length === 0 ? (
+                <EmptyState
+                  icon={<BookOpen />}
+                  title={t('settings.dictionary.emptyTitle')}
+                  description={t('settings.dictionary.emptyState')}
+                />
+              ) : (
+                <div className="rounded-app-sm border border-app-border overflow-hidden">
+                  <div className="bg-app-raised border-b border-app-border px-4 py-2 grid grid-cols-2 gap-3">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-app-faint">{t('settings.dictionary.tableOriginal')}</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-app-faint">{t('settings.dictionary.tableCorrection')}</span>
+                  </div>
+                  <div className="divide-y divide-app-border">
+                    {dictionary.map((entry) => (
+                      <DictionaryRow key={entry.original} entry={entry} onDelete={handleDeleteEntry} />
+                    ))}
+                  </div>
                 </div>
               )}
-          </div>
+            </SettingsSection>
 
-          {/* AI Polish Toggle */}
-          <div className="flex items-center justify-between">
-            <div className="flex-1 pr-4">
-              <p className="text-app-text font-medium">
-                {t('settings.transcription.polishLabel')}
-              </p>
-              <p className="text-sm text-app-muted mt-1">
-                {t('settings.transcription.polishDesc')}
-              </p>
-            </div>
-            <Toggle
-              enabled={aiPolishEnabled}
-              onChange={handlePolishToggle}
-              disabled={loading}
-            />
-          </div>
-
-        </section>
-
-        {/* Privacy & Telemetry Section */}
-        <section id="privacy" data-section="privacy" className="scroll-mt-6 bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
-          <h2 className="text-lg font-semibold text-app-text mb-4">
-            {t('settings.privacy.title')}
-          </h2>
-
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex-1 pr-4">
-              <p className="text-app-text font-medium">
-                {t('settings.privacy.helpLabel')}
-              </p>
-              <p className="text-sm text-app-muted mt-1">
-                {t('settings.privacy.helpDesc')}
-              </p>
-            </div>
-            <Toggle
-              enabled={telemetryEnabled}
-              onChange={handleTelemetryToggle}
-              disabled={loading}
-            />
-          </div>
-
-          {/* Restart banner -- shown after toggling */}
-          {showRestartBanner && (
-            <div className="flex items-center justify-between p-3 bg-app-warning-tint rounded-lg mb-4">
-              <p className="text-sm text-amber-700 dark:text-amber-400">
-                {t('settings.privacy.restartHint')}
-              </p>
-              <button
-                onClick={() => relaunch().catch(console.error)}
-                className="px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded-md transition-colors ml-3 whitespace-nowrap"
-              >
-                {t('common.restartNow')}
-              </button>
-            </div>
-          )}
-
-          {/* Privacy explanation */}
-          <div className="p-3 bg-app-raised rounded-lg">
-            <p className="text-xs text-app-muted leading-relaxed">
-              <span className="font-medium text-app-text">{t('settings.privacy.whatSentLabel')}</span>{' '}
-              {t('settings.privacy.whatSentBody')}
-            </p>
-            <p className="text-xs text-app-muted leading-relaxed mt-2">
-              <span className="font-medium text-app-text">{t('settings.privacy.neverSentLabel')}</span>{' '}
-              {t('settings.privacy.neverSentBody')}
-            </p>
-          </div>
-        </section>
-
-        {/* Dictionary Section */}
-        <section id="dictionary" data-section="dictionary" className="scroll-mt-6 bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-app-text">
-              {t('settings.dictionary.title')}
-            </h2>
-            {dictionary.length > 0 && (
-              <button
-                onClick={() => setShowClearConfirm(true)}
-                className="text-sm text-red-600 hover:text-red-700 font-medium"
-              >
-                {t('common.clearAll')}
-              </button>
-            )}
-          </div>
-
-          {/* Add entry form */}
-          <div className="mb-4 flex gap-2 items-end">
-            <div className="flex-1">
-              <label className="block text-xs text-app-muted mb-1">{t('settings.dictionary.labelMisheard')}</label>
-              <input
-                type="text"
-                value={newOriginal}
-                onChange={(e) => setNewOriginal(e.target.value)}
-                placeholder={t('settings.dictionary.placeholderMisheard')}
-                disabled={dictAtCap}
-                className="w-full px-3 py-1.5 border border-app-border rounded-md bg-app-surface text-app-text text-sm focus:outline-none focus:ring-2 focus:ring-app-accent disabled:opacity-50"
-              />
-            </div>
-            <span className="text-app-faint pb-1.5">&rarr;</span>
-            <div className="flex-1">
-              <label className="block text-xs text-app-muted mb-1">{t('settings.dictionary.labelCorrection')}</label>
-              <input
-                type="text"
-                value={newCorrection}
-                onChange={(e) => setNewCorrection(e.target.value)}
-                placeholder={t('settings.dictionary.placeholderCorrection')}
-                disabled={dictAtCap}
-                className="w-full px-3 py-1.5 border border-app-border rounded-md bg-app-surface text-app-text text-sm focus:outline-none focus:ring-2 focus:ring-app-accent disabled:opacity-50"
-              />
-            </div>
-            <button
-              onClick={handleAddEntry}
-              disabled={!newOriginal.trim() || !newCorrection.trim() || dictAtCap}
-              className="px-3 py-1.5 text-sm font-medium text-white bg-app-accent hover:bg-app-accent-hover disabled:bg-app-raised disabled:cursor-not-allowed rounded-md transition-colors"
+            <SettingsSection
+              title={t('settings.history.title')}
+              action={history.length > 0 ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowClearHistoryConfirm(true)}
+                  className="text-app-danger hover:text-app-danger hover:bg-app-danger-tint"
+                >
+                  {t('settings.history.clearButton')}
+                </Button>
+              ) : undefined}
             >
-              {t('common.add')}
-            </button>
+              <SettingsRow
+                label={t('settings.history.saveLabel')}
+                description={t('settings.history.saveDesc')}
+                control={<Toggle enabled={historyEnabled} onChange={handleHistoryEnabledToggle} disabled={loading} />}
+              />
+              <div className="border-t border-app-border mt-3 pt-3">
+                {history.length === 0 ? (
+                  <EmptyState
+                    icon={<Database />}
+                    title={t('settings.history.emptyTitle')}
+                    description={historyEnabled ? t('settings.history.emptyEnabled') : t('settings.history.emptyDisabled')}
+                  />
+                ) : (
+                  <div className="max-h-80 overflow-y-auto rounded-app-sm border border-app-border divide-y divide-app-border">
+                    {history.map((entry) => (
+                      <HistoryRow key={entry.timestamp} entry={entry} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </SettingsSection>
           </div>
-          {dictAtCap && (
-            <p className="text-amber-600 dark:text-amber-400 text-xs mb-3">
-              {t('settings.dictionary.limitReached', { limit: dictLimit })}
-            </p>
-          )}
-          {addEntryError && (
-            <p className="text-red-500 text-sm mb-3">{addEntryError}</p>
-          )}
 
-          {dictionary.length === 0 ? (
-            <p className="text-app-muted text-center py-4">
-              {t('settings.dictionary.emptyState')}
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-app-border">
-                    <th className="text-left py-2 px-4 text-xs font-medium text-app-muted uppercase tracking-wider">
-                      {t('settings.dictionary.tableOriginal')}
-                    </th>
-                    <th className="text-left py-2 px-4 text-xs font-medium text-app-muted uppercase tracking-wider">
-                      {t('settings.dictionary.tableCorrection')}
-                    </th>
-                    <th className="w-20"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dictionary.map((entry) => (
-                    <DictionaryRow
-                      key={entry.original}
-                      entry={entry}
-                      onDelete={handleDeleteEntry}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+          {/* ===== ADVANCED ===== */}
+          <div id="advanced" data-section="advanced" className="scroll-mt-6">
+            <UpdateChannelCard />
 
-        {/* History Section */}
-        <section id="history" data-section="history" className="scroll-mt-6 bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-app-text">
-              {t('settings.history.title')}
-            </h2>
-            {history.length > 0 && (
-              <button
-                onClick={() => setShowClearHistoryConfirm(true)}
-                className="text-sm text-red-600 hover:text-red-700 font-medium"
+            <SettingsSection title={t('settings.reset.title')} description={t('settings.reset.desc')}>
+              <Button
+                variant="ghost"
+                onClick={() => setShowResetConfirm(true)}
+                className="text-app-danger hover:text-app-danger hover:bg-app-danger-tint border border-app-danger/30"
               >
-                {t('settings.history.clearButton')}
-              </button>
-            )}
+                {t('settings.reset.button')}
+              </Button>
+            </SettingsSection>
           </div>
 
-          {/* Save history toggle */}
-          <div className="flex items-center justify-between mb-4 pb-4 border-b border-app-border">
-            <div className="flex-1 pr-4">
-              <p className="text-app-text font-medium">
-                {t('settings.history.saveLabel')}
-              </p>
-              <p className="text-sm text-app-muted mt-1">
-                {t('settings.history.saveDesc')}
-              </p>
-            </div>
-            <Toggle
-              enabled={historyEnabled}
-              onChange={handleHistoryEnabledToggle}
-              disabled={loading}
-            />
-          </div>
+          <ConfirmDialog
+            open={showClearConfirm}
+            title={t('dialog.clearDictionary.title')}
+            message={t('dialog.clearDictionary.message')}
+            confirmText={t('dialog.clearDictionary.confirm')}
+            cancelText={t('common.cancel')}
+            onConfirm={handleClearDictionary}
+            onCancel={() => setShowClearConfirm(false)}
+          />
+          <ConfirmDialog
+            open={showResetConfirm}
+            title={t('dialog.reset.title')}
+            message={t('dialog.reset.message')}
+            confirmText={t('dialog.reset.confirm')}
+            cancelText={t('common.cancel')}
+            onConfirm={handleResetDefaults}
+            onCancel={() => setShowResetConfirm(false)}
+          />
+          <ConfirmDialog
+            open={showClearHistoryConfirm}
+            title={t('dialog.clearHistory.title')}
+            message={t('dialog.clearHistory.message')}
+            confirmText={t('dialog.clearHistory.confirm')}
+            cancelText={t('common.cancel')}
+            onConfirm={handleClearHistory}
+            onCancel={() => setShowClearHistoryConfirm(false)}
+          />
+          <ConfirmDialog
+            open={showDeactivateConfirm}
+            title={t('dialog.deactivateLicense.title')}
+            message={t('dialog.deactivateLicense.message')}
+            confirmText={t('dialog.deactivateLicense.confirm')}
+            cancelText={t('common.cancel')}
+            tone="warning"
+            onConfirm={handleDeactivateLicense}
+            onCancel={() => setShowDeactivateConfirm(false)}
+          />
 
-          {history.length === 0 ? (
-            <p className="text-app-muted text-center py-8">
-              {historyEnabled ? t('settings.history.emptyEnabled') : t('settings.history.emptyDisabled')}
-            </p>
-          ) : (
-            <div className="max-h-80 overflow-y-auto rounded-md border border-app-border">
-              {history.map((entry, index) => (
-                <HistoryRow key={`${entry.timestamp}-${index}`} entry={entry} />
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Update Channel Section — beta opt-in */}
-        <div id="updates" data-section="updates" className="scroll-mt-6">
-        <UpdateChannelSection />
-
-        {/* Updates Section */}
-        <div ref={updateSectionRef}>
-          <UpdateSection />
-        </div>
-
-        </div>
-
-        {/* Language Section — UI/tray/notification locale.
-            'system' resolves from navigator.language at runtime (fr-* → fr, else en).
-            Saving the choice emits 'settings-changed' which the main.tsx listener
-            picks up to call i18n.changeLanguage across every open window. */}
-        <section id="language" data-section="language" className="scroll-mt-6 bg-app-surface rounded-app-lg shine-sm border border-app-border p-6 mb-6">
-          <h2 className="text-lg font-semibold text-app-text mb-2">
-            {t('settings.language.title')}
-          </h2>
-          <p className="text-sm text-app-muted mb-4">
-            {t('settings.language.desc')}
-          </p>
-          <div className="space-y-2">
-            {([
-              { value: 'system' as LanguageChoice, label: t('settings.language.optionSystem') },
-              { value: 'en' as LanguageChoice, label: t('settings.language.optionEnglish') },
-              { value: 'fr' as LanguageChoice, label: t('settings.language.optionFrench') },
-            ]).map((opt) => (
-              <button
-                key={opt.value}
-                onClick={async () => {
-                  if (language === opt.value) return;
-                  try {
-                    await saveSettings({ language: opt.value });
-                    trackEvent('setting_changed', {
-                      setting_name: 'language',
-                      new_value: opt.value,
-                    });
-                  } catch (error) {
-                    console.error('Failed to save language setting:', error);
-                  }
-                }}
-                disabled={loading}
-                className={`
-                  w-full flex items-center px-4 py-3 rounded-lg border-2 transition-all text-left
-                  ${language === opt.value
-                    ? 'border-app-accent bg-app-accent-tint'
-                    : 'border-app-border hover:border-app-border-strong'
-                  }
-                `}
-              >
-                <span className={`
-                  w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 mr-3
-                  ${language === opt.value
-                    ? 'border-app-accent'
-                    : 'border-app-border'
-                  }
-                `}>
-                  {language === opt.value && (
-                    <span className="w-2 h-2 rounded-full bg-app-accent" />
-                  )}
-                </span>
-                <span className={`text-sm font-medium ${
-                  language === opt.value
-                    ? 'text-app-accent'
-                    : 'text-app-text'
-                }`}>
-                  {opt.label}
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* Reset Section */}
-        <section id="advanced" data-section="advanced" className="scroll-mt-6 bg-app-surface rounded-app-lg shine-sm border border-app-border p-6">
-          <h2 className="text-lg font-semibold text-app-text mb-4">
-            {t('settings.reset.title')}
-          </h2>
-          <p className="text-sm text-app-muted mb-4">
-            {t('settings.reset.desc')}
-          </p>
-          <button
-            onClick={() => setShowResetConfirm(true)}
-            className="px-4 py-2 text-sm font-medium text-red-600 border border-red-600 hover:bg-app-danger-tint rounded-md transition-colors"
-          >
-            {t('settings.reset.button')}
-          </button>
-        </section>
-
-        {/* Confirmation Dialogs */}
-        <ConfirmDialog
-          open={showClearConfirm}
-          title={t('dialog.clearDictionary.title')}
-          message={t('dialog.clearDictionary.message')}
-          confirmText={t('dialog.clearDictionary.confirm')}
-          onConfirm={handleClearDictionary}
-          onCancel={() => setShowClearConfirm(false)}
-        />
-
-        <ConfirmDialog
-          open={showResetConfirm}
-          title={t('dialog.reset.title')}
-          message={t('dialog.reset.message')}
-          confirmText={t('dialog.reset.confirm')}
-          onConfirm={handleResetDefaults}
-          onCancel={() => setShowResetConfirm(false)}
-        />
-
-        <ConfirmDialog
-          open={showClearHistoryConfirm}
-          title={t('dialog.clearHistory.title')}
-          message={t('dialog.clearHistory.message')}
-          confirmText={t('dialog.clearHistory.confirm')}
-          onConfirm={handleClearHistory}
-          onCancel={() => setShowClearHistoryConfirm(false)}
-        />
-
-        <ConfirmDialog
-          open={showDeactivateConfirm}
-          title={t('dialog.deactivateLicense.title')}
-          message={t('dialog.deactivateLicense.message')}
-          confirmText={t('dialog.deactivateLicense.confirm')}
-          onConfirm={handleDeactivateLicense}
-          onCancel={() => setShowDeactivateConfirm(false)}
-        />
-
-        <WhatsNew />
+          <WhatsNew />
         </div>
       </main>
     </div>
@@ -1696,29 +996,42 @@ export function Settings() {
 }
 
 /* ----------------------------------------------------------------------------
-   SettingsSidebar — left nav rail. Compact icon+label list, sticks to viewport.
-   Click scrolls the matching section into view; active state tracks via
-   IntersectionObserver so scroll position highlights the right row.
+   Misc inline helpers
    ------------------------------------------------------------------------- */
 
-interface SidebarItem {
-  id: string;
-  labelKey: string;
-  icon: typeof Crown;
+function UsageRow({ label, used, limit, atCap }: { label: string; used: number; limit: number; atCap: boolean }) {
+  return (
+    <div className="flex items-center justify-between text-[12px]">
+      <span className="text-app-muted">{label}</span>
+      <span className={cn('font-mono tabular-nums', atCap ? 'text-app-danger font-semibold' : 'text-app-text')}>
+        {used} / {limit}
+      </span>
+    </div>
+  );
 }
+
+function ProInfoRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between text-[13px]">
+      <span className="text-app-muted">{label}</span>
+      <span className="text-app-text">{value}</span>
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------------------
+   SettingsSidebar — five IA groups. Active tracking via IntersectionObserver.
+   ------------------------------------------------------------------------- */
+
+interface SidebarItem { id: string; labelKey: string; icon: typeof Crown; }
 
 function SettingsSidebar() {
   const { t } = useTranslation();
   const [appVersion, setAppVersion] = useState('');
-  const [active, setActive] = useState('usage');
+  const [active, setActive] = useState('general');
 
-  useEffect(() => {
-    getVersion().then((v) => setAppVersion(v)).catch(() => {});
-  }, []);
+  useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
 
-  // Track which section is currently in view. The rootMargin biases the
-  // detection to the upper third — feels right because users typically
-  // scroll a section into the top half before scanning down.
   useEffect(() => {
     const targets = document.querySelectorAll('[data-section]');
     if (targets.length === 0) return;
@@ -1734,42 +1047,28 @@ function SettingsSidebar() {
       },
       { rootMargin: '-20% 0px -60% 0px', threshold: 0.01 },
     );
-    targets.forEach((t) => observer.observe(t));
+    targets.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
   }, []);
 
   const items: SidebarItem[] = [
-    { id: 'usage', labelKey: 'settings.nav.usage', icon: Activity },
-    { id: 'account', labelKey: 'settings.nav.account', icon: User },
+    { id: 'general', labelKey: 'settings.nav.general', icon: User },
+    { id: 'capture', labelKey: 'settings.nav.capture', icon: Mic },
     { id: 'pro', labelKey: 'settings.nav.pro', icon: Crown },
-    { id: 'recording', labelKey: 'settings.nav.recording', icon: Mic },
-    { id: 'transcription', labelKey: 'settings.nav.transcription', icon: Languages },
-    { id: 'dictionary', labelKey: 'settings.nav.dictionary', icon: BookOpen },
-    { id: 'history', labelKey: 'settings.nav.history', icon: Clock },
-    { id: 'updates', labelKey: 'settings.nav.updates', icon: Download },
-    { id: 'language', labelKey: 'settings.nav.language', icon: Globe },
+    { id: 'data', labelKey: 'settings.nav.data', icon: Database },
     { id: 'advanced', labelKey: 'settings.nav.advanced', icon: SlidersHorizontal },
   ];
 
   const onSelect = (id: string) => {
     const el = document.getElementById(id);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      setActive(id);
-    }
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); setActive(id); }
   };
 
   return (
     <aside className="w-56 shrink-0 bg-app-dim border-r border-app-border flex flex-col h-screen sticky top-0">
       <div className="px-5 pt-6 pb-4">
         <div className="flex items-center gap-2.5">
-          <div className="relative size-7 rounded-app-sm bg-app-surface border border-app-border grid place-items-center shine-sm">
-            <span className="text-app-text font-semibold text-[10px] tracking-[-0.02em]">TTP</span>
-            <span
-              aria-hidden
-              className="absolute top-[5px] right-[5px] size-[3px] rounded-full bg-app-accent"
-            />
-          </div>
+          <BrandTile size="sm" />
           <div className="min-w-0">
             <div className="text-[12px] font-semibold text-app-text leading-tight">TTP by AmirKS</div>
             <div className="text-[10px] text-app-faint tabular-nums leading-tight">v{appVersion || '…'}</div>
@@ -1789,7 +1088,7 @@ function SettingsSidebar() {
                   onClick={() => onSelect(it.id)}
                   className={cn(
                     'w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-app-sm text-[12px] font-medium',
-                    'transition-colors duration-100',
+                    'transition-colors duration-hover ease-app-out',
                     isActive
                       ? 'bg-app-surface text-app-text shine-sm'
                       : 'text-app-muted hover:text-app-text hover:bg-app-surface',
@@ -1807,6 +1106,18 @@ function SettingsSidebar() {
           })}
         </ul>
       </nav>
+
+      <div className="border-t border-app-border px-4 py-3 bg-app-bg">
+        <div className="flex items-center justify-between gap-2 text-[11px] text-app-faint">
+          <a href="https://amirks.eu" target="_blank" rel="noopener noreferrer" className="hover:text-app-text transition-colors">
+            amirks.eu
+          </a>
+          <span aria-hidden>·</span>
+          <a href="https://www.linkedin.com/in/amirks/" target="_blank" rel="noopener noreferrer" className="hover:text-app-text transition-colors">
+            LinkedIn
+          </a>
+        </div>
+      </div>
     </aside>
   );
 }

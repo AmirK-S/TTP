@@ -44,7 +44,7 @@ function CopyButton({ text, copiedLabel, copyLabel }: { text: string; copiedLabe
   return (
     <button
       onClick={handleCopy}
-      className="shrink-0 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-400 transition-all hover:bg-white/10 hover:text-white"
+      className="shrink-0 rounded-md border border-black/[0.08] bg-white px-3 py-1.5 text-xs text-zinc-700 transition-all hover:bg-zinc-50 hover:text-zinc-900 dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"
     >
       {copied ? copiedLabel : copyLabel}
     </button>
@@ -89,11 +89,11 @@ export function InstallGuide({ translations, windowsDownloadUrl }: InstallGuideP
       className="relative flex flex-col items-center justify-center px-6 py-32 md:py-48"
     >
       <h2 className="text-heading font-bold tracking-tight">
-        <span className="inline-block bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+        <span className="inline-block bg-gradient-to-r from-zinc-900 to-zinc-500 bg-clip-text text-transparent dark:from-white dark:to-slate-400">
           {t.heading}
         </span>
       </h2>
-      <p className="mt-4 max-w-lg text-center text-body-lg text-slate-400">
+      <p className="mt-4 max-w-lg text-center text-body-lg text-zinc-600 dark:text-slate-400">
         {t.subheading}
       </p>
 
@@ -103,8 +103,8 @@ export function InstallGuide({ translations, windowsDownloadUrl }: InstallGuideP
           onClick={() => setActiveTab("mac")}
           className={`rounded-lg px-5 py-2 text-sm font-medium transition-all ${
             activeTab === "mac"
-              ? "bg-white/10 text-white"
-              : "text-slate-500 hover:text-slate-300"
+              ? "bg-zinc-900 text-white dark:bg-white/10"
+              : "text-zinc-500 hover:text-zinc-900 dark:text-slate-500 dark:hover:text-slate-300"
           }`}
         >
           {t.macTab}
@@ -113,8 +113,8 @@ export function InstallGuide({ translations, windowsDownloadUrl }: InstallGuideP
           onClick={() => setActiveTab("win")}
           className={`rounded-lg px-5 py-2 text-sm font-medium transition-all ${
             activeTab === "win"
-              ? "bg-white/10 text-white"
-              : "text-slate-500 hover:text-slate-300"
+              ? "bg-zinc-900 text-white dark:bg-white/10"
+              : "text-zinc-500 hover:text-zinc-900 dark:text-slate-500 dark:hover:text-slate-300"
           }`}
         >
           {t.winTab}
@@ -125,42 +125,42 @@ export function InstallGuide({ translations, windowsDownloadUrl }: InstallGuideP
       {activeTab === "mac" && (
         <div className="mt-6 w-full max-w-2xl space-y-6">
           {/* Primary: One-liner install */}
-          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.03] p-6">
-            <h3 className="text-sm font-semibold text-white">{t.macOneLineTitle}</h3>
-            <div className="mt-3 flex items-start gap-3 rounded-lg bg-black/40 px-4 py-3">
+          <div className="rounded-xl border border-emerald-600/20 bg-emerald-50/60 p-6 dark:border-emerald-500/20 dark:bg-emerald-500/[0.03]">
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">{t.macOneLineTitle}</h3>
+            <div className="mt-3 flex items-start gap-3 rounded-lg bg-zinc-900 px-4 py-3 dark:bg-black/40">
               <code className="flex-1 overflow-x-auto text-sm text-emerald-400 whitespace-nowrap">
                 {MAC_ONE_LINER}
               </code>
               <CopyButton text={MAC_ONE_LINER} copiedLabel={t.copied} copyLabel={t.clickToCopy} />
             </div>
-            <p className="mt-2 text-xs text-slate-500">{t.macOneLineDesc}</p>
+            <p className="mt-2 text-xs text-zinc-600 dark:text-slate-500">{t.macOneLineDesc}</p>
           </div>
 
           {/* Alternative: no terminal */}
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
-            <h3 className="text-sm font-semibold text-white">{t.macAltTitle}</h3>
-            <ol className="mt-3 space-y-2 text-sm text-slate-400">
+          <div className="rounded-xl border border-black/[0.06] bg-zinc-50/60 p-6 dark:border-white/10 dark:bg-white/[0.02]">
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">{t.macAltTitle}</h3>
+            <ol className="mt-3 space-y-2 text-sm text-zinc-600 dark:text-slate-400">
               <li className="flex gap-3">
-                <span className="shrink-0 font-mono text-slate-600">1.</span>
+                <span className="shrink-0 font-mono text-zinc-400 dark:text-slate-600">1.</span>
                 {t.macAltStep1}
               </li>
               <li className="flex gap-3">
-                <span className="shrink-0 font-mono text-slate-600">2.</span>
+                <span className="shrink-0 font-mono text-zinc-400 dark:text-slate-600">2.</span>
                 {t.macAltStep2}
               </li>
               <li className="flex gap-3">
-                <span className="shrink-0 font-mono text-slate-600">3.</span>
+                <span className="shrink-0 font-mono text-zinc-400 dark:text-slate-600">3.</span>
                 {t.macAltStep3}
               </li>
             </ol>
           </div>
 
           {/* Why explanation */}
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
+          <div className="rounded-xl border border-black/[0.06] bg-zinc-50/60 p-6 dark:border-white/10 dark:bg-white/[0.02]">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-700 dark:text-slate-300">
               {t.whyTitle}
             </h3>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400">
+            <p className="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-slate-400">
               {t.whyText}
             </p>
           </div>
@@ -171,13 +171,13 @@ export function InstallGuide({ translations, windowsDownloadUrl }: InstallGuideP
       {activeTab === "win" && (
         <div className="mt-6 w-full max-w-2xl space-y-6">
           {/* Primary: Download button */}
-          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.03] p-6">
-            <h3 className="text-sm font-semibold text-white">{t.winDownloadTitle}</h3>
+          <div className="rounded-xl border border-emerald-600/20 bg-emerald-50/60 p-6 dark:border-emerald-500/20 dark:bg-emerald-500/[0.03]">
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">{t.winDownloadTitle}</h3>
             <div className="mt-3">
               <a
                 href={windowsDownloadUrl || WINDOWS_FALLBACK_URL}
                 download
-                className="inline-flex items-center gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-6 py-3 text-sm font-semibold text-emerald-400 transition-all hover:bg-emerald-500/20 hover:text-emerald-300"
+                className="inline-flex items-center gap-3 rounded-lg border border-emerald-600/30 bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-sm shadow-emerald-600/20 transition-all hover:bg-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400 dark:shadow-none dark:hover:bg-emerald-500/20 dark:hover:text-emerald-300"
               >
                 {/* Windows icon */}
                 <svg
@@ -190,31 +190,31 @@ export function InstallGuide({ translations, windowsDownloadUrl }: InstallGuideP
                 {t.winDownloadButton}
               </a>
             </div>
-            <p className="mt-2 text-xs text-slate-500">{t.winDownloadDesc}</p>
+            <p className="mt-2 text-xs text-zinc-600 dark:text-slate-500">{t.winDownloadDesc}</p>
           </div>
 
           {/* SmartScreen instructions */}
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
-            <h3 className="text-sm font-semibold text-white">{t.winSmartScreenTitle}</h3>
-            <p className="mt-2 text-sm text-slate-400">{t.winDesc}</p>
-            <ol className="mt-4 space-y-2 text-sm text-slate-400">
+          <div className="rounded-xl border border-black/[0.06] bg-zinc-50/60 p-6 dark:border-white/10 dark:bg-white/[0.02]">
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">{t.winSmartScreenTitle}</h3>
+            <p className="mt-2 text-sm text-zinc-600 dark:text-slate-400">{t.winDesc}</p>
+            <ol className="mt-4 space-y-2 text-sm text-zinc-600 dark:text-slate-400">
               <li className="flex gap-3">
-                <span className="shrink-0 font-mono text-slate-600">1.</span>
+                <span className="shrink-0 font-mono text-zinc-400 dark:text-slate-600">1.</span>
                 {t.winStep1}
               </li>
               <li className="flex gap-3">
-                <span className="shrink-0 font-mono text-slate-600">2.</span>
+                <span className="shrink-0 font-mono text-zinc-400 dark:text-slate-600">2.</span>
                 {t.winStep2}
               </li>
             </ol>
           </div>
 
           {/* Why explanation */}
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
+          <div className="rounded-xl border border-black/[0.06] bg-zinc-50/60 p-6 dark:border-white/10 dark:bg-white/[0.02]">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-700 dark:text-slate-300">
               {t.whyTitle}
             </h3>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400">
+            <p className="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-slate-400">
               {t.whyText}
             </p>
           </div>

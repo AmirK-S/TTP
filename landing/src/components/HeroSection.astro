@@ -18,13 +18,13 @@ const t = useTranslations(lang);
   <!-- Content -->
   <div class="relative z-10 mx-auto flex max-w-4xl flex-col items-center text-center">
     <!-- Headline -->
-    <h1 class="text-display font-extrabold tracking-tighter text-white">
+    <h1 class="text-display font-extrabold tracking-tighter text-zinc-900 dark:text-white">
       <span data-hero-line1>{t('hero.headline')}</span><br />
-      <span data-hero-line2 class="text-slate-300">{t('hero.headlineAccent')}</span>
+      <span data-hero-line2 class="text-zinc-500 dark:text-slate-300">{t('hero.headlineAccent')}</span>
     </h1>
 
     <!-- Subheadline -->
-    <p class="mt-6 max-w-2xl text-body-lg text-slate-400">
+    <p class="mt-6 max-w-2xl text-body-lg text-zinc-600 dark:text-slate-400">
       {t('hero.subheadline')}
     </p>
 
@@ -36,9 +36,9 @@ const t = useTranslations(lang);
       >
         <ShimmerButton
           client:load
-          className="shadow-2xl px-8 py-4"
-          shimmerColor="#a78bfa"
-          background="rgba(17, 24, 39, 0.8)"
+          className="shadow-xl shadow-blue-600/20 px-8 py-4"
+          shimmerColor="#ffffff"
+          background="#2563eb"
         >
           <span class="whitespace-pre-wrap text-center text-base font-semibold leading-none tracking-tight text-white sm:text-lg">
             {t('hero.cta')}
@@ -48,17 +48,17 @@ const t = useTranslations(lang);
     </div>
 
     <!-- Social proof line -->
-    <p class="mt-4 text-caption text-slate-500">
+    <p class="mt-4 text-caption text-zinc-500 dark:text-slate-500">
       {t('hero.socialProof')}
     </p>
 
     <!-- Whisper note -->
-    <p class="mt-1.5 text-xs italic text-slate-600">
+    <p class="mt-1.5 text-xs italic text-zinc-400 dark:text-slate-600">
       {t('hero.whisperNote')}
     </p>
 
     <!-- Trust bar -->
-    <p class="mt-6 text-xs text-slate-500 tracking-wide">
+    <p class="mt-6 text-xs text-zinc-500 dark:text-slate-500 tracking-wide">
       {t('hero.trustBar')}
     </p>
 

@@ -46,8 +46,8 @@ export function DownloadButtons({ downloadLinks, translations, locale }: Downloa
         download
         className={`group flex items-center gap-3 rounded-xl border px-6 py-4 transition-all ${
           isMacHighlighted
-            ? "border-white/20 bg-white/10 text-white shadow-lg shadow-white/5 hover:bg-white/15"
-            : "border-white/10 bg-transparent text-slate-400 hover:border-white/20 hover:text-white"
+            ? "border-zinc-900 bg-zinc-900 text-white shadow-md shadow-black/[0.06] hover:bg-zinc-800 dark:border-white/20 dark:bg-white/10 dark:shadow-white/5 dark:hover:bg-white/15"
+            : "border-black/[0.08] bg-white text-zinc-600 hover:border-black/[0.16] hover:text-zinc-900 dark:border-white/10 dark:bg-transparent dark:text-slate-400 dark:hover:border-white/20 dark:hover:text-white"
         }`}
       >
         {/* Apple icon */}
@@ -72,8 +72,8 @@ export function DownloadButtons({ downloadLinks, translations, locale }: Downloa
         download
         className={`group flex items-center gap-3 rounded-xl border px-6 py-4 transition-all ${
           isWinHighlighted
-            ? "border-white/20 bg-white/10 text-white shadow-lg shadow-white/5 hover:bg-white/15"
-            : "border-white/10 bg-transparent text-slate-400 hover:border-white/20 hover:text-white"
+            ? "border-zinc-900 bg-zinc-900 text-white shadow-md shadow-black/[0.06] hover:bg-zinc-800 dark:border-white/20 dark:bg-white/10 dark:shadow-white/5 dark:hover:bg-white/15"
+            : "border-black/[0.08] bg-white text-zinc-600 hover:border-black/[0.16] hover:text-zinc-900 dark:border-white/10 dark:bg-transparent dark:text-slate-400 dark:hover:border-white/20 dark:hover:text-white"
         }`}
       >
         {/* Windows icon */}

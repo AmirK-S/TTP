@@ -11,8 +11,13 @@
 // than expose another IPC command. Release tag is baked in via Vite
 // (see vite.config.ts) so JS events line up with Rust events on the same
 // Sentry release.
+//
+// IMPORTANT: `@sentry/react` is NEVER statically imported here. It ships
+// ~80KB and would land in every window's bundle — including the pill, which
+// must stay lean. Instead we dynamically import the SDK inside
+// `initSentryIfConsented`, so only consented-and-eligible windows pay the
+// cost, and the pill never pulls it in at all.
 
-import * as Sentry from '@sentry/react';
 import { safeInvoke } from './safeInvoke';
 
 // Same DSN as src-tauri/src/telemetry/consent.rs. Public, write-only.
@@ -41,16 +46,20 @@ function isSensitiveKey(key: string): boolean {
  * email/IP on user, sensitive `extra` keys). Regex-level scrubbing of
  * file paths and Groq keys inside exception messages is left to the
  * Rust side — JS exceptions don't usually carry those.
+ *
+ * Typed as `any` since we no longer import the Sentry types statically;
+ * the runtime shape matches `Sentry.ErrorEvent`.
  */
-function scrubEvent(event: Sentry.ErrorEvent): Sentry.ErrorEvent | null {
-  if (event.request?.cookies) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function scrubEvent(event: any): any {
+  if (event?.request?.cookies) {
     delete event.request.cookies;
   }
-  if (event.user) {
+  if (event?.user) {
     delete event.user.email;
     delete event.user.ip_address;
   }
-  if (event.extra) {
+  if (event?.extra) {
     for (const key of Object.keys(event.extra)) {
       if (isSensitiveKey(key)) {
         delete event.extra[key];
@@ -68,6 +77,10 @@ let initStarted = false;
  * Safe to call multiple times — guarded by `initStarted` and Sentry's
  * own internal hub guard. Never throws: any failure is logged and
  * swallowed, since telemetry must never break the app.
+ *
+ * Dynamically imports `@sentry/react` so the SDK only lands in the bundle
+ * of windows that actually call this (Settings/Onboarding). The pill
+ * window never calls it, so it never pays the ~80KB cost.
  */
 export async function initSentryIfConsented(): Promise<void> {
   if (initStarted) return;
@@ -76,6 +89,8 @@ export async function initSentryIfConsented(): Promise<void> {
   try {
     const settings = await safeInvoke<SettingsSnapshot>('get_settings');
     if (!settings?.telemetry_enabled) return;
+
+    const Sentry = await import('@sentry/react');
 
     Sentry.init({
       dsn: SENTRY_DSN,
@@ -96,5 +111,17 @@ export async function initSentryIfConsented(): Promise<void> {
   }
 }
 
-/** Re-export the SDK's ErrorBoundary so callers don't import @sentry/react directly. */
-export const ErrorBoundary = Sentry.ErrorBoundary;
+/**
+ * Best-effort capture for errors caught by our in-house ErrorBoundary.
+ * Lazily pulls in `@sentry/react` only if telemetry was actually initialised,
+ * keeping the cost off the cold-start path. Never throws.
+ */
+export async function captureExceptionIfActive(error: unknown): Promise<void> {
+  if (!initStarted) return;
+  try {
+    const Sentry = await import('@sentry/react');
+    Sentry.captureException(error);
+  } catch {
+    // Telemetry failures must never break the app.
+  }
+}

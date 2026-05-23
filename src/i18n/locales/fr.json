@@ -14,54 +14,55 @@
     "later": "Plus tard",
     "getStarted": "Commencer",
     "openSettings": "Ouvrir les Réglages",
-    "active": "Active"
+    "active": "Active",
+    "continue": "Continuer"
   },
   "windowTitle": {
     "main": "TTP",
-    "setup": "TTP by AmirKS — Configuration",
+    "setup": "TTP by AmirKS · Configuration",
     "onboarding": "Bienvenue dans Talk To Paste",
-    "settings": "TTP by AmirKS — Paramètres"
+    "settings": "TTP by AmirKS · Paramètres"
   },
   "error": {
     "audio_file_not_found": "Fichier audio introuvable",
-    "audio_corrupt": "L'enregistrement est corrompu — réessaie",
+    "audio_corrupt": "L'enregistrement est corrompu. Réessaie.",
     "audio_too_large": "Enregistrement trop long ({{mb}} Mo). Max ~14 min.",
-    "compression_failed": "Échec de la compression audio — utilisation de l'original",
+    "compression_failed": "Compression audio impossible. J'envoie l'original.",
     "no_api_key": "Aucune clé API Groq configurée",
-    "transcription_rate_limited": "Limite atteinte côté Groq — attends quelques secondes et réessaie",
-    "transcription_invalid_key": "Clé API Groq invalide — vérifie dans Paramètres → Transcription",
-    "transcription_too_long": "Enregistrement trop long — fais un enregistrement plus court",
+    "transcription_rate_limited": "Groq te limite. Attends quelques secondes et réessaie.",
+    "transcription_invalid_key": "Clé API Groq invalide. Vérifie dans Paramètres → Transcription.",
+    "transcription_too_long": "Enregistrement trop long. Fais-en un plus court.",
     "transcription_generic": "Échec de la transcription : {{error}}",
-    "no_speech": "Aucune parole détectée",
-    "polish_unavailable": "Correction indisponible — collage du texte brut",
+    "no_speech": "Je n'ai rien capté. Micro coupé ?",
+    "polish_unavailable": "Correction indisponible. Je colle le texte brut.",
     "clipboard_write_failed": "Échec de l'écriture dans le presse-papiers",
     "enable_accessibility": "Active l'Accessibilité pour le collage automatique",
-    "paste_failed": "Échec du collage — fais Cmd+V pour coller",
-    "rate_limit_exceeded": "Trop de transcriptions — attends quelques secondes avant de réessayer",
-    "api_timeout": "Délai d'attente dépassé — vérifie ta connexion internet",
+    "paste_failed": "Collage raté. Fais Cmd+V.",
+    "rate_limit_exceeded": "Doucement. Attends quelques secondes et réessaie.",
+    "api_timeout": "Groq n'a pas répondu à temps. Wi-Fi capricieux ?",
     "api_network": "Erreur réseau : {{error}}",
     "api_invalid_key": "Clé API invalide",
-    "api_forbidden": "Cette clé API n'a pas les droits — vérifie ton compte Groq",
+    "api_forbidden": "Cette clé Groq n'a pas les droits. Vérifie ton compte.",
     "api_generic": "Erreur API Groq ({{status}}) : {{body}}",
-    "microphone_permission_denied": "Accès au micro refusé — active-le dans les Réglages Système",
+    "microphone_permission_denied": "Micro bloqué. Active-le dans les Réglages Système.",
     "microphone_generic": "Erreur micro : {{error}}",
-    "audio_stream_interrupted": "Le micro a été pris par une autre app — réessaie",
-    "input_monitoring_required": "Permission Input Monitoring requise pour la touche Fn. Ouvre Réglages Système → Confidentialité et sécurité → Input Monitoring, active TTP, puis redémarre l'app.",
+    "audio_stream_interrupted": "Une autre app a pris le micro. Réessaie.",
+    "input_monitoring_required": "Input Monitoring requis pour la touche Fn. Ouvre Réglages Système → Confidentialité et sécurité → Input Monitoring, active TTP, puis redémarre l'app.",
     "license_key_empty": "La clé de licence ne peut pas être vide",
     "license_none_to_deactivate": "Aucune licence à désactiver",
-    "license_activation_failed": "Échec de l'activation — réessaie ou vérifie ta clé",
-    "license_deactivation_failed": "Échec de la désactivation — réessaie",
-    "license_validation_failed": "Échec de la validation — vérifie ta connexion internet",
-    "license_server_error": "Serveur de licence injoignable — réessaie plus tard"
+    "license_activation_failed": "Activation échouée. Réessaie ou vérifie ta clé.",
+    "license_deactivation_failed": "Désactivation échouée. Réessaie.",
+    "license_validation_failed": "Validation échouée. Vérifie ta connexion.",
+    "license_server_error": "Serveur de licence injoignable. Réessaie plus tard."
   },
   "progress": {
     "transcribing": "Transcription…",
-    "polishing": "Traitement…"
+    "polishing": "Polissage…"
   },
   "permission": {
-    "microphone_granted": "Accès au micro autorisé. Tout est bon !",
-    "microphone_denied": "Accès au micro refusé. Active-le dans les Réglages Système.",
-    "microphone_undetermined": "L'autorisation du micro n'a pas encore été demandée."
+    "microphone_granted": "Micro prêt.",
+    "microphone_denied": "Micro bloqué. Active-le dans les Réglages Système.",
+    "microphone_undetermined": "macOS ne t'a pas encore demandé pour le micro."
   },
   "tray": {
     "startRecording": "Démarrer l'enregistrement",
@@ -71,18 +72,18 @@
     "fixAccessibility": "Fix Accessibility permission",
     "fixInputMonitoring": "Fix Input Monitoring permission",
     "installUpdate": "Install update (v{{version}})",
-    "tooltip": "TTP by AmirKS — Talk To Paste"
+    "tooltip": "TTP by AmirKS · Talk To Paste"
   },
   "notification": {
     "appName": "TTP",
-    "recordingTooLong": "Enregistrement trop long — max ~14 minutes",
+    "recordingTooLong": "Enregistrement trop long. Max ~14 minutes.",
     "transcriptionFailed": "Échec de la transcription",
-    "noSpeech": "Aucune parole détectée",
-    "polishLimitReached": "Limite Correction IA atteinte ({{used}}/{{limit}} ce mois-ci). Passe à TTP Pro pour profiter de l'illimité.",
+    "noSpeech": "Je n'ai rien capté",
+    "polishLimitReached": "Limite Correction IA atteinte ({{used}}/{{limit}} ce mois-ci). 17€ une fois et c'est à vie avec TTP Pro.",
     "clipboardFailed": "Échec de la copie dans le presse-papiers",
     "addToAccessibility": "Ajoute TTP dans Accessibilité, puis colle avec Cmd+V",
-    "textCopied": "Texte copié — colle avec Cmd+V",
-    "accessibilityRegrantTitle": "TTP — Réautoriser l'Accessibilité",
+    "textCopied": "Texte copié. Colle avec Cmd+V.",
+    "accessibilityRegrantTitle": "TTP · Réautoriser l'Accessibilité",
     "accessibilityRegrantBody": "Après mise à jour : ouvre Réglages Système → Accessibilité, retire TTP (−), puis rajoute-le (+) et sélectionne TTP."
   },
   "dialog": {
@@ -107,36 +108,32 @@
       "confirm": "Désactiver"
     },
     "downgradeBeta": {
+      "title": "Quitter la version beta ?",
       "message": "Tu es actuellement sur une version beta qui peut être plus récente que la dernière version stable. Tu n'auras pas de mises à jour jusqu'à une nouvelle version stable. Continuer ?"
     }
   },
   "settings": {
     "nav": {
-      "usage": "Activité",
-      "account": "Compte",
+      "general": "Général",
+      "capture": "Capture",
       "pro": "TTP Pro",
-      "recording": "Enregistrement",
-      "transcription": "Transcription",
-      "dictionary": "Dictionnaire",
-      "history": "Historique",
-      "updates": "Mises à jour",
-      "language": "Langue",
+      "data": "Données",
       "advanced": "Avancé"
     },
     "about": {
-      "subtitle": "Talk To Paste — v{{version}}",
-      "description": "Merci d'utiliser TTP ! C'est une app gratuite et open-source que j'ai construite pour rendre la dictée vocale ultra fluide. Tu appuies sur ton raccourci, tu parles, et tes mots sont transcrits et collés instantanément — propulsé par l'IA rapide de Groq, avec une correction intelligente qui retire les mots de remplissage et fixe la grammaire. TTP apprend aussi de tes corrections au fil du temps.",
+      "subtitle": "Talk To Paste · v{{version}}",
+      "description": "TTP est une app gratuite et open-source que j'ai construite parce que j'en avais marre de taper. Tu appuies sur ton raccourci, tu parles, tes mots arrivent là où tu es. Groq transcrit. Un passage de polissage optionnel enlève les 'euh'.",
       "author": "Conçu par Amir KELLOU--SIDHOUM. Si tu trouves ça utile, n'hésite pas à partager ou à me contacter !",
       "privacyLabel": "Confidentialité :",
-      "privacyBody": "TTP ne collecte absolument aucune de tes données. Ta clé API est stockée localement sur ta machine uniquement. L'audio est envoyé directement depuis ton appareil vers les serveurs de Groq pour la transcription — je n'y ai jamais accès, je ne vois ni ne stocke quoi que ce soit. Idem pour la Correction IA : ton texte va directement à Groq, pas par moi. Tout reste entre toi et ton fournisseur d'API."
+      "privacyBody": "TTP ne collecte aucune de tes données. Ta clé API est stockée localement sur ta machine. L'audio est envoyé directement depuis ton appareil vers les serveurs de Groq pour la transcription. Je n'y ai jamais accès, je ne vois ni ne stocke rien. Idem pour la Correction IA : ton texte va directement à Groq, pas par moi. Tout reste entre toi et ton fournisseur d'API."
     },
     "pro": {
       "title": "TTP Pro",
       "badgeActive": "Active",
-      "badgeTrial": "Essai — {{days}} j restants",
+      "badgeTrial": "Essai · {{days}} j restants",
       "refreshTitle": "Revalider avec le serveur",
-      "descTrial": "Tu es en essai Pro de {{days}} jours. Profite de la Correction IA, du dictionnaire et de l'historique illimités. Après l'essai, active une licence pour les garder.",
-      "descFree": "Débloque la Correction IA illimitée, les entrées de dictionnaire illimitées, l'historique illimité et le support prioritaire. Paiement unique, licence à vie.",
+      "descTrial": "Tu es en essai Pro de {{days}} jours. Correction IA, dictionnaire et historique illimités. Après l'essai, active une licence pour les garder.",
+      "descFree": "17€ une fois, à vie. Correction IA, entrées de dictionnaire, historique illimités, et support prioritaire. Pas d'abonnement.",
       "usagePolish": "Correction IA (ce mois-ci)",
       "usageDictionary": "Entrées du dictionnaire",
       "usageHistory": "Entrées de l'historique",
@@ -154,7 +151,7 @@
       "deactivateHelp": "Désactiver libère un slot d'activation pour utiliser cette licence sur un autre appareil."
     },
     "recordingTrigger": {
-      "title": "Déclencheur d'enregistrement",
+      "title": "Raccourci",
       "desc": "Maintiens pour enregistrer, relâche pour arrêter. Double-tap pour basculer en mode mains libres.",
       "optionFn": "Fn",
       "optionAltSpace": "⌥ Espace",
@@ -170,33 +167,36 @@
       "successUpdated": "Raccourci mis à jour !"
     },
     "recordingMode": {
-      "title": "Mode d'enregistrement",
-      "handsFreeLabel": "Mode mains libres (Toggle)",
-      "handsFreeDesc": "Quand activé, appuie une fois pour démarrer, appuie de nouveau pour arrêter",
+      "title": "Comportement",
+      "handsFreeLabel": "Mode mains libres (bascule)",
+      "handsFreeDesc": "Appuie une fois pour démarrer, appuie de nouveau pour arrêter.",
       "hidePillLabel": "Masquer la pill quand inactive",
-      "hidePillDesc": "Masque l'indicateur d'enregistrement quand tu n'enregistres pas",
+      "hidePillDesc": "N'affiche l'indicateur que pendant un enregistrement.",
       "launchStartupLabel": "Lancer au démarrage",
-      "launchStartupDesc": "Ouvre TTP automatiquement à la connexion"
+      "launchStartupDesc": "Ouvre TTP automatiquement à la connexion."
     },
     "transcription": {
       "title": "Transcription",
       "groqLabel": "Clé API Groq",
       "keyConfigured": "✓ Clé configurée",
       "keyPlaceholder": "gsk_…",
-      "keySaved": "Clé API validée et enregistrée !",
+      "keySaved": "Clé API validée et enregistrée.",
       "getKeyAt": "Récupère ta clé gratuite sur",
       "polishLabel": "Correction IA",
-      "polishDesc": "Nettoie les transcriptions avec l'IA (retire les hésitations, corrige la grammaire)"
+      "polishDesc": "Retire les hésitations et corrige la grammaire avec l'IA."
     },
     "privacy": {
-      "title": "Confidentialité et télémétrie",
+      "title": "Confidentialité",
       "helpLabel": "Aide à améliorer TTP",
-      "helpDesc": "Envoie des rapports de crash anonymes et des statistiques d'utilisation",
-      "restartHint": "Les changements prennent effet au redémarrage",
+      "helpDesc": "Envoie des rapports de crash anonymes et des stats d'usage.",
+      "restartHint": "Les changements prennent effet au redémarrage.",
       "whatSentLabel": "Ce qui est envoyé :",
       "whatSentBody": "Rapports de crash (type d'erreur, OS, version de l'app, étape du pipeline) et événements d'usage anonymes (compteurs d'utilisation des fonctionnalités).",
       "neverSentLabel": "Jamais envoyé :",
       "neverSentBody": "Le texte de tes transcriptions, tes clés API, les chemins de fichiers, ou aucune donnée personnelle."
+    },
+    "startup": {
+      "title": "Démarrage"
     },
     "dictionary": {
       "title": "Dictionnaire",
@@ -204,8 +204,9 @@
       "labelCorrection": "Correction",
       "placeholderMisheard": "grok",
       "placeholderCorrection": "Groq",
-      "limitReached": "Limite du tier gratuit atteinte ({{limit}} entrées). Passe à TTP Pro pour profiter de l'illimité.",
-      "emptyState": "Pas encore de corrections",
+      "limitReached": "Limite du tier gratuit atteinte ({{limit}} entrées). 17€ une fois pour l'illimité avec TTP Pro.",
+      "emptyTitle": "Aucune correction",
+      "emptyState": "Tape un mot mal entendu au-dessus et la correction que TTP doit utiliser à la place.",
       "tableOriginal": "Original",
       "tableCorrection": "Correction",
       "bothRequired": "Les deux champs sont requis",
@@ -213,18 +214,20 @@
       "copyTooltip": "Copier dans le presse-papiers"
     },
     "history": {
-      "title": "Historique des transcriptions",
+      "title": "Historique",
       "clearButton": "Effacer l'historique",
       "saveLabel": "Enregistrer les transcriptions",
-      "saveDesc": "Quand désactivé, les nouvelles transcriptions ne sont pas sauvegardées dans l'historique",
-      "emptyEnabled": "Pas encore de transcriptions",
-      "emptyDisabled": "L'historique est désactivé"
+      "saveDesc": "Quand désactivé, les nouvelles transcriptions ne sont pas sauvegardées.",
+      "emptyTitle": "Rien pour l'instant",
+      "emptyEnabled": "Tes transcriptions apparaîtront ici.",
+      "emptyDisabled": "Active « Enregistrer les transcriptions » pour garder un historique."
     },
     "analytics": {
       "title": "Tes statistiques",
-      "desc": "Stats locales calculées depuis ton historique de transcription. Rien ne sort de ta machine.",
+      "desc": "Stats locales calculées depuis ton historique. Rien ne sort de ta machine.",
       "loading": "Chargement…",
-      "empty": "Utilise TTP pour voir tes stats ici.",
+      "emptyTitle": "Aucune stat",
+      "empty": "Les chiffres apparaîtront après ta première dictée.",
       "thisWeek": "Semaine",
       "thisMonth": "Mois",
       "allTime": "Total",
@@ -234,23 +237,23 @@
       "chars": "caractères"
     },
     "updateChannel": {
-      "title": "Canal de mise à jour",
+      "title": "Canal de version",
       "betaBadge": "Beta",
       "labelBeta": "Beta",
       "labelStable": "Stable",
-      "descBeta": "Tu testes les nouvelles versions avant la sortie publique",
-      "descStable": "Tu reçois les versions stables et fiables",
+      "descBeta": "Tu testes les nouvelles versions avant la sortie publique.",
+      "descStable": "Tu reçois uniquement les versions stables et fiables.",
       "warning": "Les versions beta peuvent contenir des bugs. Tu pourras revenir en stable à tout moment."
     },
     "updates": {
       "title": "Mises à jour",
       "checkButton": "Vérifier les mises à jour",
-      "upToDate": "Tu es à jour ! (v{{version}})",
-      "checking": "Recherche de mises à jour…",
+      "upToDate": "Tu es à jour. (v{{version}})",
+      "checking": "Recherche…",
       "available": "Mise à jour disponible : v{{version}}",
       "downloadInstall": "Télécharger et installer",
       "downloading": "Téléchargement… {{progress}}%",
-      "ready": "Mise à jour téléchargée ! Redémarre pour l'appliquer.",
+      "ready": "Mise à jour téléchargée. Redémarre pour l'appliquer.",
       "errorDefault": "Impossible de vérifier les mises à jour",
       "currentVersion": "Version actuelle : v{{version}}"
     },
@@ -261,7 +264,7 @@
     },
     "language": {
       "title": "Langue",
-      "desc": "Choisis la langue utilisée dans TTP — affecte toutes les fenêtres et le menu de la barre.",
+      "desc": "Choisis la langue utilisée dans TTP. Affecte toutes les fenêtres et le menu de la barre.",
       "optionSystem": "Système",
       "optionEnglish": "English",
       "optionFrench": "Français"
@@ -280,7 +283,7 @@
       "microphone": "Indispensable pour capturer ta voix pour la transcription.",
       "accessibility": "Permet à TTP de coller la transcription dans ton app active. Sans ça, le texte n'arrive que dans le presse-papiers (à toi de faire Cmd+V).",
       "inputMonitoring": "Permet à TTP de détecter quand tu appuies sur la touche Fn / Globe pour le push-to-talk. Sans ça, seul le mode raccourci clavier marche.",
-      "apikey": "Le tier gratuit de Groq couvre des dizaines de milliers de transcriptions par mois — tu ne verras jamais de facture à l'usage normal."
+      "apikey": "Le tier gratuit de Groq couvre des dizaines de milliers de transcriptions par mois. Tu ne verras pas de facture à l'usage normal."
     },
     "apiKey": {
       "saved": "Clé enregistrée",
@@ -294,7 +297,7 @@
     },
     "status": {
       "enabled": "Activé",
-      "denied": "Refusé — clique pour ouvrir les Réglages",
+      "denied": "Refusé. Clique pour ouvrir les Réglages.",
       "deniedShort": "Refusé",
       "notEnabled": "Non activé"
     },
@@ -305,15 +308,22 @@
     },
     "trial": {
       "title": "Tu es prêt",
-      "subtitle": "Ton essai TTP Pro de 7 jours vient de démarrer. Aucune carte requise — le tier gratuit prend le relais automatiquement après.",
+      "subtitle": "Ton essai TTP Pro de 7 jours vient de démarrer. Aucune carte requise. Le tier gratuit prend le relais automatiquement après.",
+      "timeLeft": "{{days}}j {{hours}}h {{minutes}}m restants",
       "perksHeader": "Inclus pendant 7 jours",
       "perkPolish": "Correction AI Polish illimitée sur chaque transcription",
       "perkDictionary": "Dictionnaire perso jusqu'à 500 entrées",
       "perkHistory": "Historique complet de chaque transcription, cherchable",
-      "fallback": "Après l'essai, TTP continue de marcher — le tier gratuit couvre la plupart des usages quotidiens.",
-      "upgradeTitle": "Garde Pro à vie — 17€ une fois",
-      "upgradeSubtitle": "Correction, dictionnaire et historique illimités. Aucun abonnement.",
-      "upgradeCta": "Upgrader"
+      "fallback": "Après l'essai, TTP continue de marcher. Le tier gratuit couvre la plupart des usages quotidiens.",
+      "upgradeTitle": "Garde Pro à vie pour 17€",
+      "upgradeSubtitle": "Un paiement unique, à vie. Correction, dictionnaire et historique illimités.",
+      "upgradeCta": "Passer Pro pour 17€"
+    },
+    "whereToFind": {
+      "title": "TTP continue de tourner dans ta barre de menu.",
+      "menubar": "Le pill est à un raccourci. Clique l'icône dans la barre de menu pour rouvrir Paramètres.",
+      "spotlight": "Ou cherche \"TTP\" dans Spotlight (⌘Espace).",
+      "closeReassurance": "Ferme cette fenêtre avec ×. TTP reste actif."
     },
     "cta": {
       "getStarted": "Commencer",
@@ -326,14 +336,14 @@
       "next": "Suivant",
       "finish": "Terminer",
       "welcomeTitle": "Bienvenue dans Talk To Paste",
-      "welcomeSubtitle": "Voix en entrée, texte en sortie — partout sur ton Mac.",
-      "welcomeBullet1": "Maintiens un raccourci, parle naturellement — TTP transcrit et colle dans l'app active.",
+      "welcomeSubtitle": "Voix en entrée, texte en sortie, partout sur ton Mac.",
+      "welcomeBullet1": "Maintiens un raccourci et parle. TTP transcrit et colle dans l'app active.",
       "welcomeBullet2": "Vit dans la barre de menus. Aucune fenêtre à gérer, aucune icône dans le dock.",
-      "welcomeBullet3": "Reste en local — ta voix n'est envoyée qu'à Groq pour la transcription.",
+      "welcomeBullet3": "Ta voix part chez Groq pour la transcription. Rien d'autre ne quitte ton Mac.",
       "permissionsTitle": "Autoriser les accès",
       "permissionsSubtitle": "TTP a besoin de ces permissions macOS pour enregistrer et coller. On t'amène directement au bon panneau des Réglages.",
       "apiKeyTitle": "Connecter à Groq",
-      "apiKeySubtitle": "API de transcription gratuite — le tier gratuit de Groq couvre des dizaines de milliers de dictées par mois.",
+      "apiKeySubtitle": "API de transcription gratuite. Le tier gratuit de Groq couvre des dizaines de milliers de dictées par mois.",
       "stepIndicatorLabel": "Étape {{current}} sur {{total}}"
     }
   },
@@ -351,7 +361,7 @@
       "stepCreate": "Clique sur « API Keys » → « Create API Key »",
       "stepCopy": "Copie la clé qui commence par",
       "stepCopySuffix": "et colle-la ci-dessous",
-      "helpFreeTier": "Le tier gratuit de Groq couvre des dizaines de milliers de transcriptions par mois — tu ne verras jamais de facture à l'usage normal.",
+      "helpFreeTier": "Le tier gratuit de Groq couvre des dizaines de milliers de transcriptions par mois. Tu ne verras pas de facture à l'usage normal.",
       "errorRequired": "La clé API Groq est requise",
       "errorFormat": "La clé API Groq doit commencer par gsk_"
     }
@@ -359,7 +369,7 @@
   "floatingBar": {
     "tutorialPrefix": "Maintiens",
     "tutorialSuffix": "pour dicter",
-    "errorFallback": "Erreur",
+    "errorFallback": "Quelque chose a cassé",
     "statusTranscribing": "Transcription…"
   },
   "permissionBanner": {
@@ -368,7 +378,7 @@
   },
   "whatsNew": {
     "title": "Nouveautés de la v{{version}}",
-    "subtitle": "TTP a été mis à jour !",
+    "subtitle": "TTP a été mis à jour.",
     "dismiss": "Compris"
   }
 }

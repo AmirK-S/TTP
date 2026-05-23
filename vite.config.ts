@@ -28,6 +28,12 @@ export default defineConfig(async () => ({
         manualChunks: {
           tauri: ["@tauri-apps/api"],
           lucide: ["lucide-react"],
+          // Force @sentry/react into its own chunk so that:
+          //  1. It only loads when initSentryIfConsented() resolves the dynamic
+          //     import (i.e. telemetry-opted-in Settings/Onboarding windows).
+          //  2. The pill window's static bundle stays SDK-free.
+          //  3. Repeat visits to telemetry-bearing windows hit the same cached chunk.
+          sentry: ["@sentry/react"],
         },
       },
     },

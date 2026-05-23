@@ -442,7 +442,11 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
-        ));
+        ))
+        // Restores Settings window position + size across launches.
+        // Fixed-size windows (resizable=false) ignore stored dimensions but
+        // still get their position restored.
+        .plugin(tauri_plugin_window_state::Builder::default().build());
 
     builder
         .manage(Mutex::new(AppState::default()))
@@ -558,6 +562,19 @@ pub fn run() {
             if tray::should_show_pill(app.handle()) {
                 tray::show_pill(app.handle());
             }
+
+            // Pre-warm the Groq TLS connection so the first push-to-talk after
+            // launch doesn't pay the full TCP+TLS handshake (~300-600ms on the
+            // user's RTT). Fire-and-forget HEAD into the shared HTTP client's
+            // pool — when the user records, the first real upload reuses this
+            // warm connection. Placed near the end of setup so it can't block
+            // any user-facing work (keychain probes, AX, tray, onboarding).
+            tauri::async_runtime::spawn(async {
+                let _ = http_client::shared()
+                    .head("https://api.groq.com")
+                    .send()
+                    .await;
+            });
 
             // Check if this is the first launch
             let is_first = permissions::is_first_launch();

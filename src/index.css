@@ -204,26 +204,47 @@ body {
   background-repeat: repeat;
 }
 
-/* Custom focus rings — 2px tinted accent, 2px offset from the element.
-   Falls back gracefully on dark surfaces because we add an inset spacer
-   ring in the canvas color before the accent ring. Same pattern Linear and
-   Raycast use. */
+/* Custom focus rings — double box-shadow so the ring follows the element's
+   actual border-radius (CSS `outline` ignores radius on most browsers, so
+   rounded buttons end up with a rectangular halo). Inner 2px is the canvas
+   color (spacer), outer 2px is the accent. Scoped to actually interactive
+   elements for perf + correctness. Same pattern Linear and Raycast use. */
 *:focus { outline: none; }
-*:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: var(--radius-app-xs);
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible,
+[role="switch"]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px var(--accent);
 }
 
-/* Custom scrollbar — 6px thin, tinted. macOS draws overlay scrollbars by
-   default; this kicks in for mouse users + non-overlay surfaces. */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+/* Custom scrollbar — overlay-style fade. macOS native scrollbars fade in
+   only when scrolling/hovering the surface; we mimic that idiom: thumb is
+   transparent at rest, materializes on hover of the scroll container, and
+   gets a stronger tint when the user actually points at the thumb. */
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
+  background: transparent;
   border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 150ms var(--ease-app-out);
 }
-::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+*:hover::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+  background-clip: padding-box;
+}
 
 /* ----------------------------------------------------------------------------
    Animations
@@ -289,3 +310,68 @@ body {
 .text-display-sm { font-size: 20px; line-height: 1.20; letter-spacing: -0.016em; font-weight: 600; }
 .text-display-md { font-size: 24px; line-height: 1.15; letter-spacing: -0.022em; font-weight: 600; }
 .text-display-lg { font-size: 32px; line-height: 1.10; letter-spacing: -0.028em; font-weight: 600; }
+
+/* ----------------------------------------------------------------------------
+   Surface-specific entrance animations.
+
+   Single `app-fade-up` (8px Y) is too uniform — Linear / Raycast use
+   different amplitudes per surface kind: banners drop from above, modals
+   scale up from 94%, popovers pop with a tiny overshoot. Pairs with the
+   spring easing token for the elastic ones.
+   ------------------------------------------------------------------------- */
+
+@keyframes app-banner-in {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes app-modal-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes app-pop {
+  0% { opacity: 0; transform: scale(0.85); }
+  60% { opacity: 1; transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+
+.anim-banner-in { animation: app-banner-in 0.20s var(--ease-app-out) both; }
+.anim-modal-in { animation: app-modal-in 0.24s var(--ease-app-spring) both; }
+.anim-pop { animation: app-pop 0.30s var(--ease-app-spring) both; }
+
+/* Shake — used by FloatingBar error state. Short, low-amplitude (max 2px)
+   so it reads as "no" rather than "earthquake". */
+@keyframes app-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-2px); }
+  40% { transform: translateX(2px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(1px); }
+}
+.anim-shake { animation: app-shake 0.32s var(--ease-app-out); }
+
+/* ----------------------------------------------------------------------------
+   Motion utility classes — expose tokens to consumers so component code
+   doesn't have to repeat `transition-timing-function: var(--ease-app-out)`
+   on every hover/press surface.
+   ------------------------------------------------------------------------- */
+
+.ease-app-out { transition-timing-function: var(--ease-app-out); }
+.ease-app-spring { transition-timing-function: var(--ease-app-spring); }
+.duration-press { transition-duration: 75ms; }
+.duration-hover { transition-duration: 150ms; }
+.duration-modal { transition-duration: 220ms; }
+
+/* ----------------------------------------------------------------------------
+   Reduced motion — non-negotiable for vestibular-disorder users. Kills
+   animation duration + transition duration globally; loops collapse to a
+   single iteration so spinners still show their final frame.
+   ------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

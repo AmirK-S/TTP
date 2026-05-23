@@ -35,11 +35,11 @@ export function DownloadSection({ downloadLinks, totalDownloads, translations, l
     >
       {/* Section heading */}
       <h2 className="text-heading font-bold tracking-tight">
-        <span className="inline-block bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+        <span className="inline-block bg-gradient-to-r from-zinc-900 to-zinc-500 bg-clip-text text-transparent dark:from-white dark:to-slate-400">
           {heading}
         </span>
       </h2>
-      <p className="mt-4 max-w-lg text-center text-body-lg text-slate-400">
+      <p className="mt-4 max-w-lg text-center text-body-lg text-zinc-600 dark:text-slate-400">
         {subheading}
       </p>
 
@@ -50,7 +50,7 @@ export function DownloadSection({ downloadLinks, totalDownloads, translations, l
 
       {/* Download count */}
       {totalDownloads != null && totalDownloads > 0 && (
-        <div className="mt-8 flex items-center gap-2 text-slate-500">
+        <div className="mt-8 flex items-center gap-2 text-zinc-500 dark:text-slate-500">
           {/* Download icon */}
           <svg
             className="h-4 w-4"
@@ -68,7 +68,7 @@ export function DownloadSection({ downloadLinks, totalDownloads, translations, l
           <span className="text-sm">
             <NumberTicker
               value={totalDownloads}
-              className="font-semibold text-slate-400"
+              className="font-semibold text-zinc-700 dark:text-slate-400"
               locale={localeTag}
             />{" "}
             {downloadsText}

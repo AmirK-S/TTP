@@ -11,6 +11,8 @@ import { safeInvoke } from '../lib/safeInvoke';
 import { useRecordingState } from '../hooks/useRecordingState';
 import { useTranscription } from '../hooks/useTranscription';
 import { TutorialPill } from '../components/TutorialPill';
+import { DarkPill } from '../components/ui';
+import { cn } from '../lib/cn';
 
 /**
  * Rust pipeline emits translation keys (e.g. `error.no_speech`,
@@ -35,7 +37,7 @@ function translateRustMessage(
 const TUTORIAL_DISMISSED_KEY = 'tutorial_pill_dismissed';
 const BAR_COUNT = 14;
 const MIN_HEIGHT = 2;
-const MAX_HEIGHT = 22;
+const MAX_HEIGHT = 16;
 
 function formatElapsed(ms: number): string {
   const totalSec = Math.max(0, Math.floor(ms / 1000));
@@ -104,7 +106,10 @@ export function FloatingBar() {
   useEffect(() => {
     if (!isRecording) {
       cancelAnimationFrame(rafRef.current);
-      barRefs.current.forEach((bar) => { if (bar) bar.style.height = `${MIN_HEIGHT}px`; });
+      // Collapse to minimum via transform (no layout pass).
+      barRefs.current.forEach((bar) => {
+        if (bar) bar.style.transform = `scaleY(${MIN_HEIGHT / MAX_HEIGHT})`;
+      });
       return;
     }
 
@@ -127,7 +132,9 @@ export function FloatingBar() {
         const wave2 = Math.sin(time * 2.1 + i * 0.7 + 1.2);
         const wave = Math.abs(wave1 * 0.6 + wave2 * 0.4);
         const h = MIN_HEIGHT + (MAX_HEIGHT - MIN_HEIGHT) * level * envelope * wave;
-        bar.style.height = `${h.toFixed(1)}px`;
+        // GPU-composited transform — no layout/paint, only the compositor runs.
+        // transform accepts raw numbers; skip the toFixed allocation per frame.
+        bar.style.transform = `scaleY(${h / MAX_HEIGHT})`;
       });
       rafRef.current = requestAnimationFrame(animate);
     }
@@ -138,28 +145,23 @@ export function FloatingBar() {
     };
   }, [isRecording]);
 
-  /* Pill state styling. -------------------------------------------------------
-   * Single source of truth for the per-state pill chrome — keeps the JSX below
-   * tight and makes future state additions a one-line change. */
-  const pillStateClass = isError
-    ? 'bg-[#dc2626]/95 ring-1 ring-white/10'
-    : isProcessing
-      ? 'bg-black/90 ring-1 ring-white/10'
-      : isRecording
-        ? 'bg-black/90 ring-1 ring-white/10'
-        : 'bg-black/55 ring-1 ring-white/5';
+  const pillTone: 'idle' | 'active' | 'danger' = isError
+    ? 'danger'
+    : isRecording || isProcessing
+      ? 'active'
+      : 'idle';
 
   return (
     <div className="flex h-screen w-screen flex-col items-center justify-end pb-1 bg-transparent pointer-events-none">
       {showTutorial && isIdle && <TutorialPill shortcutText="FN" />}
 
-      <div
-        className={`
-          flex items-center gap-2 rounded-full shadow-lg backdrop-blur-md
-          transition-all duration-200 ease-out
-          ${pillStateClass}
-          ${isRecording ? 'px-3.5 py-1.5' : isProcessing || isError ? 'px-3.5 py-1.5' : 'px-4 py-1.5'}
-        `}
+      <DarkPill
+        tone={pillTone}
+        className={cn(
+          'flex items-center gap-2 transition-[background-color,color,padding] duration-200 ease-app-out',
+          isRecording || isProcessing || isError ? 'px-3.5 py-1.5' : 'px-4 py-1.5',
+          isError && 'anim-shake',
+        )}
         style={{
           minHeight: isRecording || isProcessing || isError ? 28 : 16,
         }}
@@ -168,13 +170,21 @@ export function FloatingBar() {
       >
         {isRecording && (
           <>
-            <span className="flex items-end gap-[2px]" aria-hidden>
+            <span className="flex items-end gap-[2px] h-[16px]" aria-hidden>
               {Array.from({ length: BAR_COUNT }).map((_, i) => (
                 <span
                   key={i}
                   ref={(el) => { barRefs.current[i] = el; }}
                   className="w-[2px] rounded-full bg-white/90"
-                  style={{ height: `${MIN_HEIGHT}px`, transition: 'height 50ms ease-out' }}
+                  style={{
+                    height: `${MAX_HEIGHT}px`,
+                    // Anchor the scale at the bottom so the bar grows up, not from center.
+                    transformOrigin: 'bottom',
+                    // Start collapsed; the RAF loop overrides this once recording begins.
+                    transform: `scaleY(${MIN_HEIGHT / MAX_HEIGHT})`,
+                    // Hint the compositor — keeps the layer hot for smoother updates.
+                    willChange: 'transform',
+                  }}
                 />
               ))}
             </span>
@@ -204,7 +214,7 @@ export function FloatingBar() {
             </span>
           </>
         )}
-      </div>
+      </DarkPill>
     </div>
   );
 }

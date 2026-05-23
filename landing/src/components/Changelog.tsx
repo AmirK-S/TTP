@@ -32,7 +32,7 @@ function renderMarkdown(body: string): React.ReactNode[] {
   function flushBullets() {
     if (bulletBuffer.length > 0) {
       elements.push(
-        <ul key={key++} className="ml-4 list-disc space-y-1 text-sm text-slate-400">
+        <ul key={key++} className="ml-4 list-disc space-y-1 text-sm text-zinc-600 dark:text-slate-400">
           {bulletBuffer.map((item, i) => (
             <li key={i}>{renderInline(item)}</li>
           ))}
@@ -48,7 +48,7 @@ function renderMarkdown(body: string): React.ReactNode[] {
     if (parts.length === 1) return text;
     return parts.map((part, i) =>
       i % 2 === 1 ? (
-        <strong key={i} className="font-medium text-slate-300">
+        <strong key={i} className="font-medium text-zinc-800 dark:text-slate-300">
           {part}
         </strong>
       ) : (
@@ -71,7 +71,7 @@ function renderMarkdown(body: string): React.ReactNode[] {
       flushBullets();
       const headingText = trimmed.replace(/^#{2,3}\s+/, "");
       elements.push(
-        <h4 key={key++} className="mt-3 mb-1.5 text-sm font-semibold text-slate-300">
+        <h4 key={key++} className="mt-3 mb-1.5 text-sm font-semibold text-zinc-800 dark:text-slate-300">
           {headingText}
         </h4>
       );
@@ -87,7 +87,7 @@ function renderMarkdown(body: string): React.ReactNode[] {
     // Regular text
     flushBullets();
     elements.push(
-      <p key={key++} className="text-sm text-slate-400">
+      <p key={key++} className="text-sm text-zinc-600 dark:text-slate-400">
         {renderInline(trimmed)}
       </p>
     );
@@ -123,11 +123,11 @@ export function Changelog({ releases, translations, locale = "en" }: ChangelogPr
         {/* Section heading */}
         <div className="mb-20 md:mb-24 text-center">
           <h2 className="text-heading font-bold tracking-tight">
-            <span className="inline-block bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+            <span className="inline-block bg-gradient-to-r from-zinc-900 to-zinc-500 bg-clip-text text-transparent dark:from-white dark:to-slate-400">
               {headingText}
             </span>
           </h2>
-          <p className="mt-4 text-body-lg text-slate-400">
+          <p className="mt-4 text-body-lg text-zinc-600 dark:text-slate-400">
             {subheadingText}
           </p>
         </div>
@@ -136,21 +136,21 @@ export function Changelog({ releases, translations, locale = "en" }: ChangelogPr
         <div className="relative">
           {/* Vertical line */}
           <div
-            className="absolute left-[5px] top-2 bottom-0 w-px bg-white/10"
+            className="absolute left-[5px] top-2 bottom-0 w-px bg-black/[0.08] dark:bg-white/10"
             aria-hidden="true"
           />
 
           {/* Empty state */}
           {releaseList.length === 0 && (
             <div className="py-12 text-center">
-              <p className="text-slate-400">
+              <p className="text-zinc-600 dark:text-slate-400">
                 {emptyText}
               </p>
               <a
                 href="https://github.com/AmirK-S/TTP"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-2 inline-block text-sm text-slate-500 underline underline-offset-2 hover:text-slate-300"
+                className="mt-2 inline-block text-sm text-zinc-500 underline underline-offset-2 hover:text-zinc-700 dark:text-slate-500 dark:hover:text-slate-300"
               >
                 {emptyLinkText}
               </a>
@@ -171,23 +171,23 @@ export function Changelog({ releases, translations, locale = "en" }: ChangelogPr
                 transition={{ duration: 0.4, delay: index * 0.1 }}
               >
                 {/* Timeline dot */}
-                <div className="absolute left-0 top-1.5 h-[11px] w-[11px] rounded-full border-2 border-slate-700 bg-slate-400" />
+                <div className="absolute left-0 top-1.5 h-[11px] w-[11px] rounded-full border-2 border-blue-600 bg-blue-100 dark:border-slate-700 dark:bg-slate-400" />
 
                 {/* Content */}
                 <div className="flex-1">
                   {/* Version badge + date */}
                   <div className="mb-2 flex flex-wrap items-center gap-3">
-                    <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-white">
+                    <span className="rounded-full bg-zinc-900 px-2.5 py-0.5 text-xs font-medium text-white dark:bg-white/10">
                       {release.tag_name}
                     </span>
-                    <span className="text-xs text-slate-500">
+                    <span className="text-xs text-zinc-500 dark:text-slate-500">
                       {formatDate(release.published_at, localeTag)}
                     </span>
                   </div>
 
                   {/* Release title */}
                   {release.name && (
-                    <h3 className="mb-2 text-base font-semibold text-white">
+                    <h3 className="mb-2 text-base font-semibold text-zinc-900 dark:text-white">
                       {release.name}
                     </h3>
                   )}
@@ -209,7 +209,7 @@ export function Changelog({ releases, translations, locale = "en" }: ChangelogPr
                 href="https://github.com/AmirK-S/TTP/releases"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm text-slate-500 underline underline-offset-2 transition-colors hover:text-slate-300"
+                className="text-sm text-zinc-600 underline underline-offset-2 transition-colors hover:text-zinc-900 dark:text-slate-500 dark:hover:text-slate-300"
               >
                 {viewAllText}
               </a>

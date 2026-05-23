@@ -6,12 +6,12 @@ const t = useTranslations(lang);
 const currentYear = new Date().getFullYear();
 ---
 
-<footer data-snap-section data-section-footer class="border-t border-white/10 bg-black px-6 py-12">
+<footer data-snap-section data-section-footer class="border-t border-black/[0.08] bg-zinc-50 px-6 py-12 dark:border-white/10 dark:bg-black">
   <div class="mx-auto flex max-w-5xl flex-col items-center gap-8 md:flex-row md:justify-between">
     <!-- Brand -->
     <div class="text-center md:text-left">
-      <span class="text-lg font-bold tracking-tight text-white">TTP</span>
-      <span class="ml-1.5 text-caption text-slate-500">&mdash; {t('footer.tagline')}</span>
+      <span class="text-lg font-bold tracking-tight text-zinc-900 dark:text-white">TTP</span>
+      <span class="ml-1.5 text-caption text-zinc-500 dark:text-slate-500">&mdash; {t('footer.tagline')}</span>
     </div>
 
     <!-- Navigation links -->
@@ -20,31 +20,31 @@ const currentYear = new Date().getFullYear();
         href="https://github.com/AmirK-S/TTP"
         target="_blank"
         rel="noopener noreferrer"
-        class="text-sm text-slate-400 transition-colors hover:text-white"
+        class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white"
       >
         {t('footer.github')}
       </a>
       <a
         href={getLocalizedPath(lang, '#install')}
-        class="text-sm text-slate-400 transition-colors hover:text-white"
+        class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white"
       >
         {t('footer.download')}
       </a>
       <a
         href={getLocalizedPath(lang, '#changelog')}
-        class="text-sm text-slate-400 transition-colors hover:text-white"
+        class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white"
       >
         {t('footer.changelog')}
       </a>
       <a
         href={getLocalizedPath(lang, 'privacy')}
-        class="text-sm text-slate-400 transition-colors hover:text-white"
+        class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white"
       >
         {t('footer.privacy')}
       </a>
       <a
         href={getLocalizedPath(lang, 'terms')}
-        class="text-sm text-slate-400 transition-colors hover:text-white"
+        class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white"
       >
         {t('footer.terms')}
       </a>
@@ -52,14 +52,14 @@ const currentYear = new Date().getFullYear();
   </div>
 
   <!-- Attribution -->
-  <div class="mx-auto mt-8 max-w-5xl border-t border-white/5 pt-6 text-center">
-    <p class="text-caption text-slate-600">
+  <div class="mx-auto mt-8 max-w-5xl border-t border-black/[0.06] pt-6 text-center dark:border-white/5">
+    <p class="text-caption text-zinc-500 dark:text-slate-600">
       &copy; {currentYear}
       <a
         href="https://github.com/AmirK-S"
         target="_blank"
         rel="noopener noreferrer"
-        class="text-slate-500 transition-colors hover:text-slate-300"
+        class="text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-500 dark:hover:text-slate-300"
       >
         AmirKS
       </a>

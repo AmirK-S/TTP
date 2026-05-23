@@ -61,11 +61,11 @@ const features = [
     <!-- Section heading -->
     <div data-features-heading class="mb-20 md:mb-24 text-center">
       <h2 class="text-heading font-bold tracking-tight">
-        <span class="inline-block bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+        <span class="inline-block bg-gradient-to-r from-zinc-900 to-zinc-500 bg-clip-text text-transparent dark:from-white dark:to-slate-400">
           {t('features.heading')}
         </span>
       </h2>
-      <p class="mt-4 text-body-lg text-slate-400">
+      <p class="mt-4 text-body-lg text-zinc-600 dark:text-slate-400">
         {t('features.subheading')}
       </p>
     </div>
@@ -80,9 +80,9 @@ const features = [
             feature.span && "sm:col-span-2",
           ]}
         >
-          <div class="rounded-[calc(1rem-1px)] bg-slate-950/95 backdrop-blur-sm p-6 h-full" data-spotlight-card>
+          <div class="rounded-[calc(1rem-1px)] bg-white p-6 h-full dark:bg-slate-950/95 dark:backdrop-blur-sm" data-spotlight-card>
             <!-- Icon -->
-            <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5">
+            <div class="mb-4 flex h-10 w-10 items-center justify-center rounded-lg border border-black/[0.06] bg-zinc-50 shadow-sm shadow-black/[0.04] dark:border-white/10 dark:bg-white/5 dark:shadow-none">
               {feature.icon === "zap" && (
                 <svg class="h-5 w-5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
@@ -134,12 +134,12 @@ const features = [
             </div>
 
             <!-- Title -->
-            <h3 class="mb-1.5 text-base font-semibold text-white">
+            <h3 class="mb-1.5 text-base font-semibold text-zinc-900 dark:text-white">
               {feature.title}
             </h3>
 
             <!-- Description -->
-            <p class="text-sm leading-relaxed text-slate-400">
+            <p class="text-sm leading-relaxed text-zinc-600 dark:text-slate-400">
               {feature.description}
             </p>
           </div>

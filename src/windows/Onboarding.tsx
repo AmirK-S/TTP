@@ -21,8 +21,9 @@ import {
   ChevronLeft,
   ExternalLink,
   Sparkles,
+  Search,
 } from 'lucide-react';
-import { Button, Card } from '../components/ui';
+import { Button, Card, BrandTile } from '../components/ui';
 import { ApiKeyForm } from '../components/ApiKeyForm';
 import { cn } from '../lib/cn';
 
@@ -74,7 +75,7 @@ export default function Onboarding() {
   useEffect(() => {
     try { getCurrentWindow().setTitle(t('windowTitle.onboarding')); }
     catch { /* not in Tauri (dev preview) */ }
-  });
+  }, [t]);
 
   const refreshAll = useCallback(async () => {
     try {
@@ -263,18 +264,7 @@ function WelcomeStep() {
           punching above the H1. Now the tile sits IN the page surface
           with the wordmark in accent and a tiny dot echoing the brand
           icon's signature blue dot in the top-right. */}
-      <div
-        className={cn(
-          'relative mx-auto size-16 rounded-app-xl mb-7 shine-sm border border-app-border',
-          'bg-app-surface grid place-items-center',
-        )}
-      >
-        <span className="text-app-text font-semibold text-[18px] tracking-[-0.022em]">TTP</span>
-        <span
-          aria-hidden
-          className="absolute top-[10px] right-[10px] size-[6px] rounded-full bg-app-accent shadow-[0_0_0_3px_rgba(76,139,245,0.18)]"
-        />
-      </div>
+      <BrandTile size="lg" className="mx-auto mb-7" />
       <h1 className="text-display-md text-app-text">
         {t('onboarding.wizard.welcomeTitle')}
       </h1>
@@ -429,6 +419,48 @@ function PermissionRow({ permKey, status, isChecking, onClick, delay }: PermRowP
   );
 }
 
+/* ---------------------------- Trial countdown ----------------------------- */
+
+/**
+ * Days/hours/minutes remaining on the 7-day Pro trial. Ticks once per minute —
+ * fine-grained enough to feel alive without re-rendering 60x/min for seconds.
+ * Reads `trial_started_at` directly from the usage IPC to stay decoupled from
+ * the settings store (the onboarding window never loads usage otherwise).
+ */
+function TrialCountdown() {
+  const { t } = useTranslation();
+  const [trialStartedAt, setTrialStartedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    invoke<{ trial_started_at: number | null }>('get_usage_stats')
+      .then((u) => setTrialStartedAt(u.trial_started_at))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  if (!trialStartedAt) return null;
+  const endMs = (trialStartedAt + 7 * 86_400) * 1000;
+  const msLeft = Math.max(0, endMs - now);
+  if (msLeft === 0) return null;
+  const days = Math.floor(msLeft / 86_400_000);
+  const hours = Math.floor((msLeft % 86_400_000) / 3_600_000);
+  const minutes = Math.floor((msLeft % 3_600_000) / 60_000);
+
+  return (
+    <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-app-accent-tint border border-app-accent/20">
+      <span className="size-1.5 rounded-full bg-app-accent anim-pulse" aria-hidden />
+      <span className="text-[11px] font-medium text-app-accent tabular-nums">
+        {t('onboarding.trial.timeLeft', { days, hours, minutes })}
+      </span>
+    </div>
+  );
+}
+
 /* ---------------------------- Step 2: API key ----------------------------- */
 
 interface ApiKeyStepProps {
@@ -451,6 +483,7 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
           <p className="mt-2 text-[13px] text-app-muted leading-relaxed">
             {t('onboarding.trial.subtitle')}
           </p>
+          <TrialCountdown />
         </div>
 
         {/* Trial perk recap — concrete features unlocked during the 7-day
@@ -481,17 +514,43 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
           {t('onboarding.trial.fallback')}
         </p>
 
+        {/* Where to find TTP — orientation card. Replaces the "user closes the
+            window and has no idea where the app went" moment. Mentions the
+            menu bar + Spotlight + the red-X reassurance the user asked for. */}
+        <div className="mt-5 rounded-app-md border border-app-border bg-app-raised shine-sm p-4">
+          <div className="flex items-start gap-3">
+            <div className="size-9 shrink-0 rounded-app-sm bg-app-surface border border-app-border grid place-items-center">
+              <Mic className="size-4 text-app-accent" strokeWidth={1.75} aria-hidden />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[12px] font-semibold text-app-text">
+                {t('onboarding.whereToFind.title')}
+              </p>
+              <p className="mt-1 text-[12px] text-app-muted leading-relaxed">
+                {t('onboarding.whereToFind.menubar')}
+              </p>
+              <p className="mt-1.5 text-[12px] text-app-muted leading-relaxed inline-flex items-center gap-1.5">
+                <Search className="size-3 inline shrink-0 text-app-faint" aria-hidden />
+                <span>{t('onboarding.whereToFind.spotlight')}</span>
+              </p>
+              <p className="mt-1.5 text-[12px] text-app-success leading-relaxed">
+                {t('onboarding.whereToFind.closeReassurance')}
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Outbound CTA — opens the upgrade page in the user's browser.
             Non-blocking: the wizard footer still has Finish; this is a
             soft incentive, not a paywall. */}
         <a
-          href="https://amirks.eu/ttp/pro"
+          href="https://ttp.amirks.eu"
           target="_blank"
           rel="noopener noreferrer"
           className={
-            'mt-5 flex items-center justify-between rounded-app-md border border-app-accent/30 ' +
+            'mt-4 flex items-center justify-between rounded-app-md border border-app-accent/30 ' +
             'bg-app-accent-tint hover:bg-app-accent-soft px-4 py-3 ' +
-            'transition-colors duration-150 group'
+            'transition-colors duration-hover ease-app-out group'
           }
         >
           <div className="min-w-0">

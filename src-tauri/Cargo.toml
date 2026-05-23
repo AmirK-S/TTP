@@ -1,6 +1,6 @@
 [package]
 name = "ttp"
-version = "2.1.0"
+version = "2.1.1"
 description = "Talk To Paste - Voice to text transcription"
 authors = ["TTP Team"]
 edition = "2021"
@@ -40,6 +40,10 @@ tauri-plugin-updater = "2.10.0"
 url = "2"
 tauri-plugin-process = "2.3.1"
 tauri-plugin-autostart = "2"
+# Persists Settings window size + position across launches. Other windows are
+# fixed-size (resizable=false) so they ignore stored dimensions; only their
+# position is restored.
+tauri-plugin-window-state = "2"
 sentry = "0.42"
 tauri-plugin-sentry = "0.5"
 regex = "1"

@@ -4,7 +4,9 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* Light is the default. Dark variant follows system preference. */
+/* Components can still use `dark:` Tailwind prefix to opt classes into dark mode. */
+@custom-variant dark (@media (prefers-color-scheme: dark));
 
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
@@ -124,8 +126,8 @@
   width: 2px;
   height: 2px;
   border-radius: 50%;
-  background: #94a3b8;
-  box-shadow: 0 0 2px 1px rgba(148, 163, 184, 0.3);
+  background: rgba(37, 99, 235, 0.35);
+  box-shadow: 0 0 2px 1px rgba(37, 99, 235, 0.15);
   animation-name: meteor;
   animation-timing-function: linear;
   animation-iteration-count: infinite;
@@ -138,14 +140,104 @@
   transform: translateY(-50%);
   width: 50px;
   height: 1px;
-  background: linear-gradient(to right, #64748b, transparent);
+  background: linear-gradient(to right, rgba(37, 99, 235, 0.4), transparent);
 }
 
-/* Light mode variables -- unused (site always uses class="dark"), kept for shadcn compatibility */
+@media (prefers-color-scheme: dark) {
+  .meteor-el {
+    background: #94a3b8;
+    box-shadow: 0 0 2px 1px rgba(148, 163, 184, 0.3);
+  }
+  .meteor-el::before {
+    background: linear-gradient(to right, #64748b, transparent);
+  }
+}
+
+/* ── Light-primary palette (default) ─────────────────────────────── */
+/* Premium Linear/Stripe/Vercel aesthetic: off-white surfaces, ink text, */
+/* LCH-derived brand blue (#2563eb) accent, ultra-subtle borders.       */
 :root {
   --radius: 0.625rem;
+
+  /* Surface ladder */
+  --background: oklch(1 0 0);                /* #ffffff */
+  --foreground: oklch(0.205 0 0);            /* #18181b ink */
+  --card: oklch(0.985 0 0);                  /* near-white card */
+  --card-foreground: oklch(0.205 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.205 0 0);
+
+  /* Brand accent (LCH-derived blue, ~#2563eb) */
+  --primary: oklch(0.546 0.215 261);
+  --primary-foreground: oklch(1 0 0);
+
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.5 0 0);
+  --accent: oklch(0.546 0.215 261 / 0.08);
+  --accent-foreground: oklch(0.546 0.215 261);
+  --destructive: oklch(0.577 0.245 27.325);
+
+  /* Subtle borders */
+  --border: oklch(0 0 0 / 8%);
+  --input: oklch(0 0 0 / 10%);
+  --ring: oklch(0.546 0.215 261 / 50%);
+
+  --chart-1: oklch(0.546 0.215 261);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.205 0 0);
+  --sidebar-primary: oklch(0.546 0.215 261);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0 0 0 / 8%);
+  --sidebar-ring: oklch(0.546 0.215 261 / 50%);
 }
 
+/* Dark mode kept as a system-preference fallback */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+    --chart-1: oklch(0.488 0.243 264.376);
+    --chart-2: oklch(0.696 0.17 162.48);
+    --chart-3: oklch(0.769 0.188 70.08);
+    --chart-4: oklch(0.627 0.265 303.9);
+    --chart-5: oklch(0.645 0.246 16.439);
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.556 0 0);
+  }
+}
+
+/* Kept for shadcn `.dark` opt-in compatibility (not auto-applied) */
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
@@ -200,9 +292,15 @@
   overflow-wrap: normal;
 }
 
-/* Hero radial gradient glow */
+/* Hero radial gradient glow -- subtle brand-blue wash on white */
 .bg-gradient-radial {
-  background: radial-gradient(ellipse at center, rgba(139, 92, 246, 0.3) 0%, transparent 70%);
+  background: radial-gradient(ellipse at center, rgba(37, 99, 235, 0.15) 0%, transparent 70%);
+}
+
+@media (prefers-color-scheme: dark) {
+  .bg-gradient-radial {
+    background: radial-gradient(ellipse at center, rgba(139, 92, 246, 0.3) 0%, transparent 70%);
+  }
 }
 
 /* Scroll animations handled by GSAP ScrollTrigger -- see component <script> tags */
@@ -224,17 +322,30 @@
 .gradient-border-animated {
   background: conic-gradient(
     from var(--gradient-angle),
-    rgba(99, 102, 241, 0.3),
-    rgba(139, 92, 246, 0.15),
-    rgba(168, 85, 247, 0.3),
-    rgba(139, 92, 246, 0.15),
-    rgba(99, 102, 241, 0.3)
+    rgba(37, 99, 235, 0.18),
+    rgba(37, 99, 235, 0.04),
+    rgba(37, 99, 235, 0.18),
+    rgba(37, 99, 235, 0.04),
+    rgba(37, 99, 235, 0.18)
   );
   border-radius: 1rem;
   padding: 1px;
   animation: gradient-rotate 8s linear infinite;
   animation-play-state: paused;
   transition: background 0.3s ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  .gradient-border-animated {
+    background: conic-gradient(
+      from var(--gradient-angle),
+      rgba(99, 102, 241, 0.3),
+      rgba(139, 92, 246, 0.15),
+      rgba(168, 85, 247, 0.3),
+      rgba(139, 92, 246, 0.15),
+      rgba(99, 102, 241, 0.3)
+    );
+  }
 }
 
 .gradient-border-animated:hover {
@@ -260,13 +371,23 @@
   inset: 0;
   background: radial-gradient(
     600px circle at var(--spotlight-x, -100px) var(--spotlight-y, -100px),
-    rgba(139, 92, 246, 0.08),
+    rgba(37, 99, 235, 0.06),
     transparent 40%
   );
   opacity: 0;
   transition: opacity 0.4s ease;
   pointer-events: none;
   z-index: 1;
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-spotlight-card]::before {
+    background: radial-gradient(
+      600px circle at var(--spotlight-x, -100px) var(--spotlight-y, -100px),
+      rgba(139, 92, 246, 0.08),
+      transparent 40%
+    );
+  }
 }
 
 [data-spotlight-card]:hover::before {

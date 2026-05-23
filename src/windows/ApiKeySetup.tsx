@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { ApiKeyForm } from '../components/ApiKeyForm';
-import { cn } from '../lib/cn';
+import { BrandTile } from '../components/ui';
 
 export function ApiKeySetup() {
   const { t } = useTranslation();
@@ -17,7 +17,7 @@ export function ApiKeySetup() {
   useEffect(() => {
     try { getCurrentWindow().setTitle(t('windowTitle.setup')); }
     catch { /* not in Tauri (dev preview) */ }
-  });
+  }, [t]);
 
   const handleSuccess = async () => {
     try { await invoke('open_settings_window'); }
@@ -33,18 +33,7 @@ export function ApiKeySetup() {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-xl mx-auto px-8 pt-16 pb-8">
           <section className="anim-fade-up max-w-md mx-auto">
-            <div
-              className={cn(
-                'relative mx-auto size-16 rounded-app-xl mb-7 shine-sm border border-app-border',
-                'bg-app-surface grid place-items-center',
-              )}
-            >
-              <span className="text-app-text font-semibold text-[18px] tracking-[-0.022em]">TTP</span>
-              <span
-                aria-hidden
-                className="absolute top-[10px] right-[10px] size-[6px] rounded-full bg-app-accent shadow-[0_0_0_3px_rgba(76,139,245,0.18)]"
-              />
-            </div>
+            <BrandTile size="lg" className="mx-auto mb-7" />
 
             <h1 className="text-display-md text-app-text text-center">
               {t('setup.title')}

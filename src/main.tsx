@@ -1,19 +1,37 @@
 // TTP - Talk To Paste
 // Main entry point - handles routing for different windows
+//
+// Performance notes (v2.1.x polish pass 3):
+//   - Window components are lazy-loaded so each window only downloads its own
+//     chunk; the pill never pulls in Settings's ~70KB.
+//   - `@sentry/react` is dynamically imported inside `initSentryIfConsented`,
+//     not statically here — keeps it off the pill bundle entirely.
+//   - i18n is initialised synchronously with a 'system'-resolved locale so
+//     first paint never waits on the `get_settings` IPC round-trip; we patch
+//     the persisted choice in afterwards if it differs.
 
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import App from './App';
-import FloatingBar from './windows/FloatingBar';
-import ApiKeySetup from './windows/ApiKeySetup';
-import Onboarding from './windows/Onboarding';
-import Settings from './windows/Settings';
-import { ErrorBoundary, initSentryIfConsented } from './lib/sentry';
-import { initI18n, setLanguage, type LanguageChoice } from './i18n/config';
+import { ErrorBoundary } from './lib/ErrorBoundary';
+import { captureExceptionIfActive, initSentryIfConsented } from './lib/sentry';
+import { initI18n, setLanguage, resolveLanguage, type LanguageChoice } from './i18n/config';
 import './index.css';
+
+// Lazy chunks: each window only fetches its own JS. The pill in particular
+// stays tiny — no Settings, no Onboarding, no ApiKeySetup baggage.
+const App = lazy(() => import('./App'));
+const FloatingBar = lazy(() => import('./windows/FloatingBar'));
+const ApiKeySetup = lazy(() => import('./windows/ApiKeySetup'));
+const Onboarding = lazy(() => import('./windows/Onboarding'));
+const Settings = lazy(() => import('./windows/Settings'));
+
+/** Bridge our in-house ErrorBoundary to Sentry when the SDK is already active. */
+function onBoundaryError(error: Error) {
+  void captureExceptionIfActive(error);
+}
 
 /**
  * Get the current window and render the appropriate component.
@@ -22,7 +40,7 @@ import './index.css';
  * - setup: Renders the first-run API key setup window
  * - main (or others): Renders the main App component (hidden for tray app)
  */
-async function main() {
+function main() {
   // `?preview=onboarding|settings|pill|setup` is a dev-only override that
   // lets us inspect a window's UI in a plain browser (vite dev, screenshots,
   // visual diffs). When set, we skip every Tauri IPC + window probe — those
@@ -31,32 +49,37 @@ async function main() {
   const previewLabel = new URLSearchParams(window.location.search).get('preview');
   const isPreview = previewLabel !== null;
 
-  if (!isPreview) {
-    // Fire-and-forget: gates itself on user telemetry consent (queried via
-    // get_settings IPC); never throws, never blocks rendering.
-    void initSentryIfConsented();
-  }
-
-  // Initialize i18n synchronously with the persisted language choice (or
-  // 'system' if first launch). We read settings once here to avoid a render
-  // flash; further changes propagate via the 'settings-changed' event below.
-  let initialLang: LanguageChoice = 'system';
-  if (!isPreview) {
-    try {
-      const s = await invoke<{ language?: string | null }>('get_settings');
-      initialLang = ((s?.language ?? 'system') as LanguageChoice);
-    } catch {
-      // get_settings may fail on very first launch — defaults to 'system'.
-    }
-  }
-  initI18n(initialLang);
+  // Initialise i18n synchronously with the system-resolved locale so first
+  // paint never blocks on IPC. The persisted choice (if it differs) is
+  // patched in below — but the pill almost never shows translated text on
+  // the very first frame anyway, so the visual difference is nil.
+  const systemLang = resolveLanguage('system');
+  initI18n(systemLang);
 
   if (!isPreview) {
+    // Reconcile with the persisted language choice in the background.
+    invoke<{ language?: string | null }>('get_settings')
+      .then((s) => {
+        const stored = (s?.language ?? 'system') as LanguageChoice;
+        const resolved = resolveLanguage(stored);
+        if (resolved !== systemLang) {
+          setLanguage(stored);
+        }
+      })
+      .catch(() => {
+        // get_settings may fail on very first launch — defaults stay in place.
+      });
+
     // Cross-window language sync: when any window saves a new language choice
     // via settings-store, every other window picks it up and re-renders.
     listen<{ language?: string | null }>('settings-changed', (event) => {
       setLanguage((event.payload?.language ?? 'system') as LanguageChoice);
     }).catch(() => {});
+
+    // Fire-and-forget: gates itself on user telemetry consent (queried via
+    // get_settings IPC); never throws, never blocks rendering. Dynamically
+    // imports @sentry/react so the SDK stays out of the static bundle.
+    void initSentryIfConsented();
   }
 
   const windowLabel = isPreview ? previewLabel : getCurrentWebviewWindow().label;
@@ -67,51 +90,36 @@ async function main() {
   // window. The Sentry SDK still captures the error if telemetry is on.
   const fallback = <div style={{ padding: 16, fontFamily: 'system-ui' }}>Something went wrong.</div>;
 
+  // Suspense fallback is null: the OS window is already visible with the
+  // token background / transparent chrome — a flash of loading UI would be
+  // worse than the empty frame.
+  const suspenseFallback = null;
+
+  const renderWindow = (node: React.ReactNode) => {
+    ReactDOM.createRoot(rootElement).render(
+      <React.StrictMode>
+        <ErrorBoundary fallback={fallback} onError={onBoundaryError}>
+          <Suspense fallback={suspenseFallback}>{node}</Suspense>
+        </ErrorBoundary>
+      </React.StrictMode>,
+    );
+  };
+
   if (windowLabel === 'floating-bar' || windowLabel === 'pill') {
     // Floating bar / pill window - transparent recording indicator
-    ReactDOM.createRoot(rootElement).render(
-      <React.StrictMode>
-        <ErrorBoundary fallback={fallback}>
-          <FloatingBar />
-        </ErrorBoundary>
-      </React.StrictMode>
-    );
+    renderWindow(<FloatingBar />);
   } else if (windowLabel === 'onboarding') {
     // Onboarding window - first-launch permission setup
-    ReactDOM.createRoot(rootElement).render(
-      <React.StrictMode>
-        <ErrorBoundary fallback={fallback}>
-          <Onboarding />
-        </ErrorBoundary>
-      </React.StrictMode>
-    );
+    renderWindow(<Onboarding />);
   } else if (windowLabel === 'setup') {
     // Setup window - first-run API key configuration
-    ReactDOM.createRoot(rootElement).render(
-      <React.StrictMode>
-        <ErrorBoundary fallback={fallback}>
-          <ApiKeySetup />
-        </ErrorBoundary>
-      </React.StrictMode>
-    );
+    renderWindow(<ApiKeySetup />);
   } else if (windowLabel === 'settings') {
     // Settings window - app configuration and dictionary management
-    ReactDOM.createRoot(rootElement).render(
-      <React.StrictMode>
-        <ErrorBoundary fallback={fallback}>
-          <Settings />
-        </ErrorBoundary>
-      </React.StrictMode>
-    );
+    renderWindow(<Settings />);
   } else {
     // Main window or any other window (hidden for tray-only app)
-    ReactDOM.createRoot(rootElement).render(
-      <React.StrictMode>
-        <ErrorBoundary fallback={fallback}>
-          <App />
-        </ErrorBoundary>
-      </React.StrictMode>
-    );
+    renderWindow(<App />);
   }
 }
 
