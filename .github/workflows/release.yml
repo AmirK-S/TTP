@@ -433,3 +433,31 @@ jobs:
           echo "Attaching latest-beta.json to stable release: $STABLE_TAG"
           gh release upload "$STABLE_TAG" _channel/latest-beta.json \
             --clobber --repo "${{ github.repository }}"
+
+      # Flip the GitHub Release from draft to published. The release-matrix job
+      # creates it as a draft on purpose (so tauri-action's per-platform retry
+      # attempts are idempotent against the same draft), and historically there
+      # was no follow-up step to publish it — v2.1.6 and v2.1.7 shipped green
+      # in CI but stayed draft, leaving auto-updaters on v2.1.5 forever until
+      # the drafts were manually promoted. This step runs after all platform
+      # artifacts AND the channel manifest have been uploaded so when the
+      # release goes live, every asset is already attached.
+      - name: Publish release (flip draft → live)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -e
+          if [ "${{ steps.beta-check.outputs.is_beta }}" = "true" ]; then
+            # Beta tag: publish but stay prerelease and do NOT mark as latest,
+            # so stable-channel users keep pointing at the most recent stable.
+            gh release edit "${{ github.ref_name }}" \
+              --draft=false --prerelease \
+              --repo "${{ github.repository }}"
+          else
+            # Stable tag: publish and explicitly mark as latest so
+            # /releases/latest/download/latest.json resolves here.
+            gh release edit "${{ github.ref_name }}" \
+              --draft=false --latest \
+              --repo "${{ github.repository }}"
+          fi
