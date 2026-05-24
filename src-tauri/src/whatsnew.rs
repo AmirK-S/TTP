@@ -32,6 +32,12 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.1.7" => Some(
+            "Stops the AI Polish upgrade nudge from spamming once a month.\n\
+             • Free users who hit the 30/month AI Polish cap on Windows were getting a fresh \"upgrade to TTP Pro\" toast on every recording past the cap (macOS grouped them, Windows didn't). It read as bloatware — fair complaint.\n\
+             • TTP now surfaces the notification at most once per calendar month. The cap is still enforced and your usage is still tracked exactly as before. Just no more per-recording toasts.\n\
+             • Rolls over naturally: if you cross into next month and hit the cap again, you'll see the message one more time.",
+        ),
         "2.1.6" => Some(
             "Fixes the empty TTP window that appeared after updating, plus a kinder update timing.\n\
              • Empty \"TTP\" window after an update is gone. The window-state plugin was over-eagerly tracking every window on disk and could re-show the hidden shell that hosts background checks. Now scoped to just Settings, position + size only.\n\

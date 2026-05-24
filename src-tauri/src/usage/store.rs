@@ -312,6 +312,39 @@ fn add_to_window(window: &mut AnalyticsWindow, stats: &DailyStats) {
     window.chars = window.chars.saturating_add(stats.chars);
 }
 
+/// Marker file that records the month key ("YYYY-MM") for which we last
+/// surfaced the "AI Polish cap hit" system notification. Unsigned on purpose:
+/// this is purely a UX dedupe, not a security-relevant counter. The cap itself
+/// is still enforced in pipeline.rs against the signed `polish_count`.
+fn polish_cap_notify_marker_path() -> Option<PathBuf> {
+    dirs::config_dir().map(|p| p.join("ttp").join("polish_cap_notified"))
+}
+
+/// Returns true the first time it's called within a calendar month, false on
+/// every subsequent call until the month rolls over. Used to throttle the
+/// upgrade notification so a free user who's at cap doesn't get a fresh toast
+/// every single transcription — on Windows the OS doesn't group repeats and
+/// the spam was reported as "giga chiant" (and read as bloatware).
+///
+/// Best-effort: if the config dir isn't resolvable or the file write fails,
+/// we still return true so the user sees the message at least that one time.
+pub fn should_notify_polish_cap_once_this_month() -> bool {
+    let Some(path) = polish_cap_notify_marker_path() else {
+        return true;
+    };
+    let current = current_month_key();
+    if let Ok(last) = fs::read_to_string(&path) {
+        if last.trim() == current {
+            return false;
+        }
+    }
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::write(&path, &current);
+    true
+}
+
 /// Aggregate the daily buckets into rolling-window totals + a 30-day series.
 pub fn analytics_summary() -> AnalyticsSummary {
     let record = load_usage();

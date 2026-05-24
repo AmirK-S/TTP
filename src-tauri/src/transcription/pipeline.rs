@@ -567,13 +567,19 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         } else {
             let used_str = used.to_string();
             let limit_str = crate::licensing::FREE_POLISH_PER_MONTH.to_string();
-            notify(
-                app,
-                &crate::i18n::tr_with(
-                    "notification.polishLimitReached",
-                    &[("used", &used_str), ("limit", &limit_str)],
-                ),
-            );
+            // Once-per-month gate: every transcription past the cap was firing
+            // a fresh system toast, which on Windows (no native repeat-grouping)
+            // amounted to a per-recording upsell spam. We still enforce the cap
+            // and still emit telemetry every time — just don't notify again.
+            if crate::usage::should_notify_polish_cap_once_this_month() {
+                notify(
+                    app,
+                    &crate::i18n::tr_with(
+                        "notification.polishLimitReached",
+                        &[("used", &used_str), ("limit", &limit_str)],
+                    ),
+                );
+            }
             crate::telemetry::analytics::track(
                 app,
                 "free_cap_hit",
