@@ -312,13 +312,23 @@ export function useUpdater(options?: UseUpdaterOptions) {
   // the process) and the audio plugin's lazy-loaded resources point at
   // files that no longer match. Symptom users hit: pill shows up on
   // hotkey press but no audio reaches transcription. Relaunching as
-  // soon as status flips to 'ready' (gated on idle so we never yank a
-  // recording out from under the user) closes that window.
+  // soon as the user is idle closes that window.
+  //
+  // 60s grace period: the previous flow restarted the instant
+  // recordingState became Idle, which routinely fired in the gap
+  // between opening the app and pressing Fn for the first recording —
+  // yanking the app out from under a user who was *about* to record.
+  // The grace timer arms when the app is idle and gets cancelled by the
+  // effect cleanup if recording starts before it expires, so an active
+  // session always wins.
   useEffect(() => {
     if (!autoInstall) return;
     if (status !== 'ready') return;
     if (recordingState !== 'Idle') return;
-    restartApp();
+    const timer = setTimeout(() => {
+      restartApp();
+    }, 60_000);
+    return () => clearTimeout(timer);
   }, [autoInstall, status, recordingState, restartApp]);
 
   const dismiss = useCallback(() => {

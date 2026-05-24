@@ -445,9 +445,26 @@ pub fn run() {
             None,
         ))
         // Restores Settings window position + size across launches.
-        // Fixed-size windows (resizable=false) ignore stored dimensions but
-        // still get their position restored.
-        .plugin(tauri_plugin_window_state::Builder::default().build());
+        //
+        // Tightly scoped on purpose: the default Builder saves+restores ALL
+        // flags (visible, decorations, fullscreen, maximized…) for every
+        // window in tauri.conf.json. On a Retina mac it stored physical
+        // pixels and re-applied them as logical, growing windows 2× per
+        // launch, and any drift in the persisted visibility could re-show
+        // the invisible `main` shell as an empty "TTP" window after an
+        // update. Filter to `settings` only, and only restore POSITION+SIZE.
+        // Filename bumped to `.window-state-v2.json` so legacy stale entries
+        // from v2.1.1–v2.1.5 are ignored, not migrated.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_filter(|label| label == "settings")
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::POSITION
+                        | tauri_plugin_window_state::StateFlags::SIZE,
+                )
+                .with_filename(".window-state-v2.json")
+                .build(),
+        );
 
     builder
         .manage(Mutex::new(AppState::default()))
@@ -465,6 +482,16 @@ pub fn run() {
             // Hide from dock — TTP is a tray-only app
             #[cfg(target_os = "macos")]
             app.set_activation_policy(ActivationPolicy::Accessory);
+
+            // Defensive: the `main` window is a hidden shell that hosts
+            // App.tsx (update checks + WhatsNew bootstrap, returns null).
+            // It's marked visible=false in tauri.conf.json, but on update
+            // some users have reported it briefly appearing as an empty
+            // "TTP" window. Force-hide it here so no path — plugin state,
+            // race, or future regression — can leave it on screen.
+            if let Some(main_window) = app.get_webview_window("main") {
+                let _ = main_window.hide();
+            }
 
             // Set up system tray
             tray::setup_tray(app.handle())?;

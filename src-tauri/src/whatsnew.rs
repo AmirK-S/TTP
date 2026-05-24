@@ -32,6 +32,13 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.1.6" => Some(
+            "Fixes the empty TTP window that appeared after updating, plus a kinder update timing.\n\
+             • Empty \"TTP\" window after an update is gone. The window-state plugin was over-eagerly tracking every window on disk and could re-show the hidden shell that hosts background checks. Now scoped to just Settings, position + size only.\n\
+             • Stale window state from previous versions is ignored automatically (no action needed on your end). Settings will open at its default size once after this update, then remember your preferred size from now on.\n\
+             • Auto-restart after a silent update now waits 60 seconds of idle before relaunching, so it can no longer yank the app out from under you while you're about to press Fn.\n\
+             • Defensive belt-and-suspenders: the hidden background window is now force-hidden during startup, so no future regression can surface it as an empty \"TTP\" window.",
+        ),
         "2.1.5" => Some(
             "Light / Dark / System appearance switcher + sticky Settings sidebar.\n\
              • New Settings → General → Appearance section: pick System (follows macOS, default), Light, or Dark and the choice sticks across launches.\n\
