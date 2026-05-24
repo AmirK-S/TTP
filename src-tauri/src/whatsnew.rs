@@ -32,6 +32,12 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.1.8" => Some(
+            "Onboarding cleanup: Settings no longer pops up behind the wizard, and your preference toggles actually stick.\n\
+             • Fixed: Settings was auto-opening behind onboarding to surface the WhatsNew changelog, then loading its toggle state from disk before the wizard had saved the preferences. Any later interaction with Settings would silently overwrite the wizard's choices. Now WhatsNew is suppressed during onboarding, and Settings opens only after you click Finish, with the right toggles already checked.\n\
+             • Cross-window settings sync hardened: every open window now mirrors saved changes into its own state immediately, so a setting changed in one place can't be reverted by a stale snapshot in another.\n\
+             • Auto-update path on the GitHub Releases CDN was caching v2.1.5 for hours after newer builds shipped. The workflow now flips drafts to published on its own so the manifest stays current.",
+        ),
         "2.1.7" => Some(
             "Stops the AI Polish upgrade nudge from spamming once a month.\n\
              • Free users who hit the 30/month AI Polish cap on Windows were getting a fresh \"upgrade to TTP Pro\" toast on every recording past the cap (macOS grouped them, Windows didn't). It read as bloatware — fair complaint.\n\

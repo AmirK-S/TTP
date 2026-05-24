@@ -32,7 +32,9 @@ pub fn show_onboarding(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Close onboarding and mark first launch complete (no setup window needed)
+/// Close onboarding, mark first launch complete, suppress the "What's New"
+/// popup for this version (the wizard already told them what's new), and
+/// surface Settings so the user can see their freshly-applied preferences.
 #[command]
 pub fn close_onboarding(app: AppHandle) -> Result<(), String> {
     // Close onboarding window
@@ -42,6 +44,21 @@ pub fn close_onboarding(app: AppHandle) -> Result<(), String> {
 
     // Mark first launch complete
     let _ = crate::permissions::mark_first_launch_complete();
+
+    // Suppress the WhatsNew modal for the version we just onboarded the user
+    // to. They've just clicked through a five-step wizard for this exact
+    // build, a "here's what's new in vX.Y.Z" follow-up modal is redundant.
+    // WhatsNew will fire normally on the next auto-update.
+    let _ = crate::whatsnew::dismiss_whats_new();
+
+    // Surface Settings so the user can see (and tweak) what they just
+    // configured. Settings.tsx calls `loadSettings` on mount, so it reads
+    // the freshly-persisted state and the toggles correctly reflect the
+    // wizard choices — no restart needed, no stale-store overwrite race.
+    if let Some(settings) = app.get_webview_window("settings") {
+        let _ = settings.show();
+        let _ = settings.set_focus();
+    }
 
     Ok(())
 }

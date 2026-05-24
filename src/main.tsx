@@ -19,6 +19,7 @@ import { ErrorBoundary } from './lib/ErrorBoundary';
 import { captureExceptionIfActive, initSentryIfConsented } from './lib/sentry';
 import { initI18n, setLanguage, resolveLanguage, type LanguageChoice } from './i18n/config';
 import { applyTheme, installSystemThemeListener, type ThemeChoice } from './lib/theme';
+import { useSettingsStore } from './stores/settings-store';
 import './index.css';
 
 // Lazy chunks: each window only fetches its own JS. The pill in particular
@@ -83,14 +84,44 @@ function main() {
         // get_settings may fail on very first launch — defaults stay in place.
       });
 
-    // Cross-window settings sync: when any window saves a new language or
-    // theme choice via settings-store, every other window picks it up and
-    // re-renders without an IPC round-trip.
-    listen<{ language?: string | null; theme?: string | null }>('settings-changed', (event) => {
-      setLanguage((event.payload?.language ?? 'system') as LanguageChoice);
-      const nextTheme = (event.payload?.theme ?? 'system') as ThemeChoice;
+    // Cross-window settings sync: every window has its own Zustand instance
+    // (separate webview = separate JS context = separate store), so when one
+    // window saves a setting, the others would stay stale until their own
+    // saveSettings stamped its snapshot back over disk — overwriting the
+    // first window's change. We listen for the `settings-changed` event the
+    // Rust `set_settings` command emits and mirror every field into this
+    // window's store so the next save merges on top of the right baseline.
+    listen<{
+      ai_polish_enabled?: boolean;
+      fn_key_enabled?: boolean;
+      telemetry_enabled?: boolean;
+      hands_free_mode?: boolean;
+      hide_pill_when_inactive?: boolean;
+      history_enabled?: boolean;
+      use_beta_channel?: boolean;
+      shortcut?: string;
+      language?: string | null;
+      theme?: string | null;
+    }>('settings-changed', (event) => {
+      const p = event.payload;
+      setLanguage((p?.language ?? 'system') as LanguageChoice);
+      const nextTheme = (p?.theme ?? 'system') as ThemeChoice;
       currentTheme = nextTheme;
       applyTheme(nextTheme);
+      // Mirror the full payload into the Zustand store so toggles UI in
+      // every open window reflects reality immediately.
+      useSettingsStore.setState({
+        ...(p?.ai_polish_enabled !== undefined && { aiPolishEnabled: p.ai_polish_enabled }),
+        ...(p?.fn_key_enabled !== undefined && { fnKeyEnabled: p.fn_key_enabled }),
+        ...(p?.telemetry_enabled !== undefined && { telemetryEnabled: p.telemetry_enabled }),
+        ...(p?.hands_free_mode !== undefined && { handsFreeMode: p.hands_free_mode }),
+        ...(p?.hide_pill_when_inactive !== undefined && { hidePillWhenInactive: p.hide_pill_when_inactive }),
+        ...(p?.history_enabled !== undefined && { historyEnabled: p.history_enabled }),
+        ...(p?.use_beta_channel !== undefined && { useBetaChannel: p.use_beta_channel }),
+        ...(p?.shortcut !== undefined && { shortcut: p.shortcut }),
+        ...(p?.language !== undefined && { language: (p.language ?? 'system') as LanguageChoice }),
+        ...(p?.theme !== undefined && { theme: nextTheme }),
+      });
     }).catch(() => {});
 
     // Fire-and-forget: gates itself on user telemetry consent (queried via
