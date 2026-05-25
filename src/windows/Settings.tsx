@@ -786,7 +786,7 @@ export function Settings() {
                       {t('settings.pro.activate')}
                     </Button>
                     <a
-                      href="https://amirks.lemonsqueezy.com/buy/dcc74241-21ae-4d20-8a3c-90bf8d842bae"
+                      href="https://amirks.lemonsqueezy.com/checkout/buy/23ded1c4-c862-4f8c-ada5-0bb3dc2e0060"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-[13px] font-medium text-app-accent hover:text-app-accent-hover"

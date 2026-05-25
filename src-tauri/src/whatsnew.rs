@@ -32,6 +32,10 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.2.2" => Some(
+            "Upgrade button now points to the live checkout (was still hitting a Lemon Squeezy test-mode URL since v2.1.0).\n\
+             • Both the onboarding \"Upgrade for €17\" CTA and the in-Settings Pro panel now open the live checkout. If your previous click landed on a \"Test mode\" or 404 page, this is why.",
+        ),
         "2.2.1" => Some(
             "Tightened the Pro trial to 4 days so you can decide faster.\n\
              • Pro trial is now 4 days (was 7). For a dictation tool that's still ~12 to 20 sessions of unlimited polish, dictionary, and history — plenty to know if Pro is worth it.\n\
