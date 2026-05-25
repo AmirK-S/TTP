@@ -32,6 +32,12 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.1.9" => Some(
+            "Auto-update will no longer yank a recording out from under you mid-session.\n\
+             • The 60-second idle timer from v2.1.6 wasn't enough: a user who opened TTP, did something else for ~60s, then pressed Fn would land on the restart firing right as they began recording. Same end result as the original bug, just delayed.\n\
+             • New rule: the moment you start a recording in this session, auto-restart is off until your next quit + relaunch. You'll pick up the new bundle on your next natural app open — the tray \"Install update (vX.Y.Z)\" menu item is still there if you want to relaunch sooner.\n\
+             • The 60-second safety net is kept only for the genuinely-idle case (TTP opened, never used, walked away).",
+        ),
         "2.1.8" => Some(
             "Onboarding cleanup: Settings no longer pops up behind the wizard, and your preference toggles actually stick.\n\
              • Fixed: Settings was auto-opening behind onboarding to surface the WhatsNew changelog, then loading its toggle state from disk before the wizard had saved the preferences. Any later interaction with Settings would silently overwrite the wizard's choices. Now WhatsNew is suppressed during onboarding, and Settings opens only after you click Finish, with the right toggles already checked.\n\
