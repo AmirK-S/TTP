@@ -14,7 +14,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useTauriEvent } from '../hooks/useTauriEvent';
 import { getVersion } from '@tauri-apps/api/app';
 import { relaunch } from '@tauri-apps/plugin-process';
-import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from '@tauri-apps/plugin-autostart';
+import { enable as enableAutostart, disable as disableAutostart } from '@tauri-apps/plugin-autostart';
 import { trackEvent } from '../lib/analytics';
 import { useUpdater } from '../hooks/useUpdater';
 import { useSettingsStore, DictionaryEntry, HistoryEntry } from '../stores/settings-store';
@@ -254,7 +254,7 @@ export function Settings() {
   const { t } = useTranslation();
   const {
     aiPolishEnabled, telemetryEnabled, shortcut, handsFreeMode, hidePillWhenInactive,
-    historyEnabled, language, theme, dictionary, history, loading, isPro, licenseKey,
+    autostartEnabled, historyEnabled, language, theme, dictionary, history, loading, isPro, licenseKey,
     licenseStatus, licenseExpiresAt, licenseActivationCount, licenseActivationLimit,
     licenseLoading, licenseError, usage,
     loadSettings, saveSettings, resetSettings, loadDictionary, deleteEntry,
@@ -297,9 +297,11 @@ export function Settings() {
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
   const [showUninstallConfirm, setShowUninstallConfirm] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
-  const [autostartOn, setAutostartOn] = useState(false);
 
-  useEffect(() => { isAutostartEnabled().then(setAutostartOn).catch(() => {}); }, []);
+  // No local autostart state and no `isAutostartEnabled()` call — the plugin's
+  // is_enabled() is unreliable on macOS for product names with spaces. The UI
+  // reads `autostartEnabled` from the store (settings.json); the LaunchAgent
+  // plist is the OS side-effect that the toggle keeps in sync.
 
   // Proactive Input Monitoring check when the saved shortcut is FnKey.
   useEffect(() => {
@@ -322,8 +324,12 @@ export function Settings() {
 
   const handleAutostartToggle = async (enabled: boolean) => {
     try {
+      // Real OS effect: register/unregister LaunchAgent plist (mac) /
+      // registry key (Windows).
       if (enabled) await enableAutostart(); else await disableAutostart();
-      setAutostartOn(enabled);
+      // Persist the user's intent to settings.json so the UI doesn't depend
+      // on the plugin's flaky is_enabled() readback.
+      await saveSettings({ autostart_enabled: enabled });
       trackEvent('setting_changed', { setting_name: 'autostart_enabled', new_value: String(enabled) });
     } catch (error) { console.error('Failed to update autostart:', error); }
   };
@@ -588,7 +594,7 @@ export function Settings() {
               <SettingsRow
                 label={t('settings.recordingMode.launchStartupLabel')}
                 description={t('settings.recordingMode.launchStartupDesc')}
-                control={<Toggle enabled={autostartOn} onChange={handleAutostartToggle} disabled={loading} />}
+                control={<Toggle enabled={autostartEnabled} onChange={handleAutostartToggle} disabled={loading} />}
               />
             </SettingsSection>
 

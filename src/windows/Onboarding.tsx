@@ -13,7 +13,6 @@ import { useTranslation } from 'react-i18next';
 import {
   enable as enableAutostart,
   disable as disableAutostart,
-  isEnabled as isAutostartEnabled,
 } from '@tauri-apps/plugin-autostart';
 import {
   Mic,
@@ -478,7 +477,7 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
         </p>
 
         <a
-          href="https://ttp.amirks.eu"
+          href="https://amirks.lemonsqueezy.com/buy/dcc74241-21ae-4d20-8a3c-90bf8d842bae"
           target="_blank"
           rel="noopener noreferrer"
           className={
@@ -533,15 +532,13 @@ function PreferencesStep() {
   // the FULL Settings struct; calling it with a partial corrupts the file
   // and silently fails — which is exactly the bug v2.1.2 shipped with.
   const {
-    hidePillWhenInactive, telemetryEnabled, loadSettings, saveSettings,
+    hidePillWhenInactive, telemetryEnabled, autostartEnabled, loadSettings, saveSettings,
   } = useSettingsStore();
-  const [autostart, setAutostart] = useState(false);
 
   // Hydrate from the actual app state so the toggles reflect reality if the
   // user navigates back to this step after changing something.
   useEffect(() => {
     loadSettings();
-    isAutostartEnabled().then(setAutostart).catch(() => {});
   }, [loadSettings]);
 
   const onHidePill = async (v: boolean) => {
@@ -550,9 +547,17 @@ function PreferencesStep() {
   };
 
   const onAutostart = async (v: boolean) => {
-    setAutostart(v);
-    try { if (v) await enableAutostart(); else await disableAutostart(); }
-    catch (e) { console.error('Failed to toggle autostart:', e); setAutostart(!v); }
+    // Two things have to happen: register/unregister the LaunchAgent
+    // (real OS side-effect) AND persist the user's intent to settings.json
+    // (what Settings UI reads). We can't trust the autostart plugin's
+    // `isEnabled()` on macOS — for product names with spaces it returns
+    // false even when the plist is on disk and loaded. So we cache.
+    try {
+      if (v) await enableAutostart(); else await disableAutostart();
+      await saveSettings({ autostart_enabled: v });
+    } catch (e) {
+      console.error('Failed to toggle autostart:', e);
+    }
   };
 
   const onTelemetry = async (v: boolean) => {
@@ -582,7 +587,7 @@ function PreferencesStep() {
           tile="bg-app-success-tint text-app-success"
           label={t('onboarding.preferences.autostartLabel')}
           desc={t('onboarding.preferences.autostartDesc')}
-          enabled={autostart}
+          enabled={autostartEnabled}
           onChange={onAutostart}
           delay={1}
         />

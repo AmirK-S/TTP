@@ -30,6 +30,7 @@ export interface Settings {
   telemetry_enabled: boolean;
   hands_free_mode: boolean;
   hide_pill_when_inactive: boolean;
+  autostart_enabled: boolean;
   history_enabled: boolean;
   use_beta_channel: boolean;
   /** 'en' | 'fr' | 'system' | null. null is treated as 'system' (autodetect). */
@@ -71,6 +72,7 @@ interface SettingsStore {
   telemetryEnabled: boolean;
   handsFreeMode: boolean;
   hidePillWhenInactive: boolean;
+  autostartEnabled: boolean;
   historyEnabled: boolean;
   useBetaChannel: boolean;
   language: LanguageChoice;
@@ -129,6 +131,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   telemetryEnabled: false,
   handsFreeMode: false,
   hidePillWhenInactive: false,
+  autostartEnabled: false,
   historyEnabled: true,
   useBetaChannel: false,
   language: 'system',
@@ -164,6 +167,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         telemetryEnabled: settings.telemetry_enabled ?? false,
         handsFreeMode: settings.hands_free_mode ?? false,
         hidePillWhenInactive: settings.hide_pill_when_inactive ?? false,
+        autostartEnabled: settings.autostart_enabled ?? false,
         historyEnabled: settings.history_enabled ?? true,
         useBetaChannel: settings.use_beta_channel ?? false,
         language: lang,
@@ -188,6 +192,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         telemetry_enabled: get().telemetryEnabled,
         hands_free_mode: get().handsFreeMode,
         hide_pill_when_inactive: get().hidePillWhenInactive,
+        autostart_enabled: get().autostartEnabled,
         history_enabled: get().historyEnabled,
         use_beta_channel: get().useBetaChannel,
         language: get().language,
@@ -211,6 +216,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         telemetryEnabled: newSettings.telemetry_enabled,
         handsFreeMode: newSettings.hands_free_mode,
         hidePillWhenInactive: newSettings.hide_pill_when_inactive,
+        autostartEnabled: newSettings.autostart_enabled,
         historyEnabled: newSettings.history_enabled,
         useBetaChannel: newSettings.use_beta_channel,
         language: newLang,
@@ -235,6 +241,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         telemetryEnabled: false,
         handsFreeMode: false,
         hidePillWhenInactive: false,
+        autostartEnabled: false,
         historyEnabled: true,
         useBetaChannel: false,
         language: 'system',

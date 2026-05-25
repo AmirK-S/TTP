@@ -27,6 +27,15 @@ pub struct Settings {
     /// Hide the recording indicator pill when not recording
     #[serde(default)]
     pub hide_pill_when_inactive: bool,
+    /// Cached "user wants autostart" intent. The actual side effect is the
+    /// LaunchAgent plist managed by `tauri-plugin-autostart`; this field is
+    /// what the Settings UI reads, because the plugin's `is_enabled()` is
+    /// unreliable on macOS for product names containing spaces ("TTP by AmirKS")
+    /// — it can return false even when the plist is on disk AND loaded into
+    /// launchd. Onboarding + Settings write this alongside calling the
+    /// plugin's enable/disable so the two stay in sync.
+    #[serde(default)]
+    pub autostart_enabled: bool,
     /// Whether to save transcriptions to history. Default ON.
     #[serde(default = "default_true")]
     pub history_enabled: bool,
@@ -73,6 +82,7 @@ impl Default for Settings {
             telemetry_enabled: false,
             hands_free_mode: false,
             hide_pill_when_inactive: false,
+            autostart_enabled: false,
             history_enabled: true,
             use_beta_channel: false,
             language: None,

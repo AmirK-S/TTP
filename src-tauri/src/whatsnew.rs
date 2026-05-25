@@ -32,6 +32,11 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.1.10" => Some(
+            "Settings now reflects your real \"Launch at startup\" choice + Pro upgrade button finally goes to checkout.\n\
+             • Launch at startup: the autostart plugin's `is_enabled()` is unreliable on macOS for product names with spaces — it can return false even when the LaunchAgent is registered and loaded. Settings now reads the cached intent from settings.json (kept in sync with the OS plist on every toggle) so the checkbox matches reality.\n\
+             • Onboarding Pro upgrade button now opens the Lemon Squeezy checkout directly instead of bouncing through the landing site.",
+        ),
         "2.1.9" => Some(
             "Auto-update will no longer yank a recording out from under you mid-session.\n\
              • The 60-second idle timer from v2.1.6 wasn't enough: a user who opened TTP, did something else for ~60s, then pressed Fn would land on the restart firing right as they began recording. Same end result as the original bug, just delayed.\n\

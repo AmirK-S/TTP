@@ -97,6 +97,7 @@ function main() {
       telemetry_enabled?: boolean;
       hands_free_mode?: boolean;
       hide_pill_when_inactive?: boolean;
+      autostart_enabled?: boolean;
       history_enabled?: boolean;
       use_beta_channel?: boolean;
       shortcut?: string;
@@ -116,6 +117,7 @@ function main() {
         ...(p?.telemetry_enabled !== undefined && { telemetryEnabled: p.telemetry_enabled }),
         ...(p?.hands_free_mode !== undefined && { handsFreeMode: p.hands_free_mode }),
         ...(p?.hide_pill_when_inactive !== undefined && { hidePillWhenInactive: p.hide_pill_when_inactive }),
+        ...(p?.autostart_enabled !== undefined && { autostartEnabled: p.autostart_enabled }),
         ...(p?.history_enabled !== undefined && { historyEnabled: p.history_enabled }),
         ...(p?.use_beta_channel !== undefined && { useBetaChannel: p.use_beta_channel }),
         ...(p?.shortcut !== undefined && { shortcut: p.shortcut }),
