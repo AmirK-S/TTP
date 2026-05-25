@@ -332,9 +332,9 @@
     },
     "trial": {
       "title": "Tu es prêt",
-      "subtitle": "Ton essai TTP Pro de 3 jours vient de démarrer. Aucune carte requise. Le tier gratuit prend le relais automatiquement après.",
+      "subtitle": "Ton essai TTP Pro de 4 jours vient de démarrer. Aucune carte requise. Le tier gratuit prend le relais automatiquement après.",
       "timeLeft": "{{days}}j {{hours}}h {{minutes}}m restants",
-      "perksHeader": "Inclus pendant 3 jours",
+      "perksHeader": "Inclus pendant 4 jours",
       "perkPolish": "Correction AI Polish illimitée sur chaque transcription",
       "perkDictionary": "Dictionnaire perso jusqu'à 500 entrées",
       "perkHistory": "Historique complet de chaque transcription, cherchable",
