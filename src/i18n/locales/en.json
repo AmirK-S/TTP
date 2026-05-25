@@ -332,9 +332,9 @@
     },
     "trial": {
       "title": "You're all set",
-      "subtitle": "Your 7-day TTP Pro trial just started. No card needed. Free tier kicks in automatically after.",
+      "subtitle": "Your 3-day TTP Pro trial just started. No card needed. Free tier kicks in automatically after.",
       "timeLeft": "{{days}}d {{hours}}h {{minutes}}m left",
-      "perksHeader": "Included for 7 days",
+      "perksHeader": "Included for 3 days",
       "perkPolish": "Unlimited AI Polish on every transcription",
       "perkDictionary": "Custom dictionary up to 500 entries",
       "perkHistory": "Full history of every transcription, searchable",

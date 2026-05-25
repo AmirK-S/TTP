@@ -21,8 +21,15 @@ pub const FREE_POLISH_PER_MONTH: u32 = 30;
 pub const FREE_DICTIONARY_LIMIT: usize = 20;
 /// Free tier: max history entries (existing entries above this are grandfathered).
 pub const FREE_HISTORY_LIMIT: usize = 50;
-/// Length of the auto-trial granted on first launch, in days.
-pub const TRIAL_DAYS: i64 = 7;
+/// Length of the auto-trial granted on first launch, in days. Was 7 in
+/// v1.6.0–v2.1.10. Shortened to 3 in v2.2.0 after observing that uninstall+
+/// reinstall trivially refreshes the trial (the v2.1.4 uninstaller wipes
+/// the keychain HMAC secret + usage.json signed counter the protection
+/// depended on). A shorter trial reduces the value of that abuse loop
+/// (3 min reinstall friction for 3 days of unlimited polish is a bad
+/// trade) without sacrificing honest evaluation time — at typical use
+/// (3–5 dictation sessions/day) 3 days is 9–15 sessions, enough to know.
+pub const TRIAL_DAYS: i64 = 3;
 
 /// Public license info returned to the frontend.
 #[derive(Debug, Clone, Serialize)]

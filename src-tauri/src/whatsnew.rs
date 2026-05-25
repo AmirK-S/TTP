@@ -32,6 +32,12 @@ fn current_version() -> &'static str {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "2.2.0" => Some(
+            "Tightened the Pro trial to 3 days so you can decide faster.\n\
+             • Pro trial is now 3 days (was 7). For a dictation tool that's still 9 to 15 sessions of unlimited polish, dictionary, and history — plenty to know if Pro is worth it.\n\
+             • Why shorter: a 7-day trial after a clean uninstall + reinstall reset the clock indefinitely, and honestly, deciding faster is better for everyone. Pro is €17 once, lifetime, no card needed for the trial itself.\n\
+             • After the trial, TTP keeps working on the free tier (30 AI Polishes/month, 20 dictionary entries, 50 history entries). Nothing breaks.",
+        ),
         "2.1.10" => Some(
             "Settings now reflects your real \"Launch at startup\" choice + Pro upgrade button finally goes to checkout.\n\
              • Launch at startup: the autostart plugin's `is_enabled()` is unreliable on macOS for product names with spaces — it can return false even when the LaunchAgent is registered and loaded. Settings now reads the cached intent from settings.json (kept in sync with the OS plist on every toggle) so the checkbox matches reality.\n\
