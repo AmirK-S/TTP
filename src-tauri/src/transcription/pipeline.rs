@@ -97,6 +97,8 @@ const HALLUCINATION_SUBSTRINGS: &[&str] = &[
 ];
 
 use crate::logging::log_error;
+use super::cleanup::cleanup;
+use super::polish::{guard_polish, GuardVerdict};
 use super::{convert::convert_to_mono_16khz, polish_text, transcribe_audio};
 
 /// Progress event sent to frontend during transcription pipeline.
@@ -195,55 +197,12 @@ fn is_hallucination(text: &str) -> bool {
         .any(|sub| lower.contains(sub))
 }
 
-/// Strip LLM wrapper/comparison format from polish output
-///
-/// When the LLM returns something like:
-///   "Voici la version corrigée : texte nettoyé"
-///   "Original: ... → Corrected: ..."
-/// This function tries to extract just the cleaned text.
-fn strip_llm_wrapper(text: &str) -> String {
-    let text = text.trim();
-
-    // Pattern: "label: actual text" — take everything after the last colon-prefixed label
-    // Look for common prefixes and strip them
-    let prefixes = [
-        "voici la version corrigée :",
-        "voici la version corrigée:",
-        "voici le texte corrigé :",
-        "voici le texte corrigé:",
-        "voici le texte nettoyé :",
-        "voici le texte nettoyé:",
-        "corrected version:",
-        "cleaned version:",
-        "cleaned text:",
-        "corrected text:",
-        "corrected:",
-        "here is the cleaned version:",
-        "here is the corrected version:",
-    ];
-
-    let lower = text.to_lowercase();
-    for prefix in &prefixes {
-        if let Some(pos) = lower.find(prefix) {
-            let after = &text[pos + prefix.len()..].trim();
-            if !after.is_empty() {
-                // Strip surrounding quotes if present
-                let after = after.trim_matches('"').trim_matches('«').trim_matches('»').trim();
-                return after.to_string();
-            }
-        }
-    }
-
-    // Pattern: text wrapped in quotes — strip outer quotes
-    if (text.starts_with('"') && text.ends_with('"'))
-        || (text.starts_with('«') && text.ends_with('»'))
-    {
-        return text[1..text.len() - 1].trim().to_string();
-    }
-
-    // Fallback: return as-is
-    text.to_string()
-}
+// strip_llm_wrapper() removed in Polaris v3.0.0: the new anti-injection
+// polish prompt requests structured JSON {intent, polished} and serde does
+// the unwrapping. No more prefix-matching hacks — if the LLM emits anything
+// other than valid JSON, the polish.rs fallback treats it as raw polished
+// text and the post-LLM guards catch real anomalies (length explosion,
+// low overlap, refusal markers).
 
 /// Main pipeline function: process a completed recording
 ///
@@ -555,6 +514,12 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         return Err("No speech detected (filtered)".to_string());
     }
 
+    // Phase-1 deterministic cleanup BEFORE the LLM. Handles punctuation
+    // commands, tech term normalization, acronyms, repetitions, standalone
+    // fillers. Idempotent. Roughly 80% of cleanups happen here without
+    // touching the LLM — faster, cheaper, safer.
+    let cleaned_text = cleanup(&raw_text);
+
     // Stage 2: Polish text (if enabled AND user has quota)
     let polish_quota_ok = if !settings.ai_polish_enabled {
         false
@@ -567,10 +532,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         } else {
             let used_str = used.to_string();
             let limit_str = crate::licensing::FREE_POLISH_PER_MONTH.to_string();
-            // Once-per-month gate: every transcription past the cap was firing
-            // a fresh system toast, which on Windows (no native repeat-grouping)
-            // amounted to a per-recording upsell spam. We still enforce the cap
-            // and still emit telemetry every time — just don't notify again.
+            // Once-per-month gate (see Windows toast spam fix v2.1.7).
             if crate::usage::should_notify_polish_cap_once_this_month() {
                 notify(
                     app,
@@ -592,55 +554,59 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     let final_text = if polish_quota_ok {
         emit_progress(app, "polishing", "progress.polishing", None);
 
-        match polish_text(&api_key, &raw_text).await {
-            Ok(text) => {
+        let polish_start = std::time::Instant::now();
+        match polish_text(&api_key, &cleaned_text).await {
+            Ok(result) => {
                 crate::usage::record_polish_success();
-                // Detect LLM help responses (happens when input is too minimal)
-                let lower = text.to_lowercase();
-                let is_llm_help = lower.contains("i'm here to help")
-                    || lower.contains("please provide")
-                    || lower.contains("i can help")
-                    || lower.contains("could you please")
-                    || lower.contains("i'm sorry")
-                    || lower.contains("i can only process")
-                    || lower.contains("feel free to share")
-                    || lower.contains("if you have a")
-                    || lower.contains("transcription you'd like")
-                    || lower.contains("it seems like")
-                    || lower.contains("i'd be happy to");
+                let polish_ms = polish_start.elapsed().as_millis() as u64;
 
-                // Detect LLM showing "original → corrected" comparison format
-                let is_comparison = lower.contains("version corrigée")
-                    || lower.contains("corrected version")
-                    || lower.contains("cleaned version")
-                    || lower.contains("here is the")
-                    || lower.contains("voici la version")
-                    || lower.contains("voici le texte")
-                    || lower.contains("original:")
-                    || lower.contains("corrected:")
-                    || lower.contains("original text")
-                    || lower.contains("cleaned text")
-                    || (lower.contains("→") && lower.contains("\""));
-
-                // Also suspect if output is much longer than input (LLM adding content)
-                let length_ratio = text.len() as f32 / raw_text.len().max(1) as f32;
-                let is_too_long = length_ratio > 3.0 && text.len() > 50;
-
-                if is_llm_help || is_too_long {
-                    eprintln!("[Pipeline] LLM returned suspicious response, using raw text");
-                    raw_text.clone()
-                } else if is_comparison {
-                    // LLM returned a comparison format — try to extract just the cleaned part
-                    // If the response starts with quotes or a label, strip it
-                    let cleaned = strip_llm_wrapper(&text);
-                    eprintln!("[Pipeline] LLM returned comparison format, extracted: {}", &cleaned[..cleaned.len().min(80)]);
-                    cleaned
-                } else {
-                    text
+                // Post-LLM guards: length ratio, content-word Jaccard,
+                // refusal markers. On rejection → fall back to phase-1
+                // cleaned text + log to Sentry. Silent fallback (no UI
+                // popup mid-dictation, just slightly less-polished text).
+                match guard_polish(&cleaned_text, &result.polished) {
+                    GuardVerdict::Accept => {
+                        let mut data = std::collections::BTreeMap::new();
+                        data.insert("intent".to_string(), format!("{:?}", result.intent).into());
+                        data.insert("latency_ms".to_string(), polish_ms.into());
+                        sentry::add_breadcrumb(sentry::Breadcrumb {
+                            ty: "polish".into(),
+                            category: Some("polish.success".into()),
+                            level: sentry::Level::Info,
+                            data,
+                            ..Default::default()
+                        });
+                        // Intent classification is captured in the Sentry
+                        // breadcrumb above for future per-app routing (v3.1+).
+                        result.polished
+                    }
+                    GuardVerdict::Reject(reason) => {
+                        log_error(&format!(
+                            "Polish guard rejected: {} (intent={:?}, polish_ms={})",
+                            reason, result.intent, polish_ms
+                        ));
+                        let mut data = std::collections::BTreeMap::new();
+                        data.insert("reason".to_string(), reason.into());
+                        data.insert("intent".to_string(), format!("{:?}", result.intent).into());
+                        data.insert("latency_ms".to_string(), polish_ms.into());
+                        sentry::add_breadcrumb(sentry::Breadcrumb {
+                            ty: "polish".into(),
+                            category: Some("polish.guard_reject".into()),
+                            level: sentry::Level::Warning,
+                            data,
+                            ..Default::default()
+                        });
+                        crate::telemetry::analytics::track(
+                            app,
+                            "polish_guard_rejected",
+                            Some(serde_json::json!({ "reason": reason })),
+                        );
+                        cleaned_text.clone()
+                    }
                 }
             }
             Err(e) => {
-                eprintln!("[Pipeline] Polish failed, using raw text: {}", e);
+                eprintln!("[Pipeline] Polish failed, using cleaned text: {}", e);
                 let category = if e.contains(" 429 ") || e.contains(": 429") {
                     "rate_limited"
                 } else if e.contains(" 401 ") || e.contains(": 401") || e.contains(" 403 ") || e.contains(": 403") {
@@ -648,24 +614,23 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 } else {
                     "polish_failed"
                 };
-                // Quick pill flicker so user understands why their text isn't polished.
-                // For rate-limit / bad-key the main transcription stage already surfaced
-                // the error, so don't double-message.
                 if category == "polish_failed" {
                     emit_progress(app, "pasting", "error.polish_unavailable", None);
                 }
                 crate::telemetry::analytics::track(app, "polish_failed", Some(serde_json::json!({
                     "category": category
                 })));
-                raw_text.clone()
+                cleaned_text.clone()
             }
         }
     } else {
-        raw_text.clone()
+        cleaned_text.clone()
     };
 
-    // Apply dictionary corrections as hard post-processing
-    // This guarantees dictionary entries are applied even if the LLM ignored them
+    // Apply dictionary corrections as hard post-processing.
+    // Even with the new polish pipeline, the personal dictionary is a hard
+    // guarantee — applied after polish (and after cleanup) so user-specific
+    // term spellings always win.
     let final_text = apply_dictionary(&final_text);
 
     // Stage 3: Paste into active app

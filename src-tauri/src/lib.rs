@@ -21,7 +21,7 @@ mod shortcuts;
 mod sounds;
 mod state;
 mod telemetry;
-mod transcription;
+pub mod transcription;
 mod tray;
 mod uninstall;
 mod usage;

@@ -1,6 +1,7 @@
 // TTP - Talk To Paste
 // Transcription module - Groq Whisper + AI polish
 
+pub mod cleanup;
 pub mod convert;
 pub mod pipeline;
 pub mod polish;
