@@ -32,18 +32,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
-      # Detect whether this tag targets the beta channel (e.g. v2.0.0-beta.1).
+      # Detect whether this tag targets the beta channel.
+      # Convention (since v3.0.1): numeric-only pre-release suffix
+      # like `v3.1.0-1`, `v3.1.0-2`. MSI bundler accepts numeric
+      # pre-releases (since tauri-bundler v1.2.0) but rejects alphanumeric
+      # ones like `-beta.N` — see ARCHITECTURE.md for the long history.
+      # The legacy `-beta.N` pattern is still matched for backward
+      # compatibility with the v3.0.0-beta.1..4 tags already in the wild.
       # Outputs:
       #   is_beta = "true" | "false"
       #   channel = "beta" | "stable"
-      # Used downstream to flip the GitHub Release to prerelease and to
-      # publish a `latest-beta.json` manifest pointing at this build.
       - name: Detect beta tag
         id: beta-check
         shell: bash
         run: |
           TAG="${{ github.ref_name }}"
-          if [[ "$TAG" =~ -beta\.[0-9]+$ ]]; then
+          if [[ "$TAG" =~ -[0-9]+$ ]] || [[ "$TAG" =~ -beta\.[0-9]+$ ]]; then
             echo "is_beta=true" >> "$GITHUB_OUTPUT"
             echo "channel=beta" >> "$GITHUB_OUTPUT"
           else
