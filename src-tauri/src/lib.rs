@@ -123,6 +123,39 @@ fn request_input_monitoring_permission() -> bool {
     { true }
 }
 
+/// Build metadata returned to the frontend. Lets the Settings UI display
+/// the exact build the user is running — useful for distinguishing beta
+/// builds that share a marketing version string (e.g. v3.0.0-beta.1 vs
+/// v3.0.0-beta.3 both reporting `version: "3.0.0"` because the manifest
+/// doesn't carry the pre-release suffix).
+#[derive(Debug, Clone, serde::Serialize)]
+struct BuildInfo {
+    /// Marketing version from `Cargo.toml` (e.g. "3.0.0").
+    version: String,
+    /// 7-char git commit SHA embedded at build time. "unknown" if neither
+    /// `GIT_COMMIT_SHA` env var nor a local `.git` were available at build.
+    commit_sha: String,
+    /// "beta" if the user has the beta channel toggle on, else "stable".
+    /// Reflects the user's current preference, not the channel that
+    /// produced the binary (a stable user running a beta build would see
+    /// "stable" here — that's intentional, the SHA is the source of truth).
+    channel: String,
+}
+
+#[tauri::command]
+fn get_build_info() -> BuildInfo {
+    let settings = settings::get_settings();
+    BuildInfo {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        commit_sha: env!("TTP_BUILD_SHA").to_string(),
+        channel: if settings.use_beta_channel {
+            "beta".to_string()
+        } else {
+            "stable".to_string()
+        },
+    }
+}
+
 /// Pick the right manifest URL based on the user's channel preference.
 fn channel_manifest_url(use_beta: bool) -> &'static str {
     if use_beta {
@@ -666,6 +699,7 @@ pub fn run() {
             check_for_updates_with_channel,
             install_update_with_channel,
             mark_update_ready,
+            get_build_info,
             check_microphone_permission,
             is_first_launch_cmd,
             mark_first_launch_complete_cmd,

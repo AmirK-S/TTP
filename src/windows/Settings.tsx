@@ -181,14 +181,36 @@ function UpdatesCard() {
   const { t } = useTranslation();
   const { status, updateInfo, progress, error, checkForUpdates, downloadAndInstall, restartApp, dismiss } = useUpdater();
   const [appVersion, setAppVersion] = useState('...');
+  const [buildSha, setBuildSha] = useState<string>('');
+  const [channel, setChannel] = useState<string>('stable');
 
   useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
+  useEffect(() => {
+    // Build info: marketing version + git SHA + channel. The SHA is the
+    // ground truth when the user is on a beta — marketing version stays
+    // "3.0.0" across betas since the Windows MSI bundler rejects non-numeric
+    // pre-release suffixes.
+    invoke<{ version: string; commit_sha: string; channel: string }>('get_build_info')
+      .then((info) => {
+        setBuildSha(info.commit_sha);
+        setChannel(info.channel);
+      })
+      .catch(() => {});
+  }, []);
   useTauriEvent('update-available', () => { checkForUpdates(); });
+
+  const versionLabel = (
+    <span className="text-[11px] text-app-faint tabular-nums">
+      v{appVersion}
+      {buildSha && buildSha !== 'unknown' ? ` · ${buildSha}` : ''}
+      {channel === 'beta' ? ' · beta' : ''}
+    </span>
+  );
 
   return (
     <SettingsSection
       title={t('settings.updates.title')}
-      action={<span className="text-[11px] text-app-faint tabular-nums">v{appVersion}</span>}
+      action={versionLabel}
     >
       <div className="space-y-3">
         {status === 'idle' && (
