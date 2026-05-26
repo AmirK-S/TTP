@@ -93,18 +93,14 @@ const HALLUCINATIONS: &[&str] = &[
     "applause",
     "laughter",
     "clapping",
-    // Single-token noise outputs (very common Whisper hallu on silence —
-    // users dictating full sentences won't trigger these as the ENTIRE
-    // transcript).
-    "you",
-    "so",
-    "the",
-    "oh",
-    "okay",
+    // Pure-disfluency-only outputs. The match requires whole-string equality,
+    // so a real utterance with "uh"/"um"/"hmm" inside (e.g. "uh let me think
+    // about it") never triggers these. We deliberately DON'T include "okay",
+    // "yeah", "so", "you", "oh", "the" — those are common short replies the
+    // user genuinely dictates into Slack / iMessage.
     "uh",
     "um",
     "hmm",
-    "yeah",
 
     // --- French (THE bug being fixed: accents) ---
     "merci davoir regarde cette video",
@@ -118,11 +114,12 @@ const HALLUCINATIONS: &[&str] = &[
     "noubliez pas de vous abonner",
     "noubliez pas de liker et de vous abonner",
     "likez et abonnez vous",
-    "a la prochaine",
-    "a bientot",
-    "bonne journee",
-    "bonne soiree",
     "bonjour a tous bienvenue sur ma chaine",
+    // NOTE: "a la prochaine" / "a bientot" / "bonne journee" / "bonne
+    // soiree" are NOT in this list — they're legitimate French email
+    // closings the user often dictates as a standalone short message.
+    // We accept the occasional Whisper hallu of these phrases as the
+    // lesser evil vs filtering real user speech.
 
     // --- Spanish ---
     "gracias por ver",
@@ -485,12 +482,41 @@ mod hallucination_tests {
     }
 
     #[test]
-    fn filters_short_single_token_noise() {
-        // Single-particle Whisper outputs on silence
-        assert!(is_hallucination("You"));
-        assert!(is_hallucination("So."));
-        assert!(is_hallucination("Okay"));
+    fn filters_pure_disfluencies_only() {
+        // Pure disfluencies — filter
         assert!(is_hallucination("Uh"));
+        assert!(is_hallucination("Um."));
+        assert!(is_hallucination("Hmm"));
+    }
+
+    #[test]
+    fn does_not_filter_real_short_replies() {
+        // Common Slack / iMessage quick replies the user genuinely dictates.
+        // These MUST pass through (no over-protection).
+        assert!(!is_hallucination("Okay"));
+        assert!(!is_hallucination("Okay."));
+        assert!(!is_hallucination("Yeah"));
+        assert!(!is_hallucination("Yes"));
+        assert!(!is_hallucination("No"));
+        assert!(!is_hallucination("Sure"));
+        assert!(!is_hallucination("So"));
+        assert!(!is_hallucination("You"));
+        assert!(!is_hallucination("The"));
+        assert!(!is_hallucination("Oh"));
+    }
+
+    #[test]
+    fn does_not_filter_french_email_closings() {
+        // Real email/message closings — must pass through.
+        assert!(!is_hallucination("Bonne journée"));
+        assert!(!is_hallucination("Bonne journée !"));
+        assert!(!is_hallucination("Bonne soirée"));
+        assert!(!is_hallucination("À bientôt"));
+        assert!(!is_hallucination("À la prochaine"));
+        assert!(!is_hallucination("Au revoir"));
+        assert!(!is_hallucination("Salut"));
+        assert!(!is_hallucination("Voilà"));
+        assert!(!is_hallucination("Merci"));
     }
 
     #[test]
