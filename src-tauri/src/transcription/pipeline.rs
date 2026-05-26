@@ -52,48 +52,164 @@ const DIRECT_TYPING_MAX_CHARS: usize = 2000;
 /// rare and themselves take seconds to produce).
 const CLIPBOARD_PASTE_RESTORE_DELAY_MS: u64 = 1500;
 
-/// Common Whisper hallucinations on silent/empty audio
+/// Common Whisper hallucinations on silent/empty audio.
+///
+/// Each entry MUST be lowercase, NFKD-normalized (accents stripped), with
+/// straight quotes and no trailing punctuation. The matcher applies the
+/// same normalization to the candidate before comparing, so adding a new
+/// entry = just write it in canonical form here.
+///
+/// IMPORTANT: do NOT add single common particles like "thank you", "you",
+/// "so", "okay", "bye" without thinking — users genuinely dictate these.
+/// Only add phrases that have ZERO non-hallucination interpretation
+/// (multi-word, video-credit-flavored, foreign-language thanks-bombs).
+///
+/// Sources: HuggingFace `sachaarbonel/whisper-hallucinations` dataset
+/// (7890 phrases), arXiv 2501.11378, openai/whisper discussions
+/// #679 / #928 / #1455 / #1873 / #2280, whisper.cpp #2660. Refreshed
+/// 2026-05-26.
 const HALLUCINATIONS: &[&str] = &[
-    // English
-    "thank you",
+    // --- English video-end / channel-promo bombs ---
     "thanks for watching",
     "thank you for watching",
-    "thanks for listening",
     "thanks for watching please subscribe",
-    "bye",
-    "goodbye",
-    "see you",
-    "subscribe",
+    "thanks for watching dont forget to subscribe",
+    "thank you for watching please subscribe",
+    "thanks for watching ill see you next time",
+    "thanks for watching see you next time",
+    "thanks for listening",
+    "please subscribe",
+    "please subscribe to my channel",
+    "subscribe to my channel",
     "like and subscribe",
-    "you",
+    "dont forget to subscribe",
+    "comment and subscribe",
+    "hello everyone welcome to my channel",
+    "welcome back to my channel",
+    "see you next time",
+    "ill see you next time",
     "the end",
+    "music",
+    "applause",
+    "laughter",
+    "clapping",
+    // Single-token noise outputs (very common Whisper hallu on silence —
+    // users dictating full sentences won't trigger these as the ENTIRE
+    // transcript).
+    "you",
     "so",
     "the",
     "oh",
     "okay",
     "uh",
-    "i'm sorry",
-    "hello everyone welcome to my channel",
-    // French
-    "merci d'avoir regarde cette video",
+    "um",
+    "hmm",
+    "yeah",
+
+    // --- French (THE bug being fixed: accents) ---
+    "merci davoir regarde cette video",
+    "merci davoir regarde",
+    "merci davoir regarde la video",
+    "merci davoir regarde cette video nhesitez pas a vous abonner",
+    "merci davoir regarde la video nhesitez pas a vous abonner",
     "je vous remercie",
-    // Subtitle attribution hallucinations (all languages)
-    "subtitles by the amara org community",
-    "sous-titres realises par la communaute d'amara.org",
-    "sous-titrage st' 501",
-    "transcription by castingwords",
+    "abonnez vous",
+    "abonnez vous a ma chaine",
+    "noubliez pas de vous abonner",
+    "noubliez pas de liker et de vous abonner",
+    "likez et abonnez vous",
+    "a la prochaine",
+    "a bientot",
+    "bonne journee",
+    "bonne soiree",
+    "bonjour a tous bienvenue sur ma chaine",
+
+    // --- Spanish ---
+    "gracias por ver",
+    "gracias por ver el video",
+    "gracias por ver este video",
+    "suscribete al canal",
+    "hasta la proxima",
+
+    // --- German (broadcaster credits are very common DE hallu) ---
+    "danke furs zuschauen",
+    "vielen dank furs zuschauen",
+    "bis zum nachsten mal",
+    "abonniert den kanal",
+
+    // --- Italian ---
+    "grazie per la visione",
+    "grazie per aver guardato il video",
+    "iscrivetevi al canale",
+
+    // --- Portuguese ---
+    "obrigado por assistir",
+    "inscreva se no canal",
+
+    // --- Japanese ---
+    "ご視聴ありがとうございました",
+    "見てくれてありがとう",
+    "チャンネル登録お願いします",
+
+    // --- Chinese ---
+    "谢谢观看",
+    "谢谢观看 下集再见",
+    "请订阅我的频道",
+
+    // --- Russian ---
+    "спасибо за просмотр",
+    "подписывайтесь на мой канал",
+
+    // --- Arabic ---
+    "شكرا على المشاهدة",
+    "اشترك في القناة",
+
+    // --- Korean ---
+    "시청해주셔서 감사합니다",
+    "구독 부탁드립니다",
+
+    // --- Greek ---
+    "ευχαριστω που παρακολουθησατε",
+
+    // --- Punctuation-only / empty ---
     ".",
-    "",
+    "..",
+    "...",
+    "…",
 ];
 
-/// Substrings that indicate a hallucination (partial match)
+/// Substrings: if the (normalized) candidate CONTAINS any of these, it's
+/// considered a hallucination even if other text surrounds it. Used for
+/// signatures/credits/URLs that Whisper bleeds into otherwise-valid text.
 const HALLUCINATION_SUBSTRINGS: &[&str] = &[
+    // Amara / fan-sub signatures (all languages, normalized to ASCII)
     "amara.org",
-    "sous-titr",
-    "subtitles by",
-    "transcription by",
+    "amara org",
+    "sous titres realises par",
+    "sous titrage st 501",
+    "sous titrage societe radio canada",
     "soustitreur.com",
-    "www.mooji.org",
+    "subtitles by the amara",
+    "untertitel der amara",
+    "subtitulos realizados por la comunidad de amara",
+    "sottotitoli creati dalla comunita amara",
+    "legendas pela comunidade amara",
+    "ondertiteld door de amara",
+    "由 amara",
+    // German broadcaster credits (very common Whisper hallu on DE silence)
+    "untertitel im auftrag des zdf",
+    "copyright wdr",
+    // Other service signatures
+    "transcription by castingwords",
+    "transcribed by https://otter.ai",
+    "transcribed by otter.ai",
+    "sottotitoli e revisione a cura di qtss",
+    "субтитры сделал",
+    // Spiritual / training-data sites
+    "mooji.org",
+    "satsang with mooji",
+    "alimmenta.com",
+    "pissedconsumer.com",
 ];
 
 use crate::logging::log_error;
@@ -181,20 +297,220 @@ fn set_state(app: &AppHandle, state: RecordingState) {
     }
 }
 
-/// Filter out common Whisper hallucinations
+/// Normalize a string for hallucination matching.
+///
+/// 1. Lowercase
+/// 2. Unicode NFKD decompose + strip combining marks (é → e, à → a, ñ → n)
+/// 3. Normalize typographic punctuation (' → ', « » → ", — → -, NBSP → space)
+/// 4. Strip leading/trailing punctuation (.,;:!?…"'`-_)
+/// 5. Collapse runs of whitespace into single space
+///
+/// CJK / Arabic / Cyrillic characters pass through unchanged — NFKD on
+/// those scripts is a no-op for matching purposes.
+fn normalize_for_hallucination_match(s: &str) -> String {
+    use unicode_normalization::char::is_combining_mark;
+    use unicode_normalization::UnicodeNormalization;
+
+    let lower = s.to_lowercase();
+
+    // NFKD + strip combining marks (Unicode category Mn)
+    let stripped: String = lower
+        .nfkd()
+        .filter(|c| !is_combining_mark(*c))
+        .collect();
+
+    // Typographic punctuation normalization
+    let punct_normalized: String = stripped
+        .chars()
+        .map(|c| match c {
+            '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}' | '`' | '´' => '\'',
+            '\u{201C}' | '\u{201D}' | '\u{201E}' | '«' | '»' => '"',
+            '\u{2013}' | '\u{2014}' | '\u{2212}' => '-',
+            '\u{00A0}' | '\u{2009}' | '\u{200A}' | '\u{202F}' => ' ',
+            _ => c,
+        })
+        .collect();
+
+    // Ellipsis → "..."
+    let with_ellipsis = punct_normalized.replace('\u{2026}', "...");
+
+    // Strip apostrophes (so "d'avoir" → "davoir") and replace internal
+    // sentence punctuation (, ; :) with spaces so a long Whisper hallu
+    // like "merci d'avoir regardé cette vidéo, n'hésitez pas..." still
+    // matches the canonical list entry without the comma.
+    let internal_cleaned: String = with_ellipsis
+        .chars()
+        .map(|c| match c {
+            '\'' => None,
+            ',' | ';' | ':' => Some(' '),
+            other => Some(other),
+        })
+        .flatten()
+        .collect();
+
+    // Trim outer punctuation/whitespace
+    let trimmed = internal_cleaned.trim_matches(|c: char| {
+        c.is_whitespace() || matches!(c, '.' | ',' | ';' | ':' | '!' | '?' | '"' | '-' | '_')
+    });
+
+    // Collapse internal whitespace
+    trimmed.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Detect a 3-gram repetition loop (Whisper large-v3-turbo classic failure
+/// mode: "thanks for watching thanks for watching thanks for watching").
+fn has_repetition_loop(normalized: &str) -> bool {
+    let words: Vec<&str> = normalized.split_whitespace().collect();
+    if words.len() < 9 {
+        return false;
+    }
+    use std::collections::HashMap;
+    let mut counts: HashMap<(&str, &str, &str), u8> = HashMap::new();
+    for w in words.windows(3) {
+        let key = (w[0], w[1], w[2]);
+        let c = counts.entry(key).or_insert(0);
+        *c += 1;
+        if *c >= 3 {
+            return true;
+        }
+    }
+    false
+}
+
+/// Filter out common Whisper hallucinations on silent / non-speech audio.
+///
+/// Strategy:
+///   1. Normalize candidate (lowercase + NFKD accent strip + typographic
+///      punctuation + apostrophes + whitespace)
+///   2. Exact match against `HALLUCINATIONS` (canonical-form whole string)
+///   3. Substring match against `HALLUCINATION_SUBSTRINGS` (signatures
+///      that bleed into otherwise-valid text)
+///   4. Detect 3-gram repetition loops
 fn is_hallucination(text: &str) -> bool {
-    let lower = text.trim().to_lowercase();
-    // Exact match (with/without trailing period)
-    let exact = HALLUCINATIONS
-        .iter()
-        .any(|h| lower == *h || lower.trim_end_matches('.') == *h);
-    if exact {
+    let normalized = normalize_for_hallucination_match(text);
+
+    if normalized.is_empty() {
         return true;
     }
-    // Substring match for common attribution/credit hallucinations
-    HALLUCINATION_SUBSTRINGS
+
+    if HALLUCINATIONS.iter().any(|h| *h == normalized) {
+        eprintln!(
+            "[Pipeline] filtered exact hallucination: {:?} (raw: {:?})",
+            normalized, text
+        );
+        return true;
+    }
+
+    if let Some(hit) = HALLUCINATION_SUBSTRINGS
         .iter()
-        .any(|sub| lower.contains(sub))
+        .find(|sub| normalized.contains(*sub))
+    {
+        eprintln!(
+            "[Pipeline] filtered substring hallucination match={:?} (raw: {:?})",
+            hit, text
+        );
+        return true;
+    }
+
+    if has_repetition_loop(&normalized) {
+        eprintln!(
+            "[Pipeline] filtered 3-gram repetition loop (raw: {:?})",
+            text
+        );
+        return true;
+    }
+
+    false
+}
+
+#[cfg(test)]
+mod hallucination_tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_french_accents() {
+        // The bug we're fixing: "regardé" (with é) should match the entry
+        // "merci davoir regarde cette video" (without accents).
+        assert!(is_hallucination("Merci d'avoir regardé cette vidéo."));
+        assert!(is_hallucination("Merci d'avoir regardé cette vidéo"));
+        assert!(is_hallucination("merci d'avoir regardé"));
+    }
+
+    #[test]
+    fn handles_typographic_apostrophes() {
+        // U+2019 right single quotation mark (curly apostrophe)
+        assert!(is_hallucination("Merci d\u{2019}avoir regardé cette vidéo."));
+    }
+
+    #[test]
+    fn normalizes_trailing_punctuation() {
+        assert!(is_hallucination("Thanks for watching!"));
+        assert!(is_hallucination("Thanks for watching..."));
+        assert!(is_hallucination("Thanks for watching!!!"));
+    }
+
+    #[test]
+    fn matches_subtitle_signature_substring() {
+        assert!(is_hallucination(
+            "blah blah subtitles by the Amara.org community"
+        ));
+        assert!(is_hallucination("Sous-titres réalisés par la communauté d'Amara.org"));
+    }
+
+    #[test]
+    fn detects_3gram_repetition_loop() {
+        assert!(is_hallucination(
+            "thanks for watching thanks for watching thanks for watching"
+        ));
+    }
+
+    #[test]
+    fn does_not_filter_real_user_speech() {
+        // Users genuinely say these — must NOT filter.
+        assert!(!is_hallucination("Thank you Marie for the help."));
+        assert!(!is_hallucination("Goodbye Paul, see you tomorrow."));
+        assert!(!is_hallucination("I subscribe to that newsletter."));
+        assert!(!is_hallucination(
+            "I'm sorry, I can't make it to the meeting today."
+        ));
+    }
+
+    #[test]
+    fn filters_empty_and_punctuation_only() {
+        assert!(is_hallucination(""));
+        assert!(is_hallucination("."));
+        assert!(is_hallucination("..."));
+        assert!(is_hallucination("…"));
+        assert!(is_hallucination("   "));
+    }
+
+    #[test]
+    fn filters_short_single_token_noise() {
+        // Single-particle Whisper outputs on silence
+        assert!(is_hallucination("You"));
+        assert!(is_hallucination("So."));
+        assert!(is_hallucination("Okay"));
+        assert!(is_hallucination("Uh"));
+    }
+
+    #[test]
+    fn filters_spanish_video_credit() {
+        assert!(is_hallucination("Gracias por ver el video."));
+    }
+
+    #[test]
+    fn filters_german_broadcaster_signature() {
+        assert!(is_hallucination(
+            "Untertitel im Auftrag des ZDF, 2017"
+        ));
+    }
+
+    #[test]
+    fn filters_long_french_promo() {
+        assert!(is_hallucination(
+            "Merci d'avoir regardé cette vidéo, n'hésitez pas à vous abonner !"
+        ));
+    }
 }
 
 // strip_llm_wrapper() removed in Polaris v3.0.0: the new anti-injection
