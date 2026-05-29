@@ -170,7 +170,10 @@
       "descCmdShiftR": "Cmd + Shift + R",
       "descNoConflicts": "No conflicts",
       "openInputMonitoring": "Open Input Monitoring settings",
-      "successUpdated": "Shortcut updated!"
+      "successUpdated": "Shortcut updated!",
+      "fnEmojiTitle": "The 🌐 key opens the emoji picker",
+      "fnEmojiDesc": "macOS pops the emoji picker every time you press Fn. Set the 🌐 key to \"Do Nothing\" so Fn just records. Your shortcut keeps working.",
+      "fnEmojiButton": "Open Keyboard settings"
     },
     "recordingMode": {
       "title": "Behavior",

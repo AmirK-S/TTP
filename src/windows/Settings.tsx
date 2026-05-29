@@ -19,6 +19,7 @@ import { trackEvent } from '../lib/analytics';
 import { useUpdater } from '../hooks/useUpdater';
 import { useSettingsStore, DictionaryEntry, HistoryEntry } from '../stores/settings-store';
 import { PermissionBanner } from '../components/PermissionBanner';
+import { FnEmojiNudge } from '../components/FnEmojiNudge';
 import type { LanguageChoice } from '../i18n/config';
 import type { ThemeChoice } from '../lib/theme';
 import WhatsNew from '../components/WhatsNew';
@@ -671,6 +672,8 @@ export function Settings() {
                   />
                 ))}
               </div>
+
+              <FnEmojiNudge />
 
               {shortcutError && (
                 <div className="mt-4 space-y-2">

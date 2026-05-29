@@ -418,6 +418,52 @@ async fn open_accessibility_settings(app: AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Open macOS System Settings on the Keyboard pane, where the user sets
+/// "Press 🌐 key to → Do Nothing" to stop the emoji picker firing on Fn.
+/// We can't flip that setting programmatically with live effect (a raw
+/// preference write persists but the running session keeps the cached value
+/// until System Settings posts an internal signal), so we guide the user here
+/// — the UI change applies instantly.
+#[tauri::command]
+async fn open_keyboard_settings(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_url(
+            "x-apple.systempreferences:com.apple.Keyboard-Settings.extension",
+            None::<&str>,
+        )
+        .map_err(|e| e.to_string())
+}
+
+/// Whether the macOS Globe/🌐 (Fn) key does something on a standalone press
+/// (emoji picker, dictation, input-source switch) and will therefore interfere
+/// with using Fn as a push-to-talk hotkey. True unless it's set to "Do Nothing"
+/// (`AppleFnUsageType == 0` in `com.apple.HIToolbox`). The frontend uses this to
+/// show a one-time nudge guiding the user to disable it, and to auto-dismiss the
+/// nudge once they have. Read via a fresh `defaults` process so we see external
+/// changes immediately (our own process's CFPreferences cache would be stale).
+#[tauri::command]
+fn fn_globe_key_intercepts() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        match std::process::Command::new("defaults")
+            .args(["read", "com.apple.HIToolbox", "AppleFnUsageType"])
+            .output()
+        {
+            // "0" = Do Nothing → no interference.
+            Ok(o) if o.status.success() => {
+                String::from_utf8_lossy(&o.stdout).trim() != "0"
+            }
+            // Key unset (read fails) → macOS default pops the emoji picker.
+            _ => true,
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     use std::sync::Arc;
@@ -694,6 +740,8 @@ pub fn run() {
             open_input_monitoring_settings,
             open_microphone_settings,
             open_accessibility_settings,
+            open_keyboard_settings,
+            fn_globe_key_intercepts,
             reset_to_idle,
             restart_app_post_update,
             check_for_updates_with_channel,

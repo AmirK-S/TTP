@@ -19,7 +19,7 @@ use block::ConcreteBlock;
 use cocoa::base::id;
 use objc::{class, msg_send, sel, sel_impl};
 use std::io::Write;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
@@ -79,19 +79,10 @@ extern "C" {
 }
 
 const KCG_HID_EVENT_TAP: u32 = 0;
-const KCG_HEAD_INSERT_EVENT_TAP: u32 = 0;
 const KCG_TAIL_APPEND_EVENT_TAP: u32 = 1;
-/// Active tap: callback may modify/delete events (return null to swallow).
-/// Requires Accessibility trust.
-const KCG_EVENT_TAP_OPTION_DEFAULT: u32 = 0;
-/// Passive tap: callback observes only, return value ignored. Needs only
-/// Input Monitoring.
 const KCG_EVENT_TAP_OPTION_LISTEN_ONLY: u32 = 1;
 const KCG_EVENT_KEY_DOWN: u32 = 10;
 const KCG_EVENT_KEY_UP: u32 = 11;
-/// macOS disabled our tap (slow callback / heavy input). We re-enable it.
-const KCG_EVENT_TAP_DISABLED_BY_TIMEOUT: u32 = 0xFFFF_FFFE;
-const KCG_EVENT_TAP_DISABLED_BY_USER_INPUT: u32 = 0xFFFF_FFFF;
 /// CGEventType for modifier-key changes (Fn, Shift, Cmd, Option, Ctrl).
 /// macOS emits this with the dedicated keycode of the modifier being touched
 /// — including keycode 63 for the physical Fn/Globe key. F1..F12, in
@@ -142,17 +133,6 @@ static FKEY_CURRENTLY_HELD: AtomicBool = AtomicBool::new(false);
 /// (timer reads `NSEvent.modifierFlags` showing Function set because an
 /// F-key bled the bit, the F-key veto callback hadn't run yet) is gone.
 static FN_KEY_PHYSICALLY_DOWN: AtomicBool = AtomicBool::new(false);
-
-/// True when the event tap was created in active (consuming) mode, so the
-/// callback can return null to swallow the Fn FlagsChanged event and stop
-/// macOS opening the Globe/emoji picker. False when we fell back to a passive
-/// listen-only tap (Accessibility not granted) — Fn detection still works, but
-/// the emoji picker is not suppressed (unchanged from before).
-static FN_TAP_CONSUMES: AtomicBool = AtomicBool::new(false);
-
-/// The CGEventTap mach port (pointer as usize), so the callback can re-enable
-/// the tap if macOS disables it on timeout / heavy user input.
-static FN_TAP_PORT: AtomicUsize = AtomicUsize::new(0);
 
 /// True while the app is recording in hands-free / toggle mode. Set by
 /// `shortcuts.rs` via [`set_hands_free_recording`]. When set, a single quick Fn
@@ -398,29 +378,10 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
         let mask: u64 = (1u64 << KCG_EVENT_FLAGS_CHANGED)
             | (1u64 << KCG_EVENT_KEY_DOWN)
             | (1u64 << KCG_EVENT_KEY_UP);
-
-        // To suppress the macOS Globe/Fn emoji picker we must CONSUME the Fn
-        // FlagsChanged event (return null from the callback). Only an active,
-        // head-inserted tap can delete events, and that requires Accessibility
-        // trust. If Accessibility isn't granted we fall back to the passive
-        // listen-only tap used before: Fn detection still works (Input
-        // Monitoring is enough) but the emoji picker is not suppressed.
-        //
-        // The app's setup runs its stale-Accessibility reset+reprompt BEFORE
-        // start_fn_key_monitor, so this read is reliable. The tap mode is fixed
-        // at creation: a user who grants Accessibility later gets emoji
-        // suppression on the next launch.
-        let can_consume = crate::paste::check_accessibility();
-        FN_TAP_CONSUMES.store(can_consume, Ordering::Relaxed);
-        let (placement, option) = if can_consume {
-            (KCG_HEAD_INSERT_EVENT_TAP, KCG_EVENT_TAP_OPTION_DEFAULT)
-        } else {
-            (KCG_TAIL_APPEND_EVENT_TAP, KCG_EVENT_TAP_OPTION_LISTEN_ONLY)
-        };
         let tap = CGEventTapCreate(
             KCG_HID_EVENT_TAP,
-            placement,
-            option,
+            KCG_TAIL_APPEND_EVENT_TAP,
+            KCG_EVENT_TAP_OPTION_LISTEN_ONLY,
             mask,
             fkey_tap_callback,
             std::ptr::null_mut(),
@@ -428,15 +389,11 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
         if tap.is_null() {
             fnlog!("[FnKey] CGEventTapCreate returned null — F3/F4/F6 veto disabled (Input Monitoring permission missing?)");
         } else {
-            FN_TAP_PORT.store(tap as usize, Ordering::Relaxed);
             let source = CFMachPortCreateRunLoopSource(std::ptr::null_mut(), tap, 0);
             let rl = CFRunLoopGetCurrent();
             CFRunLoopAddSource(rl, source, kCFRunLoopCommonModes);
             CGEventTapEnable(tap, 1);
-            fnlog!(
-                "[FnKey] CGEventTap armed at HID level (consume_fn={}, FlagsChanged keycode 63 + F-key safety net)",
-                can_consume
-            );
+            fnlog!("[FnKey] CGEventTap armed at HID level (FlagsChanged for Fn keycode 63 + F-key safety net)");
         }
     }
 }
@@ -447,19 +404,6 @@ unsafe extern "C" fn fkey_tap_callback(
     event: CGEventRef,
     _user_info: *mut std::ffi::c_void,
 ) -> CGEventRef {
-    // macOS disables an active tap if the callback is slow or under heavy
-    // input. Re-enable it so Fn keeps working. Handle before the monitoring
-    // gate — the tap must recover even while paused.
-    if event_type == KCG_EVENT_TAP_DISABLED_BY_TIMEOUT
-        || event_type == KCG_EVENT_TAP_DISABLED_BY_USER_INPUT
-    {
-        let port = FN_TAP_PORT.load(Ordering::Relaxed) as CFMachPortRef;
-        if !port.is_null() {
-            CGEventTapEnable(port, 1);
-        }
-        return event;
-    }
-
     if !FN_MONITORING_ACTIVE.load(Ordering::Relaxed) {
         return event;
     }
@@ -473,15 +417,6 @@ unsafe extern "C" fn fkey_tap_callback(
         let flags = CGEventGetFlags(event);
         let fn_down = (flags & NS_EVENT_MODIFIER_FLAG_FUNCTION) != 0;
         FN_KEY_PHYSICALLY_DOWN.store(fn_down, Ordering::Relaxed);
-        // Swallow the standalone Fn event so macOS doesn't pop the Globe/emoji
-        // picker. We've already recorded the key state above, so our own
-        // push-to-talk detection is unaffected. fn+key combos still work: the
-        // Function flag rides on each combo key's own event, not on this
-        // FlagsChanged notification. Only possible when the tap is active
-        // (Accessibility granted); in listen-only mode the return is ignored.
-        if FN_TAP_CONSUMES.load(Ordering::Relaxed) {
-            return std::ptr::null_mut();
-        }
         return event;
     }
 

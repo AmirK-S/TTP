@@ -170,7 +170,10 @@
       "descCmdShiftR": "Cmd + Maj + R",
       "descNoConflicts": "Sans conflit",
       "openInputMonitoring": "Ouvrir les réglages Input Monitoring",
-      "successUpdated": "Raccourci mis à jour !"
+      "successUpdated": "Raccourci mis à jour !",
+      "fnEmojiTitle": "La touche 🌐 ouvre le sélecteur d'emoji",
+      "fnEmojiDesc": "macOS ouvre le sélecteur d'emoji à chaque appui sur Fn. Mets la touche 🌐 sur « Ne rien faire » pour que le Fn serve juste à dicter. Ton raccourci continue de marcher.",
+      "fnEmojiButton": "Ouvrir les réglages Clavier"
     },
     "recordingMode": {
       "title": "Comportement",
