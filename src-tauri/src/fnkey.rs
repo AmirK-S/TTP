@@ -19,7 +19,7 @@ use block::ConcreteBlock;
 use cocoa::base::id;
 use objc::{class, msg_send, sel, sel_impl};
 use std::io::Write;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
@@ -79,10 +79,19 @@ extern "C" {
 }
 
 const KCG_HID_EVENT_TAP: u32 = 0;
+const KCG_HEAD_INSERT_EVENT_TAP: u32 = 0;
 const KCG_TAIL_APPEND_EVENT_TAP: u32 = 1;
+/// Active tap: callback may modify/delete events (return null to swallow).
+/// Requires Accessibility trust.
+const KCG_EVENT_TAP_OPTION_DEFAULT: u32 = 0;
+/// Passive tap: callback observes only, return value ignored. Needs only
+/// Input Monitoring.
 const KCG_EVENT_TAP_OPTION_LISTEN_ONLY: u32 = 1;
 const KCG_EVENT_KEY_DOWN: u32 = 10;
 const KCG_EVENT_KEY_UP: u32 = 11;
+/// macOS disabled our tap (slow callback / heavy input). We re-enable it.
+const KCG_EVENT_TAP_DISABLED_BY_TIMEOUT: u32 = 0xFFFF_FFFE;
+const KCG_EVENT_TAP_DISABLED_BY_USER_INPUT: u32 = 0xFFFF_FFFF;
 /// CGEventType for modifier-key changes (Fn, Shift, Cmd, Option, Ctrl).
 /// macOS emits this with the dedicated keycode of the modifier being touched
 /// — including keycode 63 for the physical Fn/Globe key. F1..F12, in
@@ -133,6 +142,34 @@ static FKEY_CURRENTLY_HELD: AtomicBool = AtomicBool::new(false);
 /// (timer reads `NSEvent.modifierFlags` showing Function set because an
 /// F-key bled the bit, the F-key veto callback hadn't run yet) is gone.
 static FN_KEY_PHYSICALLY_DOWN: AtomicBool = AtomicBool::new(false);
+
+/// True when the event tap was created in active (consuming) mode, so the
+/// callback can return null to swallow the Fn FlagsChanged event and stop
+/// macOS opening the Globe/emoji picker. False when we fell back to a passive
+/// listen-only tap (Accessibility not granted) — Fn detection still works, but
+/// the emoji picker is not suppressed (unchanged from before).
+static FN_TAP_CONSUMES: AtomicBool = AtomicBool::new(false);
+
+/// The CGEventTap mach port (pointer as usize), so the callback can re-enable
+/// the tap if macOS disables it on timeout / heavy user input.
+static FN_TAP_PORT: AtomicUsize = AtomicUsize::new(0);
+
+/// True while the app is recording in hands-free / toggle mode. Set by
+/// `shortcuts.rs` via [`set_hands_free_recording`]. When set, a single quick Fn
+/// tap STOPS the recording (instead of being ignored as too-short / treated as
+/// a double-tap candidate).
+static HANDS_FREE_RECORDING: AtomicBool = AtomicBool::new(false);
+
+/// Timestamp (ms) when the current hands-free recording started. A single tap
+/// may only stop the recording after [`HANDS_FREE_STOP_GRACE_MS`] has elapsed —
+/// this stops the *second* tap of the starting double-tap (and HID jitter right
+/// after it) from instantly ending the recording it just began.
+static HANDS_FREE_START_MS: AtomicU64 = AtomicU64::new(0);
+
+/// Grace period after a hands-free recording starts before a single Fn tap is
+/// allowed to stop it. Must comfortably exceed DOUBLE_TAP_THRESHOLD_MS so the
+/// starting gesture can't self-cancel.
+const HANDS_FREE_STOP_GRACE_MS: u64 = 400;
 
 /// Double-tap detection threshold in milliseconds
 const DOUBLE_TAP_THRESHOLD_MS: u64 = 300;
@@ -307,10 +344,29 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
                     // and we never reach this else — but kept defensively.
                     let press_time = FN_PRESS_TIME_MS.load(Ordering::Relaxed);
                     let elapsed = now_ms() - press_time;
-                    if elapsed >= 20 && elapsed < 500 {
-                        LAST_FN_PRESS_TIME_MS.store(press_time, Ordering::Relaxed);
+
+                    // If a hands-free recording is in progress, a single quick
+                    // tap STOPS it — what the user expects once hands-free is
+                    // engaged. (Holding Fn >150ms already stops via the debounce
+                    // branch above; this adds the quick-tap path.) The grace
+                    // window prevents the second tap of the starting double-tap
+                    // from instantly ending the recording it just began.
+                    let started = HANDS_FREE_START_MS.load(Ordering::Relaxed);
+                    let stop_allowed = HANDS_FREE_RECORDING.load(Ordering::Relaxed)
+                        && started > 0
+                        && now_ms().saturating_sub(started) > HANDS_FREE_STOP_GRACE_MS;
+                    if stop_allowed {
+                        fnlog!("[FnKey] Fn key UP ({}ms) — single tap stops hands-free recording", elapsed);
+                        LAST_FN_PRESS_TIME_MS.store(0, Ordering::Relaxed);
+                        if let Some(app) = APP_HANDLE.get() {
+                            crate::shortcuts::handle_fn_stop(app);
+                        }
+                    } else {
+                        if elapsed >= 20 && elapsed < 500 {
+                            LAST_FN_PRESS_TIME_MS.store(press_time, Ordering::Relaxed);
+                        }
+                        fnlog!("[FnKey] Fn key UP ({}ms, flags=0x{:X}, ignored — too short)", elapsed, flags);
                     }
-                    fnlog!("[FnKey] Fn key UP ({}ms, flags=0x{:X}, ignored — too short)", elapsed, flags);
                 }
             }
         });
@@ -342,10 +398,29 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
         let mask: u64 = (1u64 << KCG_EVENT_FLAGS_CHANGED)
             | (1u64 << KCG_EVENT_KEY_DOWN)
             | (1u64 << KCG_EVENT_KEY_UP);
+
+        // To suppress the macOS Globe/Fn emoji picker we must CONSUME the Fn
+        // FlagsChanged event (return null from the callback). Only an active,
+        // head-inserted tap can delete events, and that requires Accessibility
+        // trust. If Accessibility isn't granted we fall back to the passive
+        // listen-only tap used before: Fn detection still works (Input
+        // Monitoring is enough) but the emoji picker is not suppressed.
+        //
+        // The app's setup runs its stale-Accessibility reset+reprompt BEFORE
+        // start_fn_key_monitor, so this read is reliable. The tap mode is fixed
+        // at creation: a user who grants Accessibility later gets emoji
+        // suppression on the next launch.
+        let can_consume = crate::paste::check_accessibility();
+        FN_TAP_CONSUMES.store(can_consume, Ordering::Relaxed);
+        let (placement, option) = if can_consume {
+            (KCG_HEAD_INSERT_EVENT_TAP, KCG_EVENT_TAP_OPTION_DEFAULT)
+        } else {
+            (KCG_TAIL_APPEND_EVENT_TAP, KCG_EVENT_TAP_OPTION_LISTEN_ONLY)
+        };
         let tap = CGEventTapCreate(
             KCG_HID_EVENT_TAP,
-            KCG_TAIL_APPEND_EVENT_TAP,
-            KCG_EVENT_TAP_OPTION_LISTEN_ONLY,
+            placement,
+            option,
             mask,
             fkey_tap_callback,
             std::ptr::null_mut(),
@@ -353,11 +428,15 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
         if tap.is_null() {
             fnlog!("[FnKey] CGEventTapCreate returned null — F3/F4/F6 veto disabled (Input Monitoring permission missing?)");
         } else {
+            FN_TAP_PORT.store(tap as usize, Ordering::Relaxed);
             let source = CFMachPortCreateRunLoopSource(std::ptr::null_mut(), tap, 0);
             let rl = CFRunLoopGetCurrent();
             CFRunLoopAddSource(rl, source, kCFRunLoopCommonModes);
             CGEventTapEnable(tap, 1);
-            fnlog!("[FnKey] CGEventTap armed at HID level (FlagsChanged for Fn keycode 63 + F-key safety net)");
+            fnlog!(
+                "[FnKey] CGEventTap armed at HID level (consume_fn={}, FlagsChanged keycode 63 + F-key safety net)",
+                can_consume
+            );
         }
     }
 }
@@ -368,6 +447,19 @@ unsafe extern "C" fn fkey_tap_callback(
     event: CGEventRef,
     _user_info: *mut std::ffi::c_void,
 ) -> CGEventRef {
+    // macOS disables an active tap if the callback is slow or under heavy
+    // input. Re-enable it so Fn keeps working. Handle before the monitoring
+    // gate — the tap must recover even while paused.
+    if event_type == KCG_EVENT_TAP_DISABLED_BY_TIMEOUT
+        || event_type == KCG_EVENT_TAP_DISABLED_BY_USER_INPUT
+    {
+        let port = FN_TAP_PORT.load(Ordering::Relaxed) as CFMachPortRef;
+        if !port.is_null() {
+            CGEventTapEnable(port, 1);
+        }
+        return event;
+    }
+
     if !FN_MONITORING_ACTIVE.load(Ordering::Relaxed) {
         return event;
     }
@@ -381,6 +473,15 @@ unsafe extern "C" fn fkey_tap_callback(
         let flags = CGEventGetFlags(event);
         let fn_down = (flags & NS_EVENT_MODIFIER_FLAG_FUNCTION) != 0;
         FN_KEY_PHYSICALLY_DOWN.store(fn_down, Ordering::Relaxed);
+        // Swallow the standalone Fn event so macOS doesn't pop the Globe/emoji
+        // picker. We've already recorded the key state above, so our own
+        // push-to-talk detection is unaffected. fn+key combos still work: the
+        // Function flag rides on each combo key's own event, not on this
+        // FlagsChanged notification. Only possible when the tap is active
+        // (Accessibility granted); in listen-only mode the return is ignored.
+        if FN_TAP_CONSUMES.load(Ordering::Relaxed) {
+            return std::ptr::null_mut();
+        }
         return event;
     }
 
@@ -410,6 +511,18 @@ pub fn set_fn_key_enabled(enabled: bool) {
         FN_KEY_DOWN.store(false, Ordering::Relaxed);
         FN_RECORDING_ACTIVE.store(false, Ordering::Relaxed);
         FN_PRESS_TIME_MS.store(0, Ordering::Relaxed);
+        HANDS_FREE_RECORDING.store(false, Ordering::Relaxed);
+        HANDS_FREE_START_MS.store(0, Ordering::Relaxed);
     }
     fnlog!("[FnKey] Fn key monitoring {}", if enabled { "enabled" } else { "disabled" });
+}
+
+/// Called by `shortcuts.rs` when a hands-free / toggle recording starts (`true`)
+/// or ends (`false`). While active, a single quick Fn tap stops the recording.
+/// Idempotent; safe to call from any thread.
+pub fn set_hands_free_recording(active: bool) {
+    HANDS_FREE_RECORDING.store(active, Ordering::Relaxed);
+    if active {
+        HANDS_FREE_START_MS.store(now_ms(), Ordering::Relaxed);
+    }
 }

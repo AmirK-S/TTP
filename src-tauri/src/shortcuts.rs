@@ -117,6 +117,34 @@ pub fn handle_fn_double_tap(app: &AppHandle) {
     }
 }
 
+/// Stop a hands-free recording from a single Fn tap.
+///
+/// Once hands-free mode is engaged (via double-tap, or via toggle mode when the
+/// persisted setting is on), the user expects ONE tap to end the recording —
+/// not a second double-tap. The fnkey timer calls this from the key-release
+/// path; the grace window there guarantees we never cancel the gesture that
+/// just started the recording. Restores in-memory hands_free to the persisted
+/// preference, mirroring [`handle_fn_double_tap`].
+pub fn handle_fn_stop(app: &AppHandle) {
+    let state = app.state::<Mutex<AppState>>();
+
+    let Ok(mut app_state) = state.try_lock() else {
+        sentry::add_breadcrumb(sentry::Breadcrumb {
+            category: Some("shortcuts".to_string()),
+            message: Some("try_lock contended at handle_fn_stop".to_string()),
+            level: sentry::Level::Warning,
+            ..Default::default()
+        });
+        eprintln!("[Shortcuts] try_lock contended at handle_fn_stop");
+        return;
+    };
+
+    if app_state.is_recording() {
+        stop_recording(&mut app_state, app);
+        app_state.hands_free_mode = get_settings().hands_free_mode;
+    }
+}
+
 /// Handle shortcut key press - implements double-tap detection and settings-based toggle mode
 fn handle_shortcut_pressed(state: &mut AppState, app: &AppHandle) {
     let now = Instant::now();
@@ -173,6 +201,11 @@ fn start_recording(state: &mut AppState, app: &AppHandle) {
     set_recording_icon(app, true);
     show_pill(app);
     play_start_sound(app);
+    // Tell the Fn monitor whether this is a hands-free recording, so a single
+    // Fn tap can stop it (see fnkey::handle_fn_stop). Push-to-talk recordings
+    // (hands_free_mode == false) are unaffected.
+    #[cfg(target_os = "macos")]
+    crate::fnkey::set_hands_free_recording(state.hands_free_mode);
 }
 
 /// Stop recording: update state to Processing, play sound
@@ -181,6 +214,8 @@ fn stop_recording(state: &mut AppState, app: &AppHandle) {
     state.set_state(RecordingState::Processing, app);
     set_recording_icon(app, false);
     play_stop_sound(app);
+    #[cfg(target_os = "macos")]
+    crate::fnkey::set_hands_free_recording(false);
     // During Processing, show pill if setting allows (shows during processing regardless of hide setting)
     if should_show_pill(app) {
         show_pill(app);
