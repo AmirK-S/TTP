@@ -26,6 +26,7 @@
   "error": {
     "audio_file_not_found": "Fichier audio introuvable",
     "audio_corrupt": "L'enregistrement est corrompu. Réessaie.",
+    "recording_empty": "Le micro n'a rien capté. Vérifie Réglages Système → Confidentialité → Microphone, ou ferme toute app qui utilise le micro.",
     "audio_too_large": "Enregistrement trop long ({{mb}} Mo). Max ~14 min.",
     "compression_failed": "Compression audio impossible. J'envoie l'original.",
     "no_api_key": "Aucune clé API Groq configurée",
@@ -79,6 +80,7 @@
     "recordingTooLong": "Enregistrement trop long. Max ~14 minutes.",
     "transcriptionFailed": "Échec de la transcription",
     "noSpeech": "Je n'ai rien capté",
+    "recordingEmpty": "Le micro n'a rien capté. Vérifie la permission.",
     "polishLimitReached": "Limite Correction IA atteinte ({{used}}/{{limit}} ce mois-ci). 17€ une fois et c'est à vie avec TTP Pro.",
     "clipboardFailed": "Échec de la copie dans le presse-papiers",
     "addToAccessibility": "Ajoute TTP dans Accessibilité, puis colle avec Cmd+V",

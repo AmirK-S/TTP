@@ -14,7 +14,7 @@ import { useUpdater } from './hooks/useUpdater';
  */
 function App() {
   // This hook listens for recording state changes from the backend
-  // and controls the actual microphone recording via tauri-plugin-mic-recorder
+  // and drives the in-house cpal capture (src-tauri/src/audio_capture.rs).
   useRecordingControl({
     onRecordingComplete: () => {},
     onError: () => {},

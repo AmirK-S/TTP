@@ -1,10 +1,16 @@
 // TTP - Talk To Paste
-// Hook to control actual microphone recording via tauri-plugin-mic-recorder
-// This hooks into the recording-state-changed events from Rust and
-// starts/stops the mic recording plugin accordingly.
+// Hook to control actual microphone recording via our in-house cpal recorder
+// (src-tauri/src/audio_capture.rs). Replaces the upstream
+// tauri-plugin-mic-recorder, which silently dropped samples and swallowed
+// stream errors — see audio_capture.rs module-level comment.
+//
+// Hooks into the recording-state-changed events from Rust and
+// starts/stops capture accordingly.
 
-import { startRecording, stopRecording } from 'tauri-plugin-mic-recorder-api';
 import { invoke } from '@tauri-apps/api/core';
+
+const startRecording = () => invoke<void>('start_recording');
+const stopRecording = () => invoke<string>('stop_recording');
 import { emit } from '@tauri-apps/api/event';
 import { useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';

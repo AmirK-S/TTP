@@ -356,19 +356,43 @@ fn normalize_for_hallucination_match(s: &str) -> String {
 
 /// Detect a 3-gram repetition loop (Whisper large-v3-turbo classic failure
 /// mode: "thanks for watching thanks for watching thanks for watching").
+///
+/// Whisper's pathology produces the same 3-gram CONSECUTIVELY, with positions
+/// typically the trigram length apart (3 words). Natural speech may also
+/// repeat short filler 3-grams ("et donc je", "you know what") across a long
+/// recording, but those occurrences are spread over many words. We trigger
+/// only when at least `MIN_CHAIN` occurrences of the same 3-gram form a chain
+/// where each consecutive pair is within `TIGHT_GAP` words — preserving real
+/// long-monologue transcriptions while still catching Whisper loops.
 fn has_repetition_loop(normalized: &str) -> bool {
     let words: Vec<&str> = normalized.split_whitespace().collect();
     if words.len() < 9 {
         return false;
     }
+
+    const TIGHT_GAP: usize = 8;
+    const MIN_CHAIN: usize = 3;
+
     use std::collections::HashMap;
-    let mut counts: HashMap<(&str, &str, &str), u8> = HashMap::new();
-    for w in words.windows(3) {
-        let key = (w[0], w[1], w[2]);
-        let c = counts.entry(key).or_insert(0);
-        *c += 1;
-        if *c >= 3 {
-            return true;
+    let mut positions: HashMap<(&str, &str, &str), Vec<usize>> = HashMap::new();
+    for (i, w) in words.windows(3).enumerate() {
+        positions.entry((w[0], w[1], w[2])).or_default().push(i);
+    }
+
+    for occurrences in positions.values() {
+        if occurrences.len() < MIN_CHAIN {
+            continue;
+        }
+        let mut chain = 1usize;
+        for pair in occurrences.windows(2) {
+            if pair[1] - pair[0] <= TIGHT_GAP {
+                chain += 1;
+                if chain >= MIN_CHAIN {
+                    return true;
+                }
+            } else {
+                chain = 1;
+            }
         }
     }
     false
@@ -458,6 +482,44 @@ mod hallucination_tests {
     fn detects_3gram_repetition_loop() {
         assert!(is_hallucination(
             "thanks for watching thanks for watching thanks for watching"
+        ));
+    }
+
+    #[test]
+    fn detects_tight_repetition_with_minor_noise_between() {
+        // Whisper sometimes injects 1-2 words between repetitions of the loop
+        // phrase. Still pathological — must trigger.
+        assert!(is_hallucination(
+            "thanks for watching everyone thanks for watching today thanks for watching"
+        ));
+    }
+
+    #[test]
+    fn does_not_filter_natural_long_speech_with_spread_repetition() {
+        // The core regression: a real 2-3 minute monologue that naturally
+        // repeats a short filler 3-gram across the recording. The old
+        // count-only loop detector killed these; the proximity-aware version
+        // must let them through.
+        let monologue = "et donc je voulais te parler du projet polaris parce qu il y a \
+            plusieurs choses qui me chiffonnent depuis ce matin notamment la latence sur \
+            les longs audios qui est devenue franchement insupportable surtout quand on \
+            essaie de dicter une note un peu longue. et donc je pense qu il faut qu on \
+            regarde ensemble cette semaine ou la prochaine pour trouver une solution \
+            durable parce que sinon les utilisateurs vont decrocher et on perdra le peu \
+            de credit qu on a accumule avec la sortie de polaris. et donc je te propose \
+            qu on se cale un creneau lundi ou mardi matin pour faire le tour des options \
+            possibles et choisir un cap clair avant la fin de la semaine.";
+        assert!(!is_hallucination(monologue));
+    }
+
+    #[test]
+    fn does_not_filter_legit_2gram_triple_repetition() {
+        // "I think that I think that I think that" — 2-gram triple repetition
+        // is not what we target. The 3-gram path is only triggered when the
+        // SAME 3-gram is tight-clustered. Sanity check that short natural
+        // speech with a casual stutter does not get flagged.
+        assert!(!is_hallucination(
+            "I think that maybe we should try that approach again next week"
         ));
     }
 
@@ -585,6 +647,41 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         })));
         set_state(app, RecordingState::Idle);
         return Err(msg);
+    }
+
+    // AUDI-06: Detect empty WAV files (valid header, 0 audio samples). This
+    // is the tauri-plugin-mic-recorder failure mode where cpal opens the
+    // stream but the audio callback never delivers samples — typically a
+    // silently-revoked mic permission after an unsigned-app update, or the
+    // mic being held exclusive by another process. Without this check we'd
+    // upload a 68-byte WAV to Groq, get a 400 "Audio file is too short",
+    // and surface a useless generic error.
+    match super::backup::wav_duration_secs(&audio_path) {
+        Ok(secs) if secs < 0.1 => {
+            log_error(&format!(
+                "Empty recording detected: {:.3}s of audio in {} bytes. \
+                 Likely cause: revoked mic permission (unsigned-app update) \
+                 or mic held exclusive by another app.",
+                secs, file_size
+            ));
+            let _ = std::fs::remove_file(&audio_path);
+            emit_progress(app, "error", "error.recording_empty", None);
+            notify(app, &crate::i18n::tr("notification.recordingEmpty"));
+            crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({
+                "error_category": "recording_empty",
+                "duration_seconds": pipeline_start.elapsed().as_secs_f64(),
+                "wav_bytes": file_size,
+                "wav_audio_secs": secs,
+            })));
+            set_state(app, RecordingState::Idle);
+            return Err(format!("Empty recording: {:.3}s of audio", secs));
+        }
+        Ok(_) => { /* non-empty, continue */ }
+        Err(e) => {
+            // Defensive: if we can't even read the duration, treat as corrupt
+            // (validate_wav already passed, so this should be rare).
+            log_error(&format!("Could not read WAV duration: {}", e));
+        }
     }
 
     // Convert stereo 48kHz WAV → mono 16kHz WAV (reduces size ~6x)
@@ -801,6 +898,21 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         }
     };
 
+    // Groq whisper-large-v3 occasionally returns 200 OK with an empty body on
+    // long single-speaker monologues — a known silent-failure mode. One
+    // resubmit almost always recovers the transcription. Cheaper than the
+    // user-facing "no sound" error.
+    let raw_text = if raw_text.trim().is_empty() {
+        crate::logging::log_warn(
+            "Empty transcription from Groq, retrying once before surfacing no_speech",
+        );
+        transcribe_audio(&api_key, transcription_path, whisper_prompt.as_deref())
+            .await
+            .unwrap_or_default()
+    } else {
+        raw_text
+    };
+
     // Check for empty transcription (no speech detected)
     if raw_text.trim().is_empty() {
         let _ = std::fs::remove_file(&audio_path);
@@ -817,10 +929,15 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
     // Filter out dictionary-induced hallucinations: if the entire transcription
     // is just 1-2 words that all appear in the dictionary, Whisper likely
-    // hallucinated a glossary word on silence rather than transcribing real speech.
+    // hallucinated a glossary word on silence rather than transcribing real
+    // speech. Only applied to SHORT recordings (~< 10s of audio): on a long
+    // recording, "2 dict words" is more likely a real (if degenerate) result
+    // than a silence hallucination, and dropping the user's minute-long
+    // capture is worse than pasting the wrong two words.
+    let approx_duration_secs = final_size as f64 / 32_000.0; // 16kHz mono 16-bit
     {
         let dict_entries = crate::dictionary::store::get_dictionary();
-        if !dict_entries.is_empty() {
+        if !dict_entries.is_empty() && approx_duration_secs < 10.0 {
             let words: Vec<&str> = raw_text.trim().split_whitespace().collect();
             if words.len() <= 2 {
                 let dict_words: Vec<String> = dict_entries.iter()

@@ -26,6 +26,7 @@
   "error": {
     "audio_file_not_found": "Audio file not found",
     "audio_corrupt": "Recording is corrupt. Try again.",
+    "recording_empty": "Mic captured no audio. Check System Settings → Privacy → Microphone, or close any app using the mic.",
     "audio_too_large": "Recording too long ({{mb}} MB). Max ~14 min.",
     "compression_failed": "Couldn't compress audio. Sending the original.",
     "no_api_key": "No Groq API key configured",
@@ -79,6 +80,7 @@
     "recordingTooLong": "Recording too long. Max ~14 minutes.",
     "transcriptionFailed": "Transcription failed",
     "noSpeech": "Didn't catch anything",
+    "recordingEmpty": "Mic captured no audio. Check permission.",
     "polishLimitReached": "AI Polish cap hit ({{used}}/{{limit}} this month). €17 unlocks it forever with TTP Pro.",
     "clipboardFailed": "Failed to copy text to clipboard",
     "addToAccessibility": "Add TTP to Accessibility in Settings, then paste with Cmd+V",

@@ -171,3 +171,101 @@ pub fn validate_wav(path: &str) -> Result<(), String> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Byte-for-byte copy of an actual 68-byte WAV the plugin produced on
+    /// the user's machine when mic permission was silently revoked after
+    /// the v3.0.3 update. RIFF + fmt (WAVE_FORMAT_EXTENSIBLE, 48 kHz mono
+    /// IEEE float 32-bit) + data chunk with size 0. validate_wav() passes
+    /// this — only wav_duration_secs() catches it.
+    const EMPTY_PLUGIN_WAV: &[u8] = &[
+        0x52, 0x49, 0x46, 0x46, 0x3c, 0x00, 0x00, 0x00, // RIFF size=60
+        0x57, 0x41, 0x56, 0x45,                         // WAVE
+        0x66, 0x6d, 0x74, 0x20, 0x28, 0x00, 0x00, 0x00, // fmt  size=40
+        0xfe, 0xff, 0x01, 0x00,                         // EXTENSIBLE, 1ch
+        0x80, 0xbb, 0x00, 0x00,                         // 48000 Hz
+        0x00, 0xee, 0x02, 0x00,                         // 192000 B/s
+        0x04, 0x00, 0x20, 0x00,                         // block=4 bps=32
+        0x16, 0x00, 0x20, 0x00,                         // cbSize=22 valid=32
+        0x01, 0x00, 0x00, 0x00,                         // channel mask FL
+        0x03, 0x00, 0x00, 0x00,                         // IEEE_FLOAT GUID...
+        0x00, 0x00, 0x10, 0x00,
+        0x80, 0x00, 0x00, 0xaa,
+        0x00, 0x38, 0x9b, 0x71,
+        0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x00, // data size=0
+    ];
+
+    #[test]
+    fn validates_empty_plugin_wav_header_passes() {
+        // The OLD validate_wav passes this — header is technically valid.
+        // This documents the gap that wav_duration_secs closes.
+        let tmp = std::env::temp_dir().join("ttp_test_empty.wav");
+        std::fs::write(&tmp, EMPTY_PLUGIN_WAV).unwrap();
+        assert!(validate_wav(tmp.to_str().unwrap()).is_ok());
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn detects_empty_plugin_wav_via_duration() {
+        let tmp = std::env::temp_dir().join("ttp_test_empty_dur.wav");
+        std::fs::write(&tmp, EMPTY_PLUGIN_WAV).unwrap();
+        let secs = wav_duration_secs(tmp.to_str().unwrap()).unwrap();
+        assert_eq!(secs, 0.0, "data chunk size is 0 → 0 samples → 0 seconds");
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn non_empty_wav_returns_positive_duration() {
+        // Build a 1-second 16 kHz mono i16 WAV via hound and confirm we
+        // measure ~1.0 s. Guards against regressions where we'd reject
+        // legitimate recordings.
+        let tmp = std::env::temp_dir().join("ttp_test_1sec.wav");
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 16_000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        {
+            let mut w = hound::WavWriter::create(&tmp, spec).unwrap();
+            for _ in 0..16_000 {
+                w.write_sample(0i16).unwrap();
+            }
+            w.finalize().unwrap();
+        }
+        let secs = wav_duration_secs(tmp.to_str().unwrap()).unwrap();
+        assert!((secs - 1.0).abs() < 0.001, "expected ~1.0 s, got {}", secs);
+        let _ = std::fs::remove_file(&tmp);
+    }
+}
+
+/// Verify that a WAV file actually contains audio samples (not just a valid
+/// header with an empty data chunk).
+///
+/// `tauri-plugin-mic-recorder` v2 has a `try_lock()` in its audio callback
+/// (`commands.rs:277`) that silently drops samples on contention, and its
+/// error callback only writes to stderr (`commands.rs:145`) — both can leave
+/// us with a syntactically-valid WAV that has 0 audio samples. The most
+/// common real-world trigger on macOS is mic permission silently revoked
+/// after an unsigned app update: cpal opens the stream, the callback never
+/// fires, stop_recording finalises a 68-byte file (header only).
+///
+/// Sending such a file to Groq returns "Audio file is too short" (HTTP 400),
+/// which the pipeline currently maps to a generic "Transcription failed".
+/// This pre-check lets the pipeline surface a clear, actionable error before
+/// the API call.
+///
+/// Returns `Ok(duration_secs)` for non-empty recordings, `Err` for empty.
+pub fn wav_duration_secs(path: &str) -> Result<f64, String> {
+    let reader = WavReader::open(path)
+        .map_err(|e| format!("Cannot read WAV: {}", e))?;
+    let spec = reader.spec();
+    if spec.sample_rate == 0 {
+        return Err("Invalid sample rate".to_string());
+    }
+    let samples = reader.duration() as f64;
+    Ok(samples / spec.sample_rate as f64)
+}

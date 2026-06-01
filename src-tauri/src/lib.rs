@@ -1,6 +1,7 @@
 // TTP - Talk To Paste
 // Main Tauri application entry point
 
+mod audio_capture;
 mod audio_monitor;
 mod credentials;
 mod dictionary;
@@ -513,7 +514,6 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_positioner::init())
-        .plugin(tauri_plugin_mic_recorder::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
@@ -720,6 +720,8 @@ pub fn run() {
             delete_groq_api_key,
             validate_groq_api_key,
             get_recordings_dir,
+            audio_capture::start_recording,
+            audio_capture::stop_recording,
             process_audio,
             get_settings,
             set_settings,
