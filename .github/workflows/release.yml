@@ -120,7 +120,11 @@ jobs:
           # action installs whatever is the latest stable rustc at run time,
           # so two release builds of the same git SHA can produce different
           # binaries depending on when CI ran. Bump this deliberately via PR.
-          toolchain: '1.85.0'
+          #
+          # 2026-06-10: bumped from 1.85.0 to 1.90.0 — transitive deps (time,
+          # time-core, time-macros) require ≥1.88.0. 1.90.0 is the latest
+          # stable at pin time and gives margin for future minor dep bumps.
+          toolchain: '1.90.0'
           targets: ${{ matrix.target }}
           components: rustfmt, clippy
 
