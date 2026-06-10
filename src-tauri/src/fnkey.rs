@@ -14,6 +14,11 @@
 // to ignore the system's quick Fn/Globe key tap (emoji picker, etc.)
 // and to filter out brief F-key presses.
 
+use crate::fnkey_fsm::{fn_decide, FnAction, FnFsmState, FN_DEBOUNCE_MS};
+// DOUBLE_TAP_THRESHOLD_MS / HANDS_FREE_STOP_GRACE_MS are referenced via the
+// FSM module's internal logic; we don't need them here. FN_DEBOUNCE_MS is
+// still used by the startup diagnostic log so the operator can read the
+// active value at a glance.
 use crate::shortcuts::handle_shortcut_event_public;
 use block::ConcreteBlock;
 use cocoa::base::id;
@@ -146,13 +151,11 @@ static HANDS_FREE_RECORDING: AtomicBool = AtomicBool::new(false);
 /// after it) from instantly ending the recording it just began.
 static HANDS_FREE_START_MS: AtomicU64 = AtomicU64::new(0);
 
-/// Grace period after a hands-free recording starts before a single Fn tap is
-/// allowed to stop it. Must comfortably exceed DOUBLE_TAP_THRESHOLD_MS so the
-/// starting gesture can't self-cancel.
-const HANDS_FREE_STOP_GRACE_MS: u64 = 400;
-
-/// Double-tap detection threshold in milliseconds
-const DOUBLE_TAP_THRESHOLD_MS: u64 = 300;
+// Timing constants moved to `fnkey_fsm` so the pure FSM owns them. We keep
+// only the macOS-platform-specific constants below.
+//
+// HANDS_FREE_STOP_GRACE_MS, DOUBLE_TAP_THRESHOLD_MS, FN_DEBOUNCE_MS:
+//   see `fnkey_fsm` — re-exported via the `use` block above.
 
 /// NSEventModifierFlagFunction = 1 << 23 = 0x800000
 const NS_EVENT_MODIFIER_FLAG_FUNCTION: u64 = 0x800000;
@@ -164,9 +167,6 @@ const NS_EVENT_MODIFIER_FLAG_NUMERIC_PAD: u64 = 0x200000;
 /// Mask for all "real" modifier keys (Shift, Ctrl, Option, Command)
 /// If any of these are set alongside Function, it's likely a key combo, not bare Fn.
 const NS_MODIFIER_KEY_MASK: u64 = 0x1E0000; // Shift|Ctrl|Option|Command
-
-/// Debounce: Fn must be held for this long before recording starts (ms)
-const FN_DEBOUNCE_MS: u64 = 150;
 
 /// How long after the LAST F-key event (down OR up) to ignore Function-flag
 /// events. macOS holds the Function modifier flag for the duration of system
@@ -255,97 +255,81 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
                 return;
             }
 
+            // The timer was historically a sprawl of branches with the
+            // timing rules buried inline. Now the whole decision is one call
+            // to `fnkey_fsm::fn_decide`. Steps:
+            //   1. Snapshot the atomics into an FnFsmState.
+            //   2. Read whether Fn is physically held right now (the source
+            //      of truth maintained by `fkey_tap_callback`).
+            //   3. Run the FSM.
+            //   4. Apply the new state to the atomics.
+            //   5. Dispatch the action.
+            //
+            // `flags` is read only for the diagnostic log — the FSM no
+            // longer consults NSEvent.modifierFlags directly.
             let flags: u64 = msg_send![class!(NSEvent), modifierFlags];
             let fn_held = is_physical_fn_key(flags);
-            let was_held = FN_KEY_DOWN.load(Ordering::Relaxed);
-            let recording_active = FN_RECORDING_ACTIVE.load(Ordering::Relaxed);
 
-            if fn_held && !was_held {
-                // Fn just pressed — note the time, but don't start recording yet
-                let now = now_ms();
-                FN_KEY_DOWN.store(true, Ordering::Relaxed);
-                FN_PRESS_TIME_MS.store(now, Ordering::Relaxed);
-                
-                // Check for double-tap (within 300ms of last press)
-                let last_press = LAST_FN_PRESS_TIME_MS.load(Ordering::Relaxed);
-                let is_double_tap = last_press > 0 && (now - last_press) < DOUBLE_TAP_THRESHOLD_MS;
-                
-                if is_double_tap {
-                    fnlog!("[FnKey] Fn key DOUBLE-TAP detected ({}ms since last press)", now - last_press);
-                    // Reset the last press time to prevent triple-tap detection
-                    LAST_FN_PRESS_TIME_MS.store(0, Ordering::Relaxed);
-                    // Handle double-tap - toggle mode
+            let state = FnFsmState {
+                fn_was_held: FN_KEY_DOWN.load(Ordering::Relaxed),
+                recording_active: FN_RECORDING_ACTIVE.load(Ordering::Relaxed),
+                press_time_ms: FN_PRESS_TIME_MS.load(Ordering::Relaxed),
+                last_press_time_ms: LAST_FN_PRESS_TIME_MS.load(Ordering::Relaxed),
+                hands_free_recording: HANDS_FREE_RECORDING.load(Ordering::Relaxed),
+                hands_free_start_ms: HANDS_FREE_START_MS.load(Ordering::Relaxed),
+            };
+
+            let now = now_ms();
+            let decision = fn_decide(state, fn_held, now);
+
+            // Commit every field the FSM touches. We write unconditionally
+            // (even when nothing changed) so a future field added to
+            // FnFsmState can't accidentally desync the atomics — the FSM
+            // is the single source of truth for the state shape.
+            FN_KEY_DOWN.store(decision.new_state.fn_was_held, Ordering::Relaxed);
+            FN_RECORDING_ACTIVE.store(decision.new_state.recording_active, Ordering::Relaxed);
+            FN_PRESS_TIME_MS.store(decision.new_state.press_time_ms, Ordering::Relaxed);
+            LAST_FN_PRESS_TIME_MS.store(decision.new_state.last_press_time_ms, Ordering::Relaxed);
+
+            // Note: we do NOT write back `hands_free_recording` /
+            // `hands_free_start_ms` — those are set by `set_hands_free_recording`,
+            // which is called from `shortcuts.rs` on session boundaries. The
+            // FSM treats them as read-only inputs.
+
+            match decision.action {
+                FnAction::None => {}
+                FnAction::FireDoubleTap => {
+                    fnlog!(
+                        "[FnKey] Fn key DOUBLE-TAP detected ({}ms since last press)",
+                        now.saturating_sub(state.last_press_time_ms)
+                    );
                     if let Some(app) = APP_HANDLE.get() {
                         crate::shortcuts::handle_fn_double_tap(app);
                     }
-                } else {
-                    fnlog!("[FnKey] Fn key DOWN (flags=0x{:X}, debouncing {}ms...)", flags, FN_DEBOUNCE_MS);
                 }
-            } else if fn_held && was_held && !recording_active {
-                // Fn still held — check if debounce period has passed
-                let press_time = FN_PRESS_TIME_MS.load(Ordering::Relaxed);
-                let elapsed = now_ms() - press_time;
-                if elapsed >= FN_DEBOUNCE_MS {
-                    // Debounce passed — start recording
-                    FN_RECORDING_ACTIVE.store(true, Ordering::Relaxed);
-                    fnlog!("[FnKey] Fn key HELD ({}ms, flags=0x{:X}) — starting recording", elapsed, flags);
+                FnAction::StartRecording => {
+                    fnlog!(
+                        "[FnKey] Fn key HELD ({}ms, flags=0x{:X}) — starting recording",
+                        now.saturating_sub(state.press_time_ms),
+                        flags
+                    );
                     if let Some(app) = APP_HANDLE.get() {
                         handle_shortcut_event_public(app, ShortcutState::Pressed);
                     }
                 }
-            } else if !fn_held && was_held {
-                // Fn released (or another key now set NumericPad flag)
-                FN_KEY_DOWN.store(false, Ordering::Relaxed);
-
-                if recording_active {
-                    // Was recording — stop it
-                    FN_RECORDING_ACTIVE.store(false, Ordering::Relaxed);
+                FnAction::StopRecording => {
                     fnlog!("[FnKey] Fn key UP (flags=0x{:X}) — stopping recording", flags);
                     if let Some(app) = APP_HANDLE.get() {
                         handle_shortcut_event_public(app, ShortcutState::Released);
                     }
-                } else {
-                    // Released before debounce — too short to start recording
-                    // (system emoji tap, or first half of a double-tap).
-                    //
-                    // We still register this as a double-tap candidate. The
-                    // previous lower bound of FN_DEBOUNCE_MS (150 ms) silently
-                    // killed double-tap detection: a natural double-tap is
-                    // ~50–100 ms per tap, so the first tap was always discarded
-                    // and the second tap never saw a `LAST_FN_PRESS_TIME_MS`
-                    // to compare against — `is_double_tap` could not become
-                    // true on macOS even when the user did exactly what was
-                    // supposed to trigger hands-free mode.
-                    //
-                    // 20 ms is enough to filter hardware/HID jitter (the timer
-                    // itself polls at 20 ms) while accepting any deliberate
-                    // tap. The 500 ms upper bound is moot in practice — at
-                    // anything ≥150 ms the recording branch above fires first
-                    // and we never reach this else — but kept defensively.
-                    let press_time = FN_PRESS_TIME_MS.load(Ordering::Relaxed);
-                    let elapsed = now_ms() - press_time;
-
-                    // If a hands-free recording is in progress, a single quick
-                    // tap STOPS it — what the user expects once hands-free is
-                    // engaged. (Holding Fn >150ms already stops via the debounce
-                    // branch above; this adds the quick-tap path.) The grace
-                    // window prevents the second tap of the starting double-tap
-                    // from instantly ending the recording it just began.
-                    let started = HANDS_FREE_START_MS.load(Ordering::Relaxed);
-                    let stop_allowed = HANDS_FREE_RECORDING.load(Ordering::Relaxed)
-                        && started > 0
-                        && now_ms().saturating_sub(started) > HANDS_FREE_STOP_GRACE_MS;
-                    if stop_allowed {
-                        fnlog!("[FnKey] Fn key UP ({}ms) — single tap stops hands-free recording", elapsed);
-                        LAST_FN_PRESS_TIME_MS.store(0, Ordering::Relaxed);
-                        if let Some(app) = APP_HANDLE.get() {
-                            crate::shortcuts::handle_fn_stop(app);
-                        }
-                    } else {
-                        if elapsed >= 20 && elapsed < 500 {
-                            LAST_FN_PRESS_TIME_MS.store(press_time, Ordering::Relaxed);
-                        }
-                        fnlog!("[FnKey] Fn key UP ({}ms, flags=0x{:X}, ignored — too short)", elapsed, flags);
+                }
+                FnAction::StopHandsFree => {
+                    fnlog!(
+                        "[FnKey] Fn key UP ({}ms) — single tap stops hands-free recording",
+                        now.saturating_sub(state.press_time_ms)
+                    );
+                    if let Some(app) = APP_HANDLE.get() {
+                        crate::shortcuts::handle_fn_stop(app);
                     }
                 }
             }

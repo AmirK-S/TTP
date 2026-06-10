@@ -269,13 +269,17 @@ fn toggle_recording(app: &AppHandle) {
     let next_state = {
         let state = app.state::<Mutex<AppState>>();
         let Ok(mut app_state) = state.try_lock() else {
-            eprintln!("[Tray] Could not acquire state lock");
+            crate::logging::log_warn("[Tray] Could not acquire state lock");
             return;
         };
 
         match app_state.recording_state {
             RecordingState::Idle => {
-                app_state.hands_free_mode = true; // Use hands-free mode for tray
+                // Tray "Start recording" entries always launch a hands-free
+                // session — there's no key to release. The session override
+                // clears on the next Idle transition; the persisted setting
+                // stays untouched.
+                app_state.enter_hands_free_session();
                 app_state.set_state(RecordingState::Recording, app);
                 RecordingState::Recording
             }
@@ -510,13 +514,16 @@ pub fn setup_settings_listener(app: &AppHandle) {
             hide_pill(&app_handle);
         }
 
-        // Sync hands_free_mode from settings to AppState
+        // Sync the persisted hands-free preference into AppState. We can
+        // safely refresh it any time the user is idle; we deliberately avoid
+        // touching it mid-recording so a settings tweak can't yank the
+        // current session out of its established mode. Transient overrides
+        // live in `session_hands_free` and are unaffected.
         let settings = get_settings();
         if let Some(state) = app_handle.try_state::<Mutex<AppState>>() {
             if let Ok(mut app_state) = state.try_lock() {
-                // Only update if not currently recording (avoid disrupting active session)
                 if app_state.is_idle() {
-                    app_state.hands_free_mode = settings.hands_free_mode;
+                    app_state.set_persistent_hands_free(settings.hands_free_mode);
                 }
             }
         }

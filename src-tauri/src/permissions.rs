@@ -230,9 +230,9 @@ pub fn check_accessibility_permission() -> PermissionStatus {
         } else {
             // Stale trust entry: TCC says yes, but AX calls fail.
             // Return Denied so the UI prompts the user to fix it.
-            eprintln!(
+            crate::logging::log_warn(
                 "[Permissions] Accessibility trust is stale (TCC says trusted but AX calls fail). \
-                 This typically happens after an app update."
+                 This typically happens after an app update.",
             );
             PermissionStatus::Denied
         }
@@ -259,9 +259,9 @@ pub fn request_accessibility_permission() -> Result<(), String> {
 
         if api_says_trusted && !actually_works {
             // Stale entry detected — reset TCC so the user gets a fresh prompt
-            eprintln!("[Permissions] Resetting stale accessibility TCC entry before re-prompting");
+            crate::logging::log_info("[Permissions] Resetting stale accessibility TCC entry before re-prompting");
             if let Err(e) = crate::paste::reset_accessibility_tcc() {
-                eprintln!("[Permissions] Failed to reset TCC entry: {}. Opening System Settings instead.", e);
+                crate::logging::log_warn(&format!("[Permissions] Failed to reset TCC entry: {}. Opening System Settings instead.", e));
                 // Fall back to opening System Settings
                 std::process::Command::new("open")
                     .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")

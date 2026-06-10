@@ -7,12 +7,19 @@ mod credentials;
 mod dictionary;
 #[cfg(target_os = "macos")]
 mod fnkey;
+// The pure-function FSM lives in its own module so it can be unit-tested on
+// any platform — `fnkey` itself is macOS-only and pulls in objc + cocoa.
+mod fnkey_fsm;
 mod history;
 mod http_client;
 mod i18n;
 mod keychain;
 mod licensing;
-pub mod logging;
+// crate-type = ["staticlib", "cdylib", "rlib"] means anything `pub` is
+// visible to downstream linkers. `logging` and `transcription` are internal
+// implementation details; `pub(crate)` makes their visibility match their
+// actual usage (only inside this lib).
+pub(crate) mod logging;
 mod onboarding;
 mod paste;
 mod permissions;
@@ -22,10 +29,11 @@ mod shortcuts;
 mod sounds;
 mod state;
 mod telemetry;
-pub mod transcription;
+pub(crate) mod transcription;
 mod tray;
 mod uninstall;
 mod usage;
+mod vad;
 mod whatsnew;
 
 use credentials::{
@@ -33,7 +41,7 @@ use credentials::{
     validate_groq_api_key,
 };
 use dictionary::{add_dictionary_entry, clear_dictionary, delete_dictionary_entry, get_dictionary};
-use history::{clear_history, get_history};
+use history::{clear_history, get_history, replay_history_entry};
 use licensing::{
     activate_license, deactivate_license, get_license_info, is_pro, validate_license,
 };
@@ -493,6 +501,52 @@ pub fn run() {
         ..Default::default()
     });
 
+    // Capture Rust panics into Sentry BEFORE the abort kicks in.
+    //
+    // Why this exists: release profile uses `panic = "abort"` (Cargo.toml:77)
+    // so the default sentry-rust panic integration cannot ship the event —
+    // the OS terminates the process before the SDK's drop-based flush runs.
+    // Without this hook, every `.unwrap()` / `.expect()` panic in production
+    // arrives at the user as an empty quit with no signal in our dashboard.
+    //
+    // We construct the event manually (instead of depending on a specific
+    // internal helper in sentry::integrations::panic) so the contract stays
+    // stable across sentry crate minor versions. The local stderr print
+    // preserves the trail in Console.app for users who haven't opted into
+    // telemetry — they can still send us a screenshot.
+    if telemetry_active {
+        std::panic::set_hook(Box::new(move |info| {
+            let payload = info.payload();
+            let msg = payload
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string())
+                .or_else(|| payload.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "panic with non-string payload".to_string());
+            let location = info
+                .location()
+                .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+                .unwrap_or_else(|| "<unknown>".to_string());
+
+            // Local stderr trail (also lands in ttp.log if logging is initialized).
+            eprintln!("[Panic] {} at {}", msg, location);
+
+            // Resolve the Sentry client via the current Hub rather than
+            // capturing the ClientInitGuard (which is not Clone in sentry
+            // 0.42). The Hub is process-global; flush() blocks up to the
+            // given timeout to ship the event over HTTPS before abort.
+            let hub = sentry::Hub::current();
+            let event = sentry::protocol::Event {
+                message: Some(format!("Rust panic: {} at {}", msg, location)),
+                level: sentry::Level::Fatal,
+                ..Default::default()
+            };
+            hub.capture_event(event);
+            if let Some(client) = hub.client() {
+                let _ = client.flush(Some(std::time::Duration::from_secs(2)));
+            }
+        }));
+    }
+
     // Minidump handler for native crashes (segfaults, stack overflows)
     // Only init when telemetry is active — minidump re-executes the binary
     // as a crash reporter process, which causes a duplicate app in dev mode
@@ -590,11 +644,11 @@ pub fn run() {
                     let _ = app.handle().emit("accessibility-missing", ());
                 } else if !actually_works {
                     // Stale trust entry (common after app update) — reset and re-prompt
-                    eprintln!(
-                        "[TTP] Accessibility trust is stale after update. Resetting TCC entry."
+                    logging::log_warn(
+                        "[TTP] Accessibility trust is stale after update. Resetting TCC entry.",
                     );
                     if let Err(e) = paste::reset_accessibility_tcc() {
-                        eprintln!("[TTP] Failed to reset TCC: {}", e);
+                        logging::log_error(&format!("[TTP] Failed to reset TCC: {}", e));
                     }
                     // Small delay then re-prompt
                     std::thread::sleep(std::time::Duration::from_millis(300));
@@ -656,11 +710,13 @@ pub fn run() {
                 }
             }
 
-            // Load persisted hands_free_mode from settings
+            // Load persisted hands_free_mode from settings into the
+            // persisted-only field. The session override stays `None` until
+            // a per-recording event sets it (Fn double-tap / tray start).
             let hands_free_mode = settings::get_settings().hands_free_mode;
             if let Some(state) = app.try_state::<Mutex<AppState>>() {
                 if let Ok(mut app_state) = state.try_lock() {
-                    app_state.hands_free_mode = hands_free_mode;
+                    app_state.set_persistent_hands_free(hands_free_mode);
                 }
             }
 
@@ -720,8 +776,10 @@ pub fn run() {
             delete_groq_api_key,
             validate_groq_api_key,
             get_recordings_dir,
+            recording::reveal_recordings_folder,
             audio_capture::start_recording,
             audio_capture::stop_recording,
+            audio_capture::list_audio_input_devices,
             process_audio,
             get_settings,
             set_settings,
@@ -733,6 +791,7 @@ pub fn run() {
             clear_dictionary,
             get_history,
             clear_history,
+            replay_history_entry,
             update_shortcut_cmd,
             unregister_shortcuts_cmd,
             set_fn_key_enabled,
@@ -769,6 +828,7 @@ pub fn run() {
             get_usage_stats,
             get_analytics_summary,
             uninstall::uninstall_app,
+            logging::reveal_log_folder,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

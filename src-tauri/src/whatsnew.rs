@@ -28,10 +28,68 @@ fn current_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
+/// Locale-aware changelog dispatcher. Returns the FR version when available
+/// for the user's selected language, otherwise falls back to EN.
+///
+/// Why per-lang: WhatsNew is one of the post-update touchpoints a French user
+/// reaches WITHOUT going through Settings → Language. Shipping it EN-only
+/// breaks the i18n contract that "every visible surface speaks your language"
+/// — a recurring complaint in v2.x.
+fn changelog_for_lang(version: &str, lang: &str) -> Option<&'static str> {
+    if lang == "fr" {
+        if let Some(fr) = changelog_for_fr(version) {
+            return Some(fr);
+        }
+    }
+    changelog_for(version)
+}
+
+/// French-locale changelogs. Only the recent versions are translated —
+/// `check_whats_new` only fires for the CURRENT version, so a v3.0.4 user has
+/// never been shown 1.6.0's note, no point translating it now. Add new
+/// entries at the top, paired with each new EN entry.
+fn changelog_for_fr(version: &str) -> Option<&'static str> {
+    match version {
+        "3.0.4" => Some(
+            "Capture micro plus fiable + signaux de pas-de-voix plus clairs.\n\
+             • Remplacement du plugin micro tiers par notre capture cpal maison. Plus de WAV vides de 68 octets quand le permission micro a été révoquée silencieusement après une mise à jour (cause #1 du \"rien capturé\" en v3.0.x).\n\
+             • Le chemin pas-de-voix est durci : si Whisper renvoie un texte vide ou Whisper-hallucinations connues, on le filtre proprement avec un message ciblé au lieu du toast d'erreur générique.\n\
+             • Aucune action requise. Tes raccourcis, ta clé et tes préférences restent comme avant.",
+        ),
+        "3.0.3" => Some(
+            "Nudge guidé pour la touche Globe / sélecteur emoji.\n\
+             • Si tu utilises Fn pour parler mais que macOS affiche le sélecteur emoji à la place, TTP te propose maintenant un guide étape par étape pour basculer Globe vers \"Aucune action\" dans Réglages Système → Clavier.\n\
+             • Le nudge n'apparaît qu'une fois et reste désactivable. Pas d'action si Fn fonctionne déjà.",
+        ),
+        "3.0.2" => Some(
+            "Fix sélecteur emoji avec Fn + stop hands-free en simple tap.\n\
+             • Sur macOS Sequoia, presser Fn lançait parfois le sélecteur emoji au lieu de l'enregistrement. Patché côté event tap : on consomme l'event avant que le système ne le routes vers l'IME.\n\
+             • En mode hands-free, un seul tap de Fn arrête maintenant la session (au lieu de devoir double-tap pour sortir).",
+        ),
+        _ => None,
+    }
+}
+
 /// Hardcoded changelogs per version.
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "3.0.4" => Some(
+            "More reliable mic capture + clearer no-speech signals.\n\
+             • Replaced the third-party mic-recorder plugin with our in-house cpal capture. No more empty 68-byte WAVs when mic permission was silently revoked after an update (root cause of the \"nothing captured\" reports in v3.0.x).\n\
+             • The no-speech path is hardened: if Whisper returns empty text or a known Whisper hallucination, we filter it cleanly with a targeted message instead of a generic error toast.\n\
+             • No action needed. Your shortcuts, key, and preferences carry over.",
+        ),
+        "3.0.3" => Some(
+            "Guided nudge for the Globe key emoji picker.\n\
+             • If you use Fn to talk but macOS pops the emoji picker instead, TTP now offers a step-by-step guide to switch Globe to \"No action\" under System Settings → Keyboard.\n\
+             • The nudge shows once and stays dismissable. No-op if Fn already works.",
+        ),
+        "3.0.2" => Some(
+            "Fn emoji-picker fix + single-tap hands-free stop.\n\
+             • On macOS Sequoia, pressing Fn sometimes launched the emoji picker instead of recording. Patched at the event-tap layer: we consume the event before the system routes it to the IME.\n\
+             • In hands-free mode, a single Fn tap now ends the session (was: had to double-tap to exit).",
+        ),
         "2.2.2" => Some(
             "Upgrade button now points to the live checkout (was still hitting a Lemon Squeezy test-mode URL since v2.1.0).\n\
              • Both the onboarding \"Upgrade for €17\" CTA and the in-Settings Pro panel now open the live checkout. If your previous click landed on a \"Test mode\" or 404 page, this is why.",
@@ -296,8 +354,17 @@ pub fn check_whats_new() -> Option<(String, String)> {
         return None;
     }
 
-    // Return changelog if one exists for the current version
-    changelog_for(version).map(|log| (version.to_string(), log.to_string()))
+    // Resolve the user's language preference so the changelog speaks their
+    // language. "system" / None falls back to EN (matches navigator.language
+    // resolution on JS startup, where unrecognised locales become "en").
+    let lang = crate::settings::get_settings()
+        .language
+        .as_deref()
+        .map(|l| l.to_string())
+        .unwrap_or_else(|| "en".to_string());
+    let lang = if lang == "fr" { "fr" } else { "en" };
+
+    changelog_for_lang(version, lang).map(|log| (version.to_string(), log.to_string()))
 }
 
 /// Dismiss the "What's New" popup by recording the current version.

@@ -6,7 +6,7 @@ import Footer from '@/components/Footer.astro';
 const lastUpdated = '2026-05-06';
 ---
 
-<Layout title="Privacy Policy — TTP">
+<Layout title="Privacy Policy: TTP">
   <Navbar />
   <main class="mx-auto max-w-3xl px-6 pb-16 pt-32 text-zinc-700 dark:text-slate-200">
     <h1 class="mb-2 text-4xl font-bold text-zinc-900 dark:text-white">Privacy Policy</h1>
@@ -19,43 +19,40 @@ const lastUpdated = '2026-05-06';
 
     <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">What stays on your computer</h2>
     <ul class="mb-6 list-disc space-y-2 pl-6">
-      <li><strong>Audio recordings</strong> — kept on disk only as a temporary backup while a transcription is in flight, then deleted automatically.</li>
-      <li><strong>Transcription history</strong> — stored locally so you can copy past results. You can disable history or clear it from Settings at any time.</li>
-      <li><strong>Dictionary entries</strong> — corrections you've taught TTP. Local only.</li>
-      <li><strong>Settings</strong> — your preferences (shortcut, hands-free mode, history toggle, etc.).</li>
-      <li><strong>License state cache</strong> — a signed copy of your TTP Pro license info so the app works briefly offline.</li>
-      <li><strong>Groq API key</strong> — stored in your OS Keychain (macOS) or Credential Manager (Windows). Never written to disk in plain text.</li>
+      <li><strong>Audio recordings</strong>: kept on disk only as a temporary backup while a transcription is in flight, then deleted automatically.</li>
+      <li><strong>Transcription history</strong>: stored locally so you can copy past results. You can disable history or clear it from Settings at any time.</li>
+      <li><strong>Dictionary entries</strong>: corrections you've taught TTP. Local only.</li>
+      <li><strong>Settings</strong>: your preferences (shortcut, hands-free mode, history toggle, etc.).</li>
+      <li><strong>License state cache</strong>: a signed copy of your TTP Pro license info so the app works briefly offline.</li>
+      <li><strong>Groq API key</strong>: stored in your OS Keychain (macOS) or Credential Manager (Windows). Never written to disk in plain text.</li>
     </ul>
 
     <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">What gets sent to third parties</h2>
     <ul class="mb-6 list-disc space-y-2 pl-6">
       <li>
-        <strong>Groq</strong> (<a class="underline text-blue-600 hover:text-blue-700 dark:text-inherit dark:hover:text-white" href="https://groq.com/privacy-policy/" rel="noopener" target="_blank">privacy policy</a>) —
+        <strong>Groq</strong> (<a class="underline text-blue-600 hover:text-blue-700 dark:text-inherit dark:hover:text-white" href="https://groq.com/privacy-policy/" rel="noopener" target="_blank">privacy policy</a>):
         every audio recording is sent to Groq's Whisper endpoint to be transcribed.
         If AI Polish is enabled, the raw text is also sent to a Groq LLM for cleanup.
         TTP does not store or access your Groq API key beyond the call itself.
       </li>
       <li>
-        <strong>Lemon Squeezy</strong> (<a class="underline text-blue-600 hover:text-blue-700 dark:text-inherit dark:hover:text-white" href="https://www.lemonsqueezy.com/privacy" rel="noopener" target="_blank">privacy policy</a>) —
+        <strong>Lemon Squeezy</strong> (<a class="underline text-blue-600 hover:text-blue-700 dark:text-inherit dark:hover:text-white" href="https://www.lemonsqueezy.com/privacy" rel="noopener" target="_blank">privacy policy</a>):
         handles payment when you purchase TTP Pro and validates your license key.
         Your billing information is processed by Lemon Squeezy, not TTP.
       </li>
       <li>
-        <strong>Sentry</strong> — error reporting. <strong>Off by default.</strong> When you opt in from Settings → Telemetry, crash reports are sent to help fix bugs.
+        <strong>Sentry</strong>: error reporting. <strong>Off by default.</strong> When you opt in from Settings → Telemetry, crash reports are sent to help fix bugs.
         API keys, file paths, email addresses, and the contents of your transcriptions are scrubbed before sending.
       </li>
       <li>
-        <strong>Aptabase</strong> — anonymous usage analytics. <strong>Off by default.</strong> When opted in, TTP reports counts of events (e.g. "transcription completed", "settings changed") with no PII attached.
-      </li>
-      <li>
-        <strong>GitHub</strong> — used as the auto-update channel. The app checks GitHub Releases for new versions and downloads them. No identifying information is sent.
+        <strong>GitHub</strong>: used as the auto-update channel. The app checks GitHub Releases for new versions and downloads them. No identifying information is sent.
       </li>
     </ul>
 
     <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">What we do not do</h2>
     <ul class="mb-6 list-disc space-y-2 pl-6">
       <li>We do not sell or share your data with anyone.</li>
-      <li>We do not train models on your transcriptions. (Groq's policy on training applies independently — see their link above.)</li>
+      <li>We do not train models on your transcriptions. (Groq's policy on training applies independently: see their link above.)</li>
       <li>We do not run any analytics or telemetry by default. Both must be explicitly enabled.</li>
       <li>There is no tracking pixel, no advertising network, no third-party fingerprinting.</li>
     </ul>

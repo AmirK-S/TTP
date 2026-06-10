@@ -25,7 +25,7 @@ export function Card({ children, elevation = 'sm', interactive, className, ...re
       className={cn(
         'bg-app-surface rounded-app-lg',
         elevations[elevation],
-        interactive && 'transition-colors duration-150 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-app-raised',
+        interactive && 'transition-colors duration-hover ease-app-out hover:bg-app-raised',
         className,
       )}
       {...rest}

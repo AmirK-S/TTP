@@ -13,6 +13,7 @@ pub use store::{
 use serde::Serialize;
 
 use crate::licensing;
+use crate::licensing::TRIAL_DAYS;
 
 /// Snapshot of usage state, exposed to the frontend.
 #[derive(Debug, Clone, Serialize)]
@@ -21,6 +22,12 @@ pub struct UsageStats {
     pub is_in_trial: bool,
     pub trial_days_left: Option<i64>,
     pub trial_started_at: Option<i64>,
+    /// Exact UTC second at which the trial ends. Single source of truth for
+    /// the onboarding countdown chip — without this, the JS side would have
+    /// to know `TRIAL_DAYS` and drift if the backend ever changes it (it has
+    /// been 7→3→4 historically, and v2.x onboarding shipped a 7-day countdown
+    /// against a 4-day backend, lying to brand-new users for two minor versions).
+    pub trial_ends_at: Option<i64>,
     pub polish_count_this_month: u32,
     pub polish_limit_free: u32,
     pub dictionary_count: usize,
@@ -39,12 +46,14 @@ pub fn get_usage_stats() -> UsageStats {
     } else {
         None
     };
+    let trial_ends_at = usage.trial_started_at.map(|s| s + TRIAL_DAYS * 86_400);
 
     UsageStats {
         is_pro,
         is_in_trial,
         trial_days_left: days,
         trial_started_at: usage.trial_started_at,
+        trial_ends_at,
         polish_count_this_month: polish_count_this_month(&usage),
         polish_limit_free: licensing::FREE_POLISH_PER_MONTH,
         dictionary_count: crate::dictionary::get_dictionary().len(),

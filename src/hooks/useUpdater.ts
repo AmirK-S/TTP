@@ -8,6 +8,13 @@ import { relaunch } from '@tauri-apps/plugin-process';
 import { getVersion } from '@tauri-apps/api/app';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { trackEvent } from '../lib/analytics';
+import {
+  scrubUpdateError,
+  shouldAutoInstall,
+  shouldAutoRestart,
+  shouldNotifyUpdate,
+  shouldResetDismissOnVersionChange,
+} from '../lib/updater-decisions';
 import { useRecordingState } from './useRecordingState';
 import { useSettingsStore } from '../stores/settings-store';
 
@@ -32,15 +39,6 @@ interface UpdateInfo {
 }
 
 const UPDATE_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
-
-
-/// Strip user-identifying paths and truncate, so update_failed telemetry stays safe.
-function scrubUpdateError(msg: string): string {
-  return msg
-    .replace(/\/Users\/[^\s/"']+/g, '[USER]')
-    .replace(/\/home\/[^\s/"']+/g, '[USER]')
-    .slice(0, 200);
-}
 
 interface UseUpdaterOptions {
   autoCheck?: boolean;
@@ -111,7 +109,7 @@ export function useUpdater(options?: UseUpdaterOptions) {
   const recordingState = useRecordingState();
 
   // Derived: should we notify the user about the update?
-  const shouldNotify = updateInfo !== null && recordingState === 'Idle' && !dismissed;
+  const shouldNotify = shouldNotifyUpdate(updateInfo !== null, recordingState, dismissed);
 
   const checkForUpdates = useCallback(async () => {
     setStatus('checking');
@@ -130,8 +128,10 @@ export function useUpdater(options?: UseUpdaterOptions) {
         });
         setStatus('available');
 
-        // Reset dismissed state if this is a new version
-        if (lastFoundVersionRef.current !== result.version) {
+        // Reset dismissed state if this is a new version. The pure helper
+        // makes the rule explicit (null previous = always reset) and is
+        // covered by updater-decisions.test.ts.
+        if (shouldResetDismissOnVersionChange(lastFoundVersionRef.current, result.version)) {
           lastFoundVersionRef.current = result.version;
           setDismissed(false);
         }
@@ -272,10 +272,9 @@ export function useUpdater(options?: UseUpdaterOptions) {
   // the manifest against the running process, which is still old until
   // the user actually relaunches).
   useEffect(() => {
-    if (!autoInstall) return;
-    if (status !== 'available') return;
-    if (recordingState !== 'Idle') return;
-    if (autoInstalledThisSessionRef.current) return;
+    if (!shouldAutoInstall(autoInstall, status, recordingState, autoInstalledThisSessionRef.current)) {
+      return;
+    }
     autoInstalledThisSessionRef.current = true;
     downloadAndInstall();
   }, [autoInstall, status, recordingState, downloadAndInstall]);
@@ -340,10 +339,9 @@ export function useUpdater(options?: UseUpdaterOptions) {
   // (user opened TTP, never used it, walked away). It gets cancelled by
   // cleanup if anything else fires the effect first.
   useEffect(() => {
-    if (!autoInstall) return;
-    if (status !== 'ready') return;
-    if (recordingState !== 'Idle') return;
-    if (hasRecordedSinceReadyRef.current) return;
+    if (!shouldAutoRestart(autoInstall, status, recordingState, hasRecordedSinceReadyRef.current)) {
+      return;
+    }
     const timer = setTimeout(() => {
       restartApp();
     }, 60_000);

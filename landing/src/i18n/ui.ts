@@ -107,7 +107,7 @@ export const ui = {
     'install.heading': 'Installation',
     'install.subheading': 'Get TTP up and running in seconds.',
     'install.whyTitle': 'Why does this happen?',
-    'install.whyText': "TTP is free and open source. Apple and Microsoft charge developers hundreds of dollars per year for a certificate that removes security warnings. We chose to keep TTP free instead. The app is fully open source \u2014 you can inspect every line of code on GitHub.",
+    'install.whyText': "TTP is free and source-available. Apple and Microsoft charge developers hundreds of dollars per year for a certificate that removes security warnings. We chose to keep TTP free instead. The app is fully source-available: you can inspect every line of code on GitHub (see the LICENSE file for usage terms).",
     'install.macTab': 'macOS',
     'install.winTab': 'Windows',
     'install.macAlreadyTitle': 'Already downloaded? Open Terminal and run:',
@@ -140,7 +140,7 @@ export const ui = {
     // Meta
     'meta.title': 'TTP - Talk To Paste | Turn Speech into Text Anywhere',
     'meta.description':
-      'TTP (Talk To Paste) - Turn speech into text anywhere. Press a shortcut, speak, and your words appear wherever you\'re typing. Free, open source, works on macOS and Windows.',
+      'TTP (Talk To Paste) - Turn speech into text anywhere. Press a shortcut, speak, and your words appear wherever you\'re typing. Free, source-available, works on macOS and Windows.',
 
     // Portfolio
     'nav.about': 'About',
@@ -282,7 +282,7 @@ export const ui = {
     'install.heading': 'Installation',
     'install.subheading': 'Installez TTP en quelques secondes.',
     'install.whyTitle': 'Pourquoi cette \u00e9tape ?',
-    'install.whyText': "TTP est gratuit et open source. Apple et Microsoft facturent des centaines d'euros par an pour un certificat qui supprime les alertes de s\u00e9curit\u00e9. On a pr\u00e9f\u00e9r\u00e9 garder TTP gratuit. L'app est enti\u00e8rement open source \u2014 vous pouvez inspecter chaque ligne de code sur GitHub.",
+    'install.whyText': "TTP est gratuit et source-available. Apple et Microsoft facturent des centaines d'euros par an pour un certificat qui supprime les alertes de s\u00e9curit\u00e9. On a pr\u00e9f\u00e9r\u00e9 garder TTP gratuit. L'app est enti\u00e8rement source-available : tu peux inspecter chaque ligne de code sur GitHub (voir le fichier LICENSE pour les conditions d'usage).",
     'install.macTab': 'macOS',
     'install.winTab': 'Windows',
     'install.macAlreadyTitle': 'D\u00e9j\u00e0 t\u00e9l\u00e9charg\u00e9 ? Ouvrez le Terminal et lancez :',
@@ -318,7 +318,7 @@ export const ui = {
     'meta.title':
       'TTP - Talk To Paste | Transformez la parole en texte, partout',
     'meta.description':
-      "TTP (Talk To Paste) - Transformez la parole en texte, partout. Appuyez sur un raccourci, parlez, et vos mots apparaissent l\u00e0 o\u00f9 vous tapez. Gratuit, open source, disponible sur macOS et Windows.",
+      "TTP (Talk To Paste) - Transformez la parole en texte, partout. Appuyez sur un raccourci, parlez, et vos mots apparaissent l\u00e0 o\u00f9 vous tapez. Gratuit, source-available, disponible sur macOS et Windows.",
 
     // Portfolio
     'nav.about': 'A propos',
@@ -350,7 +350,7 @@ export const ui = {
     'portfolio.proj.heading': 'Projets',
     'portfolio.proj.ttp.title': 'TTP \u2014 Talk To Paste',
     'portfolio.proj.ttp.desc':
-      'Application desktop open-source qui transforme la parole en texte partout. Un raccourci, transcription instantan\u00e9e.',
+      'Application desktop source-available qui transforme la parole en texte partout. Un raccourci, transcription instantan\u00e9e.',
     'portfolio.proj.02viral.title': '02Viral.com',
     'portfolio.proj.02viral.desc':
       'Plateforme de contenu viral propuls\u00e9e par l\'IA avec des agents intelligents pour la cr\u00e9ation et l\'optimisation de contenu.',

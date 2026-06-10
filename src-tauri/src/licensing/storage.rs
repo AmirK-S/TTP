@@ -80,6 +80,13 @@ enum SigVerify {
 /// hardcoded secret so license.json files written by v1.7.x still verify
 /// on first run after upgrade. The caller re-signs ValidLegacy files so
 /// the legacy path stops being needed on this install.
+///
+/// Anti-replant: once this machine has successfully re-signed any record,
+/// `legacy_migration_complete` returns true and the legacy path is refused.
+/// Without this, an attacker who reads `LEGACY_HMAC_SECRET` out of the
+/// binary could plant a forged file post-install (an installer hijack, a
+/// pre-existing malicious `~/.config/ttp/` from another tool) and have it
+/// accepted on the next launch.
 fn verify_license_signature(record: &LicenseRecord) -> SigVerify {
     let Some(stored_hex) = record.signature.as_deref() else {
         return SigVerify::NotPresent;
@@ -97,10 +104,15 @@ fn verify_license_signature(record: &LicenseRecord) -> SigVerify {
         return SigVerify::ValidMachine;
     }
 
-    let mut legacy = HmacSha256::new_from_slice(LEGACY_HMAC_SECRET).expect("32-byte secret");
-    legacy.update(input.as_bytes());
-    if legacy.verify_slice(&stored_bytes).is_ok() {
-        return SigVerify::ValidLegacy;
+    // Legacy fallback only allowed before the first successful migration.
+    // After mark_legacy_migration_complete fires (in save_license below), the
+    // ValidLegacy path is permanently closed for this account on this machine.
+    if !crate::keychain::legacy_migration_complete(KEYCHAIN_ACCOUNT) {
+        let mut legacy = HmacSha256::new_from_slice(LEGACY_HMAC_SECRET).expect("32-byte secret");
+        legacy.update(input.as_bytes());
+        if legacy.verify_slice(&stored_bytes).is_ok() {
+            return SigVerify::ValidLegacy;
+        }
     }
     SigVerify::Invalid
 }
@@ -148,6 +160,11 @@ pub fn save_license(record: &LicenseRecord) -> Result<(), String> {
     let json = serde_json::to_string_pretty(&record)
         .map_err(|e| format!("Failed to serialize license: {}", e))?;
     fs::write(&path, json).map_err(|e| format!("Failed to write license file: {}", e))?;
+
+    // First successful machine-signed write on this machine closes the legacy
+    // verification path forever. After this, a forged file signed with the
+    // hardcoded `LEGACY_HMAC_SECRET` is rejected (`SigVerify::Invalid`).
+    crate::keychain::mark_legacy_migration_complete(KEYCHAIN_ACCOUNT);
     Ok(())
 }
 
@@ -159,4 +176,141 @@ pub fn clear_license() -> Result<(), String> {
         fs::remove_file(&path).map_err(|e| format!("Failed to delete license file: {}", e))?;
     }
     Ok(())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests — pure-function coverage of the HMAC sign/verify path.
+//
+// These cover the linchpin of Pro entitlement: is_pro_disk() trusts whatever
+// load_license() returns, and load_license() trusts whatever verify_license_
+// signature() returns. Before this test module, the HMAC verifier shipped
+// with zero regression coverage — a hash-input format drift across versions
+// would have silently demoted every paid user back to Free.
+// ─────────────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fresh_record() -> LicenseRecord {
+        LicenseRecord {
+            license_key: "TTP-TEST-0000-0001".into(),
+            instance_id: "instance-uuid-1".into(),
+            instance_name: "Test-Machine".into(),
+            status: "active".into(),
+            expires_at: Some(2_000_000_000),
+            last_validated_at: 1_700_000_000,
+            activation_count: Some(1),
+            activation_limit: Some(3),
+            signature: None,
+        }
+    }
+
+    fn test_secret() -> [u8; 32] {
+        // Stable per-test secret so we don't touch the OS keychain in unit
+        // tests. The verifier is exercised via compute_license_signature_with.
+        *b"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F\x20"
+    }
+
+    fn sign_with(record: &mut LicenseRecord, secret: &[u8]) {
+        record.signature = Some(compute_license_signature_with(record, secret));
+    }
+
+    fn verify_with(record: &LicenseRecord, secret: &[u8]) -> bool {
+        let Some(sig) = record.signature.as_deref() else { return false; };
+        let Ok(bytes) = hex::decode(sig) else { return false; };
+        let mut mac = HmacSha256::new_from_slice(secret).expect("32-byte secret");
+        mac.update(license_signature_input(record).as_bytes());
+        mac.verify_slice(&bytes).is_ok()
+    }
+
+    #[test]
+    fn round_trip_sign_verify() {
+        let secret = test_secret();
+        let mut record = fresh_record();
+        sign_with(&mut record, &secret);
+        assert!(verify_with(&record, &secret), "sign+verify roundtrip must succeed");
+    }
+
+    #[test]
+    fn tampered_license_key_rejected() {
+        let secret = test_secret();
+        let mut record = fresh_record();
+        sign_with(&mut record, &secret);
+        record.license_key = "TTP-FAKE-0000-9999".into();
+        assert!(!verify_with(&record, &secret), "tampered license_key must fail verification");
+    }
+
+    #[test]
+    fn tampered_status_rejected() {
+        let secret = test_secret();
+        let mut record = fresh_record();
+        sign_with(&mut record, &secret);
+        record.status = "expired".into();
+        assert!(!verify_with(&record, &secret), "tampered status must fail verification");
+    }
+
+    #[test]
+    fn tampered_expires_rejected() {
+        let secret = test_secret();
+        let mut record = fresh_record();
+        sign_with(&mut record, &secret);
+        record.expires_at = Some(9_999_999_999);
+        assert!(!verify_with(&record, &secret), "tampered expires_at must fail verification");
+    }
+
+    #[test]
+    fn tampered_instance_id_rejected() {
+        let secret = test_secret();
+        let mut record = fresh_record();
+        sign_with(&mut record, &secret);
+        record.instance_id = "instance-other-machine".into();
+        assert!(!verify_with(&record, &secret), "tampered instance_id must fail verification");
+    }
+
+    #[test]
+    fn different_secret_rejected() {
+        let mut record = fresh_record();
+        sign_with(&mut record, &test_secret());
+        let other_secret = [0xAAu8; 32];
+        assert!(!verify_with(&record, &other_secret), "secret mismatch must fail verification");
+    }
+
+    #[test]
+    fn malformed_hex_signature_is_invalid_not_panic() {
+        let mut record = fresh_record();
+        record.signature = Some("not-valid-hex-zzz".into());
+        // Direct call to the production verifier shouldn't panic on bad hex.
+        match verify_license_signature(&record) {
+            SigVerify::Invalid => { /* expected */ }
+            _ => panic!("malformed hex must return SigVerify::Invalid"),
+        }
+    }
+
+    #[test]
+    fn empty_signature_rejected_as_invalid_hex() {
+        let mut record = fresh_record();
+        record.signature = Some(String::new());
+        // Empty string decodes to empty bytes, which the HMAC verify_slice
+        // rejects (wrong length). Either Invalid or NotPresent is acceptable
+        // — both mean "don't trust".
+        let v = verify_license_signature(&record);
+        assert!(
+            matches!(v, SigVerify::Invalid),
+            "empty signature must be Invalid (not panic, not ValidMachine)"
+        );
+    }
+
+    #[test]
+    fn signature_input_format_is_pipe_delimited_and_stable() {
+        // Pinning the exact wire format so a future refactor that reorders
+        // fields immediately breaks this test rather than silently
+        // invalidating every cached license in the field. If you intentionally
+        // change the format, bump a schema version + add a migration path.
+        let record = fresh_record();
+        let input = license_signature_input(&record);
+        assert_eq!(
+            input,
+            "TTP-TEST-0000-0001|active|2000000000|1700000000|1|3|instance-uuid-1"
+        );
+    }
 }

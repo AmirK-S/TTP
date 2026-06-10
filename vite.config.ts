@@ -23,6 +23,12 @@ export default defineConfig(async () => ({
   },
 
   build: {
+    // 'hidden' emits .map files alongside the JS but does not embed a
+    // sourceMappingURL comment in the bundle — devtools won't auto-load them
+    // for end-users, but CI uploads them to Sentry so server-side symbolication
+    // resolves minified JS panics to real function names. Without this, every
+    // @sentry/react event arrives as obfuscated frames and triage is blind.
+    sourcemap: "hidden",
     rollupOptions: {
       output: {
         manualChunks: {

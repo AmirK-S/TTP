@@ -75,10 +75,16 @@ pub struct LicenseState {
 
 /// Compute whether the current cached record grants Pro access right now.
 fn is_pro_for(record: &LicenseRecord) -> bool {
+    is_pro_at(record, chrono::Utc::now().timestamp())
+}
+
+/// Pure-function core of `is_pro_for`. Takes the wall-clock timestamp as a
+/// parameter so unit tests can exercise the offline-grace and expiration
+/// branches without `Utc::now()` jitter.
+fn is_pro_at(record: &LicenseRecord, now: i64) -> bool {
     if record.status != "active" {
         return false;
     }
-    let now = chrono::Utc::now().timestamp();
     if let Some(expires) = record.expires_at {
         if expires <= now {
             return false;
@@ -86,6 +92,79 @@ fn is_pro_for(record: &LicenseRecord) -> bool {
     }
     let age_secs = now - record.last_validated_at;
     age_secs < OFFLINE_GRACE_DAYS * 86_400
+}
+
+#[cfg(test)]
+mod is_pro_at_tests {
+    use super::*;
+    use storage::LicenseRecord;
+
+    fn rec(status: &str, expires: Option<i64>, last_validated: i64) -> LicenseRecord {
+        LicenseRecord {
+            license_key: "TTP-XXXX".into(),
+            instance_id: "instance".into(),
+            instance_name: "test".into(),
+            status: status.into(),
+            expires_at: expires,
+            last_validated_at: last_validated,
+            activation_count: None,
+            activation_limit: None,
+            signature: None,
+        }
+    }
+
+    #[test]
+    fn inactive_status_is_not_pro() {
+        let r = rec("expired", None, 1_000);
+        assert!(!is_pro_at(&r, 2_000));
+    }
+
+    #[test]
+    fn active_status_with_no_expiration_grants_pro_within_grace() {
+        let r = rec("active", None, 1_000);
+        // 1 second after validation → well inside 14-day grace.
+        assert!(is_pro_at(&r, 1_001));
+    }
+
+    #[test]
+    fn past_explicit_expiration_revokes_pro_regardless_of_grace() {
+        // expires_at < now → not Pro even though last_validated is recent.
+        let r = rec("active", Some(2_000), 1_999);
+        assert!(!is_pro_at(&r, 2_001));
+    }
+
+    #[test]
+    fn future_expiration_within_grace_grants_pro() {
+        // expires_at is in the future, recently validated → Pro.
+        let r = rec("active", Some(10_000_000), 1_000);
+        assert!(is_pro_at(&r, 2_000));
+    }
+
+    #[test]
+    fn grace_boundary_at_exactly_14_days() {
+        let grace_secs = OFFLINE_GRACE_DAYS * 86_400;
+        let r = rec("active", None, 1_000);
+        // One second BEFORE grace expires → still Pro.
+        assert!(is_pro_at(&r, 1_000 + grace_secs - 1));
+        // Exactly AT grace boundary → not Pro (`age_secs < grace` is strict).
+        assert!(!is_pro_at(&r, 1_000 + grace_secs));
+    }
+
+    #[test]
+    fn beyond_grace_revokes_pro_even_when_status_active() {
+        // 14 days + 1 second since last_validated, no explicit expiration.
+        // Pro revoked: the server hasn't confirmed in too long.
+        let r = rec("active", None, 1_000);
+        assert!(!is_pro_at(&r, 1_000 + OFFLINE_GRACE_DAYS * 86_400 + 1));
+    }
+
+    #[test]
+    fn expiration_exactly_now_revokes_pro() {
+        // `expires_at <= now` is inclusive — expiry at exactly the current
+        // tick already revokes.
+        let r = rec("active", Some(2_000), 1_999);
+        assert!(!is_pro_at(&r, 2_000));
+    }
 }
 
 fn emit_license_changed(app: &AppHandle, info: &LicenseInfo) {

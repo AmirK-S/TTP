@@ -6,7 +6,7 @@ import Footer from '@/components/Footer.astro';
 const lastUpdated = '2026-05-06';
 ---
 
-<Layout title="Politique de Confidentialité — TTP">
+<Layout title="Politique de Confidentialité: TTP">
   <Navbar />
   <main class="mx-auto max-w-3xl px-6 pb-16 pt-32 text-zinc-700 dark:text-slate-200">
     <h1 class="mb-2 text-4xl font-bold text-zinc-900 dark:text-white">Politique de Confidentialité</h1>
@@ -19,42 +19,39 @@ const lastUpdated = '2026-05-06';
 
     <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">Ce qui reste sur votre ordinateur</h2>
     <ul class="mb-6 list-disc space-y-2 pl-6">
-      <li><strong>Enregistrements audio</strong> — conservés temporairement comme sauvegarde pendant la transcription, puis supprimés automatiquement.</li>
-      <li><strong>Historique des transcriptions</strong> — stocké localement pour vous permettre de copier les résultats passés. Vous pouvez désactiver l'historique ou l'effacer dans les Paramètres à tout moment.</li>
-      <li><strong>Entrées du dictionnaire</strong> — corrections que vous avez apprises à TTP. En local uniquement.</li>
-      <li><strong>Paramètres</strong> — vos préférences (raccourci, mode mains libres, etc.).</li>
-      <li><strong>Cache de licence</strong> — copie signée des informations de votre licence TTP Pro permettant à l'application de fonctionner brièvement hors ligne.</li>
-      <li><strong>Clé API Groq</strong> — stockée dans le Trousseau d'accès macOS ou le Gestionnaire d'identifiants Windows. Jamais écrite en clair sur le disque.</li>
+      <li><strong>Enregistrements audio</strong>: conservés temporairement comme sauvegarde pendant la transcription, puis supprimés automatiquement.</li>
+      <li><strong>Historique des transcriptions</strong>: stocké localement pour vous permettre de copier les résultats passés. Vous pouvez désactiver l'historique ou l'effacer dans les Paramètres à tout moment.</li>
+      <li><strong>Entrées du dictionnaire</strong>: corrections que vous avez apprises à TTP. En local uniquement.</li>
+      <li><strong>Paramètres</strong>: vos préférences (raccourci, mode mains libres, etc.).</li>
+      <li><strong>Cache de licence</strong>: copie signée des informations de votre licence TTP Pro permettant à l'application de fonctionner brièvement hors ligne.</li>
+      <li><strong>Clé API Groq</strong>: stockée dans le Trousseau d'accès macOS ou le Gestionnaire d'identifiants Windows. Jamais écrite en clair sur le disque.</li>
     </ul>
 
     <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">Ce qui est envoyé à des tiers</h2>
     <ul class="mb-6 list-disc space-y-2 pl-6">
       <li>
-        <strong>Groq</strong> (<a class="underline text-blue-600 hover:text-blue-700 dark:text-inherit dark:hover:text-white" href="https://groq.com/privacy-policy/" rel="noopener" target="_blank">politique de confidentialité</a>) —
+        <strong>Groq</strong> (<a class="underline text-blue-600 hover:text-blue-700 dark:text-inherit dark:hover:text-white" href="https://groq.com/privacy-policy/" rel="noopener" target="_blank">politique de confidentialité</a>):
         chaque enregistrement audio est envoyé à l'API Whisper de Groq pour transcription.
         Si AI Polish est activé, le texte brut est aussi envoyé à un LLM Groq pour nettoyage.
       </li>
       <li>
-        <strong>Lemon Squeezy</strong> (<a class="underline text-blue-600 hover:text-blue-700 dark:text-inherit dark:hover:text-white" href="https://www.lemonsqueezy.com/privacy" rel="noopener" target="_blank">politique de confidentialité</a>) —
+        <strong>Lemon Squeezy</strong> (<a class="underline text-blue-600 hover:text-blue-700 dark:text-inherit dark:hover:text-white" href="https://www.lemonsqueezy.com/privacy" rel="noopener" target="_blank">politique de confidentialité</a>):
         gère le paiement lors de l'achat de TTP Pro et valide votre clé de licence.
         Vos informations de facturation sont traitées par Lemon Squeezy, pas par TTP.
       </li>
       <li>
-        <strong>Sentry</strong> — rapports d'erreurs. <strong>Désactivé par défaut.</strong> Lorsque vous l'activez dans Paramètres → Télémétrie, les rapports de plantage sont envoyés pour aider à corriger les bugs.
+        <strong>Sentry</strong>: rapports d'erreurs. <strong>Désactivé par défaut.</strong> Lorsque vous l'activez dans Paramètres → Télémétrie, les rapports de plantage sont envoyés pour aider à corriger les bugs.
         Les clés API, les chemins de fichiers, les adresses email et le contenu de vos transcriptions sont expurgés avant l'envoi.
       </li>
       <li>
-        <strong>Aptabase</strong> — analytique anonyme. <strong>Désactivé par défaut.</strong> Quand activé, TTP envoie des comptages d'événements (« transcription terminée », « paramètre modifié ») sans aucune donnée personnelle.
-      </li>
-      <li>
-        <strong>GitHub</strong> — utilisé comme canal de mise à jour automatique. L'application vérifie GitHub Releases pour les nouvelles versions.
+        <strong>GitHub</strong>: utilisé comme canal de mise à jour automatique. L'application vérifie GitHub Releases pour les nouvelles versions.
       </li>
     </ul>
 
     <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">Ce que nous ne faisons pas</h2>
     <ul class="mb-6 list-disc space-y-2 pl-6">
       <li>Nous ne vendons ni ne partageons vos données avec qui que ce soit.</li>
-      <li>Nous n'entraînons pas de modèles sur vos transcriptions. (La politique de Groq sur l'entraînement s'applique indépendamment — voir le lien ci-dessus.)</li>
+      <li>Nous n'entraînons pas de modèles sur vos transcriptions. (La politique de Groq sur l'entraînement s'applique indépendamment: voir le lien ci-dessus.)</li>
       <li>Aucune analytique ou télémétrie n'est active par défaut. Les deux doivent être explicitement activées.</li>
       <li>Aucun pixel de suivi, aucun réseau publicitaire, aucun fingerprinting tiers.</li>
     </ul>

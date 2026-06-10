@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Children, cloneElement, isValidElement, useId, type ReactElement, type ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 
 interface SettingsSectionProps {
@@ -60,6 +60,13 @@ export function SettingsSection({
  * Single setting row: label + description on the left, control on the right.
  * Used for toggles, radio groups, etc. Removes the boilerplate `flex
  * items-center justify-between` markup in each row.
+ *
+ * A11y: the visible label is wired to the control via `aria-labelledby` so
+ * screen readers announce e.g. "Hands-free mode, switch, off" instead of an
+ * unlabeled "switch". Before this, every Toggle in Settings shipped without
+ * any accessible name — VoiceOver users heard the row labels but had no way
+ * to associate them with the right control once they tabbed in. cloneElement
+ * silently no-ops if `control` is not a valid React element.
  */
 export function SettingsRow({
   label,
@@ -72,15 +79,22 @@ export function SettingsRow({
   control: ReactNode;
   className?: string;
 }) {
+  const labelId = useId();
+  const labeled = Children.map(control, (child) => {
+    if (!isValidElement(child)) return child;
+    const el = child as ReactElement<{ 'aria-labelledby'?: string }>;
+    if (el.props['aria-labelledby']) return el; // caller already supplied one
+    return cloneElement(el, { 'aria-labelledby': labelId });
+  });
   return (
     <div className={cn('flex items-center justify-between gap-4 py-2', className)}>
       <div className="min-w-0">
-        <p className="text-[13px] font-medium text-app-text">{label}</p>
+        <p id={labelId} className="text-[13px] font-medium text-app-text">{label}</p>
         {description && (
           <p className="mt-0.5 text-[12px] text-app-muted leading-relaxed">{description}</p>
         )}
       </div>
-      <div className="shrink-0">{control}</div>
+      <div className="shrink-0">{labeled}</div>
     </div>
   );
 }

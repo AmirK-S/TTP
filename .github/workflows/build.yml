@@ -42,6 +42,9 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable @ 2025-12-16
         with:
+          # Pinned in lockstep with release.yml so build.yml's "does it
+          # compile?" check uses the same compiler as the actual release.
+          toolchain: '1.85.0'
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
@@ -49,15 +52,8 @@ jobs:
         with:
           workspaces: src-tauri -> target
 
-      - name: Install opus dependencies (macOS)
-        if: matrix.platform == 'macos-latest'
-        run: brew install cmake opus pkg-config
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: 1
-
-      - name: Set cmake compat for opus cross-compile
-        if: matrix.platform == 'macos-latest'
-        run: echo "CMAKE_POLICY_VERSION_MINIMUM=3.5" >> $GITHUB_ENV
+      # `cmake`/`opus`/`pkg-config` install + cross-compile env removed: see
+      # release.yml for the same rationale. Nothing in Cargo.lock uses opus.
 
       - name: Install frontend dependencies
         run: npm ci
@@ -99,8 +95,13 @@ jobs:
         uses: tauri-apps/tauri-action@fce9c6108b31ea247710505d3aaaa893ee6768d4  # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # NOTE: build.yml no longer exposes the updater signing key.
+          # This workflow is "does it compile + tests pass?" — the artifacts
+          # produced here are for review (via actions/upload-artifact), not
+          # for end-user delivery. Skipping the signing key avoids leaking
+          # it to internal-branch PR builds and shaves seconds off the
+          # bundler signature step. release.yml is the only path that signs
+          # updater bundles.
         with:
           args: ${{ steps.build-args.outputs.args }}
 

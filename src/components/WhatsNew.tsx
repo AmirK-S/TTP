@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import { Sparkles } from 'lucide-react';
-import { Button } from './ui';
+import { Button, Modal } from './ui';
 import { cn } from '../lib/cn';
 
 interface WhatsNewData {
@@ -33,7 +33,7 @@ export default function WhatsNew() {
     setData(null);
   };
 
-  // Light markdown — bullets, bold (**...**), inline code (`...`). The changelog
+  // Light markdown: bullets, bold (**...**), inline code (`...`). The changelog
   // is authored by us in Rust as plain text with `- ` bullets; we render it
   // semantically rather than dumping raw lines.
   const renderLine = (line: string, i: number) => {
@@ -51,44 +51,29 @@ export default function WhatsNew() {
   };
 
   return (
-    <div
-      className={cn(
-        'fixed inset-0 z-50 flex items-center justify-center p-6',
-        'bg-black/40 backdrop-blur-md anim-fade-in',
-      )}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="whatsnew-title"
+    <Modal
+      open
+      onClose={dismiss}
+      size="md"
+      scrollableContent
+      closeOnBackdrop={false}
+      headerLeading={
+        <div className="size-10 rounded-app-md bg-app-accent-tint grid place-items-center">
+          <Sparkles className="size-5 text-app-accent" aria-hidden />
+        </div>
+      }
+      title={t('whatsNew.title', { version: data.version })}
+      subtitle={t('whatsNew.subtitle')}
+      footer={
+        <Button onClick={dismiss} fullWidth size="lg">
+          {t('whatsNew.dismiss')}
+        </Button>
+      }
     >
-      <div
-        className={cn(
-          'anim-scale-in bg-app-surface text-app-text rounded-app-xl shine-md border border-app-border',
-          'max-w-md w-full max-h-[85vh] flex flex-col',
-        )}
-      >
-        <div className="px-6 pt-6 pb-4 shrink-0 flex items-start gap-4">
-          <div className="size-10 rounded-app-md bg-app-accent-tint grid place-items-center shrink-0">
-            <Sparkles className="size-5 text-app-accent" aria-hidden />
-          </div>
-          <div className="min-w-0">
-            <h2 id="whatsnew-title" className="text-display-xs text-app-text">
-              {t('whatsNew.title', { version: data.version })}
-            </h2>
-            <p className="mt-1 text-[12px] text-app-muted">{t('whatsNew.subtitle')}</p>
-          </div>
-        </div>
-
-        <div className="px-6 space-y-1.5 overflow-y-auto flex-1 min-h-0">
-          {data.changelog.split('\n').map(renderLine)}
-        </div>
-
-        <div className="px-6 pt-5 pb-6 shrink-0">
-          <Button onClick={dismiss} fullWidth size="lg">
-            {t('whatsNew.dismiss')}
-          </Button>
-        </div>
+      <div className="space-y-1.5">
+        {data.changelog.split('\n').map(renderLine)}
       </div>
-    </div>
+    </Modal>
   );
 }
 

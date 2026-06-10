@@ -31,7 +31,7 @@
 
 use std::path::PathBuf;
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicU32, AtomicU64, Ordering},
     Arc, LazyLock, Mutex,
 };
 
@@ -52,6 +52,68 @@ struct SafeStream(Stream);
 unsafe impl Send for SafeStream {}
 unsafe impl Sync for SafeStream {}
 
+/// Public payload type for `list_audio_input_devices`. Field order is
+/// preserved for JSON serialisation so the renderer can render a dropdown
+/// directly from the response.
+#[derive(serde::Serialize)]
+pub struct AudioInputDeviceInfo {
+    /// Device name as cpal reports it. Used as the key the user persists in
+    /// Settings.audio_device_name. Stable enough across reboots for our
+    /// purposes (CoreAudio renames are rare and the fallback handles them).
+    pub name: String,
+    /// Whether this device is the OS-level default input. The UI shows a
+    /// "(default)" suffix so a user who picked "default" intentionally
+    /// can see which physical device that resolves to.
+    pub is_default: bool,
+}
+
+/// Enumerate every cpal input device on the system. Skips devices whose
+/// `name()` call errors (rare; usually means the device was unplugged
+/// between enumeration and the name() lookup).
+#[command]
+pub fn list_audio_input_devices() -> Result<Vec<AudioInputDeviceInfo>, String> {
+    let host = cpal::default_host();
+    let default_name = host
+        .default_input_device()
+        .and_then(|d| d.name().ok());
+
+    let mut out = Vec::new();
+    let devices = host
+        .input_devices()
+        .map_err(|e| format!("Failed to list input devices: {}", e))?;
+    for device in devices {
+        if let Ok(name) = device.name() {
+            let is_default = default_name.as_deref() == Some(name.as_str());
+            out.push(AudioInputDeviceInfo { name, is_default });
+        }
+    }
+    Ok(out)
+}
+
+/// Resolve the cpal input device to record from. When `preferred_name` is
+/// Some, walk the device list and match by name. Falls back to the system
+/// default if not found (logged as info — common on hot-unplug events).
+fn resolve_input_device(
+    host: &cpal::Host,
+    preferred_name: &Option<String>,
+) -> Result<cpal::Device, String> {
+    if let Some(name) = preferred_name.as_deref().filter(|s| !s.is_empty()) {
+        if let Ok(devices) = host.input_devices() {
+            for device in devices {
+                if device.name().as_deref() == Ok(name) {
+                    return Ok(device);
+                }
+            }
+        }
+        log_info(&format!(
+            "[AudioCapture] preferred input device '{}' not found, falling back to default",
+            name
+        ));
+    }
+    host.default_input_device()
+        .ok_or_else(|| "No default input device available".to_string())
+}
+
 type WavWriterHandle = Arc<Mutex<Option<WavWriter<std::io::BufWriter<std::fs::File>>>>>;
 
 struct RecordingState {
@@ -62,6 +124,149 @@ struct RecordingState {
 }
 
 static STATE: LazyLock<Mutex<Option<RecordingState>>> = LazyLock::new(|| Mutex::new(None));
+
+/// Most recent RMS level computed inside the audio callback, stored as the
+/// bit-pattern of an `f32` in [0.0, 1.0].
+///
+/// Why this exists: before v3.1 the pill waveform was driven by a SECOND cpal
+/// input stream owned by `audio_monitor`, opened in parallel with the WAV-
+/// writing stream. CoreAudio (and several WASAPI drivers) silently downgrade
+/// or fail the second `default_input_device()` open when the same device is
+/// already in use by the same process — the symptom was an intermittent
+/// "recording silently captured nothing" failure that the audit flagged as
+/// high.
+///
+/// The fix: compute RMS inside the existing WAV-writing callback (one float
+/// loop per buffer, negligible vs the WAV write itself), publish via this
+/// atomic, and have `audio_monitor` poll the bucket on a 30fps tick instead
+/// of owning its own cpal stream.
+static RMS_BUCKET: AtomicU32 = AtomicU32::new(0u32);
+
+/// Read the current RMS level (in [0.0, 1.0]) for the pill visualisation.
+/// Returns 0.0 when no capture is in progress (the bucket is reset on every
+/// start_recording, so a stale level can't leak across sessions).
+pub fn current_rms() -> f32 {
+    f32::from_bits(RMS_BUCKET.load(Ordering::Relaxed))
+}
+
+fn store_rms(value: f32) {
+    // Clamp to a sane range so a freakishly loud sample can't break the
+    // pill's transform-based animation.
+    let clamped = value.clamp(0.0, 4.0);
+    RMS_BUCKET.store(clamped.to_bits(), Ordering::Relaxed);
+}
+
+fn reset_rms() {
+    RMS_BUCKET.store(0u32, Ordering::Relaxed);
+}
+
+fn rms_from_i8(data: &[i8]) -> f32 {
+    if data.is_empty() { return 0.0; }
+    let sum: f32 = data.iter().map(|&s| {
+        let f = s as f32 / 128.0;
+        f * f
+    }).sum();
+    (sum / data.len() as f32).sqrt()
+}
+
+fn rms_from_i16(data: &[i16]) -> f32 {
+    if data.is_empty() { return 0.0; }
+    let sum: f32 = data.iter().map(|&s| {
+        let f = s as f32 / 32_768.0;
+        f * f
+    }).sum();
+    (sum / data.len() as f32).sqrt()
+}
+
+fn rms_from_i32(data: &[i32]) -> f32 {
+    if data.is_empty() { return 0.0; }
+    let sum: f32 = data.iter().map(|&s| {
+        let f = s as f32 / 2_147_483_648.0;
+        f * f
+    }).sum();
+    (sum / data.len() as f32).sqrt()
+}
+
+fn rms_from_f32(data: &[f32]) -> f32 {
+    if data.is_empty() { return 0.0; }
+    let sum: f32 = data.iter().map(|s| s * s).sum();
+    (sum / data.len() as f32).sqrt()
+}
+
+#[cfg(test)]
+mod rms_tests {
+    use super::*;
+
+    fn approx(a: f32, b: f32) -> bool {
+        (a - b).abs() < 0.001
+    }
+
+    #[test]
+    fn empty_buffers_return_zero() {
+        assert_eq!(rms_from_f32(&[]), 0.0);
+        assert_eq!(rms_from_i16(&[]), 0.0);
+        assert_eq!(rms_from_i32(&[]), 0.0);
+        assert_eq!(rms_from_i8(&[]), 0.0);
+    }
+
+    #[test]
+    fn silence_returns_zero() {
+        let zeros = vec![0.0f32; 1024];
+        assert_eq!(rms_from_f32(&zeros), 0.0);
+    }
+
+    #[test]
+    fn dc_offset_returns_magnitude() {
+        // RMS of a constant signal is just its absolute value.
+        let const_half = vec![0.5f32; 100];
+        assert!(approx(rms_from_f32(&const_half), 0.5));
+    }
+
+    #[test]
+    fn f32_full_scale_alternating_sample_returns_one() {
+        // Square wave at full-scale: every sample is ±1. RMS = 1.0.
+        let mut wave = Vec::with_capacity(100);
+        for i in 0..100 { wave.push(if i % 2 == 0 { 1.0 } else { -1.0 }); }
+        assert!(approx(rms_from_f32(&wave), 1.0));
+    }
+
+    #[test]
+    fn i16_full_scale_alternating_sample_returns_near_one() {
+        let mut wave: Vec<i16> = Vec::with_capacity(100);
+        for i in 0..100 {
+            wave.push(if i % 2 == 0 { 32_767 } else { -32_768 });
+        }
+        // Normalization divides by 32 768 — full scale lands at ~1.0.
+        assert!(rms_from_i16(&wave) > 0.999);
+        assert!(rms_from_i16(&wave) <= 1.001);
+    }
+
+    #[test]
+    fn i8_normalization_uses_128() {
+        // Constant +64 should normalize to 64/128 = 0.5.
+        let buf = vec![64i8; 32];
+        assert!(approx(rms_from_i8(&buf), 0.5));
+    }
+
+    #[test]
+    fn store_and_read_rms_round_trip() {
+        store_rms(0.42);
+        assert!(approx(current_rms(), 0.42));
+        reset_rms();
+        assert_eq!(current_rms(), 0.0);
+    }
+
+    #[test]
+    fn store_rms_clamps_obnoxious_values() {
+        store_rms(99.0);
+        // Clamp ceiling is 4.0 — anything higher gets pinned.
+        assert!(current_rms() <= 4.0);
+        store_rms(-1.0);
+        // Negative inputs clamp to 0.0 (the floor).
+        assert_eq!(current_rms(), 0.0);
+        reset_rms();
+    }
+}
 
 /// Start capturing microphone input to a fresh WAV file in the app data dir.
 ///
@@ -74,7 +279,11 @@ pub async fn start_recording<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(),
     {
         let state = STATE.lock().map_err(|e| format!("state lock poisoned: {}", e))?;
         if state.is_some() {
-            return Err("Recording is already in progress".to_string());
+            // Error codes — the JS-side `translateRustMessage` maps these
+            // to the user's locale via the `error.*` namespace. Raw English
+            // strings here would skip the parity check + ship as a missing-key
+            // tag on FR pills.
+            return Err("error.recording_already_in_progress".to_string());
         }
     }
 
@@ -88,21 +297,24 @@ pub async fn start_recording<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(),
         match check_microphone_permission_impl() {
             PermissionStatus::Granted => { /* good */ }
             PermissionStatus::Denied => {
-                log_error("Mic permission denied — cannot start recording");
-                return Err("Microphone permission denied".to_string());
+                log_error("Mic permission denied - cannot start recording");
+                return Err("error.microphone_permission_denied".to_string());
             }
             PermissionStatus::Undetermined => {
-                log_error("Mic permission undetermined — start blocked until user grants");
-                return Err("Microphone permission not yet granted".to_string());
+                log_error("Mic permission undetermined - start blocked until user grants");
+                return Err("error.microphone_permission_undetermined".to_string());
             }
         }
     }
 
-    // 3. Resolve device + config.
+    // 3. Resolve device + config. If the user picked an explicit input
+    //    device in Settings, look it up by name and fall back to the system
+    //    default if it isn't present (e.g. AirPods got disconnected since
+    //    the user set the preference). Without the fallback, a missing
+    //    device would surface as a generic "no device available" error
+    //    that the user wouldn't know how to fix.
     let host = cpal::default_host();
-    let device = host
-        .default_input_device()
-        .ok_or_else(|| "No default input device available".to_string())?;
+    let device = resolve_input_device(&host, &crate::settings::get_settings().audio_device_name)?;
     let supported_config = device
         .default_input_config()
         .map_err(|e| format!("No default input config: {}", e))?;
@@ -128,6 +340,9 @@ pub async fn start_recording<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(),
     // 5. Build the cpal input stream. Cloned handles go into the callback;
     //    err_fn forwards to the frontend (and Sentry breadcrumbs).
     let samples_written = Arc::new(AtomicU64::new(0));
+    // Reset the RMS bucket so the pill doesn't briefly mirror the previous
+    // session's last sample on session start.
+    reset_rms();
     let stream = build_stream(&device, &supported_config, &writer_handle, &samples_written, &app)?;
     stream
         .play()
@@ -165,6 +380,9 @@ pub async fn stop_recording() -> Result<PathBuf, String> {
     // briefly) before this drop completes; that's the correct behaviour —
     // we want every sample the device gave us.
     drop(state.stream);
+    // The pill subscribes to RMS via current_rms(); reset it now so it
+    // doesn't briefly render the last captured frame after the stream ends.
+    reset_rms();
 
     // Finalise the WAV — flushes BufWriter and patches the RIFF/data chunk
     // sizes. Errors here mean the file on disk is unusable, so we surface
@@ -219,7 +437,10 @@ fn build_stream(
             device
                 .build_input_stream(
                     &config,
-                    move |data: &[i8], _: &_| write_samples::<i8, i8>(data, &w, &counter),
+                    move |data: &[i8], _: &_| {
+                        store_rms(rms_from_i8(data));
+                        write_samples::<i8, i8>(data, &w, &counter);
+                    },
                     err_fn,
                     None,
                 )
@@ -231,7 +452,10 @@ fn build_stream(
             device
                 .build_input_stream(
                     &config,
-                    move |data: &[i16], _: &_| write_samples::<i16, i16>(data, &w, &counter),
+                    move |data: &[i16], _: &_| {
+                        store_rms(rms_from_i16(data));
+                        write_samples::<i16, i16>(data, &w, &counter);
+                    },
                     err_fn,
                     None,
                 )
@@ -243,7 +467,10 @@ fn build_stream(
             device
                 .build_input_stream(
                     &config,
-                    move |data: &[i32], _: &_| write_samples::<i32, i32>(data, &w, &counter),
+                    move |data: &[i32], _: &_| {
+                        store_rms(rms_from_i32(data));
+                        write_samples::<i32, i32>(data, &w, &counter);
+                    },
                     err_fn,
                     None,
                 )
@@ -255,7 +482,10 @@ fn build_stream(
             device
                 .build_input_stream(
                     &config,
-                    move |data: &[f32], _: &_| write_samples::<f32, f32>(data, &w, &counter),
+                    move |data: &[f32], _: &_| {
+                        store_rms(rms_from_f32(data));
+                        write_samples::<f32, f32>(data, &w, &counter);
+                    },
                     err_fn,
                     None,
                 )
@@ -311,7 +541,12 @@ fn handle_stream_error<R: tauri::Runtime>(app: &AppHandle<R>, e: cpal::StreamErr
         message: Some(format!("cpal capture stream error: {}", msg)),
         ..Default::default()
     });
-    app.emit("audio-stream-error", &msg).ok();
+    // Source-tagged payload (mirrors audio_monitor::handle_stream_error). The
+    // capture stream is the one whose failure means data loss — the frontend
+    // routes this branch to "abort recording + toast" instead of the silent
+    // monitor degradation path.
+    let payload = serde_json::json!({ "source": "capture", "message": msg });
+    app.emit("audio-stream-error", payload).ok();
 }
 
 fn build_save_path<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {

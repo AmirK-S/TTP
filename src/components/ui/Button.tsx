@@ -22,9 +22,9 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 const base = cn(
   'inline-flex items-center justify-center gap-2 select-none',
   'font-medium tracking-[-0.005em]',
-  'transition-[background-color,color,transform,filter] duration-150',
-  'ease-[cubic-bezier(0.32,0.72,0,1)]',
-  'active:scale-[0.98] active:duration-75',
+  'transition-[background-color,color,transform,filter] duration-hover',
+  'ease-app-out',
+  'active:scale-[0.98] active:duration-press',
   'disabled:cursor-not-allowed disabled:pointer-events-none',
 );
 

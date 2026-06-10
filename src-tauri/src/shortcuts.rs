@@ -4,9 +4,12 @@
 // Hands-free semantics:
 //   * Settings toggle `hands_free_mode` = persistent preference. When true,
 //     every single press is a toggle (press to start, press to stop).
-//   * Double-tap = TRANSIENT override for one recording. Sets in-memory
-//     `state.hands_free_mode` only — never touches the persisted setting.
-//     After the recording ends, in-memory state is restored from settings.
+//   * Double-tap = TRANSIENT override for one recording. Sets the AppState
+//     `session_hands_free` override only — never touches the persisted
+//     setting. The override is cleared automatically when set_state
+//     transitions back to Idle (state.rs), so there is no "restore on
+//     stop" code in this file: it would be redundant and a future refactor
+//     hazard.
 
 use crate::settings::get_settings;
 use crate::sounds::{play_start_sound, play_stop_sound};
@@ -71,7 +74,7 @@ pub fn handle_shortcut_event_public(app: &AppHandle, shortcut_state: ShortcutSta
             level: sentry::Level::Warning,
             ..Default::default()
         });
-        eprintln!("[Shortcuts] try_lock contended at handle_shortcut_event_public");
+        crate::logging::log_warn("[Shortcuts] try_lock contended at handle_shortcut_event_public");
         return;
     };
 
@@ -93,25 +96,24 @@ pub fn handle_fn_double_tap(app: &AppHandle) {
             level: sentry::Level::Warning,
             ..Default::default()
         });
-        eprintln!("[Shortcuts] try_lock contended at handle_fn_double_tap");
+        crate::logging::log_warn("[Shortcuts] try_lock contended at handle_fn_double_tap");
         return;
     };
 
-    let settings_hands_free = get_settings().hands_free_mode;
-
     match app_state.recording_state {
         RecordingState::Idle => {
-            // Transient: enter hands-free for this recording only. The persisted
-            // setting is unchanged — we just override in-memory state.
-            app_state.hands_free_mode = true;
+            // Transient: enter hands-free for this recording only via the
+            // session override. The persisted setting (mirrored into
+            // `hands_free_mode`) is untouched, and the override clears
+            // automatically when the session transitions to Idle.
+            app_state.enter_hands_free_session();
             start_recording(&mut app_state, app);
         }
-        RecordingState::Recording if app_state.hands_free_mode => {
+        RecordingState::Recording if app_state.effective_hands_free() => {
             stop_recording(&mut app_state, app);
-            // Restore to whatever the user's persistent preference is, not a
-            // hardcoded false — otherwise a user who has settings hands-free=true
-            // gets bumped out of toggle mode by a single double-tap.
-            app_state.hands_free_mode = settings_hands_free;
+            // No explicit restore needed: `session_hands_free` is cleared
+            // inside set_state on Idle, so the next read of
+            // effective_hands_free returns the persisted setting.
         }
         _ => {}
     }
@@ -135,13 +137,15 @@ pub fn handle_fn_stop(app: &AppHandle) {
             level: sentry::Level::Warning,
             ..Default::default()
         });
-        eprintln!("[Shortcuts] try_lock contended at handle_fn_stop");
+        crate::logging::log_warn("[Shortcuts] try_lock contended at handle_fn_stop");
         return;
     };
 
     if app_state.is_recording() {
         stop_recording(&mut app_state, app);
-        app_state.hands_free_mode = get_settings().hands_free_mode;
+        // No explicit hands_free restore — the session override is cleared
+        // by set_state on the Idle transition triggered from the pipeline,
+        // so the persisted preference applies for the next session.
     }
 }
 
@@ -161,36 +165,33 @@ fn handle_shortcut_pressed(state: &mut AppState, app: &AppHandle) {
     if is_double_tap {
         match state.recording_state {
             RecordingState::Idle => {
-                // Transient: hands-free for this recording only. We deliberately
-                // do NOT persist to settings — double-tap is a per-recording
-                // override, not a permanent preference change. (Before, persisting
-                // here meant every subsequent single-press also entered hands-free
-                // until the user manually toggled it off in the UI.)
-                state.hands_free_mode = true;
+                // Transient: hands-free for this session only via the
+                // session override. The persisted preference is untouched
+                // and the override clears automatically on Idle.
+                state.enter_hands_free_session();
                 start_recording(state, app);
             }
-            RecordingState::Recording if state.hands_free_mode => {
+            RecordingState::Recording if state.effective_hands_free() => {
                 stop_recording(state, app);
-                state.hands_free_mode = settings_hands_free;
             }
             _ => {}
         }
     } else {
+        // Keep the persisted preference in sync with the settings cache so
+        // any UI change made while we were idle is reflected now.
+        state.set_persistent_hands_free(settings_hands_free);
         if state.is_idle() {
-            // When settings has hands-free enabled, use toggle mode on single press
-            state.hands_free_mode = settings_hands_free;
             start_recording(state, app);
-        } else if state.is_recording() && state.hands_free_mode {
+        } else if state.is_recording() && state.effective_hands_free() {
             // Single press while recording in hands-free mode → stop
             stop_recording(state, app);
-            state.hands_free_mode = settings_hands_free;
         }
     }
 }
 
 /// Handle shortcut key release - stops push-to-talk recording
 fn handle_shortcut_released(state: &mut AppState, app: &AppHandle) {
-    if !state.hands_free_mode && state.is_recording() {
+    if !state.effective_hands_free() && state.is_recording() {
         stop_recording(state, app);
     }
 }
@@ -203,9 +204,9 @@ fn start_recording(state: &mut AppState, app: &AppHandle) {
     play_start_sound(app);
     // Tell the Fn monitor whether this is a hands-free recording, so a single
     // Fn tap can stop it (see fnkey::handle_fn_stop). Push-to-talk recordings
-    // (hands_free_mode == false) are unaffected.
+    // are unaffected.
     #[cfg(target_os = "macos")]
-    crate::fnkey::set_hands_free_recording(state.hands_free_mode);
+    crate::fnkey::set_hands_free_recording(state.effective_hands_free());
 }
 
 /// Stop recording: update state to Processing, play sound

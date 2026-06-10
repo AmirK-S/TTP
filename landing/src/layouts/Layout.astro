@@ -11,8 +11,8 @@ const { title } = Astro.props;
 const lang = getLangFromUrl(Astro.url);
 
 const description = lang === 'fr'
-  ? "TTP (Talk To Paste) - Transformez la parole en texte, partout. Appuyez sur un raccourci, parlez, et vos mots apparaissent l\u00e0 o\u00f9 vous tapez. Gratuit, open source, disponible sur macOS et Windows."
-  : "TTP (Talk To Paste) - Turn speech into text anywhere. Press a shortcut, speak, and your words appear wherever you're typing. Free, open source, works on macOS and Windows.";
+  ? "TTP (Talk To Paste) - Transformez la parole en texte, partout. Appuyez sur un raccourci, parlez, et vos mots apparaissent l\u00e0 o\u00f9 vous tapez. Gratuit, source-available, disponible sur macOS et Windows."
+  : "TTP (Talk To Paste) - Turn speech into text anywhere. Press a shortcut, speak, and your words appear wherever you're typing. Free, source-available, works on macOS and Windows.";
 ---
 
 <!doctype html>
@@ -52,7 +52,7 @@ const description = lang === 'fr'
       "operatingSystem": ["macOS", "Windows"],
       "applicationCategory": "ProductivityApplication",
       "image": "https://ttp.amirks.eu/ttp-logo-1024.png",
-      "softwareVersion": "1.8.1",
+      "softwareVersion": "3.0.4",
       "author": {
         "@type": "Person",
         "name": "Amir KS",

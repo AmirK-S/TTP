@@ -139,6 +139,58 @@ pub fn add_history_entry(text: &str, raw_text: Option<&str>) -> Result<(), Strin
     Ok(())
 }
 
+/// Re-type a stored history entry into the currently focused app.
+///
+/// Used by Settings → History → "Use again" so the user can re-insert a
+/// past transcription without copy-pasting through the clipboard. We
+/// type directly via the same code path the pipeline uses for fresh
+/// transcriptions ≤2000 chars; longer entries fall back to the
+/// clipboard+Cmd+V path.
+///
+/// Threshold is hard-coded here (matches the pipeline's
+/// DIRECT_TYPING_MAX_CHARS) so the Settings command has the same
+/// guarantee as a live transcription.
+#[tauri::command]
+pub async fn replay_history_entry(text: String, app: tauri::AppHandle) -> Result<(), String> {
+    const DIRECT_TYPING_MAX_CHARS: usize = 2_000;
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Err("error.history_empty_text".to_string());
+    }
+
+    // Accessibility / mic permission semantics are exactly the same as the
+    // live transcription paste path. If the user has revoked Accessibility
+    // since they granted it, simulate_typing / simulate_paste both surface
+    // a clear error which the JS side maps to error.paste_failed.
+    let use_direct_typing = trimmed.chars().count() <= DIRECT_TYPING_MAX_CHARS;
+    if use_direct_typing {
+        // Run on the Tauri blocking pool so a slow target (Slack, Mail)
+        // can't pin the IPC thread.
+        let owned = trimmed.to_string();
+        tauri::async_runtime::spawn_blocking(move || crate::paste::simulate_typing(&owned))
+            .await
+            .map_err(|e| format!("typing task panicked: {}", e))?
+    } else {
+        // Long entries go via clipboard + Cmd+V. We restore the user's
+        // prior clipboard exactly like the live transcription pipeline so
+        // a Replay never silently overwrites whatever the user had copied.
+        use crate::paste::ClipboardGuard;
+        let guard = ClipboardGuard::new(&app);
+        guard
+            .write_text(trimmed)
+            .map_err(|e| format!("Clipboard write failed: {}", e))?;
+        tauri::async_runtime::spawn_blocking(crate::paste::simulate_paste)
+            .await
+            .map_err(|e| format!("paste task panicked: {}", e))??;
+        // Best-effort restore — same delay constant as the pipeline so a
+        // slow Electron target finishes reading the pasteboard before we
+        // overwrite it. 1500 ms is the worst observed Electron pause.
+        tokio::time::sleep(std::time::Duration::from_millis(1_500)).await;
+        let _ = guard.restore();
+        Ok(())
+    }
+}
+
 /// Clear all history by deleting the history file
 #[tauri::command]
 pub fn clear_history() -> Result<(), String> {

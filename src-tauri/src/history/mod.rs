@@ -3,4 +3,4 @@
 
 pub mod store;
 
-pub use store::{add_history_entry, clear_history, get_history, HistoryEntry};
+pub use store::{add_history_entry, clear_history, get_history, replay_history_entry, HistoryEntry};

@@ -6,7 +6,7 @@ import { useEffect, useState, useCallback, useRef, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Copy, Check, Download, RefreshCw, Crown, ArrowRight, ExternalLink,
-  User, Mic, SlidersHorizontal, Database, BookOpen,
+  User, Mic, SlidersHorizontal, Database, BookOpen, Repeat,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { invoke } from '@tauri-apps/api/core';
@@ -69,6 +69,7 @@ const DictionaryRow = memo(function DictionaryRow({
 const HistoryRow = memo(function HistoryRow({ entry }: { entry: HistoryEntry }) {
   const { t, i18n } = useTranslation();
   const [copied, setCopied] = useState(false);
+  const [replaying, setReplaying] = useState(false);
 
   const handleCopy = async () => {
     try {
@@ -76,6 +77,24 @@ const HistoryRow = memo(function HistoryRow({ entry }: { entry: HistoryEntry }) 
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error) { console.error('Failed to copy:', error); }
+  };
+
+  const handleReplay = async () => {
+    if (replaying) return;
+    setReplaying(true);
+    try {
+      // Close the Settings window first so the focused-app target is
+      // whatever the user was working on, not the Settings window itself.
+      // Replay completes asynchronously on the Rust side after the window
+      // is gone — accessibility events go to the newly-focused app.
+      await getCurrentWindow().hide();
+      await new Promise((r) => setTimeout(r, 120));
+      await invoke('replay_history_entry', { text: entry.text });
+    } catch (error) {
+      console.error('Failed to replay history entry:', error);
+    } finally {
+      setReplaying(false);
+    }
   };
 
   const preview = entry.text.length > 100 ? entry.text.slice(0, 100) + '…' : entry.text;
@@ -86,15 +105,25 @@ const HistoryRow = memo(function HistoryRow({ entry }: { entry: HistoryEntry }) 
         <p className="text-[11px] text-app-faint mb-1 tabular-nums">{formatTimestamp(entry.timestamp, i18n.language)}</p>
         <p className="text-[13px] text-app-text break-words leading-relaxed">{preview}</p>
       </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={handleCopy}
-        className="opacity-0 group-hover:opacity-100 shrink-0"
-        title={t('settings.dictionary.copyTooltip')}
-      >
-        {copied ? <Check className="size-3.5 text-app-success" /> : <Copy className="size-3.5" />}
-      </Button>
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 shrink-0">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleReplay}
+          loading={replaying}
+          title={t('settings.history.replayTooltip')}
+        >
+          <Repeat className="size-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleCopy}
+          title={t('settings.dictionary.copyTooltip')}
+        >
+          {copied ? <Check className="size-3.5 text-app-success" /> : <Copy className="size-3.5" />}
+        </Button>
+      </div>
     </div>
   );
 });
@@ -277,7 +306,8 @@ export function Settings() {
   const { t } = useTranslation();
   const {
     aiPolishEnabled, telemetryEnabled, shortcut, handsFreeMode, hidePillWhenInactive,
-    autostartEnabled, historyEnabled, language, theme, dictionary, history, loading, isPro, licenseKey,
+    autostartEnabled, historyEnabled, vadAutoStopEnabled, vadSilenceSecs, audioDeviceName,
+    language, theme, dictionary, history, loading, isPro, licenseKey,
     licenseStatus, licenseExpiresAt, licenseActivationCount, licenseActivationLimit,
     licenseLoading, licenseError, usage,
     loadSettings, saveSettings, resetSettings, loadDictionary, deleteEntry,
@@ -385,7 +415,7 @@ export function Settings() {
 
   /* ---- Generic toggle factory: cuts 6 near-identical handlers down to 1 --- */
   const makeToggle = useCallback(
-    <K extends 'ai_polish_enabled' | 'telemetry_enabled' | 'hands_free_mode' | 'hide_pill_when_inactive' | 'history_enabled'>(
+    <K extends 'ai_polish_enabled' | 'telemetry_enabled' | 'hands_free_mode' | 'hide_pill_when_inactive' | 'history_enabled' | 'vad_auto_stop_enabled'>(
       key: K,
       sideEffect?: () => void,
     ) => async (enabled: boolean) => {
@@ -403,6 +433,43 @@ export function Settings() {
   const handleHandsFreeModeToggle = makeToggle('hands_free_mode');
   const handleHidePillWhenInactiveToggle = makeToggle('hide_pill_when_inactive');
   const handleHistoryEnabledToggle = makeToggle('history_enabled');
+  const handleVadAutoStopToggle = makeToggle('vad_auto_stop_enabled');
+  const handleVadSilenceSecsChange = useCallback(
+    async (raw: number) => {
+      // Clamp to the same window the Rust side enforces.
+      const next = Math.min(10, Math.max(1, Math.round(raw)));
+      try {
+        await saveSettings({ vad_silence_secs: next });
+      } catch (error) {
+        console.error('Failed to save vad_silence_secs:', error);
+      }
+    },
+    [saveSettings],
+  );
+
+  // Audio input devices: enumerated on Settings open + on focus return so
+  // a user who hot-plugs a USB mic sees it without restarting.
+  const [audioDevices, setAudioDevices] = useState<Array<{ name: string; is_default: boolean }>>([]);
+  const refreshAudioDevices = useCallback(() => {
+    invoke<Array<{ name: string; is_default: boolean }>>('list_audio_input_devices')
+      .then(setAudioDevices)
+      .catch((e) => console.error('[Settings] list_audio_input_devices failed:', e));
+  }, []);
+  useEffect(() => {
+    refreshAudioDevices();
+  }, [refreshAudioDevices]);
+  const handleAudioDeviceChange = useCallback(
+    async (raw: string) => {
+      // Empty string from the <select> means "use the OS default".
+      const next = raw === '' ? null : raw;
+      try {
+        await saveSettings({ audio_device_name: next });
+      } catch (error) {
+        console.error('Failed to save audio_device_name:', error);
+      }
+    },
+    [saveSettings],
+  );
 
   const handleGroqKeySave = async () => {
     if (!groqApiKey.trim()) return;
@@ -707,6 +774,67 @@ export function Settings() {
                 description={t('settings.recordingMode.hidePillDesc')}
                 control={<Toggle enabled={hidePillWhenInactive} onChange={handleHidePillWhenInactiveToggle} disabled={loading} />}
               />
+              <div className="border-t border-app-border my-1" />
+              <SettingsRow
+                label={t('settings.recordingMode.vadAutoStopLabel')}
+                description={t('settings.recordingMode.vadAutoStopDesc')}
+                control={<Toggle enabled={vadAutoStopEnabled} onChange={handleVadAutoStopToggle} disabled={loading} />}
+              />
+              {vadAutoStopEnabled && (
+                <div className="pl-1 py-2 flex items-center gap-3">
+                  <label
+                    htmlFor="vad-silence-secs"
+                    className="text-[12px] text-app-muted shrink-0"
+                  >
+                    {t('settings.recordingMode.vadSilenceSecsLabel')}
+                  </label>
+                  <input
+                    id="vad-silence-secs"
+                    type="range"
+                    min={1}
+                    max={10}
+                    step={1}
+                    value={vadSilenceSecs}
+                    onChange={(e) => handleVadSilenceSecsChange(Number(e.target.value))}
+                    disabled={loading}
+                    className="flex-1 accent-app-accent"
+                  />
+                  <span className="text-[12px] font-medium tabular-nums text-app-text w-10 text-right">
+                    {vadSilenceSecs}s
+                  </span>
+                </div>
+              )}
+              <div className="border-t border-app-border my-1" />
+              <div className="py-2">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <label
+                      htmlFor="audio-device-select"
+                      className="text-[13px] font-medium text-app-text"
+                    >
+                      {t('settings.recordingMode.audioDeviceLabel')}
+                    </label>
+                    <p className="mt-0.5 text-[12px] text-app-muted leading-relaxed">
+                      {t('settings.recordingMode.audioDeviceDesc')}
+                    </p>
+                  </div>
+                  <select
+                    id="audio-device-select"
+                    value={audioDeviceName ?? ''}
+                    onChange={(e) => handleAudioDeviceChange(e.target.value)}
+                    onFocus={refreshAudioDevices}
+                    disabled={loading}
+                    className="h-8 rounded-app-md border border-app-border bg-app-surface px-2 text-[13px] text-app-text shrink-0 max-w-[55%] focus:border-app-accent focus:outline-none"
+                  >
+                    <option value="">{t('settings.recordingMode.audioDeviceDefault')}</option>
+                    {audioDevices.map((d) => (
+                      <option key={d.name} value={d.name}>
+                        {d.is_default ? `${d.name} ${t('settings.recordingMode.audioDeviceDefaultSuffix')}` : d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </SettingsSection>
 
             <SettingsSection title={t('settings.transcription.title')}>
@@ -728,6 +856,8 @@ export function Settings() {
                         onChange={(e) => setGroqApiKey(e.target.value)}
                         placeholder={t('settings.transcription.keyPlaceholder')}
                         className="flex-1"
+                        aria-label={t('form.apiKey.label')}
+                        autoComplete="off"
                       />
                       <Button
                         onClick={handleGroqKeySave}
@@ -803,6 +933,7 @@ export function Settings() {
                       disabled={licenseLoading}
                       className="font-mono"
                       onKeyDown={(e) => { if (e.key === 'Enter' && licenseInput.trim()) handleActivateLicense(); }}
+                      aria-label={t('settings.pro.labelKey')}
                     />
                     {licenseError && <p className="text-[12px] text-app-danger">{showLicenseError}</p>}
                   </div>
@@ -874,8 +1005,9 @@ export function Settings() {
             >
               <div className="mb-4 flex gap-2 items-end">
                 <div className="flex-1">
-                  <label className="block text-[11px] text-app-muted mb-1 font-medium">{t('settings.dictionary.labelMisheard')}</label>
+                  <label htmlFor="dict-original" className="block text-[11px] text-app-muted mb-1 font-medium">{t('settings.dictionary.labelMisheard')}</label>
                   <Input
+                    id="dict-original"
                     type="text"
                     value={newOriginal}
                     onChange={(e) => setNewOriginal(e.target.value)}
@@ -885,8 +1017,9 @@ export function Settings() {
                 </div>
                 <ArrowRight className="size-4 text-app-faint shrink-0 mb-2.5" aria-hidden />
                 <div className="flex-1">
-                  <label className="block text-[11px] text-app-muted mb-1 font-medium">{t('settings.dictionary.labelCorrection')}</label>
+                  <label htmlFor="dict-correction" className="block text-[11px] text-app-muted mb-1 font-medium">{t('settings.dictionary.labelCorrection')}</label>
                   <Input
+                    id="dict-correction"
                     type="text"
                     value={newCorrection}
                     onChange={(e) => setNewCorrection(e.target.value)}
@@ -965,6 +1098,34 @@ export function Settings() {
           {/* ===== ADVANCED ===== */}
           <div id="advanced" data-section="advanced" className="scroll-mt-6">
             <UpdateChannelCard />
+
+            <SettingsSection
+              title={t('settings.logs.title')}
+              description={t('settings.logs.desc')}
+            >
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    invoke('reveal_log_folder').catch((e) =>
+                      console.error('[Settings] reveal_log_folder failed:', e),
+                    );
+                  }}
+                >
+                  {t('settings.logs.button')}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    invoke('reveal_recordings_folder').catch((e) =>
+                      console.error('[Settings] reveal_recordings_folder failed:', e),
+                    );
+                  }}
+                >
+                  {t('settings.logs.recordingsButton')}
+                </Button>
+              </div>
+            </SettingsSection>
 
             <SettingsSection title={t('settings.reset.title')} description={t('settings.reset.desc')}>
               <Button

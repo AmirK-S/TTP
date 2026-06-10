@@ -244,10 +244,19 @@ pub struct TranscriptionProgress {
 /// `message` MUST be a translation key from `en.json` / `fr.json` (or the
 /// empty string when no message is appropriate). Do not pass raw English
 /// here — the frontend will surface it as a missing-key tag.
+///
+/// Sentry tagging policy: terminal stages (`complete`, `error`) REMOVE the
+/// pipeline_stage tag from the global scope. Intermediate stages set it.
+/// Without this, the tag would persist process-globally after the pipeline
+/// finishes and misattribute every later Sentry event (tray click, updater
+/// check, fnkey monitor) to the previous transcription's last stage.
 fn emit_progress(app: &AppHandle, stage: &str, message: &str, params: Option<serde_json::Value>) {
-    // Set Sentry tag for current pipeline stage so errors are attributed correctly
     sentry::configure_scope(|scope| {
-        scope.set_tag("pipeline_stage", stage);
+        if stage == "complete" || stage == "error" {
+            scope.remove_tag("pipeline_stage");
+        } else {
+            scope.set_tag("pipeline_stage", stage);
+        }
     });
 
     let progress = TranscriptionProgress {
@@ -414,34 +423,178 @@ fn is_hallucination(text: &str) -> bool {
         return true;
     }
 
+    // PRIVACY: we never log the literal `text` or `normalized` payload — both
+    // contain the user's verbatim speech. The hallucination filter is the
+    // most aggressive false-positive source in the pipeline, and packaged
+    // macOS stderr lands in Console.app where unrelated humans can read it.
+    // We keep the diagnostic signal (which arm fired, how long) without the
+    // content.
+    let char_count = text.chars().count();
     if HALLUCINATIONS.iter().any(|h| *h == normalized) {
-        eprintln!(
-            "[Pipeline] filtered exact hallucination: {:?} (raw: {:?})",
-            normalized, text
-        );
+        crate::logging::log_info(&format!(
+            "[Pipeline] filtered exact hallucination chars={}",
+            char_count
+        ));
         return true;
     }
 
-    if let Some(hit) = HALLUCINATION_SUBSTRINGS
+    if HALLUCINATION_SUBSTRINGS
         .iter()
-        .find(|sub| normalized.contains(*sub))
+        .any(|sub| normalized.contains(*sub))
     {
-        eprintln!(
-            "[Pipeline] filtered substring hallucination match={:?} (raw: {:?})",
-            hit, text
-        );
+        crate::logging::log_info(&format!(
+            "[Pipeline] filtered substring hallucination chars={}",
+            char_count
+        ));
         return true;
     }
 
     if has_repetition_loop(&normalized) {
-        eprintln!(
-            "[Pipeline] filtered 3-gram repetition loop (raw: {:?})",
-            text
-        );
+        crate::logging::log_info(&format!(
+            "[Pipeline] filtered 3-gram repetition loop chars={}",
+            char_count
+        ));
         return true;
     }
 
     false
+}
+
+/// Map a transcription API error message into an analytics category +
+/// the HTTP status code when one is recoverable from the string.
+///
+/// Pure function: no I/O, no globals. The pipeline uses the category for
+/// telemetry attribution (so we can tell at a glance whether the recurring
+/// failure mode is rate-limiting, auth, oversized payloads, or network) and
+/// the status code for the same Sentry split. Extracted so the classification
+/// rules can be tested without spinning up the full pipeline.
+pub(crate) fn classify_transcription_error(e: &str) -> (&'static str, Option<u16>) {
+    if e.contains(" 429 ") || e.contains(": 429") {
+        ("rate_limited", Some(429))
+    } else if e.contains(" 401 ") || e.contains(": 401") {
+        ("invalid_api_key", Some(401))
+    } else if e.contains(" 403 ") || e.contains(": 403") {
+        ("invalid_api_key", Some(403))
+    } else if e.contains("413") {
+        ("too_long", Some(413))
+    } else if e.to_lowercase().contains("entity too large") || e.to_lowercase().contains("too long") {
+        ("too_long", None)
+    } else if e.to_lowercase().contains("timeout")
+        || e.to_lowercase().contains("connect")
+        || e.to_lowercase().contains("network")
+        || e.to_lowercase().contains("dns")
+    {
+        ("network", None)
+    } else {
+        ("api_error", None)
+    }
+}
+
+/// Categorise a polish API error string for analytics. Three buckets:
+///
+///   * `rate_limited`: a 429 status was somewhere in the error string.
+///   * `invalid_api_key`: a 401 or 403.
+///   * `polish_failed`: anything else, including network and parsing errors.
+///
+/// We do NOT surface a user-facing toast for the first two — they're
+/// terminal for the polish step but the cleaned text still pastes, so we
+/// keep the UX silent and rely on telemetry to fix the underlying issue.
+/// Only the catch-all `polish_failed` triggers the "polish_unavailable"
+/// pill so the user knows their text shipped without polish.
+pub(crate) fn classify_polish_error(e: &str) -> &'static str {
+    if e.contains(" 429 ") || e.contains(": 429") {
+        "rate_limited"
+    } else if e.contains(" 401 ") || e.contains(": 401") || e.contains(" 403 ") || e.contains(": 403") {
+        "invalid_api_key"
+    } else {
+        "polish_failed"
+    }
+}
+
+#[cfg(test)]
+mod pipeline_classifier_tests {
+    use super::{classify_polish_error, classify_transcription_error};
+
+    #[test]
+    fn polish_rate_limited() {
+        assert_eq!(classify_polish_error("HTTP 429 Too Many Requests"), "rate_limited");
+        assert_eq!(classify_polish_error("status: 429"), "rate_limited");
+    }
+
+    #[test]
+    fn polish_invalid_api_key() {
+        assert_eq!(classify_polish_error("HTTP 401 Unauthorized"), "invalid_api_key");
+        assert_eq!(classify_polish_error("403 Forbidden by Groq"), "invalid_api_key");
+        // ': 403' colon form.
+        assert_eq!(classify_polish_error("status: 403"), "invalid_api_key");
+    }
+
+    #[test]
+    fn polish_fallback_catches_everything_else() {
+        assert_eq!(classify_polish_error("network timeout"), "polish_failed");
+        assert_eq!(classify_polish_error("malformed JSON in response"), "polish_failed");
+        assert_eq!(classify_polish_error(""), "polish_failed");
+    }
+
+    #[test]
+    fn polish_does_not_misclassify_random_numbers() {
+        // "429" without separator should NOT match — keeps noise out of the
+        // rate-limited bucket.
+        assert_eq!(classify_polish_error("hash=abc429def"), "polish_failed");
+    }
+}
+
+#[cfg(test)]
+mod pipeline_transcription_classifier_tests {
+    use super::classify_transcription_error;
+
+    #[test]
+    fn rate_limit_via_space_separators() {
+        assert_eq!(classify_transcription_error("HTTP 429 Too Many Requests"), ("rate_limited", Some(429)));
+    }
+
+    #[test]
+    fn rate_limit_via_colon_separator() {
+        assert_eq!(classify_transcription_error("Status: 429"), ("rate_limited", Some(429)));
+    }
+
+    #[test]
+    fn invalid_api_key_401_and_403() {
+        assert_eq!(classify_transcription_error("HTTP 401 Unauthorized"), ("invalid_api_key", Some(401)));
+        assert_eq!(classify_transcription_error("HTTP 403 Forbidden"), ("invalid_api_key", Some(403)));
+    }
+
+    #[test]
+    fn too_long_via_413() {
+        assert_eq!(classify_transcription_error("status 413 Payload Too Large"), ("too_long", Some(413)));
+    }
+
+    #[test]
+    fn too_long_via_words_without_code() {
+        assert_eq!(classify_transcription_error("Request Entity Too Large"), ("too_long", None));
+        assert_eq!(classify_transcription_error("audio file too long for this endpoint"), ("too_long", None));
+    }
+
+    #[test]
+    fn network_via_keywords() {
+        assert_eq!(classify_transcription_error("request timeout"), ("network", None));
+        assert_eq!(classify_transcription_error("connect refused"), ("network", None));
+        assert_eq!(classify_transcription_error("DNS resolution failed"), ("network", None));
+    }
+
+    #[test]
+    fn fallback_api_error() {
+        assert_eq!(classify_transcription_error("something unexpected"), ("api_error", None));
+        assert_eq!(classify_transcription_error(""), ("api_error", None));
+    }
+
+    #[test]
+    fn does_not_misclassify_random_429_substring() {
+        // Strings containing "429" without separators around it are noisier
+        // — the existing matcher tolerates these as "api_error" rather than
+        // false-positive rate_limited.
+        assert_eq!(classify_transcription_error("hash=abc429def"), ("api_error", None));
+    }
 }
 
 #[cfg(test)]
@@ -688,7 +841,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     let converted_path = match convert_to_mono_16khz(&audio_path) {
         Ok(path) => path,
         Err(e) => {
-            eprintln!("[Pipeline] Conversion failed: {} — sending original", e);
+            crate::logging::log_warn(&format!("[Pipeline] Conversion failed: {} - sending original", e));
             // Tell the user the next stage may reject it (~25 MB cap on
             // un-compressed audio is hit much earlier than on compressed).
             emit_progress(app, "transcribing", "error.compression_failed", None);
@@ -751,10 +904,13 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // Load settings
     let settings = get_settings();
 
-    // Read input mode from app state for analytics
+    // Read input mode from app state for analytics. We use the effective
+    // value (session override or persisted) so a single Fn-double-tap
+    // recording in a push-to-talk-default install is correctly attributed
+    // to "toggle".
     let input_mode = if let Some(state) = app.try_state::<Mutex<AppState>>() {
         if let Ok(guard) = state.try_lock() {
-            if guard.hands_free_mode { "toggle" } else { "push_to_talk" }
+            if guard.effective_hands_free() { "toggle" } else { "push_to_talk" }
         } else {
             "unknown"
         }
@@ -853,22 +1009,8 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             ));
 
             // Classify error for analytics — capture HTTP status alongside the category
-            // so Sentry/Aptabase can split the catch-all "api_error" bucket by code.
-            let (error_category, status_code): (&str, Option<u16>) = if e.contains(" 429 ") || e.contains(": 429") {
-                ("rate_limited", Some(429))
-            } else if e.contains(" 401 ") || e.contains(": 401") {
-                ("invalid_api_key", Some(401))
-            } else if e.contains(" 403 ") || e.contains(": 403") {
-                ("invalid_api_key", Some(403))
-            } else if e.contains("413") {
-                ("too_long", Some(413))
-            } else if e.to_lowercase().contains("entity too large") || e.to_lowercase().contains("too long") {
-                ("too_long", None)
-            } else if e.to_lowercase().contains("timeout") || e.to_lowercase().contains("connect") || e.to_lowercase().contains("network") || e.to_lowercase().contains("dns") {
-                ("network", None)
-            } else {
-                ("api_error", None)
-            };
+            // so Sentry can split the catch-all "api_error" bucket by code.
+            let (error_category, status_code) = classify_transcription_error(&e);
 
             // User-facing translation key + optional interpolation params,
             // based on error category. The frontend resolves the key into
@@ -1065,14 +1207,8 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 }
             }
             Err(e) => {
-                eprintln!("[Pipeline] Polish failed, using cleaned text: {}", e);
-                let category = if e.contains(" 429 ") || e.contains(": 429") {
-                    "rate_limited"
-                } else if e.contains(" 401 ") || e.contains(": 401") || e.contains(" 403 ") || e.contains(": 403") {
-                    "invalid_api_key"
-                } else {
-                    "polish_failed"
-                };
+                crate::logging::log_warn(&format!("[Pipeline] Polish failed, using cleaned text: {}", e));
+                let category = classify_polish_error(&e);
                 if category == "polish_failed" {
                     emit_progress(app, "pasting", "error.polish_unavailable", None);
                 }
@@ -1130,9 +1266,9 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         let trusted_flag = check_accessibility();
         let actually_works = probe_accessibility();
         if trusted_flag && !actually_works {
-            eprintln!("[Pipeline] Accessibility TCC entry is stale — resetting so user can re-grant.");
+            crate::logging::log_warn("[Pipeline] Accessibility TCC entry is stale - resetting so user can re-grant.");
             if let Err(e) = reset_accessibility_tcc() {
-                eprintln!("[Pipeline] reset_accessibility_tcc failed: {}", e);
+                crate::logging::log_error(&format!("[Pipeline] reset_accessibility_tcc failed: {}", e));
             }
         }
         actually_works
@@ -1192,14 +1328,14 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
                 // Restore original clipboard content
                 if let Err(e) = clipboard_guard.restore() {
-                    eprintln!("[Pipeline] Failed to restore clipboard: {}", e);
+                    crate::logging::log_warn(&format!("[Pipeline] Failed to restore clipboard: {}", e));
                 }
 
                 // Start correction detection window (10 seconds to detect user corrections).
                 // Skip when the final text is empty — the detection task would otherwise
                 // poll Accessibility API for 15s for no reason (phantom F5 race, empty API).
                 if final_text.trim().is_empty() {
-                    eprintln!("[Pipeline] start_correction_window skipped — empty final_text");
+                    crate::logging::log_info("[Pipeline] start_correction_window skipped - empty final_text");
                 } else {
                     start_correction_window(app, final_text.clone());
                 }
@@ -1207,20 +1343,20 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 true
             }
             Ok(Ok(Err(e))) => {
-                eprintln!("[Pipeline] Paste simulation failed: {}", e);
+                crate::logging::log_error(&format!("[Pipeline] Paste simulation failed: {}", e));
                 false
             }
             Ok(Err(_)) => {
-                eprintln!("[Pipeline] Paste simulation panicked");
+                crate::logging::log_error("[Pipeline] Paste simulation panicked");
                 false
             }
             Err(e) => {
-                eprintln!("[Pipeline] Paste task failed: {}", e);
+                crate::logging::log_error(&format!("[Pipeline] Paste task failed: {}", e));
                 false
             }
         }
     } else {
-        eprintln!("[Pipeline] No accessibility permission - using clipboard fallback");
+        crate::logging::log_info("[Pipeline] No accessibility permission - using clipboard fallback");
 
         // Open System Settings to Accessibility pane to help user grant permission
         #[cfg(target_os = "macos")]
@@ -1243,7 +1379,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         };
 
         if let Err(e) = add_history_entry(&final_text, raw_for_history) {
-            eprintln!("[Pipeline] Failed to save to history: {}", e);
+            crate::logging::log_warn(&format!("[Pipeline] Failed to save to history: {}", e));
         }
     }
 
@@ -1300,5 +1436,30 @@ pub async fn process_audio(app: AppHandle, audio_path: String) -> Result<String,
         // user's selected language.
         return Err("error.rate_limit_exceeded".to_string());
     }
-    process_recording(&app, audio_path).await
+
+    // SECURITY: confine `audio_path` to the app's recordings dir. Without this,
+    // a compromised renderer (XSS via an i18n string, malicious webview content,
+    // a future dev oversight) could pass any local path — `~/.ssh/id_ed25519`,
+    // `/etc/passwd`, a Keychain export — and we'd happily upload its bytes to
+    // Groq Whisper and surface the result back. Canonicalize both sides so
+    // symlinks, `..`, and `/var`↔`/private/var` (macOS) collapse before the
+    // prefix check.
+    let recordings_dir = crate::recording::get_recording_dir(&app)?;
+    let recordings_canon = std::fs::canonicalize(&recordings_dir).unwrap_or(recordings_dir);
+    let audio_canon = std::fs::canonicalize(&audio_path)
+        .map_err(|_| "error.audio_file_not_found".to_string())?;
+    if !audio_canon.starts_with(&recordings_canon) {
+        crate::logging::log_error(&format!(
+            "process_audio rejected out-of-tree path (canonical parent: {})",
+            audio_canon.parent().map(|p| p.display().to_string()).unwrap_or_default()
+        ));
+        return Err("error.audio_file_not_found".to_string());
+    }
+    // Pass the canonical path forward — downstream fs::remove_file calls now
+    // operate on a verified path, not the renderer-supplied string.
+    let audio_path_str = audio_canon
+        .to_str()
+        .ok_or_else(|| "error.audio_file_not_found".to_string())?
+        .to_string();
+    process_recording(&app, audio_path_str).await
 }

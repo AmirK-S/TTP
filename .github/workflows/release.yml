@@ -47,13 +47,51 @@ jobs:
         shell: bash
         run: |
           TAG="${{ github.ref_name }}"
-          if [[ "$TAG" =~ -[0-9]+$ ]] || [[ "$TAG" =~ -beta\.[0-9]+$ ]]; then
+          # Accept only:
+          #   vX.Y.Z           — stable
+          #   vX.Y.Z-N         — numeric beta (current convention)
+          #   vX.Y.Z-beta.N    — legacy beta (preserved for v3.0.0-beta.1..4)
+          # Reject ANY other pre-release suffix (rc, hotfix, canary, dash with
+          # nothing after) so a malformed tag can't ship to /releases/latest
+          # as a stable build. Without this guard, `v3.0.5-rc.1` would have
+          # been promoted to `--latest` and silently overwritten the stable
+          # auto-updater pointer.
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "is_beta=false" >> "$GITHUB_OUTPUT"
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$ ]] || [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
             echo "is_beta=true" >> "$GITHUB_OUTPUT"
             echo "channel=beta" >> "$GITHUB_OUTPUT"
           else
-            echo "is_beta=false" >> "$GITHUB_OUTPUT"
-            echo "channel=stable" >> "$GITHUB_OUTPUT"
+            echo "::error::Tag $TAG has an unrecognised format. Use vX.Y.Z (stable) or vX.Y.Z-N (numeric beta)."
+            exit 1
           fi
+
+      # Cross-check the tag against the version baked into the source. Without
+      # this, you can push tag v3.0.5 against a commit where Cargo.toml +
+      # package.json still say 3.0.4 — the build produces a v3.0.4 binary and
+      # uploads it to release v3.0.5. The updater manifest takes its version
+      # from Cargo.toml/tauri.conf.json, so the manifest would mismatch the
+      # tag and users would re-install the same build on every check.
+      - name: Verify tag matches source version
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          # Strip the leading 'v' and any pre-release suffix to get the bare
+          # vX.Y.Z core for comparison.
+          TAG_VERSION="${TAG#v}"
+          TAG_CORE="${TAG_VERSION%%-*}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          CARGO_VERSION=$(grep -E '^version = ' src-tauri/Cargo.toml | head -1 | sed -E 's/version = "(.*)"/\1/')
+          if [ "$TAG_CORE" != "$PKG_VERSION" ]; then
+            echo "::error::Tag $TAG core $TAG_CORE does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+          if [ "$TAG_CORE" != "$CARGO_VERSION" ]; then
+            echo "::error::Tag $TAG core $TAG_CORE does not match Cargo.toml version $CARGO_VERSION"
+            exit 1
+          fi
+          echo "Tag $TAG matches source version $TAG_CORE (package.json + Cargo.toml)."
 
       # On Windows + beta tags, skip the MSI bundler. MSI rejects non-numeric
       # SemVer pre-release identifiers (e.g. -beta.1) — see tauri-apps/tauri
@@ -78,24 +116,25 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable @ 2025-12-16
         with:
+          # Pin the toolchain explicitly. Without a `toolchain:` input, the
+          # action installs whatever is the latest stable rustc at run time,
+          # so two release builds of the same git SHA can produce different
+          # binaries depending on when CI ran. Bump this deliberately via PR.
+          toolchain: '1.85.0'
           targets: ${{ matrix.target }}
+          components: rustfmt, clippy
 
       - name: Rust cache
         uses: swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae  # v2
         with:
           workspaces: src-tauri -> target
 
-      - name: Install opus dependencies (macOS)
-        if: matrix.platform == 'macos-latest'
-        run: brew install cmake opus pkg-config
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: 1
-
-      - name: Set cross-compile env for x86_64 macOS
-        if: matrix.target == 'x86_64-apple-darwin'
-        run: |
-          echo "OPUS_NO_PKG_CONFIG=1" >> $GITHUB_ENV
-          echo "CMAKE_POLICY_VERSION_MINIMUM=3.5" >> $GITHUB_ENV
+      # `cmake`, `opus`, `pkg-config`, and the `OPUS_NO_PKG_CONFIG` /
+      # `CMAKE_POLICY_VERSION_MINIMUM` env vars used to be installed here to
+      # support an opus cross-compile that no longer exists. Cargo.toml only
+      # enables `rodio` with `features = ["wav"]`, cpal needs neither cmake
+      # nor opus, and `grep opus Cargo.lock` returns zero matches. The
+      # ~30-60s of brew time per macOS run that this saves is non-trivial.
 
       - name: Install frontend dependencies
         run: npm ci
@@ -108,7 +147,19 @@ jobs:
         working-directory: src-tauri
         run: cargo test --lib
 
-      # Windows certificate import
+      # Windows certificate import + thumbprint wire-through.
+      #
+      # Before this step, the certificate was imported into the runner's
+      # CurrentUser cert store but tauri.conf.json carried
+      # `"certificateThumbprint": null`, so the Tauri Windows bundler never
+      # invoked signtool. The NSIS .exe and MSI shipped UNSIGNED — every
+      # SmartScreen prompt showed "Unknown publisher" and the certificate
+      # was effectively unused.
+      #
+      # Now: extract the thumbprint from the imported .pfx and rewrite the
+      # null field in tauri.conf.json before the build runs. We rewrite the
+      # file (rather than passing via env) because tauri-action does not
+      # forward the env var into the bundler config at build time.
       - name: Import Windows Certificate
         if: matrix.platform == 'windows-latest' && env.WINDOWS_CERTIFICATE != ''
         env:
@@ -118,7 +169,15 @@ jobs:
           New-Item -ItemType directory -Path certificate
           Set-Content -Path certificate/tempCert.txt -Value $env:WINDOWS_CERTIFICATE
           certutil -decode certificate/tempCert.txt certificate/certificate.pfx
-          Import-PfxCertificate -FilePath certificate/certificate.pfx -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText)
+          $pwd = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
+          Import-PfxCertificate -FilePath certificate/certificate.pfx -CertStoreLocation Cert:\CurrentUser\My -Password $pwd
+          # Read the thumbprint back from the .pfx and inject it into the
+          # Tauri config so the bundler actually invokes signtool.
+          $thumb = (Get-PfxCertificate -FilePath certificate/certificate.pfx).Thumbprint
+          Write-Host "Windows certificate thumbprint: $thumb"
+          $conf = Get-Content src-tauri/tauri.conf.json -Raw
+          $conf = $conf -replace '"certificateThumbprint":\s*null', "`"certificateThumbprint`": `"$thumb`""
+          Set-Content -Path src-tauri/tauri.conf.json -Value $conf -NoNewline
 
       # Apple Developer ID certificate import — MANDATORY for release tags.
       # Releases must be signed and notarized; we fail loudly if the secret is
@@ -292,10 +351,23 @@ jobs:
             || sentry-cli debug-files upload \
               --include-sources \
               "src-tauri/target/release/"
-          # TODO: JS source map upload to be added later. With @sentry/react
-          # now wired on the frontend, JS stack traces from the Vite bundle
-          # will arrive minified until we run `sentry-cli sourcemaps upload`
-          # against `dist/` on the same release tag (package.json version).
+
+          # JS sourcemaps: vite.config.ts emits .map sidecars alongside the
+          # bundled JS via `build.sourcemap: "hidden"` (no sourceMappingURL
+          # comment, so end-user devtools don't see them). We upload the maps
+          # to Sentry keyed by the package.json version so server-side
+          # symbolication resolves minified frames in @sentry/react events.
+          #
+          # Only run once per release (macOS arm64) to avoid uploading the
+          # same artifacts three times across the matrix.
+          if [[ "${{ matrix.target }}" == "aarch64-apple-darwin" ]] && [ -d dist ]; then
+            REL_VERSION=$(node -p "require('./package.json').version")
+            echo "Uploading JS sourcemaps for release $REL_VERSION"
+            sentry-cli sourcemaps inject ./dist || true
+            sentry-cli sourcemaps upload \
+              --release "$REL_VERSION" \
+              ./dist || true
+          fi
 
       # Upload a stable-named alias so /releases/latest/download/<stable> works
       # without the consumer having to know the version. Versioned originals

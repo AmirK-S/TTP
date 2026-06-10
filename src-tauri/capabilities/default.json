@@ -35,8 +35,6 @@
       "identifier": "http:default",
       "allow": [
         { "url": "https://api.groq.com/*" },
-        { "url": "https://github.com/*" },
-        { "url": "https://api.github.com/*" },
         { "url": "https://*.ingest.sentry.io/*" },
         { "url": "https://*.ingest.de.sentry.io/*" }
       ]

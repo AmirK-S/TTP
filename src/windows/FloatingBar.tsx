@@ -8,31 +8,14 @@ import { listen } from '@tauri-apps/api/event';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle } from 'lucide-react';
 import { safeInvoke } from '../lib/safeInvoke';
+import { translateRustMessage } from '../lib/translateRustMessage';
 import { useRecordingState } from '../hooks/useRecordingState';
+import { useRecordingMode } from '../hooks/useRecordingMode';
 import { useTranscription } from '../hooks/useTranscription';
 import { TutorialPill } from '../components/TutorialPill';
 import { DarkPill } from '../components/ui';
 import { cn } from '../lib/cn';
-
-/**
- * Rust pipeline emits translation keys (e.g. `error.no_speech`,
- * `progress.transcribing`) in the `message` field — resolve them via i18n,
- * but fall through gracefully on any unforeseen literal string.
- */
-function translateRustMessage(
-  t: (key: string, params?: Record<string, string | number>) => string,
-  message: string,
-  params?: Record<string, string | number>,
-): string {
-  if (!message) return '';
-  if (
-    message.includes('.') &&
-    (message.startsWith('error.') || message.startsWith('progress.') || message.startsWith('permission.'))
-  ) {
-    return t(message, params);
-  }
-  return message;
-}
+import { Lock } from 'lucide-react';
 
 const TUTORIAL_DISMISSED_KEY = 'tutorial_pill_dismissed';
 const BAR_COUNT = 14;
@@ -57,6 +40,8 @@ export function FloatingBar() {
 
   const { stage, message, params, isProcessing: isTranscribing } = useTranscription();
   const translatedMessage = translateRustMessage(t, message, params);
+  const recordingMode = useRecordingMode();
+  const isHandsFree = recordingMode === 'toggle';
   const isRecording = recordingState === 'Recording';
   // Treat both Rust "Processing" state AND transcription progress as processing
   // — eliminates the flicker between recording end and first progress event.
@@ -98,7 +83,17 @@ export function FloatingBar() {
     }
   }, [stage, showTutorial]);
 
-  /* Voice-reactive waveform, driven by audio-level events from Rust. -------- */
+  /* Voice-reactive waveform, driven by audio-level events from Rust. --------
+   *
+   * Respect prefers-reduced-motion: vestibular sensitivity gets aggravated by
+   * the continuous 60fps bar oscillation. When the user opts into reduced
+   * motion, we mount the bars at a clean static silhouette and skip the RAF
+   * loop entirely — recording state is still conveyed by the red dot, the
+   * timer, and aria-live on the pill, so there's no information loss. */
+  const prefersReducedMotion =
+    typeof window !== 'undefined' &&
+    window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const barRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const levelRef = useRef(0);
   const rafRef = useRef(0);
@@ -109,6 +104,20 @@ export function FloatingBar() {
       // Collapse to minimum via transform (no layout pass).
       barRefs.current.forEach((bar) => {
         if (bar) bar.style.transform = `scaleY(${MIN_HEIGHT / MAX_HEIGHT})`;
+      });
+      return;
+    }
+
+    if (prefersReducedMotion) {
+      // Render a static, mid-height waveform silhouette and skip RAF. The
+      // user still sees "recording" via the timer + tone + aria-live; what
+      // we drop is the continuous motion that vestibular users find painful.
+      barRefs.current.forEach((bar, i) => {
+        if (!bar) return;
+        const center = (BAR_COUNT - 1) / 2;
+        const dist = Math.abs(i - center) / center;
+        const envelope = 1.0 - dist * dist * 0.55;
+        bar.style.transform = `scaleY(${envelope * 0.5 + 0.25})`;
       });
       return;
     }
@@ -143,7 +152,7 @@ export function FloatingBar() {
       cancelAnimationFrame(rafRef.current);
       unlistenPromise.then((fn) => fn());
     };
-  }, [isRecording]);
+  }, [isRecording, prefersReducedMotion]);
 
   const pillTone: 'idle' | 'active' | 'danger' = isError
     ? 'danger'
@@ -191,6 +200,12 @@ export function FloatingBar() {
             <span className="text-[11px] font-medium tabular-nums text-white/90 tracking-tight">
               {formatElapsed(elapsedMs)}
             </span>
+            {isHandsFree && (
+              <Lock
+                className="size-3 text-white/80 shrink-0"
+                aria-label={t('floatingBar.handsFreeIndicatorLabel')}
+              />
+            )}
           </>
         )}
 

@@ -44,6 +44,46 @@ pub fn get_or_create_hmac_secret(account: &str, legacy_fallback: &[u8; 32]) -> [
     bytes
 }
 
+/// Per-account "legacy migration complete" flag.
+///
+/// Once a record on this machine has been re-signed with the per-machine
+/// secret, the verifier MUST refuse to accept records signed with the
+/// `LEGACY_HMAC_SECRET` constant. Without this, an attacker who reverse-
+/// engineers the legacy constant out of the binary can plant a forged
+/// `license.json` AFTER a clean install — the user's first launch sees it,
+/// verifies via the legacy fallback path, and trusts it.
+///
+/// With the flag set: post-migration, the legacy path is a no-op. The
+/// attacker would have to also somehow plant a record signed with the
+/// per-machine secret, which they cannot read (it's in the keychain).
+///
+/// Stored as a keychain entry whose password is the literal string `"1"`.
+/// Absence of the entry (or any other value) means "not yet migrated".
+const MIGRATION_FLAG_SUFFIX: &str = "_legacy_migration_complete";
+
+fn migration_flag_account(account: &str) -> String {
+    format!("{}{}", account, MIGRATION_FLAG_SUFFIX)
+}
+
+/// Returns true once `mark_legacy_migration_complete` has been called for
+/// `account` on this machine.
+pub fn legacy_migration_complete(account: &str) -> bool {
+    let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, &migration_flag_account(account)) else {
+        return false;
+    };
+    matches!(entry.get_password().as_deref(), Ok("1"))
+}
+
+/// Persist the "legacy migration complete" marker for `account`. Called
+/// from the licensing / usage stores after the first successful re-sign
+/// with the per-machine secret.
+pub fn mark_legacy_migration_complete(account: &str) {
+    let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, &migration_flag_account(account)) else {
+        return;
+    };
+    let _ = entry.set_password("1");
+}
+
 /// Hash arbitrary input to a 32-byte key. Used to derive a stable secret
 /// from the legacy constant when we want to pre-seed something.
 #[allow(dead_code)]

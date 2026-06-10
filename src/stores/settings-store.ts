@@ -37,6 +37,12 @@ export interface Settings {
   language: string | null;
   /** 'system' | 'light' | 'dark' | null. null is treated as 'system' (follow OS). */
   theme: string | null;
+  /** Auto-stop recording after sustained silence. Default false. */
+  vad_auto_stop_enabled: boolean;
+  /** Seconds of continuous silence before auto-stop fires. Bounded [1, 10]. */
+  vad_silence_secs: number;
+  /** User-preferred input device by name. null/undefined = OS default. */
+  audio_device_name: string | null;
 }
 
 /** License info returned by Rust backend */
@@ -75,6 +81,9 @@ interface SettingsStore {
   autostartEnabled: boolean;
   historyEnabled: boolean;
   useBetaChannel: boolean;
+  vadAutoStopEnabled: boolean;
+  vadSilenceSecs: number;
+  audioDeviceName: string | null;
   language: LanguageChoice;
   theme: ThemeChoice;
   dictionary: DictionaryEntry[];
@@ -134,6 +143,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   autostartEnabled: false,
   historyEnabled: true,
   useBetaChannel: false,
+  vadAutoStopEnabled: false,
+  vadSilenceSecs: 3,
+  audioDeviceName: null,
   language: 'system',
   theme: 'system',
   dictionary: [],
@@ -170,6 +182,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         autostartEnabled: settings.autostart_enabled ?? false,
         historyEnabled: settings.history_enabled ?? true,
         useBetaChannel: settings.use_beta_channel ?? false,
+        vadAutoStopEnabled: settings.vad_auto_stop_enabled ?? false,
+        vadSilenceSecs: settings.vad_silence_secs ?? 3,
+        audioDeviceName: settings.audio_device_name ?? null,
         language: lang,
         theme,
       });
@@ -195,6 +210,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         autostart_enabled: get().autostartEnabled,
         history_enabled: get().historyEnabled,
         use_beta_channel: get().useBetaChannel,
+        vad_auto_stop_enabled: get().vadAutoStopEnabled,
+        vad_silence_secs: get().vadSilenceSecs,
+        audio_device_name: get().audioDeviceName,
         language: get().language,
         theme: get().theme,
       };
@@ -219,6 +237,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         autostartEnabled: newSettings.autostart_enabled,
         historyEnabled: newSettings.history_enabled,
         useBetaChannel: newSettings.use_beta_channel,
+        vadAutoStopEnabled: newSettings.vad_auto_stop_enabled,
+        vadSilenceSecs: newSettings.vad_silence_secs,
+        audioDeviceName: newSettings.audio_device_name,
         language: newLang,
         theme: newTheme,
       });
@@ -244,6 +265,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         autostartEnabled: false,
         historyEnabled: true,
         useBetaChannel: false,
+        vadAutoStopEnabled: false,
+        vadSilenceSecs: 3,
+        audioDeviceName: null,
         language: 'system',
         theme: 'system',
       }); // Default values
