@@ -80,18 +80,19 @@ jobs:
         shell: bash
         run: |
           ARGS="${{ matrix.args }}"
-          # build.yml is the "does it compile?" gate, NOT a release artifact
-          # producer. Skip the updater bundle so tauri-action doesn't demand
-          # `TAURI_SIGNING_PRIVATE_KEY` (release.yml is the only path that
-          # signs updater bundles, and that secret is intentionally not
-          # exposed to PR builds). Restrict to user-facing bundles that prove
-          # the build pipeline still works end-to-end.
+          if [[ "${{ matrix.platform }}" == "windows-latest" && "${{ steps.beta-check.outputs.is_beta }}" == "true" ]]; then
+            ARGS="${ARGS:+$ARGS }--bundles nsis"
+          fi
+          # build.yml is "does it compile + bundle?", NOT "does the updater
+          # bundle sign-verify?" — so we explicitly opt out of the updater
+          # artifact. tauri.conf.json keeps `createUpdaterArtifacts: true`
+          # for release.yml (where TAURI_SIGNING_PRIVATE_KEY is set); here
+          # we just produce the user-facing bundles so PRs validate the
+          # full bundler path without needing the signing secret.
           if [[ "${{ matrix.platform }}" == "macos-latest" ]]; then
             ARGS="${ARGS:+$ARGS }--bundles app,dmg"
-          else
-            # Windows: NSIS only by default; if this is a beta tag we'd skip
-            # MSI anyway (MSI rejects non-numeric pre-release identifiers).
-            ARGS="${ARGS:+$ARGS }--bundles nsis"
+          elif [[ "${{ matrix.platform }}" == "windows-latest" && "${{ steps.beta-check.outputs.is_beta }}" != "true" ]]; then
+            ARGS="${ARGS:+$ARGS }--bundles nsis,msi"
           fi
           echo "args=$ARGS" >> "$GITHUB_OUTPUT"
 

@@ -44,8 +44,7 @@ jobs:
         with:
           # Pinned in lockstep with release.yml so build.yml's "does it
           # compile?" check uses the same compiler as the actual release.
-          # See release.yml for the rationale behind the 1.90.0 pin.
-          toolchain: '1.90.0'
+          toolchain: '1.85.0'
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
@@ -80,17 +79,7 @@ jobs:
         shell: bash
         run: |
           ARGS="${{ matrix.args }}"
-          # build.yml is the "does it compile?" gate, NOT a release artifact
-          # producer. Skip the updater bundle so tauri-action doesn't demand
-          # `TAURI_SIGNING_PRIVATE_KEY` (release.yml is the only path that
-          # signs updater bundles, and that secret is intentionally not
-          # exposed to PR builds). Restrict to user-facing bundles that prove
-          # the build pipeline still works end-to-end.
-          if [[ "${{ matrix.platform }}" == "macos-latest" ]]; then
-            ARGS="${ARGS:+$ARGS }--bundles app,dmg"
-          else
-            # Windows: NSIS only by default; if this is a beta tag we'd skip
-            # MSI anyway (MSI rejects non-numeric pre-release identifiers).
+          if [[ "${{ matrix.platform }}" == "windows-latest" && "${{ steps.beta-check.outputs.is_beta }}" == "true" ]]; then
             ARGS="${ARGS:+$ARGS }--bundles nsis"
           fi
           echo "args=$ARGS" >> "$GITHUB_OUTPUT"
