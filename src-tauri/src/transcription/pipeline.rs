@@ -524,7 +524,8 @@ mod pipeline_classifier_tests {
     #[test]
     fn polish_invalid_api_key() {
         assert_eq!(classify_polish_error("HTTP 401 Unauthorized"), "invalid_api_key");
-        assert_eq!(classify_polish_error("403 Forbidden by Groq"), "invalid_api_key");
+        // Space-separated 403 form — what reqwest emits via Display.
+        assert_eq!(classify_polish_error("Groq returned 403 Forbidden"), "invalid_api_key");
         // ': 403' colon form.
         assert_eq!(classify_polish_error("status: 403"), "invalid_api_key");
     }
