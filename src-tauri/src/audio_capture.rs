@@ -100,7 +100,11 @@ fn resolve_input_device(
     if let Some(name) = preferred_name.as_deref().filter(|s| !s.is_empty()) {
         if let Ok(devices) = host.input_devices() {
             for device in devices {
-                if device.name().as_deref() == Ok(name) {
+                // cpal's `Device::name()` returns `Result<String, DeviceNameError>`;
+                // unwrap the success arm explicitly and compare strings rather
+                // than relying on Result comparison (which fails to compile
+                // because the error arms aren't PartialEq-compatible).
+                if device.name().ok().as_deref() == Some(name) {
                     return Ok(device);
                 }
             }
