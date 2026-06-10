@@ -106,13 +106,15 @@ jobs:
         uses: tauri-apps/tauri-action@fce9c6108b31ea247710505d3aaaa893ee6768d4  # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # NOTE: build.yml no longer exposes the updater signing key.
-          # This workflow is "does it compile + tests pass?" — the artifacts
-          # produced here are for review (via actions/upload-artifact), not
-          # for end-user delivery. Skipping the signing key avoids leaking
-          # it to internal-branch PR builds and shaves seconds off the
-          # bundler signature step. release.yml is the only path that signs
-          # updater bundles.
+          # Tauri v2 validates that the signing key is set whenever
+          # `createUpdaterArtifacts: true` lives in tauri.conf.json, even
+          # when `--bundles` filters out the updater bundle on the CLI. So
+          # we have to wire the secret into build.yml too. GitHub redacts
+          # secret values in logs, and PRs from forks don't receive secrets
+          # at all — so the only thing this exposes is internal-branch PR
+          # builds, which is acceptable.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: ${{ steps.build-args.outputs.args }}
 
