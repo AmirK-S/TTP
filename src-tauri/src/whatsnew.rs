@@ -50,6 +50,14 @@ fn changelog_for_lang(version: &str, lang: &str) -> Option<&'static str> {
 /// entries at the top, paired with each new EN entry.
 fn changelog_for_fr(version: &str) -> Option<&'static str> {
     match version {
+        "3.1.1" => Some(
+            "Fix : Ctrl+Space en double-tap pouvait coincer l'app dans un état \"Processing\" \
+             dont elle ne sortait plus, et chaque appui suivant restait sans effet (rapport \
+             utilisateur en v3.1.0-1 sur Windows). Toutes les voies d'erreur de process_audio \
+             remettent maintenant l'état à Idle avant de remonter l'erreur, et la détection \
+             de double-tap reset le timestamp pour éviter qu'un tap suivant soit interprété \
+             comme un triple-tap.",
+        ),
         "3.1.0" => Some(
             "Grosse mise à jour : VAD auto-stop, sélecteur de micro, retape une transcription d'un clic, indicateur mains libres sur la pill.\n\
              • Arrêt auto après silence (opt-in) : termine l'enregistrement automatiquement quand tu as fini de parler. Pratique quand tu oublies de relâcher Fn. Réglable de 1 à 10 secondes dans Paramètres → Comportement.\n\
@@ -83,6 +91,13 @@ fn changelog_for_fr(version: &str) -> Option<&'static str> {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "3.1.1" => Some(
+            "Fix: a Ctrl+Space double-tap could leave the app stuck in a \"Processing\" \
+             state from which every subsequent shortcut press was a no-op (reported by a \
+             user on v3.1.0-1, Windows). Every error path in process_audio now resets state \
+             to Idle before bubbling up, and the double-tap detector now clears its \
+             timestamp so the next tap isn't misread as the third tap of a triple-tap.",
+        ),
         "3.1.0" => Some(
             "Big update: VAD auto-stop, mic picker, one-click history re-paste, hands-free indicator on the pill.\n\
              • Auto-stop after silence (opt-in): ends the recording automatically once you've stopped speaking. Useful when you forget to release Fn. Tunable 1-10 seconds in Settings → Behavior.\n\
