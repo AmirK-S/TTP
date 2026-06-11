@@ -529,10 +529,15 @@ jobs:
         run: |
           set -e
           if [ "${{ steps.beta-check.outputs.is_beta }}" = "true" ]; then
-            # Beta tag: publish but stay prerelease and do NOT mark as latest,
-            # so stable-channel users keep pointing at the most recent stable.
+            # Beta tag: publish but stay prerelease and EXPLICITLY do NOT mark
+            # as latest, so stable-channel users keep pointing at the most
+            # recent stable. We pass `--latest=false` explicitly because
+            # without it gh inherits whatever flag the release was created
+            # with (tauri-action's default leaves it ambiguous), and GitHub
+            # then rejects the prerelease flag with HTTP 422
+            # ("Latest release cannot be draft or prerelease.").
             gh release edit "${{ github.ref_name }}" \
-              --draft=false --prerelease \
+              --draft=false --prerelease --latest=false \
               --repo "${{ github.repository }}"
           else
             # Stable tag: publish and explicitly mark as latest so
