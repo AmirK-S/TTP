@@ -163,6 +163,12 @@ fn handle_shortcut_pressed(state: &mut AppState, app: &AppHandle) {
     state.last_shortcut_time = Some(now);
 
     if is_double_tap {
+        // Reset the candidate so the NEXT tap is treated as a fresh single
+        // press rather than the third tap of a triple-tap. fnkey.rs has the
+        // same guard via LAST_FN_PRESS_TIME_MS.store(0) and ours was missing,
+        // which made every shortcut press within 300 ms of a successful
+        // double-tap re-fire the double-tap path.
+        state.last_shortcut_time = None;
         match state.recording_state {
             RecordingState::Idle => {
                 // Transient: hands-free for this session only via the

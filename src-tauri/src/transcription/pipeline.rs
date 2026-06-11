@@ -1428,6 +1428,25 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 /// Runs the full transcription pipeline asynchronously.
 #[tauri::command]
 pub async fn process_audio(app: AppHandle, audio_path: String) -> Result<String, String> {
+    // CRITICAL: every early-return Err MUST first reset state to Idle.
+    // process_audio is called when the recording state machine is already
+    // in Processing (set by shortcuts::stop_recording before stop_recording
+    // IPC returns the path to JS). If we Err out without resetting state,
+    // the app stays in Processing forever and ALL subsequent shortcut
+    // presses are no-ops (handle_shortcut_pressed only acts on Idle or
+    // Recording states). v3.1.0 user reported this exact stuck state after
+    // a Ctrl+Space double-tap on Windows: very short recording triggered an
+    // early-return path that bypassed the set_state in process_recording.
+    //
+    // The helper guarantees that every Err on the path between the start
+    // of this function and the call into process_recording flips state
+    // back to Idle and emits the user-facing error pill.
+    let err_idle = |app: &AppHandle, key: &str| -> String {
+        emit_progress(app, "error", key, None);
+        set_state(app, RecordingState::Idle);
+        key.to_string()
+    };
+
     let limiter = PROCESS_AUDIO_LIMITER.get_or_init(|| {
         RateLimiter::direct(Quota::per_minute(NonZeroU32::new(20).unwrap()))
     });
@@ -1435,7 +1454,7 @@ pub async fn process_audio(app: AppHandle, audio_path: String) -> Result<String,
         // Return the translation key rather than a finished string — the
         // frontend resolves it via i18next so the toast/pill matches the
         // user's selected language.
-        return Err("error.rate_limit_exceeded".to_string());
+        return Err(err_idle(&app, "error.rate_limit_exceeded"));
     }
 
     // SECURITY: confine `audio_path` to the app's recordings dir. Without this,
@@ -1445,22 +1464,32 @@ pub async fn process_audio(app: AppHandle, audio_path: String) -> Result<String,
     // Groq Whisper and surface the result back. Canonicalize both sides so
     // symlinks, `..`, and `/var`↔`/private/var` (macOS) collapse before the
     // prefix check.
-    let recordings_dir = crate::recording::get_recording_dir(&app)?;
+    //
+    // On Windows, `std::fs::canonicalize` returns paths with the `\\?\`
+    // extended-length prefix, so we canonicalize BOTH sides — comparing a
+    // bare path against a `\\?\C:\...` would otherwise wrongly reject every
+    // recording.
+    let recordings_dir = match crate::recording::get_recording_dir(&app) {
+        Ok(d) => d,
+        Err(_) => return Err(err_idle(&app, "error.audio_file_not_found")),
+    };
     let recordings_canon = std::fs::canonicalize(&recordings_dir).unwrap_or(recordings_dir);
-    let audio_canon = std::fs::canonicalize(&audio_path)
-        .map_err(|_| "error.audio_file_not_found".to_string())?;
+    let audio_canon = match std::fs::canonicalize(&audio_path) {
+        Ok(c) => c,
+        Err(_) => return Err(err_idle(&app, "error.audio_file_not_found")),
+    };
     if !audio_canon.starts_with(&recordings_canon) {
         crate::logging::log_error(&format!(
             "process_audio rejected out-of-tree path (canonical parent: {})",
             audio_canon.parent().map(|p| p.display().to_string()).unwrap_or_default()
         ));
-        return Err("error.audio_file_not_found".to_string());
+        return Err(err_idle(&app, "error.audio_file_not_found"));
     }
     // Pass the canonical path forward — downstream fs::remove_file calls now
     // operate on a verified path, not the renderer-supplied string.
-    let audio_path_str = audio_canon
-        .to_str()
-        .ok_or_else(|| "error.audio_file_not_found".to_string())?
-        .to_string();
+    let audio_path_str = match audio_canon.to_str() {
+        Some(s) => s.to_string(),
+        None => return Err(err_idle(&app, "error.audio_file_not_found")),
+    };
     process_recording(&app, audio_path_str).await
 }
