@@ -50,6 +50,15 @@ fn changelog_for_lang(version: &str, lang: &str) -> Option<&'static str> {
 /// entries at the top, paired with each new EN entry.
 fn changelog_for_fr(version: &str) -> Option<&'static str> {
     match version {
+        "3.1.0" => Some(
+            "Grosse mise à jour : VAD auto-stop, sélecteur de micro, retape une transcription d'un clic, indicateur mains libres sur la pill.\n\
+             • Arrêt auto après silence (opt-in) : termine l'enregistrement automatiquement quand tu as fini de parler. Pratique quand tu oublies de relâcher Fn. Réglable de 1 à 10 secondes dans Paramètres → Comportement.\n\
+             • Sélecteur de micro : choisis explicitement ton micro (utile avec AirPods + micro intégré). Si ton micro choisi est débranché, TTP repasse automatiquement sur la source système.\n\
+             • Re-tape une transcription : ouvre Paramètres → Historique, survole une entrée, clique sur l'icône Repeat → ton ancienne transcription est retapée dans l'app au premier plan.\n\
+             • Mode mains libres visuel : une petite icône cadenas apparaît sur la pill quand tu es en hands-free, pour rappeler qu'un seul tap suffit pour arrêter.\n\
+             • Plafond dur de 5 minutes par enregistrement : protection contre un mode hands-free oublié toute la nuit.\n\
+             • Sous le capot : Sentry capture maintenant les vrais panics Rust (avant ils disparaissaient en silence), settings.json est écrit atomiquement (plus de corruption sur kill), un seul flux audio cpal au lieu de deux (élimine la cause #1 des \"enregistrement silencieux\" sur certains drivers), copy plus honnête côté privacy.",
+        ),
         "3.0.4" => Some(
             "Capture micro plus fiable + signaux de pas-de-voix plus clairs.\n\
              • Remplacement du plugin micro tiers par notre capture cpal maison. Plus de WAV vides de 68 octets quand le permission micro a été révoquée silencieusement après une mise à jour (cause #1 du \"rien capturé\" en v3.0.x).\n\
@@ -74,6 +83,15 @@ fn changelog_for_fr(version: &str) -> Option<&'static str> {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "3.1.0" => Some(
+            "Big update: VAD auto-stop, mic picker, one-click history re-paste, hands-free indicator on the pill.\n\
+             • Auto-stop after silence (opt-in): ends the recording automatically once you've stopped speaking. Useful when you forget to release Fn. Tunable 1-10 seconds in Settings → Behavior.\n\
+             • Input device picker: pick the mic to record from explicitly (helpful with AirPods + built-in mic). If your chosen device is unplugged, TTP falls back to the system default automatically.\n\
+             • Re-paste a past transcription: open Settings → History, hover a row, click the Repeat icon → the entry is typed back into the focused app.\n\
+             • Hands-free visual cue: a small lock icon now shows on the pill when you're in hands-free mode, as a reminder that a single tap stops the session.\n\
+             • Hard 5-minute recording ceiling: protects against a hands-free session you forgot about overnight.\n\
+             • Under the hood: Sentry now captures real Rust panics (they used to disappear silently), settings.json is written atomically (no more corruption on kill), one shared cpal audio stream instead of two (kills the #1 cause of \"silent recording\" reports on some drivers), more honest privacy copy throughout.",
+        ),
         "3.0.4" => Some(
             "More reliable mic capture + clearer no-speech signals.\n\
              • Replaced the third-party mic-recorder plugin with our in-house cpal capture. No more empty 68-byte WAVs when mic permission was silently revoked after an update (root cause of the \"nothing captured\" reports in v3.0.x).\n\
