@@ -50,6 +50,16 @@ fn changelog_for_lang(version: &str, lang: &str) -> Option<&'static str> {
 /// entries at the top, paired with each new EN entry.
 fn changelog_for_fr(version: &str) -> Option<&'static str> {
     match version {
+        "3.1.3" => Some(
+            "Fix : Whisper hallucinait des phrases du type \"Glossary, c'est une phrase \
+             très importante.\" sur les enregistrements silencieux. Cause : le prompt \
+             qu'on envoyait à Whisper pour biaiser vers les noms propres du dictionnaire \
+             commençait littéralement par \"Glossary:\" — le décodeur captait le mot et \
+             écrivait une phrase à propos d'un glossaire. Le mot d'amorce est supprimé du \
+             prompt (les noms propres sont passés sans introducteur) + filet de sécurité \
+             qui détecte \"Glossary,...\" / \"Glossaire,...\" en tête d'une recording \
+             courte (≤ 6s, ≤ 8 mots).",
+        ),
         "3.1.2" => Some(
             "Quatre fixes basés sur ton retour sur v3.1.1-1 :\n\
              • Spam-click du bouton tray ne bloque plus l'app en \"Recording\". \
@@ -106,6 +116,16 @@ fn changelog_for_fr(version: &str) -> Option<&'static str> {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "3.1.3" => Some(
+            "Fix: Whisper hallucinated sentences like \"Glossary, c'est une phrase \
+             très importante.\" on silent recordings. Root cause: the prompt we send \
+             Whisper to bias toward dictionary proper nouns literally started with \
+             \"Glossary:\" — the decoder picked up the word and wrote a sentence \
+             ABOUT glossaries. We dropped the introducer from the prompt (proper \
+             nouns are now sent without any introducer word) and added a safety \
+             net that filters \"Glossary,...\" / \"Glossaire,...\" leading short \
+             recordings (≤ 6 s, ≤ 8 words).",
+        ),
         "3.1.2" => Some(
             "Four fixes from v3.1.1-1 field reports:\n\
              • Spam-clicking the tray Record button no longer leaves the app stuck \

@@ -1009,14 +1009,26 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         }
     };
 
-    // Build Whisper prompt from dictionary corrections to bias transcription
+    // Build Whisper prompt from dictionary corrections to bias transcription.
+    //
+    // Wording matters: any word we put in the prompt sets a context Whisper
+    // may regurgitate on silent input. A v3.1.2-1 user reported sentences
+    // like "Glossary, c'est une phrase qui est très importante." because
+    // the prompt literally introduced its dictionary with the word
+    // "Glossary:" — Whisper's training corpus has plenty of paragraphs
+    // about glossaries, so on a no-signal frame the decoder picked up the
+    // prompt word and wrote a sentence describing it.
+    //
+    // Fix: drop the introducer word entirely. Whisper still biases toward
+    // the listed proper nouns purely from their presence in context. The
+    // bilingual hint stays because it's a TYPE OF speaker (not a noun
+    // Whisper would regurgitate as a topic) and it materially helps the
+    // FR/EN per-frame decision.
     let whisper_prompt = {
-        // Bilingual hint helps Whisper narrow language detection to FR/EN
         let mut prompt = "French and English bilingual speaker.".to_string();
 
         let entries = crate::dictionary::store::get_dictionary();
         if !entries.is_empty() {
-            // Collect unique correction values
             let mut corrections: Vec<String> = entries
                 .iter()
                 .map(|e| e.correction.clone())
@@ -1025,8 +1037,10 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 .collect();
             corrections.sort();
 
-            // Append glossary, staying under ~200 tokens (~800 chars conservative estimate)
-            prompt.push_str(" Glossary: ");
+            // Append the proper-noun list with NO introducer word
+            // ("Glossary:", "Names:", "Dictionary:" all leak). Keep total
+            // prompt under ~200 tokens (~800 chars conservative).
+            prompt.push(' ');
             let mut first = true;
             for word in &corrections {
                 let addition = if first {
@@ -1164,6 +1178,47 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                     return Err("No speech detected (glossary ghost)".to_string());
                 }
             }
+        }
+    }
+
+    // Prompt-introducer hallucination: short recordings starting with
+    // "Glossary, ..." / "Glossaire, ..." / "Dictionary, ..." are almost
+    // always Whisper bleeding the prompt's introducer word into the
+    // output on near-silent audio. We dropped the literal "Glossary:" word
+    // from the prompt itself (above) so this should be rare; the filter
+    // is belt-and-suspenders for older recordings or future re-introductions.
+    //
+    // We only fire on SHORT recordings (≤ 8 words AND ≤ 6 s of audio) so a
+    // legitimate dictation like "I need to update the team glossary
+    // tomorrow with the new acronyms" is preserved.
+    {
+        let lower = raw_text.trim().to_lowercase();
+        let leading = lower
+            .split(|c: char| !c.is_alphabetic())
+            .next()
+            .unwrap_or("");
+        let intro_words = ["glossary", "glossaire", "vocabulary", "vocabulaire", "lexique"];
+        let word_count = raw_text.trim().split_whitespace().count();
+        if approx_duration_secs < 6.0
+            && word_count <= 8
+            && intro_words.iter().any(|&w| leading == w)
+        {
+            crate::logging::log_info(&format!(
+                "[Pipeline] Filtered prompt-introducer hallucination chars={}, leading={:?}",
+                raw_text.chars().count(),
+                leading
+            ));
+            let _ = std::fs::remove_file(&audio_path);
+            if use_converted { let _ = std::fs::remove_file(&converted_path); }
+            if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
+            emit_progress(app, "error", "error.no_speech", None);
+            crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({
+                "error_category": "no_speech",
+                "duration_seconds": pipeline_start.elapsed().as_secs_f64(),
+                "sub_category": "prompt_introducer_leak",
+            })));
+            set_state(app, RecordingState::Idle);
+            return Err("No speech detected (prompt-introducer leak)".to_string());
         }
     }
 
