@@ -50,6 +50,21 @@ fn changelog_for_lang(version: &str, lang: &str) -> Option<&'static str> {
 /// entries at the top, paired with each new EN entry.
 fn changelog_for_fr(version: &str) -> Option<&'static str> {
     match version {
+        "3.1.2" => Some(
+            "Quatre fixes basés sur ton retour sur v3.1.1-1 :\n\
+             • Spam-click du bouton tray ne bloque plus l'app en \"Recording\". \
+             Debounce 300ms sur les clics tray + audio_capture s'auto-soigne \
+             si un état stale traîne au lieu de retourner \"recording_already_in_progress\".\n\
+             • Whisper ne te retourne plus de transcriptions en chinois / russe / coréen \
+             sur des passages silencieux : la langue est maintenant forcée à ta langue UI \
+             (en/fr) au lieu d'auto-détection.\n\
+             • Whisper n'hallucine plus \"thank you\" / \"merci\" sur les enregistrements \
+             muets : check RMS local avant l'appel API, si c'est du silence on saute \
+             Whisper et on affiche \"pas de voix détectée\".\n\
+             • Le filtre anti-hallucinations attrape maintenant \"Sous-titré par <studio>\", \
+             \"Captions by X\", \"Untertitel von X\" et autres signatures de générique que \
+             Whisper crache parfois sur les recordings courts.",
+        ),
         "3.1.1" => Some(
             "Fix : Ctrl+Space en double-tap pouvait coincer l'app dans un état \"Processing\" \
              dont elle ne sortait plus, et chaque appui suivant restait sans effet (rapport \
@@ -91,6 +106,21 @@ fn changelog_for_fr(version: &str) -> Option<&'static str> {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "3.1.2" => Some(
+            "Four fixes from v3.1.1-1 field reports:\n\
+             • Spam-clicking the tray Record button no longer leaves the app stuck \
+             in \"Recording\". 300ms debounce on tray clicks + audio_capture self-heals \
+             a stale state instead of returning \"recording_already_in_progress\".\n\
+             • Whisper no longer returns Chinese / Russian / Korean transcriptions on \
+             silent stretches: the decoder is now pinned to your UI language (en/fr) \
+             instead of per-frame auto-detection.\n\
+             • Whisper no longer hallucinates \"thank you\" on silent recordings: \
+             pre-API RMS check, if the audio is effectively silent we skip Whisper \
+             and surface \"no speech detected\".\n\
+             • Hallucination filter now catches \"Sous-titré par <studio>\", \
+             \"Captions by X\", \"Untertitel von X\" and other subtitle-credit \
+             stems Whisper bleeds onto short noisy clips.",
+        ),
         "3.1.1" => Some(
             "Fix: a Ctrl+Space double-tap could leave the app stuck in a \"Processing\" \
              state from which every subsequent shortcut press was a no-op (reported by a \

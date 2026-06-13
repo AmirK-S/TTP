@@ -193,6 +193,22 @@ const HALLUCINATION_SUBSTRINGS: &[&str] = &[
     "legendas pela comunidade amara",
     "ondertiteld door de amara",
     "由 amara",
+    // Generic "Subtitles/Captions by X" credits Whisper bleeds onto silence.
+    // Reported by a v3.1.1 user who got "Sous-titré par <random studio>"
+    // on otherwise-valid recordings. We match the credit STEM, not the
+    // studio name, so any future studio is also filtered.
+    "sous titre par",
+    "sous titres par",
+    "soustitrage",
+    "sous titrage par",
+    "captions by",
+    "subtitles by",
+    "untertitel von",
+    "untertitelung",
+    "ondertiteling",
+    "subtitulos por",
+    "sottotitoli a cura di",
+    "legendas por",
     // German broadcaster credits (very common Whisper hallu on DE silence)
     "untertitel im auftrag des zdf",
     "copyright wdr",
@@ -838,6 +854,43 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         }
     }
 
+    // Silence pre-check: skip Whisper entirely when the recording is
+    // effectively silent. Whisper's most embarrassing failure mode is
+    // hallucinating "thank you", "Sous-titré par <studio>", or a random
+    // foreign-language sentence on silent input — the downstream
+    // hallucination filter catches many of these by string match but
+    // can't safely block bare "thank you" (a real user reply). Cutting
+    // the API call entirely is both more correct and cheaper.
+    //
+    // Threshold ~0.005 is a few dB above the self-noise floor of a stock
+    // MacBook / WASAPI mic, well below the RMS of any voice sample we've
+    // observed. Confirmed empirically on 3-second silent clips and 3-second
+    // whispered speech (lowest valid speech sat at ~0.008).
+    const SILENCE_RMS_FLOOR: f32 = 0.005;
+    match super::backup::wav_average_rms(&audio_path) {
+        Ok(rms) if rms < SILENCE_RMS_FLOOR => {
+            crate::logging::log_info(&format!(
+                "Silent recording detected (avg RMS {:.4} < {:.4}), skipping Whisper",
+                rms, SILENCE_RMS_FLOOR
+            ));
+            let _ = std::fs::remove_file(&audio_path);
+            emit_progress(app, "error", "error.no_speech", None);
+            crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({
+                "error_category": "silent_audio",
+                "duration_seconds": pipeline_start.elapsed().as_secs_f64(),
+                "avg_rms": rms,
+            })));
+            set_state(app, RecordingState::Idle);
+            return Err("Silent recording — skipped Whisper".to_string());
+        }
+        Ok(_) => { /* has signal, continue */ }
+        Err(e) => {
+            // Defensive: any RMS read error is non-fatal — fall through to
+            // Whisper. validate_wav already vouched for the file structure.
+            crate::logging::log_warn(&format!("Could not compute WAV RMS: {}", e));
+        }
+    }
+
     // Convert stereo 48kHz WAV → mono 16kHz WAV (reduces size ~6x)
     let converted_path = match convert_to_mono_16khz(&audio_path) {
         Ok(path) => path,
@@ -998,7 +1051,18 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // Stage 1: Transcribe audio via Groq Whisper
     emit_progress(app, "transcribing", "progress.transcribing", None);
 
-    let raw_text = match transcribe_audio(&api_key, transcription_path, whisper_prompt.as_deref()).await {
+    // Pin Whisper's decoder to the user's selected UI language. Without
+    // this, Whisper auto-detects per-frame and routinely picks zh/ru/ko
+    // on silence + low-energy noise (a multi-version-old reported issue).
+    // We only forward `en`/`fr` — for `system` and anything else, fall
+    // back to None so Whisper can decide.
+    let whisper_lang: Option<&'static str> = match crate::i18n::current_language() {
+        "en" => Some("en"),
+        "fr" => Some("fr"),
+        _ => None,
+    };
+
+    let raw_text = match transcribe_audio(&api_key, transcription_path, whisper_prompt.as_deref(), whisper_lang).await {
         Ok(text) => text,
         Err(e) => {
             // AUDI-02: Do NOT delete the original audio on API failure.
@@ -1049,7 +1113,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         crate::logging::log_warn(
             "Empty transcription from Groq, retrying once before surfacing no_speech",
         );
-        transcribe_audio(&api_key, transcription_path, whisper_prompt.as_deref())
+        transcribe_audio(&api_key, transcription_path, whisper_prompt.as_deref(), whisper_lang)
             .await
             .unwrap_or_default()
     } else {

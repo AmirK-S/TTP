@@ -269,3 +269,62 @@ pub fn wav_duration_secs(path: &str) -> Result<f64, String> {
     let samples = reader.duration() as f64;
     Ok(samples / spec.sample_rate as f64)
 }
+
+/// Whisper hallucinates on silence: it returns "thank you", "Sous-titré par
+/// XYZ", broadcaster credits, and (the most striking failure mode) random
+/// foreign-language sentences when fed audio with no speech. The
+/// hallucination filter downstream catches many of these by exact / substring
+/// match, but it fundamentally can't catch a 4-word "thank you" that the
+/// user might actually have dictated.
+///
+/// The robust fix is to never SEND silent audio to Whisper. This helper
+/// computes the average RMS of the WAV in [0.0, 1.0]; the pipeline skips
+/// the API call entirely when the value falls below a hand-tuned silence
+/// floor (~0.005, a few dB above MacBook mic self-noise).
+///
+/// Reads the full PCM payload, so it's only suitable for the post-recording
+/// gate where we already have the file open. NOT for the realtime callback.
+pub fn wav_average_rms(path: &str) -> Result<f32, String> {
+    let mut reader = WavReader::open(path)
+        .map_err(|e| format!("Cannot read WAV: {}", e))?;
+    let spec = reader.spec();
+    let mut sum: f64 = 0.0;
+    let mut count: u64 = 0;
+    match spec.sample_format {
+        hound::SampleFormat::Int => match spec.bits_per_sample {
+            16 => {
+                for s in reader.samples::<i16>() {
+                    let v = s.unwrap_or(0) as f64 / 32_768.0;
+                    sum += v * v;
+                    count += 1;
+                }
+            }
+            32 => {
+                for s in reader.samples::<i32>() {
+                    let v = s.unwrap_or(0) as f64 / 2_147_483_648.0;
+                    sum += v * v;
+                    count += 1;
+                }
+            }
+            8 => {
+                for s in reader.samples::<i8>() {
+                    let v = s.unwrap_or(0) as f64 / 128.0;
+                    sum += v * v;
+                    count += 1;
+                }
+            }
+            bits => return Err(format!("Unsupported int width: {}", bits)),
+        },
+        hound::SampleFormat::Float => {
+            for s in reader.samples::<f32>() {
+                let v = s.unwrap_or(0.0) as f64;
+                sum += v * v;
+                count += 1;
+            }
+        }
+    }
+    if count == 0 {
+        return Ok(0.0);
+    }
+    Ok((sum / count as f64).sqrt() as f32)
+}

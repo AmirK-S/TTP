@@ -40,12 +40,31 @@ const BASE_TIMEOUT_SECS: u64 = 30;
 /// # Arguments
 /// * `api_key` - Groq API key
 /// * `audio_path` - Path to the audio file (WAV format)
+/// * `prompt` - Optional dictionary biasing prompt (proper nouns).
+/// * `language` - ISO-639-1 language hint ("en", "fr"). Passing `None` lets
+///   Whisper auto-detect — known to pick zh/ru/ko on silence/noise, which
+///   then surfaces as "spurious Chinese" transcription. Always pass the
+///   user's UI language here when we know it.
 ///
 /// # Returns
 /// * `Ok(String)` - Transcription text on success
 /// * `Err(String)` - Error message on failure
-pub async fn transcribe_audio(api_key: &str, audio_path: &str, prompt: Option<&str>) -> Result<String, String> {
-    transcribe_with_provider(api_key, audio_path, GROQ_TRANSCRIPTION_URL, "whisper-large-v3", "Groq", prompt).await
+pub async fn transcribe_audio(
+    api_key: &str,
+    audio_path: &str,
+    prompt: Option<&str>,
+    language: Option<&str>,
+) -> Result<String, String> {
+    transcribe_with_provider(
+        api_key,
+        audio_path,
+        GROQ_TRANSCRIPTION_URL,
+        "whisper-large-v3",
+        "Groq",
+        prompt,
+        language,
+    )
+    .await
 }
 
 /// Internal function to transcribe audio with a specific provider
@@ -58,6 +77,7 @@ async fn transcribe_with_provider(
     model: &str,
     _provider_name: &str,
     prompt: Option<&str>,
+    language: Option<&str>,
 ) -> Result<String, String> {
     // Convert model to owned String for Form::text (requires 'static)
     let model = model.to_string();
@@ -110,6 +130,15 @@ async fn transcribe_with_provider(
 
         if let Some(prompt_value) = prompt {
             form = form.text("prompt", prompt_value.to_string());
+        }
+
+        // Pin the decoder to a specific language. Whisper's auto-detect
+        // routinely picks zh/ru/ko on silence + noise frames — the user
+        // dictates 2 seconds in English and the model returns a Chinese
+        // sentence. Forcing the language eliminates that failure mode and
+        // is also faster (skips the detect pass).
+        if let Some(lang) = language {
+            form = form.text("language", lang.to_string());
         }
 
         // Make the request. Per-request timeout scales with audio size and

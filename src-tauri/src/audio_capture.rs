@@ -42,7 +42,7 @@ use cpal::{
 use hound::{SampleFormat, WavSpec, WavWriter};
 use tauri::{command, AppHandle, Emitter, Manager};
 
-use crate::logging::{log_error, log_info};
+use crate::logging::{log_error, log_info, log_warn};
 
 /// cpal::Stream isn't Send on macOS (CoreAudio limitation). We only ever
 /// touch the stream from the Tauri command thread — building it in start
@@ -279,17 +279,31 @@ mod rms_tests {
 /// the `error.microphone_permission_denied` pill.
 #[command]
 pub async fn start_recording<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(), String> {
-    // 1. Reject if a recording is already in progress.
+    // 1. Self-heal a stale STATE.
+    //
+    // Spam clicks on the tray button used to leave a "phantom" cpal stream
+    // parked in STATE after a race between an in-flight start_recording
+    // IPC and an early stop_recording / reset_to_idle from the JS side. The
+    // next start would then return "recording_already_in_progress" forever
+    // until the user restarted the app. Instead of failing, we discard the
+    // stale state (dropping the stream closes the cpal callback, the
+    // unfinalised WAV stays on disk and gets swept by the next backup
+    // cleanup pass) and proceed with a fresh start.
     {
-        let state = STATE.lock().map_err(|e| format!("state lock poisoned: {}", e))?;
-        if state.is_some() {
-            // Error codes — the JS-side `translateRustMessage` maps these
-            // to the user's locale via the `error.*` namespace. Raw English
-            // strings here would skip the parity check + ship as a missing-key
-            // tag on FR pills.
-            return Err("error.recording_already_in_progress".to_string());
+        let mut state = STATE.lock().map_err(|e| format!("state lock poisoned: {}", e))?;
+        if let Some(stale) = state.take() {
+            log_warn(&format!(
+                "[AudioCapture] start_recording: dropping stale STATE for {} (samples written: {})",
+                stale.save_path.display(),
+                stale.samples_written.load(Ordering::Relaxed)
+            ));
+            // Dropping `stale` closes the stream and releases the writer.
+            // We do NOT attempt to finalize the WAV — the file's payload is
+            // already discardable since the caller is asking for a fresh
+            // session.
         }
     }
+    reset_rms();
 
     // 2. Pre-flight mic permission. On macOS an unsigned-app update can
     //    silently flip the user from Authorized → NotDetermined; cpal will

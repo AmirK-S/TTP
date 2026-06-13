@@ -260,6 +260,39 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Minimum wall-clock gap between two tray toggle clicks. Anything tighter
+/// is treated as a spam-click and dropped.
+///
+/// Why this exists: a v3.1.1 user reported the tray button leaving the app
+/// stuck in "Recording" after a burst of rapid clicks. The cause: each
+/// Idle→Recording / Recording→Processing transition emits an event that the
+/// JS side handles ASYNCHRONOUSLY (it invokes start_recording / stop_recording
+/// IPCs). A second click that lands while the first invoke is still in
+/// flight races the audio_capture::STATE lifecycle (the first start hadn't
+/// inserted yet when the second stop tried to take). The follow-up
+/// fs::canonicalize on a zero-byte WAV then errored out, the catch path
+/// reset Rust state to Idle, but the in-flight cpal stream eventually
+/// finished opening and parked itself in STATE — leaving every later
+/// click stuck on "error.recording_already_in_progress".
+///
+/// 300 ms is long enough to absorb the slowest observed start_recording
+/// round-trip (~120 ms on Windows WASAPI cold start) and short enough to
+/// stay invisible during deliberate two-fingered double-tap workflows.
+const TRAY_CLICK_DEBOUNCE_MS: u64 = 300;
+
+/// Wall-clock of the most recent successful tray toggle. Reset to 0 on
+/// startup; written under the AppState lock so concurrent clicks see a
+/// consistent value without an extra mutex.
+static LAST_TRAY_TOGGLE_MS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+fn now_ms_since_epoch() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 /// Toggle recording state from tray menu
 fn toggle_recording(app: &AppHandle) {
     // Compute the transition inside the lock, then drop the lock BEFORE
@@ -272,6 +305,20 @@ fn toggle_recording(app: &AppHandle) {
             crate::logging::log_warn("[Tray] Could not acquire state lock");
             return;
         };
+
+        // Debounce spam-clicks BEFORE we touch state. See doc on the
+        // const for the full failure mode this guards against.
+        let now = now_ms_since_epoch();
+        let last = LAST_TRAY_TOGGLE_MS.load(std::sync::atomic::Ordering::Relaxed);
+        if now.saturating_sub(last) < TRAY_CLICK_DEBOUNCE_MS {
+            crate::logging::log_warn(&format!(
+                "[Tray] click ignored ({}ms since last toggle, debounce={}ms)",
+                now.saturating_sub(last),
+                TRAY_CLICK_DEBOUNCE_MS
+            ));
+            return;
+        }
+        LAST_TRAY_TOGGLE_MS.store(now, std::sync::atomic::Ordering::Relaxed);
 
         match app_state.recording_state {
             RecordingState::Idle => {
