@@ -385,6 +385,23 @@ pub async fn start_recording<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(),
 /// — both layers stay so a bug in either still surfaces the right error.
 #[command]
 pub async fn stop_recording() -> Result<PathBuf, String> {
+    // Drain delay BEFORE touching STATE.
+    //
+    // WASAPI (Windows) and several CoreAudio drivers hold up to ~150 ms of
+    // captured input in an internal buffer between the hardware and the
+    // cpal callback. If we drop the stream immediately on key release that
+    // trailing buffer is discarded — surfaces as the user's last syllable
+    // being chopped off (reported by a v3.1.3-1 Windows user).
+    //
+    // We sleep here, BEFORE we acquire STATE or take ownership of the
+    // RecordingState, so the cpal callback continues running against the
+    // still-live stream during the drain — every late sample gets written
+    // to the shared WavWriterHandle. After 200 ms we tear down. Putting
+    // the .await at the top also keeps the future Send (a Stream / Mutex
+    // guard / RecordingState held across an .await is not Send-safe and
+    // makes the Tauri command macro fail to compile).
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
     let mut state_guard = STATE.lock().map_err(|e| format!("state lock poisoned: {}", e))?;
     let state = state_guard
         .take()
@@ -392,18 +409,6 @@ pub async fn stop_recording() -> Result<PathBuf, String> {
     // Release the outer STATE lock before any blocking work so concurrent
     // status reads from other commands don't pile up behind us.
     drop(state_guard);
-
-    // Drain delay: WASAPI (Windows) and several CoreAudio drivers hold up
-    // to ~150 ms of captured input in an internal buffer between the
-    // hardware and the callback. If we drop the stream immediately on key
-    // release, that trailing buffer is discarded — the user perceives this
-    // as their last syllable / word being chopped off the transcription
-    // (reported by a v3.1.3-1 Windows user: "des fois ça coupe la fin").
-    //
-    // 200 ms is generous (largest observed WASAPI trailing-buffer ~150 ms)
-    // and is invisible to the user — the Whisper round-trip downstream is
-    // ~1-2 s, so a 200 ms drain disappears into the existing latency.
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     // Dropping the stream stops the cpal callback. Any in-flight callback
     // will finish writing its current buffer (it holds the writer lock
