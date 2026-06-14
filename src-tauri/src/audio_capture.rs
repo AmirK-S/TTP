@@ -393,6 +393,18 @@ pub async fn stop_recording() -> Result<PathBuf, String> {
     // status reads from other commands don't pile up behind us.
     drop(state_guard);
 
+    // Drain delay: WASAPI (Windows) and several CoreAudio drivers hold up
+    // to ~150 ms of captured input in an internal buffer between the
+    // hardware and the callback. If we drop the stream immediately on key
+    // release, that trailing buffer is discarded — the user perceives this
+    // as their last syllable / word being chopped off the transcription
+    // (reported by a v3.1.3-1 Windows user: "des fois ça coupe la fin").
+    //
+    // 200 ms is generous (largest observed WASAPI trailing-buffer ~150 ms)
+    // and is invisible to the user — the Whisper round-trip downstream is
+    // ~1-2 s, so a 200 ms drain disappears into the existing latency.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
     // Dropping the stream stops the cpal callback. Any in-flight callback
     // will finish writing its current buffer (it holds the writer lock
     // briefly) before this drop completes; that's the correct behaviour —

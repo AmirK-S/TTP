@@ -1009,58 +1009,29 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         }
     };
 
-    // Build Whisper prompt from dictionary corrections to bias transcription.
+    // Build Whisper prompt.
     //
-    // Wording matters: any word we put in the prompt sets a context Whisper
-    // may regurgitate on silent input. A v3.1.2-1 user reported sentences
-    // like "Glossary, c'est une phrase qui est très importante." because
-    // the prompt literally introduced its dictionary with the word
-    // "Glossary:" — Whisper's training corpus has plenty of paragraphs
-    // about glossaries, so on a no-signal frame the decoder picked up the
-    // prompt word and wrote a sentence describing it.
+    // History — what NOT to put in this string:
+    //   * v3.1.2-1: introduced the proper-noun list with the word "Glossary:".
+    //     Whisper regurgitated "Glossary, c'est une phrase qui est très
+    //     importante." on silence (the decoder picked up the introducer
+    //     concept and wrote a sentence describing it).
+    //   * v3.1.3-1: dropped the introducer but still listed the proper nouns
+    //     inline. Whisper started appending those same proper nouns at the
+    //     END of legitimate transcriptions ("...thanks for the help, Amir,
+    //     OAuth, Supabase") — classic prompt-bias trailing-token leak.
     //
-    // Fix: drop the introducer word entirely. Whisper still biases toward
-    // the listed proper nouns purely from their presence in context. The
-    // bilingual hint stays because it's a TYPE OF speaker (not a noun
-    // Whisper would regurgitate as a topic) and it materially helps the
-    // FR/EN per-frame decision.
-    let whisper_prompt = {
-        let mut prompt = "French and English bilingual speaker.".to_string();
-
-        let entries = crate::dictionary::store::get_dictionary();
-        if !entries.is_empty() {
-            let mut corrections: Vec<String> = entries
-                .iter()
-                .map(|e| e.correction.clone())
-                .collect::<std::collections::HashSet<_>>()
-                .into_iter()
-                .collect();
-            corrections.sort();
-
-            // Append the proper-noun list with NO introducer word
-            // ("Glossary:", "Names:", "Dictionary:" all leak). Keep total
-            // prompt under ~200 tokens (~800 chars conservative).
-            prompt.push(' ');
-            let mut first = true;
-            for word in &corrections {
-                let addition = if first {
-                    word.len()
-                } else {
-                    2 + word.len() // ", " + word
-                };
-                if prompt.len() + addition > 800 {
-                    break;
-                }
-                if !first {
-                    prompt.push_str(", ");
-                }
-                prompt.push_str(word);
-                first = false;
-            }
-        }
-
-        Some(prompt)
-    };
+    // v3.1.4: drop the proper-noun list entirely. We rely on the
+    // post-transcription `apply_dictionary` pass (in store.rs) to substitute
+    // any misheard form into the canonical correction — that step uses
+    // exact word-boundary matching and never adds words that aren't already
+    // in the transcription, so it has zero hallucination surface.
+    //
+    // The bilingual hint stays. It's a SPEAKER ATTRIBUTE, not a noun
+    // Whisper would regurgitate as a topic, and it materially helps the
+    // FR/EN per-frame decision (paired with the `language` parameter
+    // wired in whisper.rs).
+    let whisper_prompt = Some("French and English bilingual speaker.".to_string());
 
     // Stage 1: Transcribe audio via Groq Whisper
     emit_progress(app, "transcribing", "progress.transcribing", None);

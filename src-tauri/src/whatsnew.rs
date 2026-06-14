@@ -50,6 +50,22 @@ fn changelog_for_lang(version: &str, lang: &str) -> Option<&'static str> {
 /// entries at the top, paired with each new EN entry.
 fn changelog_for_fr(version: &str) -> Option<&'static str> {
     match version {
+        "3.1.4" => Some(
+            "Deux bugs reportés en v3.1.3-1 corrigés :\n\
+             • La fin de tes phrases n'est plus coupée. WASAPI (Windows) garde \
+             jusqu'à 150ms d'audio dans son buffer interne entre la device et \
+             le callback cpal. Je dropais le stream trop vite → ce buffer était \
+             perdu. Drain de 200ms ajouté avant le drop → tu récupères ta \
+             dernière syllabe / dernier mot.\n\
+             • Plus de mots du dictionnaire qui apparaissent à la fin de tes \
+             messages. Je passais la liste des noms propres directement dans le \
+             prompt Whisper pour aider la reconnaissance → Whisper recopiait \
+             parfois ces noms à la fin de tes phrases (prompt-bias). Le prompt \
+             est maintenant minimal ('French and English bilingual speaker.'). \
+             La correction des noms propres se fait toujours, mais via le \
+             post-traitement word-boundary qui n'ajoute jamais des mots \
+             absents de la transcription.",
+        ),
         "3.1.3" => Some(
             "Fix : Whisper hallucinait des phrases du type \"Glossary, c'est une phrase \
              très importante.\" sur les enregistrements silencieux. Cause : le prompt \
@@ -116,6 +132,24 @@ fn changelog_for_fr(version: &str) -> Option<&'static str> {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "3.1.4" => Some(
+            "Two field-reported bugs from v3.1.3-1 fixed:\n\
+             • Trailing words / last syllable are no longer cut off. WASAPI \
+             (Windows) holds up to 150ms of captured audio in its internal \
+             buffer between the device and the cpal callback. We were dropping \
+             the stream immediately on key release, losing that trailing buffer. \
+             Added a 200ms drain delay before tearing the stream down — you \
+             recover your last syllable / word.\n\
+             • Dictionary words no longer appear pasted onto the end of your \
+             messages. We were passing the proper-noun list inline in the \
+             Whisper prompt to help with recognition — Whisper occasionally \
+             regurgitated those nouns at the end of legitimate transcriptions \
+             (classic prompt-bias trailing-token leak). The prompt is now \
+             minimal ('French and English bilingual speaker.'). Proper-noun \
+             correction still happens, just through the post-transcription \
+             word-boundary dictionary pass, which never adds words that \
+             weren't already in the transcription.",
+        ),
         "3.1.3" => Some(
             "Fix: Whisper hallucinated sentences like \"Glossary, c'est une phrase \
              très importante.\" on silent recordings. Root cause: the prompt we send \
