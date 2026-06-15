@@ -1036,14 +1036,25 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // Stage 1: Transcribe audio via Groq Whisper
     emit_progress(app, "transcribing", "progress.transcribing", None);
 
-    // Pin Whisper's decoder to the user's selected UI language. Without
-    // this, Whisper auto-detects per-frame and routinely picks zh/ru/ko
-    // on silence + low-energy noise (a multi-version-old reported issue).
-    // We only forward `en`/`fr` — for `system` and anything else, fall
-    // back to None so Whisper can decide.
-    let whisper_lang: Option<&'static str> = match crate::i18n::current_language() {
-        "en" => Some("en"),
-        "fr" => Some("fr"),
+    // Pin Whisper's decoder to the user-selected transcription language.
+    //
+    // The setting is a SEPARATE field from `settings.language` (the UI
+    // locale). v3.1.2 implicitly tied them: a user with English UI but
+    // who dictates in French got their French audio mis-served as English.
+    // v3.1.5 exposes an explicit dropdown ("Auto" / "English" / "French").
+    //
+    // "Auto" / missing → return None so Whisper auto-detects. We still get
+    // protection against zh/ru/ko hallucinations on silence because the
+    // upstream silence pre-check (RMS gate) skips Whisper entirely on
+    // truly silent audio. For audible bilingual speech, auto-detect is
+    // actually better than a wrong hard pin.
+    let whisper_lang: Option<&'static str> = match crate::settings::get_settings()
+        .transcription_language
+        .as_deref()
+    {
+        Some("en") => Some("en"),
+        Some("fr") => Some("fr"),
+        // "auto", None, or any unrecognised value → let Whisper decide.
         _ => None,
     };
 

@@ -50,6 +50,18 @@ fn changelog_for_lang(version: &str, lang: &str) -> Option<&'static str> {
 /// entries at the top, paired with each new EN entry.
 fn changelog_for_fr(version: &str) -> Option<&'static str> {
     match version {
+        "3.1.5" => Some(
+            "Sélecteur explicite de langue de transcription + drain WASAPI bumpé.\n\
+             • Paramètres → Transcription → \"Langue de transcription\" : choix \
+             explicite Auto / Anglais / Français. Avant, on suivait aveuglément la \
+             langue UI → si tu utilisais TTP en anglais mais parlais français, le \
+             français était mis-transcrit. Auto laisse Whisper détecter (recommandé \
+             pour bilingue), Anglais/Français force une langue précise.\n\
+             • Drain WASAPI bumpé de 200ms → 400ms avant de fermer le stream cpal. \
+             Sur ta machine ça coupait encore une portion plus longue que la \
+             trailing buffer typique → 400ms donne de la marge pour les drivers \
+             Windows avec buffer interne plus gros.",
+        ),
         "3.1.4" => Some(
             "Deux bugs reportés en v3.1.3-1 corrigés :\n\
              • La fin de tes phrases n'est plus coupée. WASAPI (Windows) garde \
@@ -132,6 +144,19 @@ fn changelog_for_fr(version: &str) -> Option<&'static str> {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "3.1.5" => Some(
+            "Explicit transcription-language picker + bigger WASAPI drain.\n\
+             • Settings → Transcription → \"Transcription language\": explicit\n\
+             Auto / English / French dropdown. Before, we silently followed the\n\
+             UI language — a French speaker using TTP in English would get their\n\
+             French audio mis-transcribed. Auto lets Whisper detect (recommended\n\
+             for bilingual use), pinning forces a specific language.\n\
+             • WASAPI drain bumped 200ms → 400ms before tearing down the cpal\n\
+             stream. The 200ms wasn't always enough on Windows drivers with\n\
+             larger internal buffers (reported cutoff was longer than a typical\n\
+             trailing buffer). 400ms gives headroom for the slowest observed\n\
+             configurations.",
+        ),
         "3.1.4" => Some(
             "Two field-reported bugs from v3.1.3-1 fixed:\n\
              • Trailing words / last syllable are no longer cut off. WASAPI \

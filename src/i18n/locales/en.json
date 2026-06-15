@@ -203,7 +203,12 @@
       "keySaved": "API key validated and saved.",
       "getKeyAt": "Get your free key at",
       "polishLabel": "AI Polish",
-      "polishDesc": "Trim filler words and fix grammar with AI."
+      "polishDesc": "Trim filler words and fix grammar with AI.",
+      "languageLabel": "Transcription language",
+      "languageDesc": "Pin Whisper to a specific language. Defaults to Auto (Whisper detects per recording). Pin to English or French if Whisper occasionally hears the wrong language.",
+      "languageAuto": "Auto-detect",
+      "languageEnglish": "English",
+      "languageFrench": "French"
     },
     "privacy": {
       "title": "Privacy",

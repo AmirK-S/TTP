@@ -69,6 +69,16 @@ pub struct Settings {
     /// default and logs an info breadcrumb — never blocks recording.
     #[serde(default)]
     pub audio_device_name: Option<String>,
+    /// Language sent to Whisper as the `language` API parameter. Decoupled
+    /// from the UI language: a French-speaker using TTP in English will
+    /// still get correct transcription if they pick "fr" here.
+    ///
+    /// Accepted values: `"auto"` (default — Whisper auto-detects, NOT the
+    /// UI language fallback, because the v3.1.2 fix that pinned the
+    /// decoder to UI language sometimes mis-served bilingual speakers),
+    /// `"en"`, `"fr"`. `None` is treated as `"auto"`.
+    #[serde(default)]
+    pub transcription_language: Option<String>,
 }
 
 fn default_vad_silence_secs() -> u32 {
@@ -112,6 +122,7 @@ impl Default for Settings {
             vad_auto_stop_enabled: false,
             vad_silence_secs: default_vad_silence_secs(),
             audio_device_name: None,
+            transcription_language: None,
         }
     }
 }

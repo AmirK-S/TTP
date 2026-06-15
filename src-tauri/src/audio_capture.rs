@@ -400,7 +400,7 @@ pub async fn stop_recording() -> Result<PathBuf, String> {
     // the .await at the top also keeps the future Send (a Stream / Mutex
     // guard / RecordingState held across an .await is not Send-safe and
     // makes the Tauri command macro fail to compile).
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
 
     let mut state_guard = STATE.lock().map_err(|e| format!("state lock poisoned: {}", e))?;
     let state = state_guard

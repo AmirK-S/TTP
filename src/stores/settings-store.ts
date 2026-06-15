@@ -43,6 +43,8 @@ export interface Settings {
   vad_silence_secs: number;
   /** User-preferred input device by name. null/undefined = OS default. */
   audio_device_name: string | null;
+  /** Language sent to Whisper: "auto" | "en" | "fr" | null. null = auto. */
+  transcription_language: string | null;
 }
 
 /** License info returned by Rust backend */
@@ -84,6 +86,7 @@ interface SettingsStore {
   vadAutoStopEnabled: boolean;
   vadSilenceSecs: number;
   audioDeviceName: string | null;
+  transcriptionLanguage: string;
   language: LanguageChoice;
   theme: ThemeChoice;
   dictionary: DictionaryEntry[];
@@ -146,6 +149,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   vadAutoStopEnabled: false,
   vadSilenceSecs: 3,
   audioDeviceName: null,
+  transcriptionLanguage: 'auto',
   language: 'system',
   theme: 'system',
   dictionary: [],
@@ -185,6 +189,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         vadAutoStopEnabled: settings.vad_auto_stop_enabled ?? false,
         vadSilenceSecs: settings.vad_silence_secs ?? 3,
         audioDeviceName: settings.audio_device_name ?? null,
+        transcriptionLanguage: settings.transcription_language ?? 'auto',
         language: lang,
         theme,
       });
@@ -213,6 +218,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         vad_auto_stop_enabled: get().vadAutoStopEnabled,
         vad_silence_secs: get().vadSilenceSecs,
         audio_device_name: get().audioDeviceName,
+        transcription_language: get().transcriptionLanguage === 'auto' ? null : get().transcriptionLanguage,
         language: get().language,
         theme: get().theme,
       };
@@ -240,6 +246,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         vadAutoStopEnabled: newSettings.vad_auto_stop_enabled,
         vadSilenceSecs: newSettings.vad_silence_secs,
         audioDeviceName: newSettings.audio_device_name,
+        transcriptionLanguage: newSettings.transcription_language ?? 'auto',
         language: newLang,
         theme: newTheme,
       });
@@ -268,6 +275,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         vadAutoStopEnabled: false,
         vadSilenceSecs: 3,
         audioDeviceName: null,
+        transcriptionLanguage: 'auto',
         language: 'system',
         theme: 'system',
       }); // Default values

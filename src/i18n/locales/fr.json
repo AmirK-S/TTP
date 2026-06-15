@@ -203,7 +203,12 @@
       "keySaved": "Clé API validée et enregistrée.",
       "getKeyAt": "Récupère ta clé gratuite sur",
       "polishLabel": "Correction IA",
-      "polishDesc": "Retire les hésitations et corrige la grammaire avec l'IA."
+      "polishDesc": "Retire les hésitations et corrige la grammaire avec l'IA.",
+      "languageLabel": "Langue de transcription",
+      "languageDesc": "Force Whisper sur une langue précise. Auto par défaut (Whisper détecte par enregistrement). Force en anglais ou français si Whisper se trompe parfois de langue.",
+      "languageAuto": "Auto-détection",
+      "languageEnglish": "Anglais",
+      "languageFrench": "Français"
     },
     "privacy": {
       "title": "Confidentialité",

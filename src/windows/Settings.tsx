@@ -307,7 +307,7 @@ export function Settings() {
   const {
     aiPolishEnabled, telemetryEnabled, shortcut, handsFreeMode, hidePillWhenInactive,
     autostartEnabled, historyEnabled, vadAutoStopEnabled, vadSilenceSecs, audioDeviceName,
-    language, theme, dictionary, history, loading, isPro, licenseKey,
+    transcriptionLanguage, language, theme, dictionary, history, loading, isPro, licenseKey,
     licenseStatus, licenseExpiresAt, licenseActivationCount, licenseActivationLimit,
     licenseLoading, licenseError, usage,
     loadSettings, saveSettings, resetSettings, loadDictionary, deleteEntry,
@@ -884,6 +884,38 @@ export function Settings() {
                   description={t('settings.transcription.polishDesc')}
                   control={<Toggle enabled={aiPolishEnabled} onChange={handlePolishToggle} disabled={loading} />}
                 />
+              </div>
+              <div className="border-t border-app-border pt-4 py-2">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <label
+                      htmlFor="transcription-language-select"
+                      className="text-[13px] font-medium text-app-text"
+                    >
+                      {t('settings.transcription.languageLabel')}
+                    </label>
+                    <p className="mt-0.5 text-[12px] text-app-muted leading-relaxed">
+                      {t('settings.transcription.languageDesc')}
+                    </p>
+                  </div>
+                  <select
+                    id="transcription-language-select"
+                    value={transcriptionLanguage}
+                    onChange={(e) =>
+                      saveSettings({
+                        transcription_language: e.target.value === 'auto' ? null : e.target.value,
+                      }).catch((err) =>
+                        console.error('Failed to save transcription_language:', err),
+                      )
+                    }
+                    disabled={loading}
+                    className="h-8 rounded-app-md border border-app-border bg-app-surface px-2 text-[13px] text-app-text shrink-0 focus:border-app-accent focus:outline-none"
+                  >
+                    <option value="auto">{t('settings.transcription.languageAuto')}</option>
+                    <option value="en">{t('settings.transcription.languageEnglish')}</option>
+                    <option value="fr">{t('settings.transcription.languageFrench')}</option>
+                  </select>
+                </div>
               </div>
             </SettingsSection>
           </div>
