@@ -50,6 +50,16 @@ fn changelog_for_lang(version: &str, lang: &str) -> Option<&'static str> {
 /// entries at the top, paired with each new EN entry.
 fn changelog_for_fr(version: &str) -> Option<&'static str> {
     match version {
+        "3.1.6" => Some(
+            "Fix : même le prompt minimal \"French and English bilingual speaker.\" \
+             leakait à la fin des transcriptions sur du silence en fin de phrase \
+             (Whisper recopiait la queue du prompt + commençait une suite). \
+             Solution radicale : on n'envoie PLUS de prompt du tout à Whisper. \
+             La langue est gérée par le paramètre API `language`, et la correction \
+             des noms propres est gérée par le post-traitement word-boundary \
+             qui ne peut jamais ajouter de mots absents. Plus aucun risque de \
+             prompt-bias.",
+        ),
         "3.1.5" => Some(
             "Sélecteur explicite de langue de transcription + drain WASAPI bumpé.\n\
              • Paramètres → Transcription → \"Langue de transcription\" : choix \
@@ -144,6 +154,16 @@ fn changelog_for_fr(version: &str) -> Option<&'static str> {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "3.1.6" => Some(
+            "Fix: even the minimal \"French and English bilingual speaker.\" \
+             prompt was leaking at the end of transcriptions on trailing silence \
+             (Whisper copied the prompt tail and started a continuation). \
+             Radical fix: we no longer send ANY prompt to Whisper. Language is \
+             handled by the `language` API parameter, proper-noun correction \
+             by the post-transcription word-boundary pass which can never add \
+             words that weren't already present. Zero prompt-bias risk going \
+             forward.",
+        ),
         "3.1.5" => Some(
             "Explicit transcription-language picker + bigger WASAPI drain.\n\
              • Settings → Transcription → \"Transcription language\": explicit\n\

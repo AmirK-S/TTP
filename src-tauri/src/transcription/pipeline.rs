@@ -1009,29 +1009,24 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         }
     };
 
-    // Build Whisper prompt.
+    // HARD RULE: do NOT pass any prompt to Whisper.
     //
-    // History — what NOT to put in this string:
-    //   * v3.1.2-1: introduced the proper-noun list with the word "Glossary:".
-    //     Whisper regurgitated "Glossary, c'est une phrase qui est très
-    //     importante." on silence (the decoder picked up the introducer
-    //     concept and wrote a sentence describing it).
-    //   * v3.1.3-1: dropped the introducer but still listed the proper nouns
-    //     inline. Whisper started appending those same proper nouns at the
-    //     END of legitimate transcriptions ("...thanks for the help, Amir,
-    //     OAuth, Supabase") — classic prompt-bias trailing-token leak.
+    // Every prompt iteration has leaked into the output on trailing silence:
+    //   * v3.1.2-1: "Glossary: <names>" → Whisper wrote sentences ABOUT
+    //     glossaries on silence.
+    //   * v3.1.3-1: dropped "Glossary:" but kept the inline name list →
+    //     names appended at the END of legitimate transcriptions.
+    //   * v3.1.4-1: minimised to "French and English bilingual speaker." →
+    //     even that leaked: user reported "...tu vois ce que je veux dire ?
+    //     English bilingual speaker. Claud" appended to real speech.
     //
-    // v3.1.4: drop the proper-noun list entirely. We rely on the
-    // post-transcription `apply_dictionary` pass (in store.rs) to substitute
-    // any misheard form into the canonical correction — that step uses
-    // exact word-boundary matching and never adds words that aren't already
-    // in the transcription, so it has zero hallucination surface.
-    //
-    // The bilingual hint stays. It's a SPEAKER ATTRIBUTE, not a noun
-    // Whisper would regurgitate as a topic, and it materially helps the
-    // FR/EN per-frame decision (paired with the `language` parameter
-    // wired in whisper.rs).
-    let whisper_prompt = Some("French and English bilingual speaker.".to_string());
+    // Conclusion (v3.1.6): no prompt is the only safe prompt. The
+    // `language` API parameter handles bilingual decoder pinning, and the
+    // post-transcription `apply_dictionary` pass handles proper-noun
+    // substitution via word-boundary matching (it never adds words that
+    // weren't already present in the transcription, so it has zero
+    // hallucination surface).
+    let whisper_prompt: Option<String> = None;
 
     // Stage 1: Transcribe audio via Groq Whisper
     emit_progress(app, "transcribing", "progress.transcribing", None);
