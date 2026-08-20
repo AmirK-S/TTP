@@ -2,38 +2,35 @@
 # TTP - Talk To Paste installer
 # Usage: curl -fsSL ttp.amirks.eu/install.sh | sh
 #
-# Strategy: try the stable filename first (works once builds emit aliases),
-# fall back to the GitHub releases API to find the right versioned asset
-# (works for older releases). Either way the user only needs `sh`.
+# Strategy: query the GitHub releases LIST endpoint (not /releases/latest —
+# that one excludes prereleases, and our beta tags like v3.1.6-1 are
+# published as prereleases). The list is newest-first, so the first asset
+# matching our platform pattern is always the actual newest build, stable
+# or beta. This mirrors landing/src/lib/github.ts, which the website's own
+# download buttons already use for the same reason: v3.0.4 was the last
+# bare-stable tag, so /releases/latest was stuck pointing at it while every
+# subsequent v3.1.x shipped as a numbered prerelease.
 set -e
 
 REPO="AmirK-S/TTP"
-API="https://api.github.com/repos/$REPO/releases/latest"
+API="https://api.github.com/repos/$REPO/releases"
 
 case "$(uname -s)-$(uname -m)" in
-  Darwin-arm64)  STABLE_NAME="TTP-macOS-arm64.dmg"; PATTERN='_aarch64\.dmg' ;;
-  Darwin-x86_64) STABLE_NAME="TTP-macOS-x64.dmg";   PATTERN='_x64\.dmg' ;;
+  Darwin-arm64)  PATTERN='_aarch64\.dmg' ;;
+  Darwin-x86_64) PATTERN='_x64\.dmg' ;;
   Darwin-*)      echo "Error: unsupported macOS architecture: $(uname -m)" >&2; exit 1 ;;
-  *)             echo "Error: this installer is macOS-only. Download Windows builds from https://github.com/$REPO/releases/latest" >&2; exit 1 ;;
+  *)             echo "Error: this installer is macOS-only. Download Windows builds from https://github.com/$REPO/releases" >&2; exit 1 ;;
 esac
 
-# Resolve the download URL. Try the stable name first (HEAD request); if the
-# alias doesn't exist on this release yet, query the API for the versioned name.
-STABLE_URL="https://github.com/$REPO/releases/latest/download/$STABLE_NAME"
-URL=""
-if curl -fsSLI -o /dev/null "$STABLE_URL" 2>/dev/null; then
-  URL="$STABLE_URL"
-else
-  echo "Resolving latest release..."
-  URL=$(curl -fsSL "$API" \
-    | grep -oE '"browser_download_url": *"[^"]+'"$PATTERN"'"' \
-    | head -1 \
-    | sed -E 's/.*"browser_download_url": *"([^"]+)".*/\1/')
-fi
+echo "Resolving latest release..."
+URL=$(curl -fsSL "$API" \
+  | grep -oE '"browser_download_url": *"[^"]+'"$PATTERN"'"' \
+  | head -1 \
+  | sed -E 's/.*"browser_download_url": *"([^"]+)".*/\1/')
 
 if [ -z "$URL" ]; then
   echo "Error: could not find a macOS build in the latest release." >&2
-  echo "Please download manually from https://github.com/$REPO/releases/latest" >&2
+  echo "Please download manually from https://github.com/$REPO/releases" >&2
   exit 1
 fi
 
