@@ -118,6 +118,32 @@ fn resolve_input_device(
         .ok_or_else(|| "No default input device available".to_string())
 }
 
+/// Name of the input device that served the most recent recording.
+///
+/// The transcription pipeline reads this when a capture comes back as
+/// digital silence. "Every sample was zero" has at least two very different
+/// causes — a Bluetooth headset that connected but never streamed, versus a
+/// revoked microphone permission or another process holding the device — and
+/// the device name is what separates them. Without it, both land in the trace
+/// as an identical `dead_capture` line and the user is back to guessing.
+static LAST_CAPTURE_DEVICE: Mutex<Option<String>> = Mutex::new(None);
+
+/// The input device used for the most recent recording, if one has run.
+pub fn last_capture_device() -> Option<String> {
+    LAST_CAPTURE_DEVICE.lock().ok().and_then(|g| g.clone())
+}
+
+/// Name of the current OS-default input device, or `None` if there isn't one.
+///
+/// Read again at stop so a device that changed mid-recording is visible:
+/// AirPods connecting (or going to sleep) while the user is talking moves the
+/// default out from under an already-open stream.
+fn current_default_input_name() -> Option<String> {
+    cpal::default_host()
+        .default_input_device()
+        .and_then(|d| d.name().ok())
+}
+
 type WavWriterHandle = Arc<Mutex<Option<WavWriter<std::io::BufWriter<std::fs::File>>>>>;
 
 struct RecordingState {
@@ -346,14 +372,34 @@ pub async fn start_recording<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(),
             .map_err(|e| format!("Failed to create WAV writer: {}", e))?,
     )));
 
+    let device_name = device.name().unwrap_or_else(|_| "<unknown>".into());
+    let preferred = crate::settings::get_settings().audio_device_name;
+    let default_name = current_default_input_name();
+
     log_info(&format!(
         "[AudioCapture] starting: device={:?} rate={} ch={} fmt={:?} → {}",
-        device.name().unwrap_or_else(|_| "<unknown>".into()),
+        device_name,
         config.sample_rate().0,
         config.channels(),
         config.sample_format(),
         save_path.display()
     ));
+
+    if let Ok(mut slot) = LAST_CAPTURE_DEVICE.lock() {
+        *slot = Some(device_name.clone());
+    }
+
+    crate::trace::event(
+        "capture.start",
+        serde_json::json!({
+            "device": device_name,
+            "is_os_default": default_name.as_deref() == Some(device_name.as_str()),
+            "preferred": preferred,
+            "rate": config.sample_rate().0,
+            "channels": config.channels(),
+            "format": format!("{:?}", config.sample_format()),
+        }),
+    );
 
     // 5. Build the cpal input stream. Cloned handles go into the callback;
     //    err_fn forwards to the frontend (and Sentry breadcrumbs).
@@ -439,6 +485,33 @@ pub async fn stop_recording() -> Result<PathBuf, String> {
         written,
         state.save_path.display()
     ));
+
+    // Re-read the OS default now. If it no longer matches the device we
+    // opened, something moved the default while the user was talking — a
+    // Bluetooth headset connecting, or going to sleep and handing input back
+    // to the built-in mic. That switch is invisible to an already-open cpal
+    // stream, which keeps happily delivering buffers from a device that has
+    // stopped producing audio.
+    let opened = last_capture_device();
+    let default_now = current_default_input_name();
+    let device_changed = match (&opened, &default_now) {
+        (Some(a), Some(b)) => a != b,
+        _ => false,
+    };
+
+    crate::trace::event(
+        "capture.stop",
+        serde_json::json!({
+            "device": opened,
+            "default_now": default_now,
+            "device_changed": device_changed,
+            // Samples the callback actually delivered. Zero means the stream
+            // never fired at all; a healthy count here alongside an all-zero
+            // WAV means the device was streaming silence, which is the
+            // Bluetooth-not-really-connected signature.
+            "samples": written,
+        }),
+    );
 
     if written == 0 {
         log_error(

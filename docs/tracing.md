@@ -48,7 +48,9 @@ spot it was written to remove.
 | `hotkey.tap_rearmed` | macOS had disabled our event tap and we re-armed it. Every Fn press between the disable and this line was lost. |
 | `hotkey.stale_fn_cleared` | The Globe key was latched "held" and we forced it down. Keystrokes injected before this were being routed to the Globe shortcut layer. |
 | `hotkey.timer_stall` | The 20 ms poll timer skipped `gap_ms`. The process was descheduled — App Nap suspending the background agent, or the machine sleeping. Nothing advanced during that window: no hotkey, no state machine, no in-flight dictation. |
-| `audio.duration` / `audio.rms` | How much audio, how loud. `avg_rms` below `floor` means the silence gate will drop it. |
+| `capture.start` | Which microphone actually served the recording, its rate/channels/format, whether it is the OS default, and what the user had asked for. |
+| `capture.stop` | Samples the callback delivered, and whether the OS default input changed while the user was talking. |
+| `audio.duration` / `audio.signal` | How much audio, how loud. `avg_rms` below `floor` means the silence gate will drop it; `peak` and `nonzero_ratio` distinguish a quiet room from a dead device. |
 | `audio.convert` | Stereo 48 kHz → mono 16 kHz, and the size change. |
 | `whisper.request` / `whisper.response` | Bytes sent, language pinned, latency, and how many characters came back. `attempt:2` means the first call returned an empty body. |
 | `cleanup`, `polish`, `dictionary` | Each text transformation, with `changed` and before/after character counts. A `to.chars` of 0 names the stage that emptied the transcription. |
@@ -99,7 +101,8 @@ Every path that ends without text writes `dictation.finish` with an
 
 | `reason` | Meaning |
 |---|---|
-| `recording_empty` | Valid WAV, no samples. Usually a silently revoked mic permission, or the mic held exclusive by another app. |
+| `recording_empty` | Valid WAV, no samples. The audio callback never fired. |
+| `dead_capture` | Samples were written, and **every one of them is zero**. See below. |
 | `silent_audio` | Below the RMS floor — Whisper was skipped deliberately, to avoid it hallucinating on silence. |
 | `whisper_error` | The API failed. `error_category` and `status_code` say how. |
 | `no_speech` | Whisper returned nothing, twice. |
@@ -164,3 +167,52 @@ pipeline together).
 
 `re_arm_tap` writes at most one line per 30 s to `ttp.log` while the tap is
 flapping, carrying a `streak` count. The trace keeps every occurrence.
+
+## Telling a dead microphone from a quiet room
+
+`silent_audio` and `dead_capture` both end a dictation with no text, and used
+to be the same code path with the same message — "no speech detected". That
+message is wrong and actively misleading in one of the two cases: it tells
+someone who just dictated for eight seconds that they had not spoken, when
+what actually happened is that their microphone handed us nothing.
+
+A live microphone always has a noise floor. In a silent room the RMS lands
+somewhere around 0.0005–0.003 and individual samples are never all zero. So:
+
+- `nonzero_ratio > 0` with `avg_rms` below `floor` → **a quiet room**. Reason
+  `silent_audio`, message "no speech detected". Correct.
+- `nonzero_ratio == 0` → **the device delivered digital silence**. Reason
+  `dead_capture`, message about an empty recording (check permissions, check
+  whether another app has the mic).
+
+The predicate is deliberately strict: a single non-zero sample anywhere in
+the recording disqualifies `dead_capture`. Telling a user their microphone is
+broken is a strong claim and must not fire on a merely very quiet take.
+
+### Which device was it
+
+Both reasons carry `device`, and `capture.start` / `capture.stop` bracket the
+recording:
+
+```sh
+# Every dead capture, with the microphone responsible
+grep '"reason":"dead_capture"' ttp-trace.log
+
+# Did the default input move while the user was talking?
+grep 'capture.stop' ttp-trace.log | grep '"device_changed":true'
+```
+
+This is what separates the two failure modes that look identical from the
+outside:
+
+- `dead_capture` on a **Bluetooth device** (AirPods and friends) — the
+  headset was connected but never actually streaming. Intermittent by nature:
+  the same headset works on the next attempt. Look for `capture.stop` with
+  `samples` well above zero — the stream was running and delivering buffers,
+  they were just full of silence.
+- `dead_capture` on the **built-in microphone** — permission revoked, or
+  another process holding the device exclusively. Usually `samples` is zero
+  too, because the callback never fired at all.
+- `device_changed: true` on `capture.stop` — the OS default moved mid
+  recording. An already-open cpal stream does not follow it, so it keeps
+  reading from a device that has stopped producing audio.

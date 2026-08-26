@@ -198,6 +198,91 @@ mod tests {
         0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x00, // data size=0
     ];
 
+    /// Write a 16-bit mono WAV of `samples` and return its path.
+    fn write_wav(name: &str, samples: &[i16]) -> String {
+        let path = std::env::temp_dir().join(name);
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 16_000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut writer = hound::WavWriter::create(&path, spec).unwrap();
+        for s in samples {
+            writer.write_sample(*s).unwrap();
+        }
+        writer.finalize().unwrap();
+        path.to_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn all_zero_samples_are_a_dead_capture() {
+        // The signature observed in the wild: 7.8 seconds of audio, 748 KB on
+        // disk, and every single sample zero. A live microphone cannot do
+        // this — it means the callback delivered nothing.
+        let path = write_wav("ttp_test_dead.wav", &[0i16; 16_000]);
+        let stats = wav_signal_stats(&path).unwrap();
+        assert!(stats.is_dead_capture());
+        assert_eq!(stats.rms, 0.0);
+        assert_eq!(stats.peak, 0.0);
+        assert_eq!(stats.nonzero_ratio, 0.0);
+        assert_eq!(stats.samples, 16_000);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_quiet_room_is_not_a_dead_capture() {
+        // Noise floor: tiny but non-zero, alternating so the mean is ~0 and
+        // only the RMS picks it up. This must reach the silence gate and its
+        // "no speech" message, NOT the dead-capture path.
+        let samples: Vec<i16> = (0..16_000).map(|i| if i % 2 == 0 { 3 } else { -3 }).collect();
+        let path = write_wav("ttp_test_quiet.wav", &samples);
+        let stats = wav_signal_stats(&path).unwrap();
+        assert!(!stats.is_dead_capture(), "noise floor must not read as dead");
+        assert!(stats.rms > 0.0 && stats.rms < 0.005, "rms was {}", stats.rms);
+        assert_eq!(stats.nonzero_ratio, 1.0);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_single_nonzero_sample_defeats_dead_capture() {
+        // The predicate is deliberately strict: ANY signal at all means the
+        // device was alive, and we must not tell the user their microphone
+        // is broken on the strength of a near-silent recording.
+        let mut samples = [0i16; 16_000];
+        samples[9_000] = 1;
+        let path = write_wav("ttp_test_onesample.wav", &samples);
+        let stats = wav_signal_stats(&path).unwrap();
+        assert!(!stats.is_dead_capture());
+        assert!(stats.nonzero_ratio > 0.0);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn speech_level_audio_clears_the_silence_floor() {
+        let samples: Vec<i16> = (0..16_000)
+            .map(|i| ((i as f32 * 0.05).sin() * 8_000.0) as i16)
+            .collect();
+        let path = write_wav("ttp_test_speech.wav", &samples);
+        let stats = wav_signal_stats(&path).unwrap();
+        assert!(!stats.is_dead_capture());
+        assert!(stats.rms > 0.005, "rms was {}", stats.rms);
+        assert!(stats.peak > 0.2, "peak was {}", stats.peak);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_wav_with_no_samples_is_not_reported_as_dead_capture() {
+        // Zero samples is the AUDI-06 empty-recording case, caught earlier by
+        // wav_duration_secs. is_dead_capture requires samples > 0 so the two
+        // paths cannot both claim the same recording.
+        let path = write_wav("ttp_test_nosamples.wav", &[]);
+        let stats = wav_signal_stats(&path).unwrap();
+        assert_eq!(stats.samples, 0);
+        assert!(!stats.is_dead_capture());
+        let _ = std::fs::remove_file(&path);
+    }
+
     #[test]
     fn validates_empty_plugin_wav_header_passes() {
         // The OLD validate_wav passes this — header is technically valid.
@@ -284,47 +369,102 @@ pub fn wav_duration_secs(path: &str) -> Result<f64, String> {
 ///
 /// Reads the full PCM payload, so it's only suitable for the post-recording
 /// gate where we already have the file open. NOT for the realtime callback.
-pub fn wav_average_rms(path: &str) -> Result<f32, String> {
+/// Signal characteristics of a recording, gathered in a single pass.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SignalStats {
+    /// Root-mean-square amplitude across every sample, 0.0..=1.0.
+    pub rms: f32,
+    /// Largest absolute sample amplitude, 0.0..=1.0.
+    pub peak: f32,
+    /// Fraction of samples that are not exactly zero, 0.0..=1.0.
+    pub nonzero_ratio: f32,
+    /// Total samples examined.
+    pub samples: u64,
+}
+
+impl SignalStats {
+    /// True when the capture device handed us digital silence — every sample
+    /// exactly zero.
+    ///
+    /// This is emphatically NOT the same as "the user did not speak". A real
+    /// microphone in a quiet room still produces a noise floor; RMS lands
+    /// around 0.0005–0.003 and individual samples are never all zero. An
+    /// all-zero buffer means the audio callback delivered nothing: mic
+    /// permission silently revoked (classic after an unsigned-app update),
+    /// the device held exclusively by another process, or a stream that
+    /// opened but never ran.
+    ///
+    /// Worth separating because the two cases need opposite messages. "No
+    /// speech detected" told a user whose microphone was dead that they had
+    /// not spoken — while they had just dictated for eight seconds.
+    pub fn is_dead_capture(&self) -> bool {
+        self.samples > 0 && self.nonzero_ratio == 0.0
+    }
+}
+
+/// Compute [`SignalStats`] for a WAV file in one pass.
+pub fn wav_signal_stats(path: &str) -> Result<SignalStats, String> {
     let mut reader = WavReader::open(path)
         .map_err(|e| format!("Cannot read WAV: {}", e))?;
     let spec = reader.spec();
     let mut sum: f64 = 0.0;
+    let mut peak: f64 = 0.0;
+    let mut nonzero: u64 = 0;
     let mut count: u64 = 0;
+
+    // One accumulator for every sample width, so the branch on format stays
+    // a thin decode step rather than four copies of the statistics.
+    let mut accumulate = |v: f64| {
+        sum += v * v;
+        let magnitude = v.abs();
+        if magnitude > peak {
+            peak = magnitude;
+        }
+        if v != 0.0 {
+            nonzero += 1;
+        }
+        count += 1;
+    };
+
     match spec.sample_format {
         hound::SampleFormat::Int => match spec.bits_per_sample {
             16 => {
                 for s in reader.samples::<i16>() {
-                    let v = s.unwrap_or(0) as f64 / 32_768.0;
-                    sum += v * v;
-                    count += 1;
+                    accumulate(s.unwrap_or(0) as f64 / 32_768.0);
                 }
             }
             32 => {
                 for s in reader.samples::<i32>() {
-                    let v = s.unwrap_or(0) as f64 / 2_147_483_648.0;
-                    sum += v * v;
-                    count += 1;
+                    accumulate(s.unwrap_or(0) as f64 / 2_147_483_648.0);
                 }
             }
             8 => {
                 for s in reader.samples::<i8>() {
-                    let v = s.unwrap_or(0) as f64 / 128.0;
-                    sum += v * v;
-                    count += 1;
+                    accumulate(s.unwrap_or(0) as f64 / 128.0);
                 }
             }
             bits => return Err(format!("Unsupported int width: {}", bits)),
         },
         hound::SampleFormat::Float => {
             for s in reader.samples::<f32>() {
-                let v = s.unwrap_or(0.0) as f64;
-                sum += v * v;
-                count += 1;
+                accumulate(s.unwrap_or(0.0) as f64);
             }
         }
     }
+
     if count == 0 {
-        return Ok(0.0);
+        return Ok(SignalStats {
+            rms: 0.0,
+            peak: 0.0,
+            nonzero_ratio: 0.0,
+            samples: 0,
+        });
     }
-    Ok((sum / count as f64).sqrt() as f32)
+
+    Ok(SignalStats {
+        rms: (sum / count as f64).sqrt() as f32,
+        peak: peak as f32,
+        nonzero_ratio: nonzero as f32 / count as f32,
+        samples: count,
+    })
 }

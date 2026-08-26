@@ -905,37 +905,88 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // observed. Confirmed empirically on 3-second silent clips and 3-second
     // whispered speech (lowest valid speech sat at ~0.008).
     const SILENCE_RMS_FLOOR: f32 = 0.005;
-    match super::backup::wav_average_rms(&audio_path) {
-        Ok(rms) if rms < SILENCE_RMS_FLOOR => {
+    match super::backup::wav_signal_stats(&audio_path) {
+        // Digital silence — every sample exactly zero. NOT the same as "the
+        // user didn't speak": a live microphone in a quiet room always has a
+        // noise floor. All zeros means the audio callback delivered nothing,
+        // so the honest message is the one about a dead capture device, not
+        // "no speech detected". Telling someone who just dictated for eight
+        // seconds that they hadn't spoken is how an app loses trust.
+        Ok(stats) if stats.is_dead_capture() => {
+            let capture_device = crate::audio_capture::last_capture_device();
+            log_error(&format!(
+                "Dead capture on device {:?}: {} samples, every one zero, in {} bytes. \
+                 Likely cause: a Bluetooth input that connected but never streamed, \
+                 a revoked mic permission, or the microphone held exclusively by \
+                 another process.",
+                capture_device.as_deref().unwrap_or("<unknown>"),
+                stats.samples,
+                file_size
+            ));
+            let _ = std::fs::remove_file(&audio_path);
+            emit_progress(app, "error", "error.recording_empty", None);
+            notify(app, &crate::i18n::tr("notification.recordingEmpty"));
+            crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({
+                "error_category": "dead_capture",
+                "duration_seconds": pipeline_start.elapsed().as_secs_f64(),
+                "samples": stats.samples,
+                "wav_bytes": file_size,
+            })));
+            trace.abort(
+                "dead_capture",
+                serde_json::json!({
+                    "device": capture_device,
+                    "samples": stats.samples,
+                    "peak": stats.peak,
+                    "nonzero_ratio": stats.nonzero_ratio,
+                    "wav_bytes": file_size,
+                }),
+            );
+            set_state(app, RecordingState::Idle);
+            return Err("Microphone delivered no audio".to_string());
+        }
+        Ok(stats) if stats.rms < SILENCE_RMS_FLOOR => {
             crate::logging::log_info(&format!(
                 "Silent recording detected (avg RMS {:.4} < {:.4}), skipping Whisper",
-                rms, SILENCE_RMS_FLOOR
+                stats.rms, SILENCE_RMS_FLOOR
             ));
             let _ = std::fs::remove_file(&audio_path);
             emit_progress(app, "error", "error.no_speech", None);
             crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({
                 "error_category": "silent_audio",
                 "duration_seconds": pipeline_start.elapsed().as_secs_f64(),
-                "avg_rms": rms,
+                "avg_rms": stats.rms,
             })));
             trace.abort(
                 "silent_audio",
-                serde_json::json!({ "avg_rms": rms, "floor": SILENCE_RMS_FLOOR }),
+                serde_json::json!({
+                    "device": crate::audio_capture::last_capture_device(),
+                    "avg_rms": stats.rms,
+                    "peak": stats.peak,
+                    "nonzero_ratio": stats.nonzero_ratio,
+                    "floor": SILENCE_RMS_FLOOR,
+                }),
             );
             set_state(app, RecordingState::Idle);
             return Err("Silent recording — skipped Whisper".to_string());
         }
-        Ok(rms) => {
+        Ok(stats) => {
             trace.stage(
-                "audio.rms",
-                serde_json::json!({ "avg_rms": rms, "floor": SILENCE_RMS_FLOOR }),
+                "audio.signal",
+                serde_json::json!({
+                    "avg_rms": stats.rms,
+                    "peak": stats.peak,
+                    "nonzero_ratio": stats.nonzero_ratio,
+                    "samples": stats.samples,
+                    "floor": SILENCE_RMS_FLOOR,
+                }),
             );
         }
         Err(e) => {
-            // Defensive: any RMS read error is non-fatal — fall through to
+            // Defensive: any read error is non-fatal — fall through to
             // Whisper. validate_wav already vouched for the file structure.
-            crate::logging::log_warn(&format!("Could not compute WAV RMS: {}", e));
-            trace.stage("audio.rms", serde_json::json!({ "error": e.to_string() }));
+            crate::logging::log_warn(&format!("Could not compute WAV signal stats: {}", e));
+            trace.stage("audio.signal", serde_json::json!({ "error": e.to_string() }));
         }
     }
 
@@ -1768,23 +1819,38 @@ fn spawn_paste_verification(
             }
         };
 
-        let mut focused_after = crate::paste::read_focused_text();
-        let mut settled_ms = started.elapsed().as_millis() as u64;
+        let before_chars = focused_before.as_ref().map(|t| t.chars().count());
+        let delta_of = |after: &Option<String>| -> Option<i64> {
+            match (before_chars, after.as_ref().map(|t| t.chars().count())) {
+                (Some(b), Some(a)) => Some(a as i64 - b as i64),
+                _ => None,
+            }
+        };
 
+        let mut focused_after = crate::paste::read_focused_text();
+        let mut first_change_ms: Option<u64> = None;
+        let mut settled_ms: u64 = 0;
+
+        // Poll until the target has consumed everything we sent, not until it
+        // first reacts. We inject in chunks, so the first read after the first
+        // chunk lands shows a delta of exactly one chunk — stopping there
+        // reported "16 characters arrived" for a 500-character paste, which
+        // reads as a truncation bug that is not happening. Keep watching
+        // until the delta covers what we sent, or the window closes.
         if focused_after.is_some() {
-            while !changed(&focused_after) && started.elapsed() < timeout {
+            while started.elapsed() < timeout {
+                if delta_of(&focused_after).is_some_and(|d| d >= expected_chars as i64) {
+                    break;
+                }
                 sleep(Duration::from_millis(PASTE_VERIFY_POLL_MS)).await;
-                focused_after = crate::paste::read_focused_text();
-                settled_ms = started.elapsed().as_millis() as u64;
+                let next = crate::paste::read_focused_text();
+                if next != focused_after {
+                    settled_ms = started.elapsed().as_millis() as u64;
+                    first_change_ms.get_or_insert(settled_ms);
+                    focused_after = next;
+                }
             }
         }
-
-        let before_chars = focused_before.as_ref().map(|t| t.chars().count());
-        let after_chars = focused_after.as_ref().map(|t| t.chars().count());
-        let delta = match (before_chars, after_chars) {
-            (Some(b), Some(a)) => Some(a as i64 - b as i64),
-            _ => None,
-        };
 
         trace.stage(
             "paste.verify",
@@ -1792,9 +1858,13 @@ fn spawn_paste_verification(
                 "ax_readable": focused_after.is_some(),
                 "changed": changed(&focused_after),
                 "before_chars": before_chars,
-                "after_chars": after_chars,
-                "delta_chars": delta,
+                "after_chars": focused_after.as_ref().map(|t| t.chars().count()),
+                "delta_chars": delta_of(&focused_after),
                 "expected_chars": expected_chars,
+                // How fast the target reacted at all, vs when it stopped
+                // changing. A large gap between them means a slow consumer;
+                // first_change absent means it never reacted.
+                "first_change_ms": first_change_ms,
                 "settled_ms": settled_ms,
             }),
         );
