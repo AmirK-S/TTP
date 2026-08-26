@@ -29,6 +29,7 @@ mod shortcuts;
 mod sounds;
 mod state;
 mod telemetry;
+mod trace;
 pub(crate) mod transcription;
 mod tray;
 mod uninstall;

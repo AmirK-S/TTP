@@ -789,6 +789,13 @@ mod hallucination_tests {
 pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<String, String> {
     let pipeline_start = std::time::Instant::now();
 
+    // One trace per dictation. Every `return Err` below is a path where the
+    // user pressed the hotkey, spoke, and got nothing — and until this
+    // existed, all of them were indistinguishable from the outside. The
+    // trace is written to its own file regardless of the main log level;
+    // see `crate::trace`.
+    let trace = crate::trace::Trace::start("recording");
+
     // Set state to Processing
     set_state(app, RecordingState::Processing);
 
@@ -797,6 +804,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     let file_size = match std::fs::metadata(audio_file) {
         Ok(meta) => meta.len(),
         Err(e) => {
+            trace.abort("audio_file_missing", serde_json::json!({ "error": e.to_string() }));
             emit_progress(app, "error", "error.audio_file_not_found", None);
             crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "api_error", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
             set_state(app, RecordingState::Idle);
@@ -810,6 +818,10 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     if let Err(msg) = super::backup::validate_wav(&audio_path) {
         let _ = std::fs::remove_file(&audio_path);
         log_error(&format!("WAV validation failed: {}", msg));
+        trace.abort(
+            "wav_invalid",
+            serde_json::json!({ "error": msg.clone(), "wav_bytes": file_size }),
+        );
         emit_progress(app, "error", "error.audio_corrupt", None);
         crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({
             "error_category": "corrupt_audio",
@@ -843,14 +855,24 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 "wav_bytes": file_size,
                 "wav_audio_secs": secs,
             })));
+            trace.abort(
+                "recording_empty",
+                serde_json::json!({ "secs": secs, "wav_bytes": file_size }),
+            );
             set_state(app, RecordingState::Idle);
             return Err(format!("Empty recording: {:.3}s of audio", secs));
         }
-        Ok(_) => { /* non-empty, continue */ }
+        Ok(secs) => {
+            trace.stage(
+                "audio.duration",
+                serde_json::json!({ "secs": secs, "wav_bytes": file_size }),
+            );
+        }
         Err(e) => {
             // Defensive: if we can't even read the duration, treat as corrupt
             // (validate_wav already passed, so this should be rare).
             log_error(&format!("Could not read WAV duration: {}", e));
+            trace.stage("audio.duration", serde_json::json!({ "error": e.to_string() }));
         }
     }
 
@@ -880,14 +902,24 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 "duration_seconds": pipeline_start.elapsed().as_secs_f64(),
                 "avg_rms": rms,
             })));
+            trace.abort(
+                "silent_audio",
+                serde_json::json!({ "avg_rms": rms, "floor": SILENCE_RMS_FLOOR }),
+            );
             set_state(app, RecordingState::Idle);
             return Err("Silent recording — skipped Whisper".to_string());
         }
-        Ok(_) => { /* has signal, continue */ }
+        Ok(rms) => {
+            trace.stage(
+                "audio.rms",
+                serde_json::json!({ "avg_rms": rms, "floor": SILENCE_RMS_FLOOR }),
+            );
+        }
         Err(e) => {
             // Defensive: any RMS read error is non-fatal — fall through to
             // Whisper. validate_wav already vouched for the file structure.
             crate::logging::log_warn(&format!("Could not compute WAV RMS: {}", e));
+            trace.stage("audio.rms", serde_json::json!({ "error": e.to_string() }));
         }
     }
 
@@ -922,6 +954,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             "error_category": "too_long",
             "duration_seconds": pipeline_start.elapsed().as_secs_f64()
         })));
+        trace.abort("audio_too_large", serde_json::json!({ "mb": original_mb, "converted": false }));
         set_state(app, RecordingState::Idle);
         log_error(&format!("Conversion failed and original too large: {:.1}MB exceeds {}MB limit", original_mb, MAX_AUDIO_SIZE / 1_000_000));
         return Err(format!("Audio too large: {:.1}MB exceeds API limit", original_mb));
@@ -932,6 +965,15 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         .map(|m| m.len())
         .unwrap_or(file_size);
     let final_mb = final_size as f64 / 1_000_000.0;
+
+    trace.stage(
+        "audio.convert",
+        serde_json::json!({
+            "converted": use_converted,
+            "in_bytes": file_size,
+            "out_bytes": final_size,
+        }),
+    );
 
     if final_size > MAX_AUDIO_SIZE {
         let _ = std::fs::remove_file(&audio_path);
@@ -947,6 +989,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         );
         notify(app, &crate::i18n::tr("notification.recordingTooLong"));
         crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "too_long", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
+        trace.abort("audio_too_large", serde_json::json!({ "mb": final_mb, "converted": use_converted }));
         set_state(app, RecordingState::Idle);
         log_error(&format!("Audio too large after conversion: {:.1}MB exceeds {}MB limit", final_mb, MAX_AUDIO_SIZE / 1_000_000));
         return Err(format!("Audio too large: {:.1}MB exceeds API limit", final_mb));
@@ -985,6 +1028,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 let _ = window.show();
                 let _ = window.set_focus();
             }
+            trace.abort("no_api_key", serde_json::Value::Null);
             set_state(app, RecordingState::Idle);
             return Err("No Groq API key configured".to_string());
         }
@@ -1053,6 +1097,17 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         _ => None,
     };
 
+    trace.stage(
+        "whisper.request",
+        serde_json::json!({
+            "bytes": final_size,
+            "lang": whisper_lang.unwrap_or("auto"),
+            "prompt": whisper_prompt.is_some(),
+            "input_mode": input_mode,
+        }),
+    );
+    let whisper_start = std::time::Instant::now();
+
     let raw_text = match transcribe_audio(&api_key, transcription_path, whisper_prompt.as_deref(), whisper_lang).await {
         Ok(text) => text,
         Err(e) => {
@@ -1091,10 +1146,24 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 payload["status_code"] = code.into();
             }
             crate::telemetry::analytics::track(app, "transcription_failed", Some(payload));
+            trace.abort(
+                "whisper_error",
+                serde_json::json!({
+                    "error_category": error_category,
+                    "status_code": status_code,
+                    "whisper_ms": whisper_start.elapsed().as_millis() as u64,
+                }),
+            );
             set_state(app, RecordingState::Idle);
             return Err(e);
         }
     };
+
+    trace.text_stage(
+        "whisper.response",
+        &raw_text,
+        serde_json::json!({ "attempt": 1, "ms": whisper_start.elapsed().as_millis() as u64 }),
+    );
 
     // Groq whisper-large-v3 occasionally returns 200 OK with an empty body on
     // long single-speaker monologues — a known silent-failure mode. One
@@ -1104,9 +1173,16 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         crate::logging::log_warn(
             "Empty transcription from Groq, retrying once before surfacing no_speech",
         );
-        transcribe_audio(&api_key, transcription_path, whisper_prompt.as_deref(), whisper_lang)
+        trace.stage("whisper.retry", serde_json::json!({ "reason": "empty_body" }));
+        let retried = transcribe_audio(&api_key, transcription_path, whisper_prompt.as_deref(), whisper_lang)
             .await
-            .unwrap_or_default()
+            .unwrap_or_default();
+        trace.text_stage(
+            "whisper.response",
+            &retried,
+            serde_json::json!({ "attempt": 2, "ms": whisper_start.elapsed().as_millis() as u64 }),
+        );
+        retried
     } else {
         raw_text
     };
@@ -1121,6 +1197,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         emit_progress(app, "error", "error.no_speech", None);
         notify(app, &crate::i18n::tr("notification.noSpeech"));
         crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
+        trace.abort("no_speech", serde_json::json!({ "after_retry": true }));
         set_state(app, RecordingState::Idle);
         return Err("No speech detected".to_string());
     }
@@ -1151,6 +1228,13 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                     if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
                     emit_progress(app, "error", "error.no_speech", None);
                     crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
+                    trace.abort(
+                        "glossary_ghost",
+                        serde_json::json!({
+                            "words": words.len(),
+                            "audio_secs": approx_duration_secs,
+                        }),
+                    );
                     set_state(app, RecordingState::Idle);
                     return Err("No speech detected (glossary ghost)".to_string());
                 }
@@ -1194,6 +1278,10 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 "duration_seconds": pipeline_start.elapsed().as_secs_f64(),
                 "sub_category": "prompt_introducer_leak",
             })));
+            trace.abort(
+                "prompt_introducer_leak",
+                serde_json::json!({ "leading": leading, "words": word_count }),
+            );
             set_state(app, RecordingState::Idle);
             return Err("No speech detected (prompt-introducer leak)".to_string());
         }
@@ -1208,6 +1296,13 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
         emit_progress(app, "error", "error.no_speech", None);
         crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
+        // The single most opaque drop in the pipeline: Whisper returned real
+        // characters and we deleted all of them. The `whisper.response` line
+        // above holds what was dropped (text included when diagnostics are on).
+        trace.abort(
+            "hallucination",
+            serde_json::json!({ "chars": raw_text.chars().count() }),
+        );
         set_state(app, RecordingState::Idle);
         return Err("No speech detected (filtered)".to_string());
     }
@@ -1217,6 +1312,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // fillers. Idempotent. Roughly 80% of cleanups happen here without
     // touching the LLM — faster, cheaper, safer.
     let cleaned_text = cleanup(&raw_text);
+    trace.transform("cleanup", &raw_text, &cleaned_text, serde_json::Value::Null);
 
     // Stage 2: Polish text (if enabled AND user has quota)
     let polish_quota_ok = if !settings.ai_polish_enabled {
@@ -1248,6 +1344,14 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             false
         }
     };
+
+    trace.stage(
+        "polish.decision",
+        serde_json::json!({
+            "setting_enabled": settings.ai_polish_enabled,
+            "quota_ok": polish_quota_ok,
+        }),
+    );
 
     let final_text = if polish_quota_ok {
         emit_progress(app, "polishing", "progress.polishing", None);
@@ -1319,11 +1423,25 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         cleaned_text.clone()
     };
 
+    trace.transform(
+        "polish",
+        &cleaned_text,
+        &final_text,
+        serde_json::json!({ "applied": polish_quota_ok }),
+    );
+
     // Apply dictionary corrections as hard post-processing.
     // Even with the new polish pipeline, the personal dictionary is a hard
     // guarantee — applied after polish (and after cleanup) so user-specific
     // term spellings always win.
-    let final_text = apply_dictionary(&final_text);
+    let pre_dictionary_text = final_text;
+    let final_text = apply_dictionary(&pre_dictionary_text);
+    trace.transform(
+        "dictionary",
+        &pre_dictionary_text,
+        &final_text,
+        serde_json::Value::Null,
+    );
 
     // Stage 3: Paste into active app
     emit_progress(app, "pasting", "", None);
@@ -1362,6 +1480,10 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     let has_accessibility = {
         let trusted_flag = check_accessibility();
         let actually_works = probe_accessibility();
+        trace.stage(
+            "paste.accessibility",
+            serde_json::json!({ "tcc_trusted": trusted_flag, "ax_probe_ok": actually_works }),
+        );
         if trusted_flag && !actually_works {
             crate::logging::log_warn("[Pipeline] Accessibility TCC entry is stale - resetting so user can re-grant.");
             if let Err(e) = reset_accessibility_tcc() {
@@ -1371,7 +1493,14 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         actually_works
     };
     #[cfg(not(target_os = "macos"))]
-    let has_accessibility = check_accessibility();
+    let has_accessibility = {
+        let trusted_flag = check_accessibility();
+        trace.stage(
+            "paste.accessibility",
+            serde_json::json!({ "tcc_trusted": trusted_flag }),
+        );
+        trusted_flag
+    };
 
     // Pick the paste strategy based on length.
     //
@@ -1388,6 +1517,24 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // (1500 ms) before restoring — long enough for slow Electron apps to
     // actually read the pasteboard after Cmd+V.
     let use_direct_typing = final_text.chars().count() <= DIRECT_TYPING_MAX_CHARS;
+
+    trace.stage(
+        "paste.decision",
+        serde_json::json!({
+            "strategy": if use_direct_typing { "type" } else { "clipboard" },
+            "chars": final_text.chars().count(),
+            "has_accessibility": has_accessibility,
+        }),
+    );
+
+    // Snapshot the focused text field BEFORE injecting, so we can tell
+    // afterwards whether anything actually landed. This is the only evidence
+    // available: CGEventPost returns void and reports success even when the
+    // window server drops every event we hand it — which is exactly what
+    // happens when a stuck modifier reroutes the characters into the Globe
+    // shortcut layer. Returns None on targets whose text we cannot read
+    // (most Electron apps) and on non-macOS; the trace records which case.
+    let focused_before = crate::paste::read_focused_text();
 
     // Use spawn_blocking to run sync paste code safely in async context.
     // We deliberately use tauri::async_runtime::spawn_blocking instead of the
@@ -1412,6 +1559,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
         match paste_result {
             Ok(Ok(Ok(()))) => {
+                trace.stage("paste.result", serde_json::json!({ "ok": true }));
                 if use_direct_typing {
                     // Direct typing already delivered every character to the
                     // focused app — no async pasteboard read in flight, so we
@@ -1422,6 +1570,31 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                     // with the original contents.
                     sleep(Duration::from_millis(CLIPBOARD_PASTE_RESTORE_DELAY_MS)).await;
                 }
+
+                // Did the characters actually land? `paste.result ok=true`
+                // only means the events were posted. Comparing the focused
+                // field against the pre-injection snapshot is what separates
+                // "typed successfully" from "silently swallowed" — the exact
+                // ambiguity that made the stuck-modifier bug unfalsifiable.
+                let focused_after = crate::paste::read_focused_text();
+                let grew = match (&focused_before, &focused_after) {
+                    (Some(before), Some(after)) => after.chars().count() > before.chars().count(),
+                    (None, Some(after)) => !after.is_empty(),
+                    // Unreadable target (most Electron apps) — `ax_readable`
+                    // below says so, so a false here is never mistaken for
+                    // evidence of failure.
+                    _ => false,
+                };
+                trace.stage(
+                    "paste.verify",
+                    serde_json::json!({
+                        "ax_readable": focused_after.is_some(),
+                        "before_chars": focused_before.as_ref().map(|t| t.chars().count()),
+                        "after_chars": focused_after.as_ref().map(|t| t.chars().count()),
+                        "grew": grew,
+                        "expected_chars": final_text.chars().count(),
+                    }),
+                );
 
                 // Restore original clipboard content
                 if let Err(e) = clipboard_guard.restore() {
@@ -1441,19 +1614,35 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             }
             Ok(Ok(Err(e))) => {
                 crate::logging::log_error(&format!("[Pipeline] Paste simulation failed: {}", e));
+                trace.stage(
+                    "paste.result",
+                    serde_json::json!({ "ok": false, "error": e, "kind": "simulate_failed" }),
+                );
                 false
             }
             Ok(Err(_)) => {
                 crate::logging::log_error("[Pipeline] Paste simulation panicked");
+                trace.stage(
+                    "paste.result",
+                    serde_json::json!({ "ok": false, "kind": "panic" }),
+                );
                 false
             }
             Err(e) => {
                 crate::logging::log_error(&format!("[Pipeline] Paste task failed: {}", e));
+                trace.stage(
+                    "paste.result",
+                    serde_json::json!({ "ok": false, "error": e.to_string(), "kind": "join_failed" }),
+                );
                 false
             }
         }
     } else {
         crate::logging::log_info("[Pipeline] No accessibility permission - using clipboard fallback");
+        trace.stage(
+            "paste.skipped",
+            serde_json::json!({ "reason": "no_accessibility" }),
+        );
 
         // Open System Settings to Accessibility pane to help user grant permission
         #[cfg(target_os = "macos")]
@@ -1513,6 +1702,15 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     if let Some(ref bp) = backup_path {
         super::backup::remove_backup(bp);
     }
+
+    trace.finish(
+        if paste_success { "pasted" } else { "clipboard_fallback" },
+        serde_json::json!({
+            "chars": char_count,
+            "words": word_count,
+            "has_accessibility": has_accessibility,
+        }),
+    );
 
     set_state(app, RecordingState::Idle);
     Ok(final_text)

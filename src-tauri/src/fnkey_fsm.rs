@@ -61,6 +61,67 @@ pub const DOUBLE_TAP_MIN_ELAPSED_MS: u64 = 20;
 /// instead and are already handled.
 pub const DOUBLE_TAP_MAX_ELAPSED_MS: u64 = 500;
 
+/// Consecutive 20 ms ticks on which the event tap must claim the Fn key is
+/// held, while `NSEvent.modifierFlags` says it is not, before we overrule the
+/// tap and force the flag down.
+///
+/// 5 ticks = 100 ms. The ordinary press race — the HID tap observes the
+/// FlagsChanged before AppKit refreshes its cached modifier flags — lasts a
+/// tick or two at most, so it can never reach this. A genuinely latched flag
+/// (a key-up the tap never saw because macOS had disabled it) never clears on
+/// its own, so any duration works; 100 ms just gets the user recording again
+/// before they notice.
+pub const FN_STALE_RESYNC_TICKS: u64 = 5;
+
+/// Outcome of one stale-flag check.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StaleResync {
+    /// Force `FN_KEY_PHYSICALLY_DOWN` to false and treat Fn as released.
+    pub clear_flag: bool,
+    /// Disagreement counter to store back for the next tick.
+    pub new_ticks: u64,
+}
+
+/// Decide whether the tap's "Fn is held" belief has gone stale.
+///
+/// `FN_KEY_PHYSICALLY_DOWN` is maintained solely by the CGEventTap. If the tap
+/// misses a key-up — because macOS disabled it mid-gesture, or another process
+/// consumed the event — the flag latches at `true` and never recovers. Two
+/// things then break at once: the FSM stops firing StopRecording, and the
+/// session's modifier state keeps the Globe bit set, so every character TTP
+/// injects is routed to the Globe shortcut layer instead of the focused text
+/// field (Globe+Q opens a Quick Note, Globe+E the emoji picker, …). From the
+/// user's seat that reads as "TTP just stopped working, and it opened a note".
+///
+/// `NSEvent.modifierFlags` is an independent read of the same hardware, so a
+/// sustained disagreement means our copy is wrong.
+///
+/// The asymmetry is deliberate and load-bearing: this only ever forces the
+/// flag DOWN. F1..F12 set the Function bit as a side effect (the entire reason
+/// the tap exists — see `fnkey.rs`), so trusting `NSEvent` to turn the flag ON
+/// would resurrect the F3/F4/F6 false-trigger bug from v1.6.x. Turning it off
+/// has no equivalent failure mode: no key sets the Function bit to zero while
+/// Fn is physically held.
+pub fn fn_stale_check(tap_says_held: bool, nsevent_fn_set: bool, ticks: u64) -> StaleResync {
+    if tap_says_held && !nsevent_fn_set {
+        let new_ticks = ticks.saturating_add(1);
+        if new_ticks >= FN_STALE_RESYNC_TICKS {
+            return StaleResync {
+                clear_flag: true,
+                new_ticks: 0,
+            };
+        }
+        return StaleResync {
+            clear_flag: false,
+            new_ticks,
+        };
+    }
+    StaleResync {
+        clear_flag: false,
+        new_ticks: 0,
+    }
+}
+
 /// Snapshot of every piece of state the Fn timer needs to make a decision.
 /// The wrapper in `fnkey.rs` builds this from atomics on every tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -432,6 +493,66 @@ mod tests {
         let r = fn_decide(s, false, 9_000);
         assert_eq!(r.action, FnAction::None);
         assert_eq!(r.new_state.last_press_time_ms, 0);
+    }
+
+    // ── Stale Fn-flag resync ────────────────────────────────────────────
+
+    #[test]
+    fn agreement_keeps_the_counter_at_zero() {
+        // Both say held — the normal case while the user dictates.
+        assert_eq!(fn_stale_check(true, true, 3), StaleResync { clear_flag: false, new_ticks: 0 });
+        // Both say released — the normal idle case.
+        assert_eq!(fn_stale_check(false, false, 3), StaleResync { clear_flag: false, new_ticks: 0 });
+    }
+
+    #[test]
+    fn brief_disagreement_does_not_clear_the_flag() {
+        // The press race (tap ahead of AppKit) lasts a tick or two.
+        let r = fn_stale_check(true, false, 0);
+        assert!(!r.clear_flag);
+        assert_eq!(r.new_ticks, 1);
+        let r = fn_stale_check(true, false, r.new_ticks);
+        assert!(!r.clear_flag);
+        assert_eq!(r.new_ticks, 2);
+    }
+
+    #[test]
+    fn sustained_disagreement_clears_the_flag() {
+        let mut ticks = 0;
+        for _ in 0..FN_STALE_RESYNC_TICKS - 1 {
+            let r = fn_stale_check(true, false, ticks);
+            assert!(!r.clear_flag);
+            ticks = r.new_ticks;
+        }
+        let r = fn_stale_check(true, false, ticks);
+        assert!(r.clear_flag, "flag must be forced down after {} ticks", FN_STALE_RESYNC_TICKS);
+        assert_eq!(r.new_ticks, 0);
+    }
+
+    #[test]
+    fn one_agreeing_tick_resets_the_streak() {
+        let r = fn_stale_check(true, false, 4);
+        assert!(r.clear_flag);
+        // A single agreeing tick in the middle must restart the count, so a
+        // flickering read can never accumulate its way to a false clear.
+        assert_eq!(fn_stale_check(true, true, 4).new_ticks, 0);
+    }
+
+    #[test]
+    fn nsevent_can_never_turn_the_flag_on() {
+        // F1..F12 bleed the Function bit. If this ever returned a "set the
+        // flag" instruction, the F3/F4/F6 Mission Control false-trigger bug
+        // would be back.
+        let r = fn_stale_check(false, true, 0);
+        assert!(!r.clear_flag);
+        assert_eq!(r.new_ticks, 0);
+    }
+
+    #[test]
+    fn tick_counter_saturates() {
+        let r = fn_stale_check(true, false, u64::MAX);
+        assert!(r.clear_flag);
+        assert_eq!(r.new_ticks, 0);
     }
 
     #[test]

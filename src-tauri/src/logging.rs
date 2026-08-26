@@ -20,7 +20,7 @@
 use chrono::Local;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 /// Max log file size before rotation (500KB per file).
@@ -29,6 +29,17 @@ const MAX_LOG_SIZE: u64 = 500_000;
 /// Number of historical rotated files to retain. Total disk usage caps at
 /// roughly `(KEEP_ROTATIONS + 1) * MAX_LOG_SIZE`.
 const KEEP_ROTATIONS: usize = 2;
+
+/// Max dictation-trace file size before rotation (2MB per file).
+///
+/// Four times the main log's cap, and with one more historical file: the
+/// trace is verbose by design, and its entire value is still holding the
+/// dictation the user is asking about — which is usually the one from twenty
+/// minutes ago, not the one from ten seconds ago.
+const MAX_TRACE_SIZE: u64 = 2_000_000;
+
+/// Historical trace files retained (`ttp-trace.log.1` .. `.3`).
+const KEEP_TRACE_ROTATIONS: usize = 3;
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 enum Level {
@@ -78,37 +89,62 @@ fn active_level() -> Level {
     *LEVEL.get_or_init(Level::from_env_or_default)
 }
 
+/// Directory holding every file this module writes.
+fn log_dir() -> Option<PathBuf> {
+    dirs::data_dir().map(|d| d.join("com.ttp.desktop"))
+}
+
 /// Get the live log file path in the app data directory.
 fn log_path() -> Option<PathBuf> {
-    dirs::data_dir().map(|d| d.join("com.ttp.desktop").join("ttp.log"))
+    log_dir().map(|d| d.join("ttp.log"))
 }
 
-/// Rotated file at index N (`ttp.log.1`, `ttp.log.2`, ...).
-fn log_path_at(index: usize) -> Option<PathBuf> {
-    dirs::data_dir().map(|d| {
-        d.join("com.ttp.desktop")
-            .join(format!("ttp.log.{}", index))
-    })
+/// Get the live dictation-trace file path. Deliberately a separate file from
+/// `ttp.log`: the trace must not be filtered by the main log's level, and a
+/// burst of warnings must not rotate away the dictation history the user is
+/// about to be asked for.
+fn trace_path() -> Option<PathBuf> {
+    log_dir().map(|d| d.join("ttp-trace.log"))
 }
 
-/// Rotate `path` if it's grown past `MAX_LOG_SIZE`. Cascades through
-/// `ttp.log.N -> ttp.log.N+1` so the oldest is overwritten last.
-fn rotate_if_needed(path: &PathBuf) {
+/// Rotated sibling of `path` at index N (`ttp.log` -> `ttp.log.1`).
+fn rotated_path(path: &Path, index: usize) -> PathBuf {
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("ttp.log");
+    path.with_file_name(format!("{}.{}", name, index))
+}
+
+/// Rotate `path` if it's grown past `max_size`. Cascades through
+/// `<name>.N -> <name>.N+1` so the oldest is overwritten last, retaining
+/// `keep` historical files.
+fn rotate_if_needed(path: &Path, max_size: u64, keep: usize) {
     let Ok(meta) = fs::metadata(path) else { return };
-    if meta.len() <= MAX_LOG_SIZE {
+    if meta.len() <= max_size {
         return;
     }
-    // Cascade from oldest to newest: .2 <- .1, then .1 <- live.
-    for i in (1..KEEP_ROTATIONS).rev() {
-        let (Some(src), Some(dst)) = (log_path_at(i), log_path_at(i + 1)) else {
-            continue;
-        };
+    // Cascade from oldest to newest: .N <- .N-1, ... then .1 <- live.
+    for i in (1..keep).rev() {
+        let src = rotated_path(path, i);
         if src.exists() {
-            let _ = fs::rename(&src, &dst);
+            let _ = fs::rename(&src, rotated_path(path, i + 1));
         }
     }
-    if let Some(first) = log_path_at(1) {
-        let _ = fs::rename(path, &first);
+    let _ = fs::rename(path, rotated_path(path, 1));
+}
+
+/// Append one line to `path`, rotating first if needed. Every failure is
+/// swallowed: logging must never be able to break the thing it is observing.
+fn append_line(path: &Path, max_size: u64, keep: usize, line: &str) {
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    rotate_if_needed(path, max_size, keep);
+
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        let _ = file.write_all(line.as_bytes());
+        let _ = file.write_all(b"\n");
     }
 }
 
@@ -119,21 +155,22 @@ fn log_to_file_at(level: Level, message: &str) {
     }
     let Some(path) = log_path() else { return };
 
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    rotate_if_needed(&path);
-
     let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
-    let entry = format!("[{}] [{}] {}\n", timestamp, level.tag(), message);
+    let entry = format!("[{}] [{}] {}", timestamp, level.tag(), message);
+    append_line(&path, MAX_LOG_SIZE, KEEP_ROTATIONS, &entry);
+}
 
-    if let Ok(mut file) = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-    {
-        let _ = file.write_all(entry.as_bytes());
-    }
+/// Append one pre-formatted line to the dictation trace.
+///
+/// Bypasses `active_level()` on purpose. The trace exists precisely because
+/// the release-default Warn threshold hides every stage that can silently
+/// swallow a transcription; gating it behind that same threshold would
+/// reproduce the blind spot it was written to remove. Volume is bounded by
+/// the file's own rotation, and text payloads are redacted unless the user
+/// opts in — see `crate::trace`.
+pub fn log_trace_line(line: &str) {
+    let Some(path) = trace_path() else { return };
+    append_line(&path, MAX_TRACE_SIZE, KEEP_TRACE_ROTATIONS, line);
 }
 
 /// Back-compat helper for callers that pass a level string directly.

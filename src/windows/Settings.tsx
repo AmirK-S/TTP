@@ -307,7 +307,7 @@ export function Settings() {
   const {
     aiPolishEnabled, telemetryEnabled, shortcut, handsFreeMode, hidePillWhenInactive,
     autostartEnabled, historyEnabled, vadAutoStopEnabled, vadSilenceSecs, audioDeviceName,
-    transcriptionLanguage, language, theme, dictionary, history, loading, isPro, licenseKey,
+    transcriptionLanguage, diagnosticsEnabled, language, theme, dictionary, history, loading, isPro, licenseKey,
     licenseStatus, licenseExpiresAt, licenseActivationCount, licenseActivationLimit,
     licenseLoading, licenseError, usage,
     loadSettings, saveSettings, resetSettings, loadDictionary, deleteEntry,
@@ -413,9 +413,9 @@ export function Settings() {
 
   useTauriEvent('dictionary-changed', () => { loadDictionary(); loadUsage(); });
 
-  /* ---- Generic toggle factory: cuts 6 near-identical handlers down to 1 --- */
+  /* ---- Generic toggle factory: cuts 7 near-identical handlers down to 1 --- */
   const makeToggle = useCallback(
-    <K extends 'ai_polish_enabled' | 'telemetry_enabled' | 'hands_free_mode' | 'hide_pill_when_inactive' | 'history_enabled' | 'vad_auto_stop_enabled'>(
+    <K extends 'ai_polish_enabled' | 'telemetry_enabled' | 'hands_free_mode' | 'hide_pill_when_inactive' | 'history_enabled' | 'vad_auto_stop_enabled' | 'diagnostics_enabled'>(
       key: K,
       sideEffect?: () => void,
     ) => async (enabled: boolean) => {
@@ -434,6 +434,7 @@ export function Settings() {
   const handleHidePillWhenInactiveToggle = makeToggle('hide_pill_when_inactive');
   const handleHistoryEnabledToggle = makeToggle('history_enabled');
   const handleVadAutoStopToggle = makeToggle('vad_auto_stop_enabled');
+  const handleDiagnosticsToggle = makeToggle('diagnostics_enabled');
   const handleVadSilenceSecsChange = useCallback(
     async (raw: number) => {
       // Clamp to the same window the Rust side enforces.
@@ -1135,7 +1136,12 @@ export function Settings() {
               title={t('settings.logs.title')}
               description={t('settings.logs.desc')}
             >
-              <div className="flex flex-wrap gap-2">
+              <SettingsRow
+                label={t('settings.diagnostics.label')}
+                description={t('settings.diagnostics.desc')}
+                control={<Toggle enabled={diagnosticsEnabled} onChange={handleDiagnosticsToggle} disabled={loading} />}
+              />
+              <div className="mt-4 flex flex-wrap gap-2">
                 <Button
                   variant="secondary"
                   onClick={() => {

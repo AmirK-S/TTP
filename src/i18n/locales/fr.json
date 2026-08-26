@@ -285,9 +285,13 @@
     },
     "logs": {
       "title": "Diagnostics",
-      "desc": "Ouvre les dossiers contenant ttp.log et les enregistrements conservés pour les joindre à un rapport de bug.",
+      "desc": "Ouvre les dossiers contenant ttp.log, ttp-trace.log et les enregistrements conservés pour les joindre à un rapport de bug.",
       "button": "Afficher le dossier des journaux",
       "recordingsButton": "Afficher le dossier des enregistrements"
+    },
+    "diagnostics": {
+      "label": "Enregistrer le texte des transcriptions dans la trace",
+      "desc": "ttp-trace.log consigne toujours chaque étape d'une dictée — les temps, les verdicts des filtres, si les frappes ont bien atterri. Active ceci pour consigner aussi le texte à chaque étape, ce qu'il faut pour voir exactement quelle étape a fait disparaître une dictée. Tes transcriptions sont alors stockées en clair sur ce Mac."
     },
     "reset": {
       "title": "Réinitialisation",

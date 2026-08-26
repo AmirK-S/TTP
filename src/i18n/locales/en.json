@@ -285,9 +285,13 @@
     },
     "logs": {
       "title": "Diagnostics",
-      "desc": "Open the folders containing ttp.log and any retained recordings so you can attach them to a bug report.",
+      "desc": "Open the folders containing ttp.log, ttp-trace.log and any retained recordings so you can attach them to a bug report.",
       "button": "Show log folder",
       "recordingsButton": "Show recordings folder"
+    },
+    "diagnostics": {
+      "label": "Record transcription text in the trace",
+      "desc": "ttp-trace.log always records every dictation stage — timings, filter verdicts, whether the keystrokes actually landed. Turn this on to also record the text itself at each stage, which is what you need to see exactly which stage dropped a dictation. Your transcriptions are then stored in plain text on this Mac."
     },
     "reset": {
       "title": "Reset",

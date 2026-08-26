@@ -45,6 +45,12 @@ export interface Settings {
   audio_device_name: string | null;
   /** Language sent to Whisper: "auto" | "en" | "fr" | null. null = auto. */
   transcription_language: string | null;
+  /**
+   * Write full transcription text into the dictation trace at every pipeline
+   * stage. The trace itself (timings, filter verdicts, stuck modifiers) is
+   * always written; this adds the text. Default false.
+   */
+  diagnostics_enabled: boolean;
 }
 
 /** License info returned by Rust backend */
@@ -87,6 +93,7 @@ interface SettingsStore {
   vadSilenceSecs: number;
   audioDeviceName: string | null;
   transcriptionLanguage: string;
+  diagnosticsEnabled: boolean;
   language: LanguageChoice;
   theme: ThemeChoice;
   dictionary: DictionaryEntry[];
@@ -150,6 +157,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   vadSilenceSecs: 3,
   audioDeviceName: null,
   transcriptionLanguage: 'auto',
+  diagnosticsEnabled: false,
   language: 'system',
   theme: 'system',
   dictionary: [],
@@ -190,6 +198,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         vadSilenceSecs: settings.vad_silence_secs ?? 3,
         audioDeviceName: settings.audio_device_name ?? null,
         transcriptionLanguage: settings.transcription_language ?? 'auto',
+        diagnosticsEnabled: settings.diagnostics_enabled ?? false,
         language: lang,
         theme,
       });
@@ -219,6 +228,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         vad_silence_secs: get().vadSilenceSecs,
         audio_device_name: get().audioDeviceName,
         transcription_language: get().transcriptionLanguage === 'auto' ? null : get().transcriptionLanguage,
+        diagnostics_enabled: get().diagnosticsEnabled,
         language: get().language,
         theme: get().theme,
       };
@@ -247,6 +257,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         vadSilenceSecs: newSettings.vad_silence_secs,
         audioDeviceName: newSettings.audio_device_name,
         transcriptionLanguage: newSettings.transcription_language ?? 'auto',
+        diagnosticsEnabled: newSettings.diagnostics_enabled ?? false,
         language: newLang,
         theme: newTheme,
       });
@@ -276,6 +287,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         vadSilenceSecs: 3,
         audioDeviceName: null,
         transcriptionLanguage: 'auto',
+        diagnosticsEnabled: false,
         language: 'system',
         theme: 'system',
       }); // Default values

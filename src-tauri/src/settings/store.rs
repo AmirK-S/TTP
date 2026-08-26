@@ -79,6 +79,17 @@ pub struct Settings {
     /// `"en"`, `"fr"`. `None` is treated as `"auto"`.
     #[serde(default)]
     pub transcription_language: Option<String>,
+    /// Write full transcription text into the dictation trace
+    /// (`ttp-trace.log`) at every pipeline stage.
+    ///
+    /// Default OFF. The trace itself is always written — stage timings,
+    /// character counts, digests, filter verdicts, stuck modifiers — which is
+    /// enough to locate the stage that swallowed a dictation. This flag adds
+    /// the text itself, which is what you need to see *what* a filter ate, at
+    /// the cost of putting the user's transcriptions on disk in plain text.
+    /// `TTP_DIAGNOSTICS=1` overrides it for a single launch.
+    #[serde(default)]
+    pub diagnostics_enabled: bool,
 }
 
 fn default_vad_silence_secs() -> u32 {
@@ -123,6 +134,7 @@ impl Default for Settings {
             vad_silence_secs: default_vad_silence_secs(),
             audio_device_name: None,
             transcription_language: None,
+            diagnostics_enabled: false,
         }
     }
 }
