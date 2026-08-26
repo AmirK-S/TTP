@@ -47,6 +47,7 @@ spot it was written to remove.
 | `hotkey.press` / `hotkey.release` | The Fn/Globe key was seen. **No line here means the input layer never fired** — the recording never started. |
 | `hotkey.tap_rearmed` | macOS had disabled our event tap and we re-armed it. Every Fn press between the disable and this line was lost. |
 | `hotkey.stale_fn_cleared` | The Globe key was latched "held" and we forced it down. Keystrokes injected before this were being routed to the Globe shortcut layer. |
+| `hotkey.timer_stall` | The 20 ms poll timer skipped `gap_ms`. The process was descheduled — App Nap suspending the background agent, or the machine sleeping. Nothing advanced during that window: no hotkey, no state machine, no in-flight dictation. |
 | `audio.duration` / `audio.rms` | How much audio, how loud. `avg_rms` below `floor` means the silence gate will drop it. |
 | `audio.convert` | Stereo 48 kHz → mono 16 kHz, and the size change. |
 | `whisper.request` / `whisper.response` | Bytes sent, language pinned, latency, and how many characters came back. `attempt:2` means the first call returned an empty body. |
@@ -56,6 +57,9 @@ spot it was written to remove.
 | `paste.modifiers` | A modifier key was still held at injection time. Only emitted when one was. |
 | `paste.result` | Whether the events were posted. |
 | `paste.verify` | Whether they **landed**. See below. |
+| `clipboard.restore` | The user's pre-record clipboard was put back. |
+| `correction_window.started` | The dictionary correction watcher was armed. |
+| `history.saved`, `usage.recorded`, `files.cleaned` | Post-paste bookkeeping. All trivial and synchronous — a large jump between any two of these means the process stalled, not that the step is slow. |
 | `dictation.finish` | `outcome` plus `reason` when nothing was produced. |
 
 ## `paste.verify` is the important one
@@ -121,9 +125,30 @@ grep 'paste.verify' ttp-trace.log | grep '"ax_readable":true' | grep '"grew":fal
 # The input layer breaking and recovering
 grep -E 'hotkey\.(tap_rearmed|stale_fn_cleared|tap_create_failed)' ttp-trace.log
 
+# The app being suspended out from under a dictation
+grep 'hotkey.timer_stall' ttp-trace.log
+
 # One dictation, end to end
 grep '0007-3f2a' ttp-trace.log
 
 # Slowest stage of each dictation
 grep 'dictation.finish' ttp-trace.log
 ```
+
+## When a dictation takes minutes
+
+`dictation.finish` carries the total `ms`. If that number is wildly larger
+than the sum of the stages, read the elapsed column down the dictation and
+find the jump.
+
+Everything after `paste.result` is trivial synchronous bookkeeping — a
+clipboard write, a JSON append, a few `remove_file` calls. None of it can
+take seconds, let alone minutes. So a large gap in that region does not mean
+"that step is slow"; it means the process stopped running. Cross-reference
+against `hotkey.timer_stall`: if a stall covers the same window, the app was
+suspended (App Nap targets `LSUIElement` agents like TTP, and the whole
+process goes quiet — hotkey polling, state machine, and the in-flight
+pipeline together).
+
+`re_arm_tap` writes at most one line per 30 s to `ttp.log` while the tap is
+flapping, carrying a `streak` count. The trace keeps every occurrence.

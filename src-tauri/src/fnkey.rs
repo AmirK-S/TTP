@@ -172,6 +172,35 @@ static FN_STALE_TICKS: AtomicU64 = AtomicU64::new(0);
 /// Timer ticks counted since launch, used to pace the tap watchdog.
 static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
 
+/// Wall-clock time of the last re-arm message we wrote to the log.
+static LAST_REARM_LOG_MS: AtomicU64 = AtomicU64::new(0);
+
+/// Consecutive re-arms without the tap being observed healthy in between.
+static REARM_STREAK: AtomicU64 = AtomicU64::new(0);
+
+/// Minimum gap between two re-arm log lines while the tap keeps flapping.
+///
+/// A tap that macOS refuses to keep enabled — which is what happens while
+/// Input Monitoring is being granted — is re-armed on every watchdog pass.
+/// Logging each attempt buried the interesting first occurrence under a
+/// dozen identical lines. We log the first, then at most one line per
+/// interval, carrying the streak count so the flapping is still visible.
+const REARM_LOG_INTERVAL_MS: u64 = 30_000;
+
+/// Wall-clock time of the previous timer tick, for stall detection.
+static LAST_TICK_MS: AtomicU64 = AtomicU64::new(0);
+
+/// A 20ms timer that goes quiet for at least this long was not idle — the
+/// process was descheduled.
+///
+/// macOS App Nap suspends `LSUIElement` background agents aggressively, and a
+/// napped TTP stops polling the Fn key, stops advancing the recording state
+/// machine, and leaves an in-flight dictation parked mid-pipeline. From the
+/// user's seat that is indistinguishable from a crash. There is no API that
+/// reports "you were napped", so the only way to observe it is to notice that
+/// our own clock skipped.
+const TIMER_STALL_THRESHOLD_MS: u64 = 1_000;
+
 /// How often the timer verifies the tap is still armed (~2s at 20ms/tick).
 /// Belt-and-braces for the case where the disable notification itself is
 /// never delivered — the failure mode is total silence, so we cannot rely on
@@ -285,15 +314,29 @@ fn re_arm_tap(reason: &str) {
         return;
     }
     unsafe { CGEventTapEnable(port, 1) };
-    fnlog!("[FnKey] event tap was disabled ({}) — re-armed", reason);
-    crate::logging::log_warn(&format!(
-        "[FnKey] Event tap was disabled ({}) and has been re-armed. \
-         The Fn key would have stopped responding until restart.",
-        reason
-    ));
+
+    let streak = REARM_STREAK.fetch_add(1, Ordering::Relaxed) + 1;
+    let now = now_ms();
+    let last_logged = LAST_REARM_LOG_MS.load(Ordering::Relaxed);
+    let should_log = streak == 1 || now.saturating_sub(last_logged) >= REARM_LOG_INTERVAL_MS;
+
+    if should_log {
+        LAST_REARM_LOG_MS.store(now, Ordering::Relaxed);
+        fnlog!("[FnKey] event tap was disabled ({}) — re-armed (streak {})", reason, streak);
+        crate::logging::log_warn(&format!(
+            "[FnKey] Event tap was disabled ({}) and has been re-armed \
+             ({} consecutive re-arms). The Fn key would have stopped \
+             responding until restart.",
+            reason, streak
+        ));
+    }
+
+    // The trace keeps every occurrence — it is the timeline you consult to
+    // line a broken dictation up against the tap dying. Only the human-facing
+    // log is rate-limited.
     crate::trace::event(
         "hotkey.tap_rearmed",
-        serde_json::json!({ "reason": reason }),
+        serde_json::json!({ "reason": reason, "streak": streak }),
     );
 }
 
@@ -329,6 +372,23 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
             //
             // `flags` is read only for the diagnostic log — the FSM no
             // longer consults NSEvent.modifierFlags directly.
+            // Stall detection. This timer is scheduled every 20ms, so a gap
+            // of a second or more means nothing ran — see
+            // TIMER_STALL_THRESHOLD_MS. Recorded before anything else so the
+            // trace shows the stall even if the tick that noticed it goes on
+            // to do nothing interesting.
+            let tick_now = now_ms();
+            let prev_tick = LAST_TICK_MS.swap(tick_now, Ordering::Relaxed);
+            if prev_tick != 0 {
+                let gap_ms = tick_now.saturating_sub(prev_tick);
+                if gap_ms >= TIMER_STALL_THRESHOLD_MS {
+                    crate::trace::event(
+                        "hotkey.timer_stall",
+                        serde_json::json!({ "gap_ms": gap_ms }),
+                    );
+                }
+            }
+
             let tick = TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
 
             // Watchdog. A tap that macOS disabled without us seeing the
@@ -336,8 +396,14 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
             // pressing anything", so the only way to detect it is to ask.
             if tick % TAP_WATCHDOG_TICKS == 0 {
                 let port = TAP_PORT.load(Ordering::Relaxed) as CFMachPortRef;
-                if !port.is_null() && !CGEventTapIsEnabled(port) {
-                    re_arm_tap("watchdog");
+                if !port.is_null() {
+                    if CGEventTapIsEnabled(port) {
+                        // Healthy: end any flapping streak so the next genuine
+                        // failure logs immediately instead of being rate-limited.
+                        REARM_STREAK.store(0, Ordering::Relaxed);
+                    } else {
+                        re_arm_tap("watchdog");
+                    }
                 }
             }
 

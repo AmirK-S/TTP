@@ -1597,9 +1597,14 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 );
 
                 // Restore original clipboard content
-                if let Err(e) = clipboard_guard.restore() {
+                let restore_result = clipboard_guard.restore();
+                if let Err(ref e) = restore_result {
                     crate::logging::log_warn(&format!("[Pipeline] Failed to restore clipboard: {}", e));
                 }
+                trace.stage(
+                    "clipboard.restore",
+                    serde_json::json!({ "ok": restore_result.is_ok() }),
+                );
 
                 // Start correction detection window (10 seconds to detect user corrections).
                 // Skip when the final text is empty — the detection task would otherwise
@@ -1609,6 +1614,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 } else {
                     start_correction_window(app, final_text.clone());
                 }
+                trace.stage("correction_window.started", serde_json::Value::Null);
 
                 true
             }
@@ -1664,9 +1670,14 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             None // No raw text if polish was disabled (they're the same)
         };
 
-        if let Err(e) = add_history_entry(&final_text, raw_for_history) {
+        let history_result = add_history_entry(&final_text, raw_for_history);
+        if let Err(ref e) = history_result {
             crate::logging::log_warn(&format!("[Pipeline] Failed to save to history: {}", e));
         }
+        trace.stage(
+            "history.saved",
+            serde_json::json!({ "ok": history_result.is_ok() }),
+        );
     }
 
     // Complete with appropriate message
@@ -1687,12 +1698,15 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // so the in-app Analytics section can show "this week / this month".
     // Local-only — no network. Capped at u32 to keep the on-disk payload
     // bounded; even a power user shouldn't dent that ceiling per day.
+    trace.stage("ui.completed", serde_json::json!({ "pasted": paste_success }));
+
     let word_count = final_text.split_whitespace().count();
     let char_count = final_text.chars().count();
     crate::usage::record_transcription(
         word_count.try_into().unwrap_or(u32::MAX),
         char_count.try_into().unwrap_or(u32::MAX),
     );
+    trace.stage("usage.recorded", serde_json::Value::Null);
 
     // Clean up audio files after processing
     let _ = std::fs::remove_file(&audio_path);
@@ -1702,6 +1716,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     if let Some(ref bp) = backup_path {
         super::backup::remove_backup(bp);
     }
+    trace.stage("files.cleaned", serde_json::Value::Null);
 
     trace.finish(
         if paste_success { "pasted" } else { "clipboard_fallback" },
