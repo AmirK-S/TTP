@@ -42,6 +42,22 @@ const MAX_AUDIO_SIZE: u64 = 25_000_000;
 /// mitigate it with a longer post-paste wait (1500 ms).
 const DIRECT_TYPING_MAX_CHARS: usize = 2000;
 
+/// How long the paste verification will keep re-reading the focused element
+/// before concluding the keystrokes never landed.
+///
+/// Reading once immediately after `CGEventPost` is meaningless: the events sit
+/// in the HID queue and the target application consumes them on its own run
+/// loop, typically tens of milliseconds later — longer for Electron. A single
+/// early read reports "nothing landed" for a perfectly successful paste, which
+/// would make the signal worse than absent: it would send people hunting a
+/// failure that never happened. 600 ms comfortably covers the slowest targets
+/// we have measured.
+const PASTE_VERIFY_TIMEOUT_MS: u64 = 600;
+
+/// Gap between verification reads. Each read is an Accessibility round-trip,
+/// so this trades resolution against the cost of hammering the target app.
+const PASTE_VERIFY_POLL_MS: u64 = 25;
+
 /// How long to wait after Cmd+V before restoring the user's pre-record
 /// clipboard, when we have to use the clipboard path (text > DIRECT_TYPING_MAX_CHARS).
 /// Slow Electron apps (Slack, Notion, Mail, Discord) can take 200–600 ms to
@@ -1576,24 +1592,15 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 // field against the pre-injection snapshot is what separates
                 // "typed successfully" from "silently swallowed" — the exact
                 // ambiguity that made the stuck-modifier bug unfalsifiable.
-                let focused_after = crate::paste::read_focused_text();
-                let grew = match (&focused_before, &focused_after) {
-                    (Some(before), Some(after)) => after.chars().count() > before.chars().count(),
-                    (None, Some(after)) => !after.is_empty(),
-                    // Unreadable target (most Electron apps) — `ax_readable`
-                    // below says so, so a false here is never mistaken for
-                    // evidence of failure.
-                    _ => false,
-                };
-                trace.stage(
-                    "paste.verify",
-                    serde_json::json!({
-                        "ax_readable": focused_after.is_some(),
-                        "before_chars": focused_before.as_ref().map(|t| t.chars().count()),
-                        "after_chars": focused_after.as_ref().map(|t| t.chars().count()),
-                        "grew": grew,
-                        "expected_chars": final_text.chars().count(),
-                    }),
+                //
+                // Runs off the critical path: the target needs run-loop time
+                // to consume the events, and the user should not wait for our
+                // bookkeeping. The task carries a clone of the trace, so its
+                // line lands under the same dictation id.
+                spawn_paste_verification(
+                    trace.clone(),
+                    focused_before.clone(),
+                    final_text.chars().count(),
                 );
 
                 // Restore original clipboard content
@@ -1729,6 +1736,69 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
     set_state(app, RecordingState::Idle);
     Ok(final_text)
+}
+
+/// Watch the focused element until it reflects an injection, then record the
+/// verdict on `trace`.
+///
+/// Spawned rather than awaited. Verification is diagnostics, not product
+/// behaviour: making the user wait up to `PASTE_VERIFY_TIMEOUT_MS` for the
+/// completion pill so we can write a log line would be a bad trade.
+///
+/// Bails immediately when Accessibility cannot read the target at all (most
+/// Electron apps, and every non-macOS build). There is nothing to observe
+/// there, and polling for 600 ms to learn nothing would just cost AX
+/// round-trips. The emitted line says `ax_readable: false` so a reader never
+/// mistakes "we could not check" for "it did not land".
+fn spawn_paste_verification(
+    trace: crate::trace::Trace,
+    focused_before: Option<String>,
+    expected_chars: usize,
+) {
+    tauri::async_runtime::spawn(async move {
+        let started = std::time::Instant::now();
+        let timeout = Duration::from_millis(PASTE_VERIFY_TIMEOUT_MS);
+
+        // `changed` rather than `grew`: typing over a selection replaces it,
+        // so a successful paste can leave the field shorter than it was.
+        let changed = |after: &Option<String>| -> bool {
+            match (&focused_before, after) {
+                (before, Some(after_text)) => before.as_deref() != Some(after_text.as_str()),
+                _ => false,
+            }
+        };
+
+        let mut focused_after = crate::paste::read_focused_text();
+        let mut settled_ms = started.elapsed().as_millis() as u64;
+
+        if focused_after.is_some() {
+            while !changed(&focused_after) && started.elapsed() < timeout {
+                sleep(Duration::from_millis(PASTE_VERIFY_POLL_MS)).await;
+                focused_after = crate::paste::read_focused_text();
+                settled_ms = started.elapsed().as_millis() as u64;
+            }
+        }
+
+        let before_chars = focused_before.as_ref().map(|t| t.chars().count());
+        let after_chars = focused_after.as_ref().map(|t| t.chars().count());
+        let delta = match (before_chars, after_chars) {
+            (Some(b), Some(a)) => Some(a as i64 - b as i64),
+            _ => None,
+        };
+
+        trace.stage(
+            "paste.verify",
+            serde_json::json!({
+                "ax_readable": focused_after.is_some(),
+                "changed": changed(&focused_after),
+                "before_chars": before_chars,
+                "after_chars": after_chars,
+                "delta_chars": delta,
+                "expected_chars": expected_chars,
+                "settled_ms": settled_ms,
+            }),
+        );
+    });
 }
 
 /// Tauri command to process a completed recording

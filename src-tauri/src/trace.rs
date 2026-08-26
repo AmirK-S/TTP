@@ -114,6 +114,13 @@ pub fn event(name: &str, fields: Value) {
 
 /// A single dictation's trace. Cheap to create; every method is fire-and-
 /// forget and never fails — tracing must not be able to break a dictation.
+///
+/// `Clone` so a background task can keep emitting into the same dictation
+/// after the pipeline has moved on — the paste verification does this, since
+/// it has to wait for the target app's run loop and must not sit on the
+/// critical path while it does. The cloned `Instant` keeps elapsed times
+/// consistent with the parent's.
+#[derive(Clone)]
 pub struct Trace {
     id: String,
     start: Instant,

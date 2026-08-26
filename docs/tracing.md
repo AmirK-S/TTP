@@ -29,7 +29,7 @@ spot it was written to remove.
 [2026-08-26 08:48:57.412] [0007-3f2a] +    0ms dictation.start  {"kind":"recording","verbose":false}
 [2026-08-26 08:48:57.418] [0007-3f2a] +    6ms audio.duration   {"secs":7.52,"wav_bytes":481324}
 [2026-08-26 08:48:58.902] [0007-3f2a] + 1490ms whisper.response {"chars":87,"sha8":"9f2c1ab0","attempt":1,"ms":1484}
-[2026-08-26 08:48:59.118] [0007-3f2a] + 1706ms paste.verify     {"ax_readable":true,"before_chars":0,"after_chars":87,"grew":true,"expected_chars":87}
+[2026-08-26 08:48:59.118] [0007-3f2a] + 1706ms paste.verify     {"ax_readable":true,"changed":true,"delta_chars":87,"expected_chars":87,"settled_ms":48}
 [2026-08-26 08:48:59.121] [0007-3f2a] + 1709ms dictation.finish {"outcome":"pasted","ms":1709,"chars":87,"words":16}
 ```
 
@@ -70,15 +70,27 @@ is dropped. `paste.verify` reads the focused text field back and compares it to
 a snapshot taken before injection.
 
 ```json
-{"ax_readable":true,"before_chars":0,"after_chars":87,"grew":true,"expected_chars":87}
+{"ax_readable":true,"changed":true,"before_chars":0,"after_chars":87,
+ "delta_chars":87,"expected_chars":87,"settled_ms":48}
 ```
 
-- `grew:true` — the text actually landed.
-- `ax_readable:false` — the target's text can't be read (most Electron apps).
-  `grew` is meaningless here; it is not evidence of failure.
-- `ax_readable:true` with `grew:false` — **the keystrokes were swallowed.**
+- `changed:true` — the text actually landed. `settled_ms` is how long the
+  target took to consume the events; `delta_chars` next to `expected_chars`
+  tells you whether all of them arrived.
+- `ax_readable:false` — the target's text can't be read (most Electron apps,
+  and every non-macOS build). `changed` is meaningless here; it is **not**
+  evidence of failure.
+- `ax_readable:true` with `changed:false` — **the keystrokes were swallowed.**
   Look for a `paste.modifiers` line immediately before it — it names the
   modifier that was held (`Fn/Globe`, `Command`, …) when we injected.
+
+The check re-reads for up to 600 ms rather than once, because the events sit
+in the HID queue and the target consumes them on its own run loop. It runs in
+a spawned task, so the `paste.verify` line can appear slightly after
+`dictation.finish` — it still carries the dictation's id.
+
+`changed` rather than "grew": typing over a selection replaces it, so a
+successful paste can leave the field shorter than it started.
 
 ## Aborted dictations
 
@@ -120,7 +132,7 @@ cd ~/Library/Application\ Support/com.ttp.desktop
 grep '"outcome":"aborted"' ttp-trace.log
 
 # Every dictation whose keystrokes were verifiably swallowed
-grep 'paste.verify' ttp-trace.log | grep '"ax_readable":true' | grep '"grew":false'
+grep 'paste.verify' ttp-trace.log | grep '"ax_readable":true' | grep '"changed":false'
 
 # The input layer breaking and recovering
 grep -E 'hotkey\.(tap_rearmed|stale_fn_cleared|tap_create_failed)' ttp-trace.log
