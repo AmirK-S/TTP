@@ -70,6 +70,21 @@ impl AppState {
         let old_state = self.recording_state.clone();
         self.recording_state = state.clone();
 
+        // The state machine is the thing that gets stuck. `handle_shortcut_pressed`
+        // only acts from Idle or Recording, so a session that never leaves
+        // Processing makes every subsequent hotkey press a silent no-op — the
+        // app looks dead while behaving exactly as written. Recording every
+        // transition means the trace shows which state we are parked in and
+        // when we arrived, instead of leaving it to be inferred from the
+        // absence of other lines.
+        crate::trace::event(
+            "state.transition",
+            serde_json::json!({
+                "from": format!("{:?}", old_state),
+                "to": format!("{:?}", state),
+            }),
+        );
+
         // Maintain the auxiliary fields tied to the recording lifecycle. Doing
         // this here (in the single transition site) means consumers don't have
         // to remember to reset them and can never see a stale value.

@@ -303,8 +303,25 @@ mod rms_tests {
 /// Pre-flights microphone permission and rejects with a stable error string
 /// (containing "permission") so the frontend's existing handler maps it to
 /// the `error.microphone_permission_denied` pill.
+/// Begin capturing audio.
+///
+/// A thin wrapper around [`start_recording_inner`] whose only job is to make
+/// failure observable. The inner function has nine early exits — a poisoned
+/// lock, two microphone-permission states, device config, WAV writer, stream
+/// build — and every one of them means the user pressed the hotkey, spoke,
+/// and got nothing. Tracing them individually would leave the next one added
+/// untraced by default; tracing the boundary cannot miss any.
 #[command]
 pub async fn start_recording<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    let result = start_recording_inner(app).await;
+    if let Err(ref e) = result {
+        log_error(&format!("[AudioCapture] start_recording failed: {}", e));
+        crate::trace::event("capture.start_failed", serde_json::json!({ "error": e }));
+    }
+    result
+}
+
+async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(), String> {
     // 1. Self-heal a stale STATE.
     //
     // Spam clicks on the tray button used to leave a "phantom" cpal stream
@@ -429,8 +446,23 @@ pub async fn start_recording<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(),
 /// (the WAV file is still finalised + path returned so callers can inspect /
 /// log it). The pipeline already has a second defense via `wav_duration_secs`
 /// — both layers stay so a bug in either still surfaces the right error.
+/// Stop the active recording and return the finalised WAV path.
+///
+/// Wrapper for the same reason as [`start_recording`]: an error here means a
+/// recording the user believes they made is gone, and "No recording in
+/// progress" in particular means the state machine and the input layer had
+/// already diverged.
 #[command]
 pub async fn stop_recording() -> Result<PathBuf, String> {
+    let result = stop_recording_inner().await;
+    if let Err(ref e) = result {
+        log_error(&format!("[AudioCapture] stop_recording failed: {}", e));
+        crate::trace::event("capture.stop_failed", serde_json::json!({ "error": e }));
+    }
+    result
+}
+
+async fn stop_recording_inner() -> Result<PathBuf, String> {
     // Drain delay BEFORE touching STATE.
     //
     // WASAPI (Windows) and several CoreAudio drivers hold up to ~150 ms of

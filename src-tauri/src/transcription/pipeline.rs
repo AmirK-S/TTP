@@ -1953,7 +1953,18 @@ pub async fn process_audio(app: AppHandle, audio_path: String) -> Result<String,
     // The helper guarantees that every Err on the path between the start
     // of this function and the call into process_recording flips state
     // back to Idle and emits the user-facing error pill.
+    // Every one of these paths throws away audio the user has already
+    // spoken, before `process_recording` opens a trace — so without this the
+    // dictation simply vanishes between `capture.stop` and nothing at all.
     let err_idle = |app: &AppHandle, key: &str| -> String {
+        crate::trace::event(
+            "dictation.rejected",
+            serde_json::json!({ "reason": key }),
+        );
+        crate::logging::log_warn(&format!(
+            "[Pipeline] Recording rejected before transcription: {}",
+            key
+        ));
         emit_progress(app, "error", key, None);
         set_state(app, RecordingState::Idle);
         key.to_string()

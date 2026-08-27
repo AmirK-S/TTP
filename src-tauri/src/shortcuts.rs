@@ -75,6 +75,10 @@ pub fn handle_shortcut_event_public(app: &AppHandle, shortcut_state: ShortcutSta
             ..Default::default()
         });
         crate::logging::log_warn("[Shortcuts] try_lock contended at handle_shortcut_event_public");
+        crate::trace::event(
+            "hotkey.event_dropped",
+            serde_json::json!({ "at": "handle_shortcut_event_public" }),
+        );
         return;
     };
 
@@ -97,6 +101,10 @@ pub fn handle_fn_double_tap(app: &AppHandle) {
             ..Default::default()
         });
         crate::logging::log_warn("[Shortcuts] try_lock contended at handle_fn_double_tap");
+        crate::trace::event(
+            "hotkey.event_dropped",
+            serde_json::json!({ "at": "handle_fn_double_tap" }),
+        );
         return;
     };
 
@@ -138,6 +146,10 @@ pub fn handle_fn_stop(app: &AppHandle) {
             ..Default::default()
         });
         crate::logging::log_warn("[Shortcuts] try_lock contended at handle_fn_stop");
+        crate::trace::event(
+            "hotkey.event_dropped",
+            serde_json::json!({ "at": "handle_fn_stop" }),
+        );
         return;
     };
 

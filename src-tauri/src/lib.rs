@@ -605,6 +605,19 @@ pub fn run() {
         .manage(Mutex::new(AppState::default()))
         .manage(Mutex::new(RecordingContext::default()))
         .setup(move |app| {
+            // First line of every run. Without a session boundary the trace is
+            // one undifferentiated stream across restarts, and "did the app
+            // restart between these two dictations?" — the question you ask
+            // when something recovered on its own — is unanswerable.
+            trace::event(
+                "app.launched",
+                serde_json::json!({
+                    "version": env!("CARGO_PKG_VERSION"),
+                    "os": std::env::consts::OS,
+                    "arch": std::env::consts::ARCH,
+                }),
+            );
+
             // Initialize license state (loads cached license + kicks off background refresh)
             licensing::init(app.handle());
 

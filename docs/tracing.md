@@ -44,7 +44,12 @@ spot it was written to remove.
 
 | Stage | What it tells you |
 |---|---|
+| `app.launched` | Session boundary, with version and platform. Everything below it belongs to one run of the app. |
 | `hotkey.press` / `hotkey.release` | The Fn/Globe key was seen. **No line here means the input layer never fired** — the recording never started. |
+| `hotkey.event_dropped` | A hotkey event arrived while the state lock was held and was discarded. The press happened; nothing came of it. |
+| `state.transition` | Every move between Idle / Recording / Processing. A session parked in Processing makes all later presses silent no-ops. |
+| `capture.start_failed` / `capture.stop_failed` | Recording never started, or the finished recording could not be retrieved. Covers all nine early exits in the capture layer. |
+| `dictation.rejected` | Audio was captured and then thrown away before transcription — rate limit, or a path that failed validation. |
 | `hotkey.tap_rearmed` | macOS had disabled our event tap and we re-armed it. Every Fn press between the disable and this line was lost. |
 | `hotkey.stale_fn_cleared` | The Globe key was latched "held" and we forced it down. Keystrokes injected before this were being routed to the Globe shortcut layer. |
 | `hotkey.timer_stall` | The 20 ms poll timer skipped `gap_ms`. The process was descheduled — nothing advanced during that window: no hotkey, no state machine, no in-flight dictation. TTP now holds an activity assertion for the whole Recording → Idle window (see `crate::activity`), so a stall spanning a dictation should no longer be possible; one that still appears is worth investigating. |
@@ -226,3 +231,23 @@ outside:
 - `device_changed: true` on `capture.stop` — the OS default moved mid
   recording. An already-open cpal stream does not follow it, so it keeps
   reading from a device that has stopped producing audio.
+
+## What is not covered
+
+Honest limits, so nobody reads silence as proof of health:
+
+- **The frontend.** The JS side drives `stop_recording` → `process_audio`. An
+  exception in that handoff leaves `capture.stop` with no `dictation.start`
+  after it. That gap is visible, but the reason for it is not.
+- **VAD auto-stop.** Off by default; when on, the decision to cut a recording
+  short is not recorded.
+- **Settings changes.** A dictation's behaviour depends on settings read at
+  the time; the trace shows the resulting values (`whisper.request.lang`,
+  `polish.decision`) but not when the user changed them.
+- **Anything before `app.launched`.** A crash during Tauri setup leaves
+  nothing.
+- **Rotation.** ~8 MB across four files, roughly three weeks of heavy use.
+  Older evidence is gone, which matters for "it happened last month".
+
+A dictation that leaves `capture.stop` with no `dictation.start` after it is
+the one shape the trace can currently only bound, not explain.
