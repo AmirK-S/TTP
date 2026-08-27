@@ -1,5 +1,5 @@
-// Integration tests for the Polaris polish pipeline. Hits live Groq Llama
-// 3.3 70B and verifies anti-injection + self-correction + intent
+// Integration tests for the Polaris polish pipeline. Hits the live Groq model
+// named by `polish::MODEL` and verifies anti-injection + self-correction + intent
 // classification behavior against the golden fixture set.
 //
 // Tests are `#[ignore]`d by default because they require a `GROQ_API_KEY`

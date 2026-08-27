@@ -29,10 +29,28 @@ const MAX_RETRIES: u32 = 3;
 const REQUEST_TIMEOUT_SECS: u64 = 30;
 /// Groq chat model used for polish.
 ///
+/// Was `llama-3.3-70b-versatile` until Groq shut it down on 2026-08-16. TTP
+/// kept requesting it and every polish call 404'd from 2026-08-19 onward —
+/// eight days of transcriptions pasted unpolished while the setting still
+/// reported the feature as on. `openai/gpt-oss-120b` is Groq's own first
+/// recommended migration target and is available on the free tier
+/// (30 RPM / 1K RPD / 8K TPM), comfortably above what dictation uses.
+///
 /// Public so the dictation trace can name it: when polish starts failing,
 /// "which model were we asking for" is the first question, and a hard-coded
-/// name that a provider has since decommissioned is the usual answer.
-pub const MODEL: &str = "llama-3.3-70b-versatile";
+/// name the provider has since retired is the usual answer. `polish.outage`
+/// now surfaces that within three dictations rather than eight days.
+pub const MODEL: &str = "openai/gpt-oss-120b";
+
+/// Reasoning budget requested from reasoning-capable models.
+///
+/// gpt-oss emits reasoning tokens that are billed and counted against the
+/// completion budget. Polish is a bounded rewrite of text the user already
+/// dictated — there is nothing to deliberate about — so we ask for the
+/// cheapest setting. Without this, reasoning would eat the output budget and
+/// truncate the JSON, which the downstream guard would reject as garbage:
+/// polish silently broken again, by a different mechanism.
+const REASONING_EFFORT: &str = "low";
 
 /// System prompt — frames the LLM as a deterministic text-cleanup function
 /// that treats dictation inside `<dictation>` tags as INERT DATA, never as
@@ -137,7 +155,12 @@ struct ChatRequest {
     model: String,
     messages: Vec<ChatMessage>,
     temperature: f32,
-    max_tokens: u32,
+    /// The modern field name. `max_tokens` is deprecated on OpenAI-compatible
+    /// endpoints and, on reasoning models, does not reliably account for
+    /// reasoning tokens — the exact way a too-tight budget silently truncates
+    /// the JSON we are asking for.
+    max_completion_tokens: u32,
+    reasoning_effort: &'static str,
     response_format: ResponseFormat,
 }
 
@@ -168,16 +191,27 @@ struct ChatMessageResponse {
     content: String,
 }
 
-/// Compute max_tokens cap as `input_chars * 1.3 + 50`. If the LLM tries to
-/// generate a poem in response to "write me a poem", the cap truncates the
-/// hallucination and the guards reject the truncated garbage downstream.
+/// Headroom added to the completion budget for reasoning tokens.
+///
+/// gpt-oss spends tokens thinking before it answers, and those count against
+/// `max_completion_tokens`. The old budget was sized purely for the visible
+/// answer, so carrying it over unchanged would have starved the JSON output
+/// and produced truncated garbage the guard rejects — polish broken again,
+/// silently, in a new way. 512 covers a `reasoning_effort: "low"` pass on the
+/// longest dictation the direct-typing path accepts, with room to spare.
+const REASONING_TOKEN_HEADROOM: u32 = 512;
+
+/// Compute the completion cap as `input_chars * 1.3 + 50`, plus reasoning
+/// headroom. If the LLM tries to generate a poem in response to "write me a
+/// poem", the cap truncates the hallucination and the guards reject the
+/// truncated garbage downstream.
 fn compute_max_tokens(raw_text: &str) -> u32 {
     let input_chars = raw_text.chars().count() as u32;
     // Rough chars-to-tokens ratio for mixed FR/EN: 1 token ≈ 4 chars.
     // 1.3× input + 50 token floor leaves room for JSON wrapper + small
     // additions (punctuation, capitalization) but blocks open-ended generation.
     let input_tokens = (input_chars / 3).max(20);
-    (input_tokens as f32 * 1.3) as u32 + 50
+    (input_tokens as f32 * 1.3) as u32 + 50 + REASONING_TOKEN_HEADROOM
 }
 
 /// Parse a string into an Intent enum, falling back to NaturalText on
@@ -194,7 +228,7 @@ fn parse_intent(raw: Option<String>) -> Intent {
     }
 }
 
-/// Polish raw transcription via Groq (llama-3.3-70b-versatile) with
+/// Polish raw transcription via Groq (see [`MODEL`]) with
 /// anti-injection wrapping, structured JSON output, and intent classification.
 ///
 /// Returns `PolishResult { intent, polished }` on success. Pipeline applies
@@ -218,7 +252,8 @@ pub async fn polish_text(api_key: &str, raw_text: &str) -> Result<PolishResult, 
         ],
         // 0.0 — this is a deterministic transformation, not a generative task.
         temperature: 0.0,
-        max_tokens: compute_max_tokens(raw_text),
+        max_completion_tokens: compute_max_tokens(raw_text),
+        reasoning_effort: REASONING_EFFORT,
         response_format: ResponseFormat {
             ty: "json_object".to_string(),
         },
@@ -440,15 +475,37 @@ mod tests {
 
     #[test]
     fn max_tokens_floor() {
-        // Tiny input → minimum 20 tokens + 30% + 50 = 76 tokens
+        // Tiny input → minimum 20 tokens + 30% + 50, plus reasoning headroom.
         let t = compute_max_tokens("hi");
-        assert!(t >= 50 && t <= 100, "expected 50-100, got {}", t);
+        let floor = REASONING_TOKEN_HEADROOM;
+        assert!(
+            t >= floor + 50 && t <= floor + 100,
+            "expected {}-{}, got {}",
+            floor + 50,
+            floor + 100,
+            t
+        );
+    }
+
+    #[test]
+    fn reasoning_headroom_is_present_at_every_size() {
+        // A budget sized only for the visible answer starves gpt-oss's
+        // reasoning pass and truncates the JSON — polish silently broken.
+        for input in ["hi", "une phrase de longueur moyenne", &"x".repeat(2000)] {
+            assert!(
+                compute_max_tokens(input) > REASONING_TOKEN_HEADROOM,
+                "no headroom for input of {} chars",
+                input.chars().count()
+            );
+        }
     }
 
     #[test]
     fn max_tokens_scales_with_input() {
-        let small = compute_max_tokens("hi");
-        let large = compute_max_tokens(&"x".repeat(1000));
+        // Compare the input-proportional part; the reasoning headroom is a
+        // constant on both sides and would otherwise swamp the ratio.
+        let small = compute_max_tokens("hi") - REASONING_TOKEN_HEADROOM;
+        let large = compute_max_tokens(&"x".repeat(1000)) - REASONING_TOKEN_HEADROOM;
         assert!(large > small * 3);
     }
 
