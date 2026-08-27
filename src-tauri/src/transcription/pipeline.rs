@@ -29,6 +29,25 @@ use tokio::time::sleep;
 /// frontend loop in the seconds it would take to notice.
 static PROCESS_AUDIO_LIMITER: OnceLock<DefaultDirectRateLimiter> = OnceLock::new();
 
+/// Consecutive polish failures, reset by the first success.
+static POLISH_CONSECUTIVE_FAILURES: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(0);
+
+/// Whether this app session has already told the user polish is down.
+static POLISH_OUTAGE_NOTIFIED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Consecutive failures before we surface a polish outage to the user.
+///
+/// A single failure is noise — a dropped connection, a transient 5xx — and
+/// interrupting a dictation over it would be worse than staying quiet. A run
+/// of them is a broken configuration, and the user needs to hear about it:
+/// the existing signal was an `emit_progress` on the `pasting` stage, which
+/// paints the pill for a fraction of a second before `complete` overwrites
+/// it. That is how eight straight days of 404s went unnoticed while the
+/// setting kept reporting the feature as on.
+const POLISH_OUTAGE_THRESHOLD: u32 = 3;
+
 /// Maximum audio file size in bytes (25MB Groq API limit)
 const MAX_AUDIO_SIZE: u64 = 25_000_000;
 
@@ -1420,6 +1439,10 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         }),
     );
 
+    // What actually happened to the polish call, as opposed to whether we
+    // were allowed to attempt it. Set on every branch below.
+    let mut polish_outcome = "skipped";
+
     let final_text = if polish_quota_ok {
         emit_progress(app, "polishing", "progress.polishing", None);
 
@@ -1447,6 +1470,9 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                         });
                         // Intent classification is captured in the Sentry
                         // breadcrumb above for future per-app routing (v3.1+).
+                        polish_outcome = "applied";
+                        POLISH_CONSECUTIVE_FAILURES.store(0, std::sync::atomic::Ordering::Relaxed);
+                        POLISH_OUTAGE_NOTIFIED.store(false, std::sync::atomic::Ordering::Relaxed);
                         result.polished
                     }
                     GuardVerdict::Reject(reason) => {
@@ -1470,6 +1496,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                             "polish_guard_rejected",
                             Some(serde_json::json!({ "reason": reason })),
                         );
+                        polish_outcome = "guard_rejected";
                         cleaned_text.clone()
                     }
                 }
@@ -1483,6 +1510,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 crate::telemetry::analytics::track(app, "polish_failed", Some(serde_json::json!({
                     "category": category
                 })));
+                polish_outcome = "failed";
                 cleaned_text.clone()
             }
         }
@@ -1494,8 +1522,43 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         "polish",
         &cleaned_text,
         &final_text,
-        serde_json::json!({ "applied": polish_quota_ok }),
+        serde_json::json!({
+            "outcome": polish_outcome,
+            "model": crate::transcription::polish::MODEL,
+            "quota_ok": polish_quota_ok,
+        }),
     );
+
+    // A polish that fails on every call is invisible from the user's seat:
+    // the text still arrives, just unpolished, while the setting keeps
+    // claiming the feature is on. That is how a decommissioned model went
+    // unnoticed for eight days. WARN so release builds keep it.
+    if polish_outcome == "failed" {
+        use std::sync::atomic::Ordering;
+        let streak = POLISH_CONSECUTIVE_FAILURES.fetch_add(1, Ordering::Relaxed) + 1;
+        crate::logging::log_warn(&format!(
+            "[Dictation {}] AI polish failed against model '{}' ({} in a row) — the \
+             transcription was pasted unpolished. A sustained run means the model is \
+             gone or the API key has no access to it.",
+            trace.id(),
+            crate::transcription::polish::MODEL,
+            streak
+        ));
+        trace.stage(
+            "polish.outage",
+            serde_json::json!({
+                "consecutive_failures": streak,
+                "model": crate::transcription::polish::MODEL,
+            }),
+        );
+
+        // Tell the user once per session, not once per dictation.
+        if streak >= POLISH_OUTAGE_THRESHOLD
+            && !POLISH_OUTAGE_NOTIFIED.swap(true, Ordering::Relaxed)
+        {
+            notify(app, &crate::i18n::tr("notification.polishUnavailable"));
+        }
+    }
 
     // Apply dictionary corrections as hard post-processing.
     // Even with the new polish pipeline, the personal dictionary is a hard

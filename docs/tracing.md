@@ -53,7 +53,8 @@ spot it was written to remove.
 | `audio.duration` / `audio.signal` | How much audio, how loud. `avg_rms` below `floor` means the silence gate will drop it; `peak` and `nonzero_ratio` distinguish a quiet room from a dead device. |
 | `audio.convert` | Stereo 48 kHz → mono 16 kHz, and the size change. |
 | `whisper.request` / `whisper.response` | Bytes sent, language pinned, latency, and how many characters came back. `attempt:2` means the first call returned an empty body. |
-| `cleanup`, `polish`, `dictionary` | Each text transformation, with `changed` and before/after character counts. A `to.chars` of 0 names the stage that emptied the transcription. |
+| `cleanup`, `polish`, `dictionary` | Each text transformation, with `changed` and before/after character counts. A `to.chars` of 0 names the stage that emptied the transcription. `polish.outcome` is `applied` / `failed` / `guard_rejected` / `skipped` — what actually happened, not whether it was allowed to try. |
+| `polish.outage` | Polish has failed `consecutive_failures` times in a row against `model`. Emitted on every failure; the user is notified once per session at three. |
 | `paste.accessibility` | `tcc_trusted` vs `ax_probe_ok`. Trusted-but-not-working is the stale-TCC state left behind by in-place app updates. |
 | `paste.decision` | `type` (direct keystrokes) or `clipboard` (Cmd+V), and how many characters. |
 | `paste.modifiers` | A modifier key was still held at injection time. Only emitted when one was. |

@@ -142,9 +142,10 @@ impl Trace {
         trace
     }
 
-    #[allow(dead_code)]
-    pub fn verbose(&self) -> bool {
-        self.verbose
+    /// Short id of this dictation, for cross-referencing a line written to
+    /// `ttp.log` back to the full stage list in `ttp-trace.log`.
+    pub fn id(&self) -> &str {
+        &self.id
     }
 
     pub fn elapsed_ms(&self) -> u64 {

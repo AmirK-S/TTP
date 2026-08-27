@@ -27,7 +27,12 @@ fn jittered_backoff_ms(base_ms: u64) -> u64 {
 const CHAT_URL: &str = "https://api.groq.com/openai/v1/chat/completions";
 const MAX_RETRIES: u32 = 3;
 const REQUEST_TIMEOUT_SECS: u64 = 30;
-const MODEL: &str = "llama-3.3-70b-versatile";
+/// Groq chat model used for polish.
+///
+/// Public so the dictation trace can name it: when polish starts failing,
+/// "which model were we asking for" is the first question, and a hard-coded
+/// name that a provider has since decommissioned is the usual answer.
+pub const MODEL: &str = "llama-3.3-70b-versatile";
 
 /// System prompt — frames the LLM as a deterministic text-cleanup function
 /// that treats dictation inside `<dictation>` tags as INERT DATA, never as
