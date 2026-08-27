@@ -78,6 +78,13 @@ impl AppState {
                 if self.recording_started_at.is_none() {
                     self.recording_started_at = Some(Instant::now());
                 }
+                // Hold an activity assertion for the whole
+                // Recording → Processing → Idle window. A napped process
+                // stops rather than slows: the Fn timer stops firing, the
+                // pipeline stops advancing, and macOS disables our event tap
+                // for timeout — which is the "TTP just stopped working"
+                // failure. See `crate::activity`.
+                crate::activity::begin_dictation();
                 // Tell the pill which input modality is active so it can
                 // show a hands-free affordance (lock icon) and the user
                 // sees at a glance that they need to TAP again to stop,
@@ -89,6 +96,10 @@ impl AppState {
             RecordingState::Idle => {
                 self.session_hands_free = None;
                 self.recording_started_at = None;
+                // The user is no longer waiting on us; let the OS nap the
+                // process again. Released here rather than in the pipeline
+                // because every abort path also funnels through Idle.
+                crate::activity::end_dictation();
                 let _ = app.emit("recording-mode-changed", serde_json::Value::Null);
             }
             RecordingState::Processing => {

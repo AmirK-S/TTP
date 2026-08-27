@@ -47,7 +47,7 @@ spot it was written to remove.
 | `hotkey.press` / `hotkey.release` | The Fn/Globe key was seen. **No line here means the input layer never fired** — the recording never started. |
 | `hotkey.tap_rearmed` | macOS had disabled our event tap and we re-armed it. Every Fn press between the disable and this line was lost. |
 | `hotkey.stale_fn_cleared` | The Globe key was latched "held" and we forced it down. Keystrokes injected before this were being routed to the Globe shortcut layer. |
-| `hotkey.timer_stall` | The 20 ms poll timer skipped `gap_ms`. The process was descheduled — App Nap suspending the background agent, or the machine sleeping. Nothing advanced during that window: no hotkey, no state machine, no in-flight dictation. |
+| `hotkey.timer_stall` | The 20 ms poll timer skipped `gap_ms`. The process was descheduled — nothing advanced during that window: no hotkey, no state machine, no in-flight dictation. TTP now holds an activity assertion for the whole Recording → Idle window (see `crate::activity`), so a stall spanning a dictation should no longer be possible; one that still appears is worth investigating. |
 | `capture.start` | Which microphone actually served the recording, its rate/channels/format, whether it is the OS default, and what the user had asked for. |
 | `capture.stop` | Samples the callback delivered, and whether the OS default input changed while the user was talking. |
 | `audio.duration` / `audio.signal` | How much audio, how loud. `avg_rms` below `floor` means the silence gate will drop it; `peak` and `nonzero_ratio` distinguish a quiet room from a dead device. |
@@ -162,9 +162,18 @@ clipboard write, a JSON append, a few `remove_file` calls. None of it can
 take seconds, let alone minutes. So a large gap in that region does not mean
 "that step is slow"; it means the process stopped running. Cross-reference
 against `hotkey.timer_stall`: if a stall covers the same window, the app was
-suspended (App Nap targets `LSUIElement` agents like TTP, and the whole
-process goes quiet — hotkey polling, state machine, and the in-flight
-pipeline together).
+suspended. This is not hypothetical — a dictation on 27 August showed a
+4.2-second hole between `ui.completed` and `usage.recorded` (one JSON write
+apart) with `timer_stall {"gap_ms":4178}` covering it, on a completely
+separate scheduling context, followed immediately by
+`tap_rearmed {"reason":"timeout"}`. Two independent contexts do not stall for
+the same 4.2 seconds because one function was slow.
+
+That is why `crate::activity` now holds an `NSProcessInfo` activity
+assertion from the moment recording starts until the state machine returns to
+Idle. App Nap targets `LSUIElement` agents like TTP, and a napped process
+does not slow down — it stops, which is also how the event tap gets disabled
+for timeout and the Fn key dies.
 
 `re_arm_tap` writes at most one line per 30 s to `ttp.log` while the tap is
 flapping, carrying a `streak` count. The trace keeps every occurrence.

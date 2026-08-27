@@ -1,6 +1,7 @@
 // TTP - Talk To Paste
 // Main Tauri application entry point
 
+mod activity;
 mod audio_capture;
 mod audio_monitor;
 mod credentials;
