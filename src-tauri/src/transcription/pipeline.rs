@@ -430,6 +430,30 @@ fn has_repetition_loop(normalized: &str) -> bool {
         return false;
     }
 
+    // Lexical diversity gate, checked before anything else.
+    //
+    // A degenerate Whisper loop emits the same phrase over and over —
+    // "Sous-titrage Société Radio-Canada" twenty times — so its vocabulary
+    // collapses: unique words end up a small fraction of total words. Human
+    // speech does not do that even when it is deliberately repetitive.
+    //
+    // Without this gate the trigram rule below cannot tell rhetoric from a
+    // loop, and on 2026-08-27 it deleted sixteen seconds of real dictation:
+    // "je sais pas si tu l'as bien étudié, tu l'as bien regardé, tu l'as
+    // bien compris" — three anaphoric repeats of "tu l'as bien", five words
+    // apart, which is exactly the shape the chain detector looks for. 299
+    // characters of genuine speech were dropped and the user was told no
+    // speech had been detected.
+    //
+    // 0.5 is deliberately far from both populations: the dictation above
+    // scores ~0.8, and a real loop scores ~0.1–0.2. Anything in between is
+    // ambiguous enough that keeping the user's words is the better error.
+    const MIN_UNIQUE_WORD_RATIO: f32 = 0.5;
+    let unique_words: std::collections::HashSet<&&str> = words.iter().collect();
+    if unique_words.len() as f32 / words.len() as f32 > MIN_UNIQUE_WORD_RATIO {
+        return false;
+    }
+
     const TIGHT_GAP: usize = 8;
     const MIN_CHAIN: usize = 3;
 
@@ -652,6 +676,65 @@ mod pipeline_transcription_classifier_tests {
 #[cfg(test)]
 mod hallucination_tests {
     use super::*;
+
+    // ── Repetition loop vs. human rhetoric ──────────────────────────────
+
+    #[test]
+    fn anaphora_is_not_a_repetition_loop() {
+        // Real dictation, dropped in full on 2026-08-27. Three anaphoric
+        // repeats of "tu l'as bien", five words apart — exactly the shape the
+        // trigram chain detector looks for, and unmistakably a person talking.
+        let text = "Ok très bien par contre son workflow je sais pas si tu l'as bien \
+                    étudié, tu l'as bien regardé, tu l'as bien compris Parce qu'il y a \
+                    des flèches dans tous les sens et c'est peut-être pas forcément \
+                    simple pour toi pour la vision Ou peut-être mieux vaut pas commenter \
+                    On pourra revoir ça ensemble ouais";
+        assert!(
+            !is_hallucination(text),
+            "sixteen seconds of real speech must survive the loop detector"
+        );
+    }
+
+    #[test]
+    fn repeated_list_intro_survives() {
+        // Another shape people genuinely dictate: parallel clauses.
+        let text = "il faut que je pense à acheter du pain, il faut que je pense à \
+                    appeler le médecin, il faut que je pense à réserver le train";
+        assert!(!is_hallucination(text));
+    }
+
+    #[test]
+    fn degenerate_loop_is_still_caught() {
+        // What the detector is actually for: the same phrase emitted over and
+        // over on silence. Vocabulary collapses, so the diversity gate lets it
+        // through to the chain detector.
+        let text = "sous-titrage société radio-canada sous-titrage société radio-canada \
+                    sous-titrage société radio-canada sous-titrage société radio-canada";
+        assert!(is_hallucination(text));
+    }
+
+    #[test]
+    fn two_word_loop_is_still_caught() {
+        let text = "merci merci merci merci merci merci merci merci merci merci merci";
+        assert!(is_hallucination(text));
+    }
+
+    #[test]
+    fn diversity_gate_sits_between_the_two_populations() {
+        // The gate is only useful if the two populations are far from it.
+        let human = "ok très bien par contre son workflow je sais pas si tu l'as bien \
+                     étudié tu l'as bien regardé tu l'as bien compris parce qu'il y a des \
+                     flèches dans tous les sens";
+        let loopy = "thanks for watching thanks for watching thanks for watching thanks \
+                     for watching thanks for watching";
+        let ratio = |t: &str| {
+            let w: Vec<&str> = t.split_whitespace().collect();
+            let u: std::collections::HashSet<&&str> = w.iter().collect();
+            u.len() as f32 / w.len() as f32
+        };
+        assert!(ratio(human) > 0.7, "human ratio was {}", ratio(human));
+        assert!(ratio(loopy) < 0.3, "loop ratio was {}", ratio(loopy));
+    }
 
     #[test]
     fn normalizes_french_accents() {
