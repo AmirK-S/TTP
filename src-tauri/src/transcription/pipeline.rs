@@ -1400,36 +1400,15 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     let cleaned_text = cleanup(&raw_text);
     trace.transform("cleanup", &raw_text, &cleaned_text, serde_json::Value::Null);
 
-    // Stage 2: Polish text (if enabled AND user has quota)
-    let polish_quota_ok = if !settings.ai_polish_enabled {
-        false
-    } else if crate::licensing::is_pro_or_trial_disk() {
-        true
-    } else {
-        let used = crate::usage::polish_count_this_month(&crate::usage::load_usage());
-        if used < crate::licensing::FREE_POLISH_PER_MONTH {
-            true
-        } else {
-            let used_str = used.to_string();
-            let limit_str = crate::licensing::FREE_POLISH_PER_MONTH.to_string();
-            // Once-per-month gate (see Windows toast spam fix v2.1.7).
-            if crate::usage::should_notify_polish_cap_once_this_month() {
-                notify(
-                    app,
-                    &crate::i18n::tr_with(
-                        "notification.polishLimitReached",
-                        &[("used", &used_str), ("limit", &limit_str)],
-                    ),
-                );
-            }
-            crate::telemetry::analytics::track(
-                app,
-                "free_cap_hit",
-                Some(serde_json::json!({"feature": "ai_polish"})),
-            );
-            false
-        }
-    };
+    // Stage 2: Polish text (if enabled)
+    //
+    // No quota. AI Polish used to be capped at 30 calls a month for anyone
+    // without a licence, which meant the app quietly got worse on the 31st
+    // dictation of the month — and it was doing exactly that on the
+    // maintainer's own machine while we were debugging something else. The
+    // product is free and complete; nothing that makes a transcription better
+    // is held back.
+    let polish_quota_ok = settings.ai_polish_enabled;
 
     trace.stage(
         "polish.decision",

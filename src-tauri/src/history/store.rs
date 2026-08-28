@@ -100,13 +100,6 @@ pub fn add_history_entry(text: &str, raw_text: Option<&str>) -> Result<(), Strin
     // Load existing history
     let mut entries = get_history();
 
-    // Free tier cap — silently skip new entries (don't fail the whole pipeline).
-    if !crate::licensing::is_pro_or_trial_disk()
-        && entries.len() >= crate::licensing::FREE_HISTORY_LIMIT
-    {
-        return Ok(());
-    }
-
     // Create new entry with current timestamp
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)

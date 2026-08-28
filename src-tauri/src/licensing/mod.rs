@@ -15,12 +15,15 @@ use storage::{LicenseRecord, clear_license, load_license, save_license};
 /// Maximum days a cached license can be trusted offline before requiring re-validation.
 const OFFLINE_GRACE_DAYS: i64 = 14;
 
-/// Free tier: max AI Polish calls per calendar month.
-pub const FREE_POLISH_PER_MONTH: u32 = 30;
-/// Free tier: max dictionary entries (existing entries above this are grandfathered).
-pub const FREE_DICTIONARY_LIMIT: usize = 20;
-/// Free tier: max history entries (existing entries above this are grandfathered).
-pub const FREE_HISTORY_LIMIT: usize = 50;
+// The free-tier caps that used to live here — 30 polish calls a month, 20
+// dictionary entries, 50 history entries — are gone. Every feature that makes
+// TTP work is free and uncapped. History still tops out at
+// MAX_HISTORY_ENTRIES (500) in history::store, but that is a retention policy
+// for everyone, not a tier.
+//
+// The licence machinery below is deliberately left in place and dormant: it
+// no longer gates anything, and is kept for a future purchase that adds
+// something playful rather than withholding something useful.
 /// Length of the auto-trial granted on first launch, in days. Was 7 in
 /// v1.6.0–v2.1.10, briefly 3 in v2.2.0, settled at 4 in v2.2.1 — gives
 /// one extra evaluation session over a strict 3-day window without

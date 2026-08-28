@@ -71,11 +71,8 @@ interface UsageStats {
   trial_days_left: number | null;
   trial_started_at: number | null;
   polish_count_this_month: number;
-  polish_limit_free: number;
   dictionary_count: number;
-  dictionary_limit_free: number;
   history_count: number;
-  history_limit_free: number;
 }
 
 interface SettingsStore {

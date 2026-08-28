@@ -309,7 +309,7 @@ export function Settings() {
     autostartEnabled, historyEnabled, vadAutoStopEnabled, vadSilenceSecs, audioDeviceName,
     transcriptionLanguage, diagnosticsEnabled, language, theme, dictionary, history, loading, isPro, licenseKey,
     licenseStatus, licenseExpiresAt, licenseActivationCount, licenseActivationLimit,
-    licenseLoading, licenseError, usage,
+    licenseLoading, licenseError,
     loadSettings, saveSettings, resetSettings, loadDictionary, deleteEntry,
     clearDictionary, loadHistory, clearHistory, loadLicense, activateLicense,
     deactivateLicense, validateLicense, loadUsage,
@@ -578,17 +578,9 @@ export function Settings() {
 
   const maskedLicenseKey = licenseKey ? `${licenseKey.slice(0, 4)}…${licenseKey.slice(-4)}` : '';
 
-  const isInTrial = !!usage?.is_in_trial && !isPro;
-  const trialDaysLeft = usage?.trial_days_left ?? 0;
-  const polishUsed = usage?.polish_count_this_month ?? 0;
-  const polishLimit = usage?.polish_limit_free ?? 0;
-  const dictCount = usage?.dictionary_count ?? dictionary.length;
-  const dictLimit = usage?.dictionary_limit_free ?? 20;
-  const histCount = usage?.history_count ?? history.length;
-  const histLimit = usage?.history_limit_free ?? 50;
-  const dictAtCap = !isPro && !isInTrial && dictCount >= dictLimit;
-  const histAtCap = !isPro && !isInTrial && histCount >= histLimit;
-  const polishAtCap = !isPro && !isInTrial && polishUsed >= polishLimit;
+  // No caps, so no "at cap" states, no trial countdown, and no x/y rows
+  // counting down to a paywall. Every feature is free and unlimited; a
+  // licence is a thank-you, not a key.
 
   const triggerOptions = isMac
     ? [
@@ -930,15 +922,10 @@ export function Settings() {
               title={t('settings.pro.title')}
               action={
                 <div className="flex items-center gap-2">
-                  <Crown className={cn('size-4', isPro || isInTrial ? 'text-app-warning' : 'text-app-faint')} />
+                  <Crown className={cn('size-4', isPro ? 'text-app-warning' : 'text-app-faint')} />
                   {isPro && (
                     <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-app-warning-tint text-app-warning">
                       {t('settings.pro.badgeActive')}
-                    </span>
-                  )}
-                  {!isPro && isInTrial && (
-                    <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-app-accent-tint text-app-accent">
-                      {t('settings.pro.badgeTrial', { days: trialDaysLeft })}
                     </span>
                   )}
                 </div>
@@ -947,15 +934,8 @@ export function Settings() {
               {!isPro ? (
                 <>
                   <p className="text-[13px] text-app-muted mb-4">
-                    {isInTrial ? t('settings.pro.descTrial', { days: trialDaysLeft }) : t('settings.pro.descFree')}
+                    {t('settings.pro.descFree')}
                   </p>
-                  {!isInTrial && (
-                    <div className="space-y-2 mb-4 p-3 bg-app-raised rounded-app-sm border border-app-border">
-                      <UsageRow label={t('settings.pro.usagePolish')} used={polishUsed} limit={polishLimit} atCap={polishAtCap} />
-                      <UsageRow label={t('settings.pro.usageDictionary')} used={dictCount} limit={dictLimit} atCap={dictAtCap} />
-                      <UsageRow label={t('settings.pro.usageHistory')} used={histCount} limit={histLimit} atCap={histAtCap} />
-                    </div>
-                  )}
                   <div className="space-y-2 mb-4">
                     <Input
                       type="text"
@@ -1045,7 +1025,6 @@ export function Settings() {
                     value={newOriginal}
                     onChange={(e) => setNewOriginal(e.target.value)}
                     placeholder={t('settings.dictionary.placeholderMisheard')}
-                    disabled={dictAtCap}
                   />
                 </div>
                 <ArrowRight className="size-4 text-app-faint shrink-0 mb-2.5" aria-hidden />
@@ -1057,18 +1036,12 @@ export function Settings() {
                     value={newCorrection}
                     onChange={(e) => setNewCorrection(e.target.value)}
                     placeholder={t('settings.dictionary.placeholderCorrection')}
-                    disabled={dictAtCap}
                   />
                 </div>
-                <Button onClick={handleAddEntry} disabled={!newOriginal.trim() || !newCorrection.trim() || dictAtCap}>
+                <Button onClick={handleAddEntry} disabled={!newOriginal.trim() || !newCorrection.trim()}>
                   {t('common.add')}
                 </Button>
               </div>
-              {dictAtCap && (
-                <Banner tone="warning" className="mb-3">
-                  {t('settings.dictionary.limitReached', { limit: dictLimit })}
-                </Banner>
-              )}
               {addEntryError && <p className="text-[13px] text-app-danger mb-3">{addEntryError}</p>}
 
               {dictionary.length === 0 ? (
@@ -1248,17 +1221,6 @@ export function Settings() {
 /* ----------------------------------------------------------------------------
    Misc inline helpers
    ------------------------------------------------------------------------- */
-
-function UsageRow({ label, used, limit, atCap }: { label: string; used: number; limit: number; atCap: boolean }) {
-  return (
-    <div className="flex items-center justify-between text-[12px]">
-      <span className="text-app-muted">{label}</span>
-      <span className={cn('font-mono tabular-nums', atCap ? 'text-app-danger font-semibold' : 'text-app-text')}>
-        {used} / {limit}
-      </span>
-    </div>
-  );
-}
 
 function ProInfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (

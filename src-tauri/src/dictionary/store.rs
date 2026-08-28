@@ -152,17 +152,6 @@ pub fn add_entry(original: &str, correction: &str) -> Result<(), String> {
         .iter()
         .position(|e| e.original.to_lowercase() == original_lower);
 
-    // Free tier cap — only blocks brand-new entries; updates pass through.
-    if existing_idx.is_none()
-        && !crate::licensing::is_pro_or_trial_disk()
-        && entries.len() >= crate::licensing::FREE_DICTIONARY_LIMIT
-    {
-        return Err(format!(
-            "Free tier limit reached ({} dictionary entries). Upgrade to TTP Pro for unlimited.",
-            crate::licensing::FREE_DICTIONARY_LIMIT
-        ));
-    }
-
     let timestamp = chrono::Utc::now().timestamp();
     let new_entry = DictionaryEntry {
         original: original.to_string(),
