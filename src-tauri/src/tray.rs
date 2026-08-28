@@ -156,7 +156,12 @@ pub fn refresh_tray(app: &AppHandle) {
 /// surface the warning state.
 #[cfg(target_os = "macos")]
 fn input_monitoring_warning_active() -> bool {
-    get_settings().fn_key_enabled && !crate::fnkey::has_input_monitoring()
+    if !get_settings().fn_key_enabled {
+        return false;
+    }
+    // A tap this process gave up on is indistinguishable from a missing
+    // permission at the user's end: the Fn key does nothing. Same red dot.
+    !crate::fnkey::has_input_monitoring() || crate::fnkey::tap_abandoned()
 }
 #[cfg(not(target_os = "macos"))]
 fn input_monitoring_warning_active() -> bool {

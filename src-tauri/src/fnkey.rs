@@ -184,6 +184,28 @@ static TAP_SOURCE: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_m
 /// Consecutive re-arms without the tap being observed healthy in between.
 static REARM_STREAK: AtomicU64 = AtomicU64::new(0);
 
+/// Rebuilds attempted before we accept that this process cannot hold a tap.
+///
+/// Evidence from 2026-08-28: one session rebuilt the tap 444 times over 90
+/// minutes, every 12 seconds, and never recovered. It ended only when the app
+/// was relaunched. So a tap that will not stay enabled is not a property of
+/// the tap object — recreating it inside the same process does not help —
+/// it is a property of the process, almost certainly its Input Monitoring
+/// grant being evaluated once at launch.
+///
+/// Which means unbounded escalation is not persistence, it is 444 pointless
+/// teardown/create cycles and 2600 lines of noise in the file the user is
+/// keeping in order to find real failures. Three attempts, then stop and say
+/// so — the only remedy is a restart, and only the user can do that.
+const TAP_REBUILD_MAX_ATTEMPTS: u64 = 3;
+
+/// Rebuilds attempted since the tap was last seen healthy.
+static REBUILD_ATTEMPTS: AtomicU64 = AtomicU64::new(0);
+
+/// Set once we have given up on this process's tap, so the watchdog stops
+/// touching it and stops logging about it.
+static TAP_ABANDONED: AtomicBool = AtomicBool::new(false);
+
 /// Failed re-arms before we stop re-enabling and rebuild the tap outright.
 ///
 /// `CGEventTapEnable` on a tap the window server has given up on is a no-op,
@@ -303,6 +325,17 @@ pub fn request_input_monitoring() -> bool {
     unsafe { CGRequestListenEventAccess() }
 }
 
+/// True once this process has given up on keeping an event tap alive.
+///
+/// Surfaced to the tray because the user-visible consequence is identical to
+/// Input Monitoring being missing — the Fn key does nothing — and the tray
+/// already knows how to show that. The remedy differs (restart rather than
+/// grant a permission) but the signal that something is wrong should not wait
+/// for the user to go reading a log.
+pub fn tap_abandoned() -> bool {
+    TAP_ABANDONED.load(Ordering::Relaxed)
+}
+
 /// Return whether the physical Fn/Globe key is currently held.
 ///
 /// The signal comes from `kCGEventFlagsChanged` events with keycode 63
@@ -400,14 +433,35 @@ unsafe fn teardown_tap() {
 /// watchdog can report a successful recovery every two seconds while the Fn
 /// key stays dead. Only a fresh tap gets the events flowing again.
 unsafe fn rebuild_tap(streak: u64) {
+    let attempt = REBUILD_ATTEMPTS.fetch_add(1, Ordering::Relaxed) + 1;
+
+    if attempt > TAP_REBUILD_MAX_ATTEMPTS {
+        // Rebuilding demonstrably is not working. Stop: the process cannot
+        // hold a tap and will not until it is restarted. Said once, then
+        // never again for this session.
+        if !TAP_ABANDONED.swap(true, Ordering::Relaxed) {
+            crate::logging::log_error(&format!(
+                "[FnKey] Event tap could not be kept alive after {} rebuilds. The Fn \
+                 key will not work until TTP is restarted. This is a process-level \
+                 condition — most likely Input Monitoring was granted after launch.",
+                TAP_REBUILD_MAX_ATTEMPTS
+            ));
+            crate::trace::event(
+                "hotkey.tap_abandoned",
+                serde_json::json!({ "rebuilds": TAP_REBUILD_MAX_ATTEMPTS }),
+            );
+        }
+        return;
+    }
+
     crate::logging::log_warn(&format!(
-        "[FnKey] Event tap did not survive {} re-arms — rebuilding it. The Fn key \
-         was not delivering events until now.",
-        streak
+        "[FnKey] Event tap did not survive {} re-arms — rebuilding it (attempt {} of {}). \
+         The Fn key was not delivering events until now.",
+        streak, attempt, TAP_REBUILD_MAX_ATTEMPTS
     ));
     crate::trace::event(
         "hotkey.tap_rebuilt",
-        serde_json::json!({ "after_failed_rearms": streak }),
+        serde_json::json!({ "after_failed_rearms": streak, "attempt": attempt }),
     );
     teardown_tap();
     install_tap("rebuild");
@@ -512,14 +566,19 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
             // pressing anything", so the only way to detect it is to ask.
             if tick % TAP_WATCHDOG_TICKS == 0 {
                 let port = TAP_PORT.load(Ordering::Relaxed) as CFMachPortRef;
-                if port.is_null() {
+                if TAP_ABANDONED.load(Ordering::Relaxed) {
+                    // Given up for this session. Touching the tap again would
+                    // only burn cycles and flood the trace.
+                } else if port.is_null() {
                     // No tap at all — an earlier create failed. Keep trying:
                     // Input Monitoring may have been granted since.
                     install_tap("watchdog_no_tap");
                 } else if CGEventTapIsEnabled(port) {
                     // Healthy: end any flapping streak so the next genuine
-                    // failure logs immediately instead of being rate-limited.
+                    // failure logs immediately instead of being rate-limited,
+                    // and forgive earlier rebuilds — they evidently worked.
                     REARM_STREAK.store(0, Ordering::Relaxed);
+                    REBUILD_ATTEMPTS.store(0, Ordering::Relaxed);
                 } else if REARM_STREAK.load(Ordering::Relaxed) >= TAP_REBUILD_AFTER_FAILED_REARMS {
                     // Re-enabling has demonstrably stopped working. Stop
                     // asking and build a new tap.
