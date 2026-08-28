@@ -166,6 +166,26 @@ pub fn mark_legacy_migration_complete(account: &str) {
     }
 }
 
+/// Populate the caches ahead of first use.
+///
+/// The caches above remove the *repeated* keychain cost, but not the first
+/// one, and the first one is the expensive one: it is where macOS evaluates
+/// the ACL, and where it puts up an authorization dialog if it wants one.
+/// Left to happen lazily, that bill lands on whichever code path touches the
+/// keychain first — which is a dictation, with the user watching an empty
+/// text field. Measured on the first dictation after a relaunch: 3.8 seconds
+/// between a 312ms API response and the stage completing.
+///
+/// Call this at startup from a blocking task. Nothing waits on it; it either
+/// finishes before the first dictation, in which case the cost is invisible,
+/// or it does not, in which case we are no worse off than before.
+pub fn warm_caches(accounts: &[(&str, &[u8; 32])]) {
+    for (account, fallback) in accounts {
+        let _ = get_or_create_hmac_secret(account, fallback);
+        let _ = legacy_migration_complete(account);
+    }
+}
+
 /// Hash arbitrary input to a 32-byte key. Used to derive a stable secret
 /// from the legacy constant when we want to pre-seed something.
 #[allow(dead_code)]

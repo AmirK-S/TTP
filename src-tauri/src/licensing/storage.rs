@@ -23,6 +23,12 @@ fn machine_hmac_secret() -> [u8; 32] {
     crate::keychain::get_or_create_hmac_secret(KEYCHAIN_ACCOUNT, LEGACY_HMAC_SECRET)
 }
 
+/// Pre-read this store's keychain material so the first dictation does not
+/// pay for it. See [`crate::keychain::warm_caches`].
+pub fn warm_keychain_cache() {
+    crate::keychain::warm_caches(&[(KEYCHAIN_ACCOUNT, LEGACY_HMAC_SECRET)]);
+}
+
 type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

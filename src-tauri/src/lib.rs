@@ -618,6 +618,15 @@ pub fn run() {
                 }),
             );
 
+            // Pay the keychain's one-time ACL evaluation now, on a blocking
+            // thread nobody waits on, rather than during the first dictation
+            // with the user watching an empty text field. See
+            // `keychain::warm_caches`.
+            tauri::async_runtime::spawn_blocking(|| {
+                usage::warm_keychain_cache();
+                licensing::warm_keychain_cache();
+            });
+
             // Initialize license state (loads cached license + kicks off background refresh)
             licensing::init(app.handle());
 

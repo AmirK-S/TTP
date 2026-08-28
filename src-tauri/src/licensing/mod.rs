@@ -11,6 +11,7 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use storage::{LicenseRecord, clear_license, load_license, save_license};
+pub use storage::warm_keychain_cache;
 
 /// Maximum days a cached license can be trusted offline before requiring re-validation.
 const OFFLINE_GRACE_DAYS: i64 = 14;
@@ -347,6 +348,11 @@ pub fn is_in_trial_disk(usage: &crate::usage::UsageRecord) -> bool {
 }
 
 /// Combined check: Pro license OR active trial.
+/// No longer called: it existed to gate the free-tier caps, and there are no
+/// caps. Kept with the rest of the dormant licence layer for the eventual
+/// optional purchase, which will unlock something playful rather than
+/// withholding something useful.
+#[allow(dead_code)]
 pub fn is_pro_or_trial_disk() -> bool {
     if is_pro_disk() {
         return true;

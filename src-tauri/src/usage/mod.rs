@@ -4,10 +4,9 @@
 mod store;
 
 pub use store::{
-    AnalyticsSummary, UsageRecord, analytics_summary, current_month_key, load_usage,
-    polish_count_this_month, record_polish_success, record_transcription, save_usage,
-    should_notify_polish_cap_once_this_month, start_trial_if_needed, trial_days_left,
-    trial_started_at,
+    AnalyticsSummary, UsageRecord, analytics_summary, load_usage,
+    polish_count_this_month, record_polish_success, record_transcription,
+    start_trial_if_needed, trial_days_left, warm_keychain_cache,
 };
 
 use serde::Serialize;
