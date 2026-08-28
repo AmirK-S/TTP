@@ -81,6 +81,8 @@ extern "C" {
     fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
     fn CGEventTapEnable(tap: CFMachPortRef, enable: u8);
     fn CGEventTapIsEnabled(tap: CFMachPortRef) -> bool;
+    fn CFRunLoopRemoveSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
+    fn CFRelease(cf: *const std::ffi::c_void);
     fn CGEventGetIntegerValueField(event: CGEventRef, field: u32) -> i64;
     fn CGEventGetFlags(event: CGEventRef) -> u64;
     static kCFRunLoopCommonModes: CFStringRef;
@@ -175,8 +177,27 @@ static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
 /// Wall-clock time of the last re-arm message we wrote to the log.
 static LAST_REARM_LOG_MS: AtomicU64 = AtomicU64::new(0);
 
+/// The run loop source feeding the tap, kept so a dead tap can be fully torn
+/// down rather than merely disabled.
+static TAP_SOURCE: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
+
 /// Consecutive re-arms without the tap being observed healthy in between.
 static REARM_STREAK: AtomicU64 = AtomicU64::new(0);
+
+/// Failed re-arms before we stop re-enabling and rebuild the tap outright.
+///
+/// `CGEventTapEnable` on a tap the window server has given up on is a no-op,
+/// so the watchdog can "recover" a dead tap every two seconds forever while
+/// the Fn key stays dead. Observed on 2026-08-28: a session re-armed 37 times
+/// across 73 seconds, never recovered, and recorded not one key press. The
+/// trigger is visible one line earlier — `timer_stall {"gap_ms":2085}` during
+/// Tauri's startup, long enough for macOS to time the tap out before the app
+/// had finished launching.
+///
+/// 5 attempts is ~10s at the watchdog interval: long enough that a tap merely
+/// wedged by a transient stall gets its chance to come back, short enough
+/// that the user is not left without a hotkey.
+const TAP_REBUILD_AFTER_FAILED_REARMS: u64 = 5;
 
 /// Minimum gap between two re-arm log lines while the tap keeps flapping.
 ///
@@ -297,6 +318,101 @@ fn is_physical_fn_key(_flags: u64) -> bool {
     FN_KEY_PHYSICALLY_DOWN.load(Ordering::Relaxed)
 }
 
+/// Create the HID event tap, wire it into the current run loop, and enable it.
+///
+/// Must run on the thread whose run loop will service the callback — the main
+/// thread, both at startup and from the watchdog inside the NSTimer.
+///
+/// We tap at `kCGHIDEventTap` rather than using NSEvent's global monitor
+/// because macOS consumes F3/F4/F6 for Mission Control / Launchpad / DND
+/// before they reach global monitors, and those keys hold the Function flag
+/// for the duration of the system overlay — which used to trigger false
+/// recordings. Subscribed events:
+///   * FlagsChanged (12) for the physical Fn key — the primary signal;
+///     keycode 63 fires only when Fn itself is pressed or released.
+///   * KeyDown (10) + KeyUp (11) for the defensive F-key path, which only
+///     matters on non-Apple keyboards that never emit FlagsChanged for Fn.
+///
+/// Returns whether a live tap is now installed.
+unsafe fn install_tap(reason: &str) -> bool {
+    let mask: u64 = (1u64 << KCG_EVENT_FLAGS_CHANGED)
+        | (1u64 << KCG_EVENT_KEY_DOWN)
+        | (1u64 << KCG_EVENT_KEY_UP);
+    let tap = CGEventTapCreate(
+        KCG_HID_EVENT_TAP,
+        KCG_TAIL_APPEND_EVENT_TAP,
+        KCG_EVENT_TAP_OPTION_LISTEN_ONLY,
+        mask,
+        fkey_tap_callback,
+        std::ptr::null_mut(),
+    );
+    if tap.is_null() {
+        fnlog!("[FnKey] CGEventTapCreate returned null — F3/F4/F6 veto disabled (Input Monitoring permission missing?)");
+        crate::logging::log_error(
+            "[FnKey] CGEventTapCreate returned null — the Fn key will not work. \
+             Input Monitoring permission is probably missing.",
+        );
+        crate::trace::event(
+            "hotkey.tap_create_failed",
+            serde_json::json!({ "reason": reason }),
+        );
+        return false;
+    }
+
+    let source = CFMachPortCreateRunLoopSource(std::ptr::null_mut(), tap, 0);
+    CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
+    CGEventTapEnable(tap, 1);
+
+    // Publish both handles BEFORE anything can disable the tap: they are what
+    // make re-arming and, failing that, rebuilding possible at all.
+    TAP_PORT.store(tap as *mut std::ffi::c_void, Ordering::Relaxed);
+    TAP_SOURCE.store(source as *mut std::ffi::c_void, Ordering::Relaxed);
+    REARM_STREAK.store(0, Ordering::Relaxed);
+
+    fnlog!("[FnKey] CGEventTap armed at HID level ({})", reason);
+    crate::trace::event(
+        "hotkey.tap_armed",
+        serde_json::json!({ "reason": reason }),
+    );
+    true
+}
+
+/// Remove and release the current tap and its run loop source.
+///
+/// Must run on the same thread that installed them.
+unsafe fn teardown_tap() {
+    let source = TAP_SOURCE.swap(std::ptr::null_mut(), Ordering::Relaxed) as CFRunLoopSourceRef;
+    if !source.is_null() {
+        CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
+        CFRelease(source as *const std::ffi::c_void);
+    }
+    let tap = TAP_PORT.swap(std::ptr::null_mut(), Ordering::Relaxed) as CFMachPortRef;
+    if !tap.is_null() {
+        CGEventTapEnable(tap, 0);
+        CFRelease(tap as *const std::ffi::c_void);
+    }
+}
+
+/// Replace a tap the system has stopped honouring.
+///
+/// The distinction from [`re_arm_tap`] is the whole point: `CGEventTapEnable`
+/// on a tap the window server has written off does nothing at all, so the
+/// watchdog can report a successful recovery every two seconds while the Fn
+/// key stays dead. Only a fresh tap gets the events flowing again.
+unsafe fn rebuild_tap(streak: u64) {
+    crate::logging::log_warn(&format!(
+        "[FnKey] Event tap did not survive {} re-arms — rebuilding it. The Fn key \
+         was not delivering events until now.",
+        streak
+    ));
+    crate::trace::event(
+        "hotkey.tap_rebuilt",
+        serde_json::json!({ "after_failed_rearms": streak }),
+    );
+    teardown_tap();
+    install_tap("rebuild");
+}
+
 /// Re-arm the HID event tap after macOS disabled it.
 ///
 /// This is the recovery path for the single worst failure mode in the input
@@ -396,14 +512,20 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
             // pressing anything", so the only way to detect it is to ask.
             if tick % TAP_WATCHDOG_TICKS == 0 {
                 let port = TAP_PORT.load(Ordering::Relaxed) as CFMachPortRef;
-                if !port.is_null() {
-                    if CGEventTapIsEnabled(port) {
-                        // Healthy: end any flapping streak so the next genuine
-                        // failure logs immediately instead of being rate-limited.
-                        REARM_STREAK.store(0, Ordering::Relaxed);
-                    } else {
-                        re_arm_tap("watchdog");
-                    }
+                if port.is_null() {
+                    // No tap at all — an earlier create failed. Keep trying:
+                    // Input Monitoring may have been granted since.
+                    install_tap("watchdog_no_tap");
+                } else if CGEventTapIsEnabled(port) {
+                    // Healthy: end any flapping streak so the next genuine
+                    // failure logs immediately instead of being rate-limited.
+                    REARM_STREAK.store(0, Ordering::Relaxed);
+                } else if REARM_STREAK.load(Ordering::Relaxed) >= TAP_REBUILD_AFTER_FAILED_REARMS {
+                    // Re-enabling has demonstrably stopped working. Stop
+                    // asking and build a new tap.
+                    rebuild_tap(REARM_STREAK.load(Ordering::Relaxed));
+                } else {
+                    re_arm_tap("watchdog");
                 }
             }
 
@@ -555,35 +677,7 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
         //   - KeyDown (10) + KeyUp (11) for the defensive F-key belt-and-
         //     suspenders path (helpful only on non-Apple keyboards that
         //     don't emit FlagsChanged for Fn)
-        let mask: u64 = (1u64 << KCG_EVENT_FLAGS_CHANGED)
-            | (1u64 << KCG_EVENT_KEY_DOWN)
-            | (1u64 << KCG_EVENT_KEY_UP);
-        let tap = CGEventTapCreate(
-            KCG_HID_EVENT_TAP,
-            KCG_TAIL_APPEND_EVENT_TAP,
-            KCG_EVENT_TAP_OPTION_LISTEN_ONLY,
-            mask,
-            fkey_tap_callback,
-            std::ptr::null_mut(),
-        );
-        if tap.is_null() {
-            fnlog!("[FnKey] CGEventTapCreate returned null — F3/F4/F6 veto disabled (Input Monitoring permission missing?)");
-            crate::logging::log_error(
-                "[FnKey] CGEventTapCreate returned null — the Fn key will not work. \
-                 Input Monitoring permission is probably missing.",
-            );
-            crate::trace::event("hotkey.tap_create_failed", serde_json::Value::Null);
-        } else {
-            let source = CFMachPortCreateRunLoopSource(std::ptr::null_mut(), tap, 0);
-            let rl = CFRunLoopGetCurrent();
-            CFRunLoopAddSource(rl, source, kCFRunLoopCommonModes);
-            CGEventTapEnable(tap, 1);
-            // Publish the port BEFORE anything can disable the tap: this is
-            // what makes `re_arm_tap` possible at all.
-            TAP_PORT.store(tap as *mut std::ffi::c_void, Ordering::Relaxed);
-            fnlog!("[FnKey] CGEventTap armed at HID level (FlagsChanged for Fn keycode 63 + F-key safety net)");
-            crate::trace::event("hotkey.tap_armed", serde_json::Value::Null);
-        }
+        install_tap("startup");
     }
 }
 
