@@ -266,6 +266,14 @@ pub async fn polish_text(api_key: &str, raw_text: &str) -> Result<PolishResult, 
             sleep(Duration::from_millis(delay_ms)).await;
         }
 
+        // Per-attempt timing. The aggregate `polish` stage cannot distinguish
+        // one slow call from a failure plus a retry, and those need opposite
+        // fixes: the first is the model or the tier, the second is an error
+        // worth surfacing. The first migration to gpt-oss took 12 seconds and
+        // there was no way to tell which it had been.
+        let attempt_started = std::time::Instant::now();
+        let attempt_ms = || attempt_started.elapsed().as_millis() as u64;
+
         match client
             .post(CHAT_URL)
             .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
@@ -308,6 +316,15 @@ pub async fn polish_text(api_key: &str, raw_text: &str) -> Result<PolishResult, 
                         return Err("Empty polished text in response".to_string());
                     }
 
+                    crate::trace::event(
+                        "polish.attempt",
+                        serde_json::json!({
+                            "n": attempt + 1,
+                            "status": 200,
+                            "ms": attempt_ms(),
+                            "model": MODEL,
+                        }),
+                    );
                     return Ok(PolishResult {
                         intent: parse_intent(parsed.intent),
                         polished: polished_text,
@@ -317,6 +334,15 @@ pub async fn polish_text(api_key: &str, raw_text: &str) -> Result<PolishResult, 
                     let status_code = status.as_u16();
                     last_error = format!("Polish API error: {} - {}", status, error_body);
                     log_error(&last_error);
+                    crate::trace::event(
+                        "polish.attempt",
+                        serde_json::json!({
+                            "n": attempt + 1,
+                            "status": status_code,
+                            "ms": attempt_ms(),
+                            "model": MODEL,
+                        }),
+                    );
 
                     if status.is_client_error() && status_code != 429 {
                         return Err(last_error);
@@ -326,6 +352,19 @@ pub async fn polish_text(api_key: &str, raw_text: &str) -> Result<PolishResult, 
             Err(e) => {
                 last_error = format!("Polish request failed: {}", e);
                 log_error(&last_error);
+                crate::trace::event(
+                    "polish.attempt",
+                    serde_json::json!({
+                        "n": attempt + 1,
+                        // A timeout lands here after REQUEST_TIMEOUT_SECS, so
+                        // `ms` near 30000 is the signature of a hung call
+                        // rather than a slow one.
+                        "error": e.to_string(),
+                        "timed_out": e.is_timeout(),
+                        "ms": attempt_ms(),
+                        "model": MODEL,
+                    }),
+                );
             }
         }
     }
