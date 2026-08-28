@@ -1823,11 +1823,37 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
     let word_count = final_text.split_whitespace().count();
     let char_count = final_text.chars().count();
-    crate::usage::record_transcription(
-        word_count.try_into().unwrap_or(u32::MAX),
-        char_count.try_into().unwrap_or(u32::MAX),
-    );
-    trace.stage("usage.recorded", serde_json::Value::Null);
+
+    // Off the critical path, and deliberately not awaited.
+    //
+    // This is local stats for the in-app Analytics panel — nothing downstream
+    // reads it — but it was costing the user their hotkey. `record_transcription`
+    // signs and verifies the usage file, and both sides of that reach the OS
+    // keychain for the per-machine HMAC secret. A keychain round-trip can block
+    // for seconds when macOS decides to re-evaluate the ACL, which it does after
+    // any change to the app's code signature.
+    //
+    // Observed 2026-08-28: 7.6 seconds between `ui.completed` and
+    // `usage.recorded`, with no `timer_stall` over the same window — so the main
+    // run loop was turning normally and this was not App Nap. It was one
+    // synchronous blocking call sitting on a tokio worker. The state machine
+    // stays in Processing until this function returns, so for those 7.6 seconds
+    // every hotkey press was a silent no-op: "TTP stopped responding", in
+    // miniature, caused by bookkeeping.
+    let stats_trace = trace.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let started = std::time::Instant::now();
+        crate::usage::record_transcription(
+            word_count.try_into().unwrap_or(u32::MAX),
+            char_count.try_into().unwrap_or(u32::MAX),
+        );
+        // Timed so a keychain stall stays visible instead of merely moving
+        // somewhere the user cannot feel it.
+        stats_trace.stage(
+            "usage.recorded",
+            serde_json::json!({ "ms": started.elapsed().as_millis() as u64 }),
+        );
+    });
 
     // Clean up audio files after processing
     let _ = std::fs::remove_file(&audio_path);
