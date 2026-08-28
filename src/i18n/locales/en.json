@@ -155,6 +155,14 @@
       "deactivateDevice": "Deactivate this device",
       "deactivateHelp": "Deactivating frees an activation slot so you can use this license on another device."
     },
+    "companion": {
+      "soundsLabel": "Voice",
+      "preview": "Listen",
+      "faceLabel": "Give it a face",
+      "faceDesc": "The pill blinks when idle and reacts while you speak. Subtle by default, and it never asks you for anything.",
+      "nameLabel": "Its name",
+      "namePlaceholder": "Name your Talk-To-Paste"
+    },
     "recordingTrigger": {
       "title": "Shortcut",
       "desc": "Hold to record, release to stop. Double-tap to toggle hands-free mode.",

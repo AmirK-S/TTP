@@ -309,7 +309,7 @@ export function Settings() {
     autostartEnabled, historyEnabled, vadAutoStopEnabled, vadSilenceSecs, audioDeviceName,
     transcriptionLanguage, diagnosticsEnabled, language, theme, dictionary, history, loading, isPro, licenseKey,
     licenseStatus, licenseExpiresAt, licenseActivationCount, licenseActivationLimit,
-    licenseLoading, licenseError,
+    licenseLoading, licenseError, soundPack, companionFaceEnabled, companionName,
     loadSettings, saveSettings, resetSettings, loadDictionary, deleteEntry,
     clearDictionary, loadHistory, clearHistory, loadLicense, activateLicense,
     deactivateLicense, validateLicense, loadUsage,
@@ -415,7 +415,7 @@ export function Settings() {
 
   /* ---- Generic toggle factory: cuts 7 near-identical handlers down to 1 --- */
   const makeToggle = useCallback(
-    <K extends 'ai_polish_enabled' | 'telemetry_enabled' | 'hands_free_mode' | 'hide_pill_when_inactive' | 'history_enabled' | 'vad_auto_stop_enabled' | 'diagnostics_enabled'>(
+    <K extends 'ai_polish_enabled' | 'telemetry_enabled' | 'hands_free_mode' | 'hide_pill_when_inactive' | 'history_enabled' | 'vad_auto_stop_enabled' | 'diagnostics_enabled' | 'companion_face_enabled'>(
       key: K,
       sideEffect?: () => void,
     ) => async (enabled: boolean) => {
@@ -577,6 +577,33 @@ export function Settings() {
   };
 
   const maskedLicenseKey = licenseKey ? `${licenseKey.slice(0, 4)}…${licenseKey.slice(-4)}` : '';
+
+  // The Companion catalogue. Locked packs are listed on purpose — you should
+  // be able to hear what you might buy, and a list that hides its contents
+  // cannot tempt anyone.
+  const [soundPacks, setSoundPacks] = useState<SoundPack[]>([]);
+  const [cosmeticsUnlocked, setCosmeticsUnlocked] = useState(false);
+  const [nameDraft, setNameDraft] = useState(companionName);
+
+  useEffect(() => { setNameDraft(companionName); }, [companionName]);
+
+  useEffect(() => {
+    invoke<SoundPack[]>('list_sound_packs').then(setSoundPacks).catch(() => setSoundPacks([]));
+    invoke<boolean>('cosmetics_unlocked').then(setCosmeticsUnlocked).catch(() => setCosmeticsUnlocked(false));
+  }, [isPro]);
+
+  const handleSelectPack = useCallback(async (id: string) => {
+    try { await saveSettings({ sound_pack: id }); } catch (e) { console.error('sound_pack:', e); }
+  }, [saveSettings]);
+
+  const handleCompanionFaceToggle = makeToggle('companion_face_enabled');
+
+  const commitCompanionName = useCallback(async () => {
+    const next = nameDraft.trim();
+    if (next === companionName) return;
+    try { await saveSettings({ companion_name: next || null }); }
+    catch (e) { console.error('companion_name:', e); }
+  }, [nameDraft, companionName, saveSettings]);
 
   // No caps, so no "at cap" states, no trial countdown, and no x/y rows
   // counting down to a paywall. Every feature is free and unlimited; a
@@ -936,6 +963,19 @@ export function Settings() {
                   <p className="text-[13px] text-app-muted mb-4">
                     {t('settings.pro.descFree')}
                   </p>
+                  <CompanionPanel
+                    t={t}
+                    packs={soundPacks}
+                    unlocked={cosmeticsUnlocked}
+                    selected={soundPack}
+                    onSelect={handleSelectPack}
+                    faceEnabled={companionFaceEnabled}
+                    onFaceToggle={handleCompanionFaceToggle}
+                    nameDraft={nameDraft}
+                    setNameDraft={setNameDraft}
+                    commitName={commitCompanionName}
+                    loading={loading}
+                  />
                   <div className="space-y-2 mb-4">
                     <Input
                       type="text"
@@ -967,6 +1007,19 @@ export function Settings() {
                 </>
               ) : (
                 <>
+                  <CompanionPanel
+                    t={t}
+                    packs={soundPacks}
+                    unlocked={cosmeticsUnlocked}
+                    selected={soundPack}
+                    onSelect={handleSelectPack}
+                    faceEnabled={companionFaceEnabled}
+                    onFaceToggle={handleCompanionFaceToggle}
+                    nameDraft={nameDraft}
+                    setNameDraft={setNameDraft}
+                    commitName={commitCompanionName}
+                    loading={loading}
+                  />
                   <div className="space-y-2 mb-4">
                     <ProInfoRow label={t('settings.pro.labelKey')} value={<span className="font-mono">{maskedLicenseKey}</span>} />
                     <ProInfoRow label={t('settings.pro.labelStatus')} value={<span className="capitalize">{licenseStatus ?? t('settings.pro.statusUnknown')}</span>} />
@@ -1221,6 +1274,100 @@ export function Settings() {
 /* ----------------------------------------------------------------------------
    Misc inline helpers
    ------------------------------------------------------------------------- */
+
+interface SoundPack {
+  id: string;
+  name: string;
+  description: string;
+  free: boolean;
+}
+
+/**
+ * The Companion: sound packs, a face, a name.
+ *
+ * Nothing here changes what TTP does — see docs/ttp-pro-design.md. Previewing
+ * works whether or not the packs are unlocked, because hearing what you might
+ * buy is not the same as owning it. Selecting a locked pack is refused in the
+ * backend too, so this UI is a courtesy, not the enforcement.
+ */
+function CompanionPanel({
+  t, packs, unlocked, selected, onSelect, faceEnabled, onFaceToggle,
+  nameDraft, setNameDraft, commitName, loading,
+}: {
+  t: (k: string) => string;
+  packs: SoundPack[];
+  unlocked: boolean;
+  selected: string;
+  onSelect: (id: string) => void;
+  faceEnabled: boolean;
+  onFaceToggle: (v: boolean) => void;
+  nameDraft: string;
+  setNameDraft: (v: string) => void;
+  commitName: () => void;
+  loading: boolean;
+}) {
+  if (packs.length === 0) return null;
+
+  return (
+    <div className="mb-5">
+      <p className="text-[12px] font-medium text-app-text mb-2">{t('settings.companion.soundsLabel')}</p>
+      <div className="space-y-1.5 mb-4">
+        {packs.map((pack) => {
+          const locked = !pack.free && !unlocked;
+          return (
+            <RadioOption
+              key={pack.id}
+              selected={selected === pack.id}
+              onSelect={() => !locked && onSelect(pack.id)}
+              disabled={locked || loading}
+              label={pack.name}
+              description={pack.description}
+              trailing={
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    invoke('preview_sound_pack', { packId: pack.id }).catch(() => {});
+                  }}
+                  className="px-2 py-1 text-[11px] rounded-app-sm text-app-muted hover:text-app-text hover:bg-app-raised"
+                >
+                  {t('settings.companion.preview')}
+                </button>
+              }
+            />
+          );
+        })}
+      </div>
+
+      <SettingsRow
+        label={t('settings.companion.faceLabel')}
+        description={t('settings.companion.faceDesc')}
+        control={
+          <Toggle
+            enabled={faceEnabled}
+            onChange={onFaceToggle}
+            disabled={!unlocked || loading}
+          />
+        }
+      />
+
+      {faceEnabled && unlocked && (
+        <div className="mt-3">
+          <p className="text-[12px] font-medium text-app-text mb-1.5">{t('settings.companion.nameLabel')}</p>
+          <Input
+            type="text"
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            onBlur={commitName}
+            onKeyDown={(e) => { if (e.key === 'Enter') commitName(); }}
+            placeholder={t('settings.companion.namePlaceholder')}
+            maxLength={24}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ProInfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (

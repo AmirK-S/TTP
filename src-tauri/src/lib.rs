@@ -4,6 +4,7 @@
 mod activity;
 mod audio_capture;
 mod audio_monitor;
+mod cosmetics;
 mod credentials;
 mod dictionary;
 #[cfg(target_os = "macos")]
@@ -801,6 +802,9 @@ pub fn run() {
             validate_groq_api_key,
             get_recordings_dir,
             recording::reveal_recordings_folder,
+            cosmetics::list_sound_packs,
+            cosmetics::cosmetics_unlocked,
+            sounds::preview_sound_pack,
             audio_capture::start_recording,
             audio_capture::stop_recording,
             audio_capture::list_audio_input_devices,

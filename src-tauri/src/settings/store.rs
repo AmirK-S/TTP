@@ -90,6 +90,20 @@ pub struct Settings {
     /// `TTP_DIAGNOSTICS=1` overrides it for a single launch.
     #[serde(default)]
     pub diagnostics_enabled: bool,
+    /// Which start/stop sound set plays. `None` or an unknown/locked id
+    /// resolves to the house sounds — see `cosmetics::effective_sound_pack`.
+    #[serde(default)]
+    pub sound_pack: Option<String>,
+    /// Whether the pill draws a face. Independent of the sound choice on
+    /// purpose: a face in peripheral vision is the part most likely to wear
+    /// out its welcome, and it must be switchable without giving up the rest.
+    #[serde(default)]
+    pub companion_face_enabled: bool,
+    /// What the user named their pill. Purely local, never sent anywhere.
+    /// The naming is the point — it is what converts a purchase into a
+    /// possession — so an empty value simply means "not named yet".
+    #[serde(default)]
+    pub companion_name: Option<String>,
 }
 
 fn default_vad_silence_secs() -> u32 {
@@ -135,6 +149,9 @@ impl Default for Settings {
             audio_device_name: None,
             transcription_language: None,
             diagnostics_enabled: false,
+            sound_pack: None,
+            companion_face_enabled: false,
+            companion_name: None,
         }
     }
 }
