@@ -18,9 +18,90 @@ import { cn } from '../lib/cn';
 import { Lock } from 'lucide-react';
 
 const TUTORIAL_DISMISSED_KEY = 'tutorial_pill_dismissed';
+
+/** How often the idle face blinks, in ms. Slow on purpose — see CompanionFace. */
+const BLINK_INTERVAL_MS = 5200;
+const BLINK_DURATION_MS = 140;
 const BAR_COUNT = 14;
 const MIN_HEIGHT = 2;
 const MAX_HEIGHT = 16;
+
+/**
+ * The pill's face.
+ *
+ * Deliberately two dots and a line. The research this comes from (see
+ * docs/ttp-pro-design.md) is clear that the mechanism is anthropomorphism —
+ * the user is already watching this thing wondering whether it heard them —
+ * and anthropomorphism does not need detail. It needs *timing*. A blink every
+ * five seconds reads as alive; a blink every second reads as a cartoon and
+ * becomes unbearable in a working day.
+ *
+ * Three rules it must never break:
+ *   - it never demands anything. Nothing decays, nothing needs feeding,
+ *     nothing is ever sad that you did not dictate today. We take Tamagotchi's
+ *     attachment and explicitly refuse its care burden.
+ *   - it honours prefers-reduced-motion by holding still, eyes open.
+ *   - it is decorative, so it is aria-hidden. The pill already announces its
+ *     state through the live region around it; a face that also spoke would
+ *     make a screen reader read every blink.
+ */
+function CompanionFace({
+  state,
+  reducedMotion,
+}: {
+  state: 'idle' | 'listening' | 'thinking' | 'error';
+  reducedMotion: boolean;
+}) {
+  const [blinking, setBlinking] = useState(false);
+
+  useEffect(() => {
+    if (reducedMotion || state !== 'idle') {
+      setBlinking(false);
+      return;
+    }
+    const id = window.setInterval(() => {
+      setBlinking(true);
+      window.setTimeout(() => setBlinking(false), BLINK_DURATION_MS);
+    }, BLINK_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, [reducedMotion, state]);
+
+  // Eyes close while thinking (it is concentrating, not asleep) and narrow on
+  // error. The pill itself already shakes on error, so the face understates
+  // it rather than competing.
+  const eyesShut = blinking || state === 'thinking';
+  const eyeHeight = eyesShut ? 1 : state === 'error' ? 2 : state === 'listening' ? 4.5 : 3.5;
+
+  return (
+    <span className="shrink-0 flex items-center" aria-hidden>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        {[5, 11].map((cx) => (
+          <rect
+            key={cx}
+            x={cx - 1.1}
+            y={8 - eyeHeight / 2}
+            width={2.2}
+            height={eyeHeight}
+            rx={1.1}
+            className="fill-white/90"
+            style={{ transition: reducedMotion ? undefined : 'all 120ms ease-out' }}
+          />
+        ))}
+        {/* A mouth only while listening — an always-on smile is the fastest
+            way to make something like this feel like clip art. */}
+        {state === 'listening' && (
+          <path
+            d="M 5.6 11.6 Q 8 13.2 10.4 11.6"
+            className="stroke-white/70"
+            strokeWidth={1.1}
+            strokeLinecap="round"
+            fill="none"
+          />
+        )}
+      </svg>
+    </span>
+  );
+}
 
 function formatElapsed(ms: number): string {
   const totalSec = Math.max(0, Math.floor(ms / 1000));
@@ -32,6 +113,23 @@ function formatElapsed(ms: number): string {
 export function FloatingBar() {
   const { t } = useTranslation();
   const recordingState = useRecordingState();
+
+  // The Companion's face. Off unless the user both owns and enabled it —
+  // asked once at mount and refreshed when settings change, because this
+  // window has no settings store of its own.
+  const [faceEnabled, setFaceEnabled] = useState(false);
+  useEffect(() => {
+    const refresh = async () => {
+      const [settings, unlocked] = await Promise.all([
+        safeInvoke<{ companion_face_enabled?: boolean }>('get_settings'),
+        safeInvoke<boolean>('cosmetics_unlocked'),
+      ]);
+      setFaceEnabled(Boolean(settings?.companion_face_enabled) && Boolean(unlocked));
+    };
+    refresh();
+    const un = listen('settings-changed', refresh);
+    return () => { un.then((f) => f()); };
+  }, []);
 
   useEffect(() => {
     document.documentElement.style.background = 'transparent';
@@ -177,6 +275,13 @@ export function FloatingBar() {
         role="status"
         aria-live="polite"
       >
+        {faceEnabled && (
+          <CompanionFace
+            state={isError ? 'error' : isProcessing ? 'thinking' : isRecording ? 'listening' : 'idle'}
+            reducedMotion={prefersReducedMotion}
+          />
+        )}
+
         {isRecording && (
           <>
             <span className="flex items-end gap-[2px] h-[16px]" aria-hidden>
