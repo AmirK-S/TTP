@@ -245,6 +245,69 @@ mod tests {
     }
 
     #[test]
+    fn leading_silence_does_not_drag_speech_below_the_floor() {
+        // The AirPods case, 2026-08-30: the stream opens, the device sends
+        // nothing for about a second, then real speech arrives. Judged over
+        // the whole file the RMS is diluted below the floor and the whole
+        // dictation is dropped as "no speech" — while containing speech.
+        // Nine parts dead air to one part speech, and a quiet speaker —
+        // amplitude chosen so the speech alone clears the floor (~0.008 RMS)
+        // while the diluted whole-file figure lands under it (~0.0025). That
+        // ratio is not contrived: the observed AirPods gap was ~0.94s against
+        // dictations that often run a few seconds.
+        let mut samples = vec![0i16; 144_000];
+        samples.extend((0..16_000).map(|i| ((i as f32 * 0.05).sin() * 370.0) as i16));
+        let path = write_wav("ttp_test_leadin.wav", &samples);
+        let stats = wav_signal_stats(&path).unwrap();
+
+        // At least the dead air, and not much more: a sine legitimately
+        // starts at zero, so the first sample or two of real speech can be
+        // silent as well. Asserting an exact count would be asserting a
+        // property of the test signal rather than of the code.
+        assert!(
+            (144_000..144_010).contains(&stats.leading_silence),
+            "leading_silence was {}",
+            stats.leading_silence
+        );
+        assert!(!stats.is_dead_capture(), "there is real audio in here");
+        assert!(
+            stats.rms < 0.005,
+            "the whole-file RMS should be dragged under the floor: {}",
+            stats.rms
+        );
+        assert!(
+            stats.rms_after_silence > 0.005,
+            "the audio that arrived is clearly speech: {}",
+            stats.rms_after_silence
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_wholly_silent_file_reports_zero_for_both_measures() {
+        // The dead-capture branch runs first and must still see a zero, so
+        // rms_after_silence falls back rather than dividing by nothing.
+        let path = write_wav("ttp_test_alldead.wav", &[0i16; 8_000]);
+        let stats = wav_signal_stats(&path).unwrap();
+        assert!(stats.is_dead_capture());
+        assert_eq!(stats.rms_after_silence, 0.0);
+        assert_eq!(stats.leading_silence, 8_000);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn clean_audio_reports_no_leading_silence() {
+        let samples: Vec<i16> = (0..8_000)
+            .map(|i| (((i as f32 * 0.05).sin() * 6_000.0) as i16).max(1))
+            .collect();
+        let path = write_wav("ttp_test_clean.wav", &samples);
+        let stats = wav_signal_stats(&path).unwrap();
+        assert_eq!(stats.leading_silence, 0);
+        assert!((stats.rms - stats.rms_after_silence).abs() < 1e-6);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn a_single_nonzero_sample_defeats_dead_capture() {
         // The predicate is deliberately strict: ANY signal at all means the
         // device was alive, and we must not tell the user their microphone
@@ -380,6 +443,23 @@ pub struct SignalStats {
     pub nonzero_ratio: f32,
     /// Total samples examined.
     pub samples: u64,
+    /// Leading samples that were exactly zero before any signal arrived.
+    ///
+    /// Bluetooth input devices open their stream and then take up to a second
+    /// to actually start sending audio. Observed on AirPods Pro 2026-08-30:
+    /// the stream ran at 24 kHz (HFP), delivered 22560 samples, and every one
+    /// of them was zero. Whatever the user said in that window does not exist.
+    pub leading_silence: u64,
+    /// RMS measured over the audio that actually arrived — everything from
+    /// the first non-zero sample onward.
+    ///
+    /// The silence gate must use this rather than `rms`. A dictation that is
+    /// one second of Bluetooth dead air followed by real speech has its
+    /// overall RMS dragged below the floor by the dead air, and gets dropped
+    /// as "no speech" while containing speech. Measuring the audio that
+    /// exists, rather than the audio plus the silence in front of it, is the
+    /// difference between losing the recording and losing the first word.
+    pub rms_after_silence: f32,
 }
 
 impl SignalStats {
@@ -411,6 +491,11 @@ pub fn wav_signal_stats(path: &str) -> Result<SignalStats, String> {
     let mut peak: f64 = 0.0;
     let mut nonzero: u64 = 0;
     let mut count: u64 = 0;
+    // Second accumulator, started at the first non-zero sample.
+    let mut sum_after: f64 = 0.0;
+    let mut count_after: u64 = 0;
+    let mut leading_silence: u64 = 0;
+    let mut seen_signal = false;
 
     // One accumulator for every sample width, so the branch on format stays
     // a thin decode step rather than four copies of the statistics.
@@ -422,6 +507,13 @@ pub fn wav_signal_stats(path: &str) -> Result<SignalStats, String> {
         }
         if v != 0.0 {
             nonzero += 1;
+            seen_signal = true;
+        }
+        if seen_signal {
+            sum_after += v * v;
+            count_after += 1;
+        } else {
+            leading_silence += 1;
         }
         count += 1;
     };
@@ -458,13 +550,24 @@ pub fn wav_signal_stats(path: &str) -> Result<SignalStats, String> {
             peak: 0.0,
             nonzero_ratio: 0.0,
             samples: 0,
+            leading_silence: 0,
+            rms_after_silence: 0.0,
         });
     }
 
+    let rms = (sum / count as f64).sqrt() as f32;
     Ok(SignalStats {
-        rms: (sum / count as f64).sqrt() as f32,
+        rms,
         peak: peak as f32,
         nonzero_ratio: nonzero as f32 / count as f32,
         samples: count,
+        leading_silence,
+        // Falls back to the overall figure when nothing but silence arrived,
+        // so the dead-capture branch still sees a zero.
+        rms_after_silence: if count_after > 0 {
+            (sum_after / count_after as f64).sqrt() as f32
+        } else {
+            rms
+        },
     })
 }

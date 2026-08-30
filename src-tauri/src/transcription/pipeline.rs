@@ -1047,10 +1047,11 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             set_state(app, RecordingState::Idle);
             return Err("Microphone delivered no audio".to_string());
         }
-        Ok(stats) if stats.rms < SILENCE_RMS_FLOOR => {
+        Ok(stats) if stats.rms_after_silence < SILENCE_RMS_FLOOR => {
             crate::logging::log_info(&format!(
-                "Silent recording detected (avg RMS {:.4} < {:.4}), skipping Whisper",
-                stats.rms, SILENCE_RMS_FLOOR
+                "Silent recording detected (RMS {:.4} over the audio that arrived, \
+                 {:.4} overall, floor {:.4}), skipping Whisper",
+                stats.rms_after_silence, stats.rms, SILENCE_RMS_FLOOR
             ));
             let _ = std::fs::remove_file(&audio_path);
             emit_progress(app, "error", "error.no_speech", None);
@@ -1064,6 +1065,8 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 serde_json::json!({
                     "device": crate::audio_capture::last_capture_device(),
                     "avg_rms": stats.rms,
+                    "rms_after_silence": stats.rms_after_silence,
+                    "leading_silence": stats.leading_silence,
                     "peak": stats.peak,
                     "nonzero_ratio": stats.nonzero_ratio,
                     "floor": SILENCE_RMS_FLOOR,
@@ -1073,10 +1076,16 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             return Err("Silent recording — skipped Whisper".to_string());
         }
         Ok(stats) => {
+            // `leading_silence` is the measurable form of "my Bluetooth mic
+            // ate the start of my sentence". Recorded on every dictation, not
+            // just failures, so the phenomenon can be quantified rather than
+            // argued about.
             trace.stage(
                 "audio.signal",
                 serde_json::json!({
                     "avg_rms": stats.rms,
+                    "rms_after_silence": stats.rms_after_silence,
+                    "leading_silence": stats.leading_silence,
                     "peak": stats.peak,
                     "nonzero_ratio": stats.nonzero_ratio,
                     "samples": stats.samples,
