@@ -94,6 +94,25 @@ enum SigVerify {
 /// pre-existing malicious `~/.config/ttp/` from another tool) and have it
 /// accepted on the next launch.
 fn verify_license_signature(record: &LicenseRecord) -> SigVerify {
+    verify_license_signature_with(record, &machine_hmac_secret(), || {
+        crate::keychain::legacy_migration_complete(KEYCHAIN_ACCOUNT)
+    })
+}
+
+/// The verifier proper, with its two keychain-backed inputs passed in — the
+/// same split `compute_license_signature` / `compute_license_signature_with`
+/// already uses, so tests can exercise the real decision logic without the
+/// OS keychain (and the authorization dialog it raises on every recompile).
+///
+/// `legacy_closed` is a closure, not a bool, deliberately: the migration flag
+/// must stay unread when the machine secret already verified. A keychain read
+/// on that path is what put 9.5 seconds into the middle of a dictation once
+/// (see keychain.rs); eager evaluation here would quietly put it back.
+fn verify_license_signature_with(
+    record: &LicenseRecord,
+    machine_secret: &[u8],
+    legacy_closed: impl FnOnce() -> bool,
+) -> SigVerify {
     let Some(stored_hex) = record.signature.as_deref() else {
         return SigVerify::NotPresent;
     };
@@ -103,8 +122,7 @@ fn verify_license_signature(record: &LicenseRecord) -> SigVerify {
 
     let input = license_signature_input(record);
 
-    let machine_secret = machine_hmac_secret();
-    let mut mac = HmacSha256::new_from_slice(&machine_secret).expect("32-byte secret");
+    let mut mac = HmacSha256::new_from_slice(machine_secret).expect("32-byte secret");
     mac.update(input.as_bytes());
     if mac.verify_slice(&stored_bytes).is_ok() {
         return SigVerify::ValidMachine;
@@ -113,7 +131,7 @@ fn verify_license_signature(record: &LicenseRecord) -> SigVerify {
     // Legacy fallback only allowed before the first successful migration.
     // After mark_legacy_migration_complete fires (in save_license below), the
     // ValidLegacy path is permanently closed for this account on this machine.
-    if !crate::keychain::legacy_migration_complete(KEYCHAIN_ACCOUNT) {
+    if !legacy_closed() {
         let mut legacy = HmacSha256::new_from_slice(LEGACY_HMAC_SECRET).expect("32-byte secret");
         legacy.update(input.as_bytes());
         if legacy.verify_slice(&stored_bytes).is_ok() {
@@ -285,8 +303,12 @@ mod tests {
     fn malformed_hex_signature_is_invalid_not_panic() {
         let mut record = fresh_record();
         record.signature = Some("not-valid-hex-zzz".into());
-        // Direct call to the production verifier shouldn't panic on bad hex.
-        match verify_license_signature(&record) {
+        // The real verifier, with the keychain's two inputs stubbed. The
+        // panicking closure is the assertion: bad hex must bail out before
+        // anything consults the migration flag.
+        match verify_license_signature_with(&record, &test_secret(), || {
+            panic!("must not read the migration flag for undecodable hex")
+        }) {
             SigVerify::Invalid => { /* expected */ }
             _ => panic!("malformed hex must return SigVerify::Invalid"),
         }
@@ -297,12 +319,95 @@ mod tests {
         let mut record = fresh_record();
         record.signature = Some(String::new());
         // Empty string decodes to empty bytes, which the HMAC verify_slice
-        // rejects (wrong length). Either Invalid or NotPresent is acceptable
-        // — both mean "don't trust".
-        let v = verify_license_signature(&record);
+        // rejects (wrong length). Both the machine and the legacy branch must
+        // refuse it, so the flag is left open to prove neither accepts.
+        let v = verify_license_signature_with(&record, &test_secret(), || false);
         assert!(
             matches!(v, SigVerify::Invalid),
             "empty signature must be Invalid (not panic, not ValidMachine)"
+        );
+    }
+
+    #[test]
+    fn absent_signature_is_not_present() {
+        let record = fresh_record();
+        assert!(
+            matches!(
+                verify_license_signature_with(&record, &test_secret(), || false),
+                SigVerify::NotPresent
+            ),
+            "an unsigned pre-1.6.2 record must report NotPresent, not Invalid"
+        );
+    }
+
+    #[test]
+    fn machine_signed_record_is_valid_machine() {
+        let mut record = fresh_record();
+        sign_with(&mut record, &test_secret());
+        assert!(
+            matches!(
+                verify_license_signature_with(&record, &test_secret(), || {
+                    panic!("a machine-verified record must not read the migration flag")
+                }),
+                SigVerify::ValidMachine
+            ),
+            "record signed with the machine secret must verify as ValidMachine"
+        );
+    }
+
+    #[test]
+    fn legacy_signed_record_accepted_before_migration() {
+        // A license.json written by v1.7.x, seen on the first run after
+        // upgrade: the machine secret does not match, the migration has not
+        // happened, so the legacy secret is allowed to rescue it.
+        let mut record = fresh_record();
+        sign_with(&mut record, LEGACY_HMAC_SECRET);
+        assert!(
+            matches!(
+                verify_license_signature_with(&record, &test_secret(), || false),
+                SigVerify::ValidLegacy
+            ),
+            "legacy-signed record must verify while the migration is still open"
+        );
+    }
+
+    #[test]
+    fn legacy_signed_record_refused_after_migration() {
+        // The anti-replant property. Same bytes as the test above; the only
+        // difference is that this machine has already re-signed something,
+        // which closes the legacy path forever. Anyone who extracts
+        // LEGACY_HMAC_SECRET from the binary and plants a forged file post-
+        // install must land here.
+        let mut record = fresh_record();
+        sign_with(&mut record, LEGACY_HMAC_SECRET);
+        assert!(
+            matches!(
+                verify_license_signature_with(&record, &test_secret(), || true),
+                SigVerify::Invalid
+            ),
+            "legacy-signed record must be refused once the migration is complete"
+        );
+    }
+
+    /// The one assertion that cannot be stubbed: that the production wrapper
+    /// really is wired to the keychain, so a record signed by
+    /// `compute_license_signature` verifies as ValidMachine end to end.
+    /// Everything above stubs the secret; this proves the stub matches the
+    /// real seam. It reads (and on a clean machine creates) the
+    /// `license_hmac_secret` keychain entry, which raises a macOS
+    /// authorization dialog whenever the test binary's code signature has
+    /// changed — i.e. after every recompile. That is why it is ignored.
+    ///
+    /// Run deliberately, and expect to type a password:
+    ///     cargo test --lib licensing::storage -- --ignored
+    #[test]
+    #[ignore = "reads the real macOS keychain; raises an authorization dialog"]
+    fn keychain_backed_wrapper_round_trips() {
+        let mut record = fresh_record();
+        record.signature = Some(compute_license_signature(&record));
+        assert!(
+            matches!(verify_license_signature(&record), SigVerify::ValidMachine),
+            "production sign+verify must agree through the keychain secret"
         );
     }
 
