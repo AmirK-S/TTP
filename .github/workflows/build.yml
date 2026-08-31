@@ -1,21 +1,77 @@
 name: Build TTP
 
+# Two jobs in one file, deliberately:
+#
+#   1. The compile gate. Pushes and PRs to main/master. Proves the thing still
+#      builds on both platforms. Unchanged in spirit from the original file.
+#
+#   2. The maintainer build. Pushes to `polaris/**`, or `workflow_dispatch` on
+#      any branch. Produces a DEVELOPER ID SIGNED AND NOTARISED .dmg that can
+#      be installed on a real Mac without Gatekeeper fighting it, and without
+#      burning a keychain password on every reinstall.
+#
+# Why (2) exists: before this, the only signed path was release.yml, which
+# fires on `v*` tags and publishes a public GitHub Release. Wanting to *look*
+# at a build should not require shipping it to end users. So this file grew a
+# third path: signed, installable, private, no tag, no release.
+#
+# The distinction that matters, and the reason the original file was useless
+# for this: tauri.conf.json sets `bundle.macOS.signingIdentity: "-"`, which is
+# an AD-HOC signature. tauri-cli resolves the identity as
+# `env APPLE_SIGNING_IDENTITY, else config.macos.signing_identity`, so the env
+# var wins when set. release.yml sets it; the old build.yml did not. Every
+# artifact this workflow has ever produced was therefore ad-hoc signed — a
+# signature whose identity changes on every build, which is exactly what makes
+# macOS re-prompt for microphone/accessibility TCC and the keychain on every
+# single test install.
+
 on:
   push:
-    branches: [main, master]
+    branches:
+      - main
+      - master
+      # Maintainer branches. Pushing one produces an installable signed build
+      # without tagging anything. Push triggers read the workflow file from
+      # the pushed branch, so this works the moment the branch lands.
+      - 'polaris/**'
   pull_request:
     branches: [main, master]
+  # On-demand build for any branch. NOTE: GitHub only offers workflow_dispatch
+  # for workflows that exist WITH this trigger on the DEFAULT branch. Until
+  # this file is merged to master, `gh workflow run` will refuse; push to a
+  # `polaris/**` branch instead (an empty commit is enough to re-trigger).
+  workflow_dispatch:
+    inputs:
+      cosmetics:
+        description: 'Unlock Companion cosmetics (sound packs, pill face, name) in this build'
+        type: boolean
+        default: true
+      platforms:
+        description: 'Which platforms to build'
+        type: choice
+        default: macos
+        options:
+          - macos
+          - all
 
 env:
   CARGO_TERM_COLOR: always
 
-# build.yml only needs to read the repo and write artifacts; no need for
-# contents:write or any token elevation.
+# Read the repo, write workflow artifacts. Nothing here creates a tag, a
+# release, or anything else user-visible. That is release.yml's job and it
+# stays that way.
 permissions:
   contents: read
 
 jobs:
   build:
+    # `polaris/**` branches have an open draft PR against master (#5), so a
+    # push to one would otherwise fire twice: once as `push` and once as
+    # `pull_request`. The push run is a strict superset — it signs, notarises
+    # and unlocks cosmetics — so the PR run is pure duplicated runner time.
+    # Drop it. Every other branch keeps its PR build exactly as before.
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'polaris/')
+
     strategy:
       fail-fast: false
       matrix:
@@ -30,16 +86,95 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     steps:
+      # Skip the Windows leg on a dispatch that asked for macOS only. Done as
+      # a step guard rather than a dynamic matrix because a whole extra job to
+      # compute a matrix is more machinery than one `if` is worth.
+      - name: Decide whether this leg runs
+        id: leg
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+             && [ "${{ inputs.platforms }}" = "macos" ] \
+             && [ "${{ matrix.platform }}" != "macos-latest" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Skipped: dispatch requested macOS only."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout repository
+        if: steps.leg.outputs.run == 'true'
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
+      # Classify this run. Two questions decide everything downstream:
+      #
+      #   is_maintainer_build — is this a build meant to be INSTALLED (dispatch
+      #     or a polaris/** push), as opposed to a compile gate for main/master?
+      #   can_sign            — did this run actually receive the Apple secrets?
+      #     Fork PRs never do, and that is fine for a compile gate.
+      #
+      # A maintainer build that cannot sign is a failure, not a warning. An
+      # unsigned artifact does not solve the problem this path exists to solve,
+      # and shipping one silently would waste a download and an install.
+      - name: Classify build
+        id: mode
+        if: steps.leg.outputs.run == 'true'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            MAINT=true
+          elif [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref_name }}" == polaris/* ]]; then
+            MAINT=true
+          else
+            MAINT=false
+          fi
+
+          [ -n "$APPLE_CERTIFICATE" ]    && CAN_SIGN=true    || CAN_SIGN=false
+          [ -n "$APPLE_API_KEY_BASE64" ] && CAN_NOTARIZE=true || CAN_NOTARIZE=false
+
+          # Cosmetics default to on for maintainer builds; the dispatch input
+          # can turn them off. Never on for main/master/PR — the gate stays
+          # exactly as it is in the product.
+          COSMETICS=false
+          if [ "$MAINT" = "true" ]; then
+            COSMETICS=true
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.cosmetics }}" = "false" ]; then
+              COSMETICS=false
+            fi
+          fi
+
+          {
+            echo "is_maintainer_build=$MAINT"
+            echo "can_sign=$CAN_SIGN"
+            echo "can_notarize=$CAN_NOTARIZE"
+            echo "cosmetics=$COSMETICS"
+            echo "short_sha=$(echo "${{ github.sha }}" | cut -c1-7)"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "maintainer_build=$MAINT can_sign=$CAN_SIGN can_notarize=$CAN_NOTARIZE cosmetics=$COSMETICS"
+
+          if [ "$MAINT" = "true" ] && [ "${{ matrix.platform }}" = "macos-latest" ] && [ "$CAN_SIGN" != "true" ]; then
+            echo "::error::This is a maintainer build but APPLE_CERTIFICATE is not available to it. An ad-hoc-signed artifact re-triggers every TCC prompt and the keychain on install, which is the whole problem this path exists to avoid. Refusing to build one."
+            exit 1
+          fi
+          if [ "$MAINT" = "true" ] && [ "${{ matrix.platform }}" = "macos-latest" ] && [ "$CAN_NOTARIZE" != "true" ]; then
+            echo "::warning::Signing is available but notarisation credentials are not. The build will be Developer ID signed (so TCC and the keychain stay stable across reinstalls) but NOT notarised — first launch needs right-click > Open, or 'xattr -dr com.apple.quarantine' on the .app."
+          fi
+
       - name: Setup Node.js
+        if: steps.leg.outputs.run == 'true'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: 20
           cache: npm
 
       - name: Setup Rust
+        if: steps.leg.outputs.run == 'true'
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable @ 2025-12-16
         with:
           # Pinned in lockstep with release.yml so build.yml's "does it
@@ -49,6 +184,7 @@ jobs:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
+        if: steps.leg.outputs.run == 'true'
         uses: swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae  # v2
         with:
           workspaces: src-tauri -> target
@@ -57,6 +193,7 @@ jobs:
       # release.yml for the same rationale. Nothing in Cargo.lock uses opus.
 
       - name: Install frontend dependencies
+        if: steps.leg.outputs.run == 'true'
         run: npm ci
 
       # Detect whether the current package.json version is a beta build (e.g.
@@ -66,26 +203,54 @@ jobs:
       # primary Windows distribution channel.
       - name: Detect beta version
         id: beta-check
+        if: steps.leg.outputs.run == 'true'
         shell: bash
         run: |
           VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           if [[ "$VERSION" =~ -beta\.[0-9]+$ ]]; then
             echo "is_beta=true" >> "$GITHUB_OUTPUT"
           else
             echo "is_beta=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Show the Companion cosmetics in this build without weakening the gate
+      # in the product.
+      #
+      # `cosmetics::unlocked()` reads the TTP_COSMETICS environment variable at
+      # RUNTIME, so nothing can be baked in at compile time. The seam that does
+      # work is `bundle.macOS.infoPlist` (already pointing at src-tauri/
+      # Info.plist, already used for LSUIElement): LaunchServices applies the
+      # LSEnvironment dictionary when an .app is launched from Finder or the
+      # Dock. We patch the CHECKED-OUT COPY of Info.plist in the runner only —
+      # the file in git is untouched, no product source is edited, and release
+      # builds are unaffected because this step never runs for them.
+      #
+      # The patch happens before the bundle is built, so the key is inside the
+      # app when it is signed. Patching afterwards would break the signature.
+      - name: Unlock Companion cosmetics (maintainer build only)
+        if: steps.leg.outputs.run == 'true' && matrix.platform == 'macos-latest' && steps.mode.outputs.cosmetics == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PLIST=src-tauri/Info.plist
+          /usr/libexec/PlistBuddy -c "Delete :LSEnvironment" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :LSEnvironment dict" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :LSEnvironment:TTP_COSMETICS string 1" "$PLIST"
+          echo "--- patched src-tauri/Info.plist (runner copy only) ---"
+          /usr/libexec/PlistBuddy -c "Print" "$PLIST"
+
       - name: Compute build args
         id: build-args
+        if: steps.leg.outputs.run == 'true'
         shell: bash
         run: |
           ARGS="${{ matrix.args }}"
-          # build.yml is the "does it compile?" gate, NOT a release artifact
-          # producer. Skip the updater bundle so tauri-action doesn't demand
-          # `TAURI_SIGNING_PRIVATE_KEY` (release.yml is the only path that
-          # signs updater bundles, and that secret is intentionally not
-          # exposed to PR builds). Restrict to user-facing bundles that prove
-          # the build pipeline still works end-to-end.
+          # Skip the updater bundle: tauri-action would demand
+          # `TAURI_SIGNING_PRIVATE_KEY` for it, and release.yml is the only
+          # path that should be producing updater artifacts anyway. An
+          # updater bundle emitted from a branch build could only cause
+          # confusion about which binary is "current".
           if [[ "${{ matrix.platform }}" == "macos-latest" ]]; then
             ARGS="${ARGS:+$ARGS }--bundles app,dmg"
           else
@@ -97,12 +262,68 @@ jobs:
 
       # Run Rust tests once on macOS — short-circuits the build if something
       # regressed. Skipped on Windows to avoid duplicating the cost.
+      #
+      # Deliberately BEFORE the certificate import: the import step calls
+      # `security list-keychain -d user -s`, which replaces the runner's
+      # keychain search list. Anything in the test suite that touches the
+      # keychain would then be reasoning about a different keychain than it
+      # does today, and the failure would be baffling. Running tests first
+      # also fails fast, before spending minutes on a build we'd throw away.
       - name: Run Rust tests
-        if: matrix.platform == 'macos-latest'
+        if: steps.leg.outputs.run == 'true' && matrix.platform == 'macos-latest'
         working-directory: src-tauri
         run: cargo test --lib
 
+      # ---- Developer ID signing. Same secrets, same steps as release.yml. ----
+      # Copied rather than factored into a reusable workflow on purpose: the
+      # two paths must be able to drift independently (release.yml notarises
+      # under retry, this one does not), and a shared workflow that quietly
+      # changes how releases are signed is a worse failure than duplication.
+      - name: Import Apple Certificate
+        if: steps.leg.outputs.run == 'true' && matrix.platform == 'macos-latest' && steps.mode.outputs.can_sign == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          CERT_PATH=$RUNNER_TEMP/build_certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          echo -n "$APPLE_CERTIFICATE" | base64 --decode --output $CERT_PATH
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security import $CERT_PATH -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+      # Catch a corrupt or wrong-type certificate secret BEFORE spending eight
+      # minutes building a binary we cannot sign.
+      - name: Verify codesign identity (macOS)
+        if: steps.leg.outputs.run == 'true' && matrix.platform == 'macos-latest' && steps.mode.outputs.can_sign == 'true'
+        run: |
+          if ! security find-identity -v -p codesigning $RUNNER_TEMP/app-signing.keychain-db | grep -q "Developer ID Application"; then
+            echo "::error::No 'Developer ID Application' identity found after cert import — secret is corrupt or wrong type."
+            security find-identity -v -p codesigning $RUNNER_TEMP/app-signing.keychain-db || true
+            exit 1
+          fi
+          echo "Codesign identity verified."
+
+      # App Store Connect API key for notarisation. See release.yml for why
+      # this is an API key and not an Apple ID + app-specific password.
+      - name: Write App Store Connect API key (macOS)
+        if: steps.leg.outputs.run == 'true' && matrix.platform == 'macos-latest' && steps.mode.outputs.can_notarize == 'true'
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          mkdir -p ~/private_keys
+          KEY_PATH="$HOME/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8"
+          echo -n "$APPLE_API_KEY_BASE64" | base64 --decode > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+
       - name: Build Tauri app
+        if: steps.leg.outputs.run == 'true'
         uses: tauri-apps/tauri-action@fce9c6108b31ea247710505d3aaaa893ee6768d4  # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -115,25 +336,106 @@ jobs:
           # builds, which is acceptable.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # THE line that separates a real signature from an ad-hoc one. Empty
+          # on fork PRs, in which case tauri falls back to the config's "-"
+          # and produces the same ad-hoc build it always did — acceptable for
+          # a compile gate, and impossible for a maintainer build because the
+          # Classify step already failed the run.
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # Tauri reads the *Key ID* (10 chars) from APPLE_API_KEY, NOT the
+          # .p8 contents. The .p8 path comes from APPLE_API_KEY_PATH, set by
+          # the "Write App Store Connect API key" step above. All three empty
+          # => tauri signs but does not notarise.
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
         with:
           args: ${{ steps.build-args.outputs.args }}
 
+      # Proof, in the log, of what was actually produced. Without this the
+      # only way to find out whether a build is really Developer ID signed is
+      # to download it and check by hand — and by then the run is over.
+      # `continue-on-error` because this step exists to REPORT, and a failure
+      # to introspect must not throw away an artifact that may well be fine.
+      - name: Verify the built app (macOS)
+        id: verify
+        if: steps.leg.outputs.run == 'true' && matrix.platform == 'macos-latest'
+        continue-on-error: true
+        shell: bash
+        run: |
+          APP=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' | head -1)
+          echo "app: $APP"
+
+          echo "--- codesign identity ---"
+          codesign -dvv "$APP" 2>&1 | grep -E 'Authority|TeamIdentifier|Signature|Identifier' || true
+
+          echo "--- signature validity ---"
+          codesign --verify --deep --strict --verbose=2 "$APP" 2>&1 || true
+
+          echo "--- Gatekeeper assessment (passes only if notarised + stapled) ---"
+          spctl --assess --type execute --verbose=4 "$APP" 2>&1 || true
+
+          echo "--- notarisation ticket ---"
+          xcrun stapler validate "$APP" 2>&1 || echo "NOT STAPLED"
+
+          echo "--- cosmetics env baked into the bundle ---"
+          /usr/libexec/PlistBuddy -c "Print :LSEnvironment" "$APP/Contents/Info.plist" 2>&1 \
+            || echo "no LSEnvironment (cosmetics not unlocked in this build)"
+
+          if codesign -dvv "$APP" 2>&1 | grep -q 'Authority=Developer ID Application'; then
+            echo "RESULT: Developer ID signed."
+          else
+            echo "::warning::RESULT: NOT Developer ID signed — this artifact will re-prompt for TCC and keychain on every install."
+          fi
+
+      # macOS: the .dmg only.
+      #
+      # The original workflow also uploaded the raw .app. That was actively
+      # harmful for an installable build: actions/upload-artifact zips its
+      # input and does not preserve symlinks or the executable bit, so an .app
+      # that survives the round trip arrives with a BROKEN code signature —
+      # which is indistinguishable, on the receiving Mac, from the ad-hoc
+      # problem we are here to fix. A .dmg is a single opaque file and comes
+      # back byte-identical.
       - name: Upload artifacts (macOS)
-        if: matrix.platform == 'macos-latest'
+        if: steps.leg.outputs.run == 'true' && matrix.platform == 'macos-latest'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
-          name: TTP-macOS
-          path: |
-            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
-            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app
-          retention-days: 7
+          name: TTP-macOS-${{ steps.beta-check.outputs.version }}-${{ steps.mode.outputs.short_sha }}
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          # Generous on purpose: the maintainer build is meant to be lived
+          # with for a while, not downloaded within the week.
+          retention-days: 90
 
       - name: Upload artifacts (Windows)
-        if: matrix.platform == 'windows-latest'
+        if: steps.leg.outputs.run == 'true' && matrix.platform == 'windows-latest'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
-          name: TTP-Windows
+          name: TTP-Windows-${{ steps.beta-check.outputs.version }}-${{ steps.mode.outputs.short_sha }}
           path: |
             src-tauri/target/release/bundle/msi/*.msi
             src-tauri/target/release/bundle/nsis/*.exe
-          retention-days: 7
+          retention-days: 90
+
+      # One line at the top of the run summary saying what came out, so the
+      # answer to "is this one installable?" is visible without opening logs.
+      - name: Summary
+        if: steps.leg.outputs.run == 'true' && matrix.platform == 'macos-latest'
+        shell: bash
+        run: |
+          {
+            echo "### TTP ${{ steps.beta-check.outputs.version }} — macOS"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| commit | \`${{ steps.mode.outputs.short_sha }}\` on \`${{ github.ref_name }}\` |"
+            echo "| maintainer build | ${{ steps.mode.outputs.is_maintainer_build }} |"
+            echo "| Developer ID signed | ${{ steps.mode.outputs.can_sign }} |"
+            echo "| notarised | ${{ steps.mode.outputs.can_notarize }} |"
+            echo "| Companion cosmetics unlocked | ${{ steps.mode.outputs.cosmetics }} |"
+            echo ""
+            echo "Artifact: \`TTP-macOS-${{ steps.beta-check.outputs.version }}-${{ steps.mode.outputs.short_sha }}\` (.dmg, 90-day retention)."
+            echo ""
+            echo "See the \"Verify the built app\" step for the actual signature, not just the intent."
+          } >> "$GITHUB_STEP_SUMMARY"
