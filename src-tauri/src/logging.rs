@@ -172,18 +172,80 @@ fn rotate_if_needed(path: &Path, max_size: u64, keep: usize) {
     let _ = fs::rename(path, rotated_path(path, 1));
 }
 
-/// Append one line to `path`, rotating first if needed. Every failure is
-/// swallowed: logging must never be able to break the thing it is observing.
-fn append_line(path: &Path, max_size: u64, keep: usize, line: &str) {
+/// Failed appends, counted so the gap they leave can announce itself.
+///
+/// A write that fails here cannot be reported by logging it — that is the
+/// call that just failed, and retrying it recursively would be worse than the
+/// silence. So it is counted, and `crate::trace` folds the tally into the
+/// next record that does reach the file, the same way it reports queue
+/// overflow. See [`take_write_failures`].
+static WRITE_FAILURES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Read and reset the failed-append tally.
+///
+/// Called by the trace writer thread immediately before it hands a record to
+/// [`log_trace_line`], so a burst of failed writes is reported on the first
+/// line that gets through rather than never.
+pub fn take_write_failures() -> u64 {
+    WRITE_FAILURES.swap(0, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Put a tally back after the line carrying it failed to land, so the count
+/// stays true rather than being lost along with the line that reported it.
+pub fn restore_write_failures(n: u64) {
+    if n > 0 {
+        WRITE_FAILURES.fetch_add(n, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+/// Frame one record as the exact bytes of a single append.
+///
+/// The record and its terminating newline are ONE buffer and therefore one
+/// `write_all`, because two writes are not one append.
+///
+/// Twenty records in the August 2026 corpus share a physical line with the
+/// record that followed them, and exactly twenty blank lines accompany them —
+/// `grep -c '^$'` returns the same number as the merged-line count, in both
+/// the live file and the rotated one. That pairing is the signature, and it
+/// only has one cause:
+///
+///     A-payload  B-payload  A-newline  B-newline
+///     └──────── one physical line ───┘ └ blank ┘
+///
+/// Moving the trace onto a single writer thread (commit e9449e0) serialises
+/// the trace's own callers *within this process*. It does not serialise a
+/// second process appending to the same path, which is the ordinary state of
+/// this machine while TTP is being developed: an installed build and a
+/// `tauri dev` build share one log directory and one `ttp-trace.log`. Nor
+/// does it serialise `ttp.log`, whose writers are still every thread in the
+/// app. Framing the record atomically closes all of those at once, because
+/// `write(2)` on a file opened `O_APPEND` positions and writes under the
+/// inode lock — no other writer's bytes can land inside it.
+fn frame_record(line: &str) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(line.len() + 1);
+    buf.extend_from_slice(line.as_bytes());
+    buf.push(b'\n');
+    buf
+}
+
+/// Append one line to `path`, rotating first if needed. Failures are counted
+/// rather than propagated: logging must never be able to break the thing it
+/// is observing, but it must not be able to go quiet without saying so
+/// either.
+fn append_line(path: &Path, max_size: u64, keep: usize, line: &str) -> bool {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
     rotate_if_needed(path, max_size, keep);
 
-    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
-        let _ = file.write_all(line.as_bytes());
-        let _ = file.write_all(b"\n");
+    let wrote = match OpenOptions::new().create(true).append(true).open(path) {
+        Ok(mut file) => file.write_all(&frame_record(line)).is_ok(),
+        Err(_) => false,
+    };
+    if !wrote {
+        WRITE_FAILURES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
+    wrote
 }
 
 /// Write a log entry to the persistent log file.
@@ -195,7 +257,7 @@ fn log_to_file_at(level: Level, message: &str) {
 
     let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
     let entry = format!("[{}] [{}] {}", timestamp, level.tag(), message);
-    append_line(&path, MAX_LOG_SIZE, KEEP_ROTATIONS, &entry);
+    let _ = append_line(&path, MAX_LOG_SIZE, KEEP_ROTATIONS, &entry);
 }
 
 /// Append one pre-formatted line to the dictation trace.
@@ -206,9 +268,13 @@ fn log_to_file_at(level: Level, message: &str) {
 /// reproduce the blind spot it was written to remove. Volume is bounded by
 /// the file's own rotation, and text payloads are redacted unless the user
 /// opts in — see `crate::trace`.
-pub fn log_trace_line(line: &str) {
-    let Some(path) = trace_path() else { return };
-    append_line(&path, MAX_TRACE_SIZE, KEEP_TRACE_ROTATIONS, line);
+/// Returns whether the record reached the file, so the one caller — the
+/// trace writer thread — can tell a lost line from a written one and keep the
+/// failure tally honest instead of losing it along with the line that was
+/// carrying it.
+pub fn log_trace_line(line: &str) -> bool {
+    let Some(path) = trace_path() else { return false };
+    append_line(&path, MAX_TRACE_SIZE, KEEP_TRACE_ROTATIONS, line)
 }
 
 /// Back-compat helper for callers that pass a level string directly.
@@ -293,5 +359,105 @@ pub fn reveal_log_folder() -> Result<(), String> {
             .spawn()
             .map_err(|e| format!("Failed to open log folder: {}", e))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A scratch path in the OS temp dir, unique per test and per run.
+    fn scratch(name: &str) -> PathBuf {
+        let unique = format!(
+            "ttp-log-test-{}-{}-{}",
+            name,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        );
+        std::env::temp_dir().join(unique)
+    }
+
+    /// Twenty records in the August corpus share a physical line with the
+    /// record that followed them, and the same twenty are followed by a blank
+    /// line. That pairing is the signature of an append written as *two*
+    /// syscalls — payload, then newline — with a second writer landing its own
+    /// payload in between:
+    ///
+    ///     A-payload  B-payload  A-newline  B-newline
+    ///     └──────── one physical line ───┘ └ blank ┘
+    ///
+    /// Moving the trace to a single writer thread serialises the callers
+    /// *inside this process*. It cannot serialise a second process appending
+    /// to the same file, which is the ordinary state of this machine during
+    /// development (an installed build and a `tauri dev` build share one log
+    /// directory). So the framing itself has to be atomic: one `write_all` of
+    /// `line + "\n"`, which under `O_APPEND` the kernel completes without
+    /// another writer's bytes landing inside it.
+    ///
+    /// This test fails on the two-write version. It is a race, so it is
+    /// written to lose that race reliably: many threads, many lines, and
+    /// payloads long enough that the window between the two writes is wide.
+    #[test]
+    fn concurrent_appends_never_share_a_line() {
+        let path = scratch("interleave");
+        let threads = 8;
+        let per_thread = 150;
+        let mut handles = Vec::new();
+        for t in 0..threads {
+            let p = path.clone();
+            handles.push(std::thread::spawn(move || {
+                for i in 0..per_thread {
+                    // Long enough that the payload write is not a single
+                    // trivially-fast memcpy into a warm buffer.
+                    let line = format!("[{:02}-{:04}] {}", t, i, "x".repeat(600));
+                    append_line(&p, u64::MAX, 0, &line);
+                }
+            }));
+        }
+        for h in handles {
+            h.join().expect("writer thread panicked");
+        }
+
+        let content = std::fs::read_to_string(&path).expect("log file");
+        let _ = std::fs::remove_file(&path);
+
+        // A well-formed record is `[tt-iiii] ` followed by exactly 600 x's:
+        // one '[', one ']', and 610 characters. A merged line is longer and
+        // has two brackets; a torn line is shorter. Both fail this.
+        let lines: Vec<&str> = content.lines().collect();
+        let malformed: Vec<&&str> = lines
+            .iter()
+            .filter(|l| l.len() != 610 || l.matches('[').count() != 1)
+            .collect();
+        assert!(
+            malformed.is_empty(),
+            "{} of {} lines were torn or merged; first: {:?}",
+            malformed.len(),
+            lines.len(),
+            malformed.first().map(|l| &l[..l.len().min(120)])
+        );
+        assert_eq!(
+            lines.len(),
+            threads * per_thread,
+            "expected one physical line per record"
+        );
+        // The other half of the corpus signature: a merged line is always
+        // accompanied by a blank one, because the newline that should have
+        // ended it lands after the intruder's payload.
+        assert_eq!(content.matches("\n\n").count(), 0, "a blank line means a torn record");
+    }
+
+    /// The rotation cascade renames the live file out from under the writer.
+    /// A record must never be split across that boundary either.
+    #[test]
+    fn a_record_and_its_newline_are_one_write() {
+        let path = scratch("framing");
+        append_line(&path, u64::MAX, 0, "hello");
+        let content = std::fs::read_to_string(&path).expect("log file");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(content, "hello\n");
     }
 }

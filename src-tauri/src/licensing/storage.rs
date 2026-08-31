@@ -398,11 +398,22 @@ mod tests {
     /// authorization dialog whenever the test binary's code signature has
     /// changed — i.e. after every recompile. That is why it is ignored.
     ///
+    /// Since the keychain is now diverted for the whole test configuration
+    /// (see `crate::keychain::read_or_create_hmac_secret`), this test opts
+    /// itself back in via `TTP_TEST_REAL_KEYCHAIN`. Without that it would pass
+    /// against the substitute and prove nothing — a tautology wearing the
+    /// name of a guard.
+    ///
     /// Run deliberately, and expect to type a password:
     ///     cargo test --lib licensing::storage -- --ignored
     #[test]
     #[ignore = "reads the real macOS keychain; raises an authorization dialog"]
     fn keychain_backed_wrapper_round_trips() {
+        // SAFETY: this test is `#[ignore]`d and run alone, so no other thread
+        // is reading the environment. It is set before the first keychain
+        // touch, so the process-lifetime cache is populated from the real
+        // entry rather than the substitute.
+        unsafe { std::env::set_var("TTP_TEST_REAL_KEYCHAIN", "1") };
         let mut record = fresh_record();
         record.signature = Some(compute_license_signature(&record));
         assert!(

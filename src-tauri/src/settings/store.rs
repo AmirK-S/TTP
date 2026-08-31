@@ -479,7 +479,29 @@ pub(crate) fn write_settings_atomic(path: &std::path::Path, settings: &Settings)
             let _ = fs::remove_file(&tmp_path);
             format!("Failed to write temp settings file: {}", e)
         })?;
-        let _ = f.sync_all();
+        // The fsync is not decoration: it is the single step that makes the
+        // temp-write-then-rename dance crash-safe, and `architecture.md`
+        // advertises it — "temp file → fsync → atomic rename … so a crash
+        // mid-write can never corrupt the live settings file".
+        //
+        // Discarding its error voided exactly that. If the fsync fails, the
+        // rename below installs a file whose bytes are not on disk,
+        // `set_settings` returns `Ok(())`, the in-memory cache is refreshed
+        // with the new values, and the app is confidently serving settings
+        // that will not survive a power cut. The user was told nothing and
+        // the trace recorded nothing — one line below a `write_all` whose
+        // error is caught, cleaned up after, and described.
+        f.sync_all().map_err(|e| {
+            let _ = fs::remove_file(&tmp_path);
+            // Recorded as well as returned. The caller surfaces the string;
+            // this makes the event greppable next to the dictation it
+            // happened during, which is how anyone would find it.
+            crate::trace::degraded(
+                "settings.fsync",
+                serde_json::json!({ "error": e.to_string(), "installed": false }),
+            );
+            format!("Failed to fsync temp settings file: {}", e)
+        })?;
     }
     if let Err(e) = fs::rename(&tmp_path, path) {
         #[cfg(windows)]

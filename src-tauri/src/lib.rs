@@ -4,6 +4,10 @@
 mod activity;
 mod audio_capture;
 mod audio_monitor;
+// Decides whether a capture that has just been built may go live, and
+// whether one that is live still has an owner. See the module header for the
+// 10 h 57 m hot microphone it exists to prevent.
+mod capture_arbiter;
 mod cosmetics;
 mod credentials;
 mod dictionary;
@@ -380,6 +384,44 @@ fn restart_app_post_update(app: AppHandle) -> Result<(), String> {
     relaunch_app_via_launchservices(app)
 }
 
+/// Tell the UI a permission is missing, and say so if nobody was listening.
+///
+/// Both call sites fire during Tauri `setup()`, having just discovered either
+/// that the app is not trusted for Accessibility at all or — the interesting
+/// case — that macOS reports it as trusted while the AX probe fails. During
+/// `setup()` the webview may well not have mounted yet, which is precisely
+/// when this runs, so the emit can find no listener, the banner never appears,
+/// and the user is left with a permission problem and no sign of it.
+///
+/// The behaviour is unchanged: this is still best-effort and still does not
+/// retry. What changes is that the failure now has a line. `emit` returning
+/// `Ok` is not proof a window received it either — that limit is real and is
+/// why the event carries the reason rather than only the outcome.
+#[cfg(target_os = "macos")]
+fn notify_accessibility_missing(app: &AppHandle) {
+    match app.emit("accessibility-missing", ()) {
+        Ok(()) => {
+            trace::event(
+                "permission.notify",
+                serde_json::json!({ "event": "accessibility-missing", "emitted": true }),
+            );
+        }
+        Err(e) => {
+            logging::log_warn(&format!(
+                "[TTP] could not tell the UI accessibility is missing: {}",
+                e
+            ));
+            trace::event(
+                "permission.notify_failed",
+                serde_json::json!({
+                    "event": "accessibility-missing",
+                    "error": e.to_string(),
+                }),
+            );
+        }
+    }
+}
+
 /// Tauri command to reset state to Idle (used when skipping short recordings)
 #[tauri::command]
 fn reset_to_idle(app: AppHandle) {
@@ -639,6 +681,10 @@ pub fn run() {
             tauri::async_runtime::spawn_blocking(|| {
                 usage::warm_keychain_cache();
                 licensing::warm_keychain_cache();
+                // The third keychain account, and the only one whose read sits
+                // between the user's last word and the Whisper call. It was
+                // the one left uncached and unwarmed.
+                credentials::warm_key_cache();
             });
 
             // Initialize license state (loads cached license + kicks off background refresh)
@@ -679,7 +725,7 @@ pub fn run() {
                 if !api_trusted {
                     // Not trusted at all — prompt via the system dialog
                     paste::check_accessibility_with_prompt(true);
-                    let _ = app.handle().emit("accessibility-missing", ());
+                    notify_accessibility_missing(app.handle());
                 } else if !actually_works {
                     // Stale trust entry (common after app update) — reset and re-prompt
                     logging::log_warn(
@@ -691,7 +737,7 @@ pub fn run() {
                     // Small delay then re-prompt
                     std::thread::sleep(std::time::Duration::from_millis(300));
                     paste::check_accessibility_with_prompt(true);
-                    let _ = app.handle().emit("accessibility-missing", ());
+                    notify_accessibility_missing(app.handle());
                     use tauri_plugin_notification::NotificationExt;
                     let _ = app.notification()
                         .builder()

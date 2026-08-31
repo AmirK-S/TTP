@@ -50,6 +50,29 @@ fn changelog_for_lang(version: &str, lang: &str) -> Option<&'static str> {
 /// entries at the top, paired with each new EN entry.
 fn changelog_for_fr(version: &str) -> Option<&'static str> {
     match version {
+        "3.1.7" => Some(
+            "TTP est entièrement gratuit. Toutes les fonctionnalités, sans \
+             limite, sans compte, sans essai qui expire.\n\
+             • Le Compagnon : la pilule a un visage, et TTP a des packs de \
+             sons — bol, marimba, feutre. Cosmétique et rien d'autre : aucun \
+             son, aucun visage ne change ce que TTP fait de ta voix.\n\
+             • La correction IA remarche. Groq a débranché le modèle qu'on \
+             utilisait le 16 août ; on a migré, et chaque tentative est \
+             maintenant chronométrée pour que la prochaine panne se voie.\n\
+             • Micro mort : si ton casque est connecté sans rien envoyer, TTP \
+             te le dit au bout de deux secondes, pendant que tu peux encore \
+             agir — au lieu de te laisser parler vingt secondes dans le vide.\n\
+             • Le micro ne peut plus rester allumé. Un enregistrement qui \
+             démarre après que tu as relâché la touche est refusé au lieu \
+             d'être laissé ouvert sans personne pour le fermer.\n\
+             • Plus rapide : le trousseau macOS ne s'intercale plus entre ta \
+             dernière phrase et ton texte. Une lecture mesurée à 62 secondes \
+             se faisait attendre là.\n\
+             • La touche Fn survit : quand macOS désactive notre écoute \
+             clavier et que la réarmer ne suffit plus, on la reconstruit.\n\
+             • Diagnostic : chaque dictée laisse une trace, étape par étape, \
+             dans ttp-trace.log. Paramètres → Avancé → Diagnostics.",
+        ),
         "3.1.6" => Some(
             "Fix : même le prompt minimal \"French and English bilingual speaker.\" \
              leakait à la fin des transcriptions sur du silence en fin de phrase \
@@ -154,6 +177,31 @@ fn changelog_for_fr(version: &str) -> Option<&'static str> {
 /// Returns None if no changelog is available for that version.
 fn changelog_for(version: &str) -> Option<&'static str> {
     match version {
+        "3.1.7" => Some(
+            "TTP is free. Every feature, uncapped, no account, no trial that \
+             runs out.\n\
+             • The Companion: the pill has a face, and TTP has sound packs — \
+             bowl, marimba, felt. Cosmetic and nothing else: no sound and no \
+             face changes what TTP does with your voice.\n\
+             • AI Polish works again. Groq decommissioned the model we were \
+             using on 16 August; we migrated, and every attempt is now timed \
+             so the next outage announces itself instead of looking like a \
+             slow model.\n\
+             • Dead microphone: if your headset is connected but streaming \
+             nothing, TTP says so after two seconds — while you can still do \
+             something about it — instead of letting you talk into it for \
+             twenty and losing the lot.\n\
+             • The microphone can no longer be left on. A capture that \
+             finishes starting after you have already let go of the key is \
+             now refused rather than left running with nobody to close it.\n\
+             • Faster: the macOS keychain no longer sits between your last \
+             word and your text. One read measured 62 seconds was waiting \
+             there.\n\
+             • The Fn key survives: when macOS disables our keyboard tap and \
+             re-arming it stops helping, we rebuild it.\n\
+             • Diagnostics: every dictation now leaves a stage-by-stage trace \
+             in ttp-trace.log. Settings → Advanced → Diagnostics.",
+        ),
         "3.1.6" => Some(
             "Fix: even the minimal \"French and English bilingual speaker.\" \
              prompt was leaking at the end of transcriptions on trailing silence \
@@ -535,4 +583,72 @@ pub fn dismiss_whats_new() -> Result<(), String> {
     let version = current_version();
     fs::write(last_seen_version_path(), version)
         .map_err(|e| format!("Failed to save last_seen_version: {}", e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The mechanism, not the instance.
+    ///
+    /// 3.1.7 shipped with no What's New note because the version was bumped in
+    /// `Cargo.toml`, `tauri.conf.json` and `package.json` and `changelog_for`
+    /// was not told. Nothing anywhere connected the two, so the omission was
+    /// silent: `check_whats_new` returns `None` for an unknown version, which
+    /// is indistinguishable from "the user has already seen it".
+    ///
+    /// This test is that connection. Every future bump fails here until the
+    /// note exists, which is the only moment anyone is thinking about the
+    /// release anyway.
+    #[test]
+    fn the_shipping_version_has_a_changelog() {
+        assert!(
+            changelog_for(current_version()).is_some(),
+            "v{} ships with no What's New entry — add one to `changelog_for`",
+            current_version()
+        );
+    }
+
+    /// The app is bilingual, and What's New is one of the few surfaces a
+    /// French user reaches without going through Settings → Language. An
+    /// EN-only note is a visible seam on exactly the screen that introduces
+    /// the release.
+    #[test]
+    fn the_shipping_version_has_a_french_changelog() {
+        assert!(
+            changelog_for_fr(current_version()).is_some(),
+            "v{} has an English What's New entry and no French one",
+            current_version()
+        );
+    }
+
+    /// The dispatcher must not quietly serve English to a French user when a
+    /// French entry exists — the bug that would make the test above useless.
+    #[test]
+    fn a_french_user_gets_the_french_note() {
+        let fr = changelog_for_lang(current_version(), "fr").expect("fr note");
+        let en = changelog_for_lang(current_version(), "en").expect("en note");
+        assert_ne!(fr, en, "the fr dispatch fell through to the en entry");
+        assert_eq!(fr, changelog_for_fr(current_version()).unwrap());
+        assert_eq!(en, changelog_for(current_version()).unwrap());
+    }
+
+    /// An unknown locale falls back to English rather than to nothing. A user
+    /// on `de` must still be told what changed.
+    #[test]
+    fn an_unknown_locale_falls_back_to_english() {
+        assert_eq!(
+            changelog_for_lang(current_version(), "de"),
+            changelog_for(current_version())
+        );
+    }
+
+    /// A version nobody has ever shipped has no note, and says so rather than
+    /// serving the previous release's.
+    #[test]
+    fn an_unknown_version_has_no_note() {
+        assert!(changelog_for("0.0.0-not-a-release").is_none());
+        assert!(changelog_for_fr("0.0.0-not-a-release").is_none());
+        assert!(changelog_for_lang("0.0.0-not-a-release", "fr").is_none());
+    }
 }

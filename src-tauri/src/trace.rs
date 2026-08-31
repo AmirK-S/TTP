@@ -223,8 +223,25 @@ fn queue() -> &'static SyncSender<Msg> {
             .spawn(move || {
                 while let Ok(msg) = rx.recv() {
                     match msg {
-                        Msg::Line(ev) => {
-                            crate::logging::log_trace_line(&format_line(&ev));
+                        Msg::Line(mut ev) => {
+                            // Records the file itself rejected. `append_line`
+                            // cannot report its own failure by logging — that
+                            // is the call that just failed — so it counts them
+                            // and the next record that lands carries the
+                            // tally, exactly as queue overflow does above. A
+                            // trace that goes quiet must say that it did.
+                            let failed = crate::logging::take_write_failures();
+                            if failed > 0 {
+                                merge(&mut ev.fields, json!({ "trace_write_failures": failed }));
+                            }
+                            let landed = crate::logging::log_trace_line(&format_line(&ev));
+                            if !landed {
+                                // This line is gone and so is the tally it was
+                                // carrying. Put it back, minus nothing: the
+                                // failure of this very write has already been
+                                // counted by `append_line`.
+                                crate::logging::restore_write_failures(failed);
+                            }
                             if LIVE.load(Ordering::Relaxed) {
                                 if let Some(app) = APP.get() {
                                     use tauri::Emitter;

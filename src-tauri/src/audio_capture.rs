@@ -155,9 +155,6 @@ struct RecordingState {
 
 static STATE: LazyLock<Mutex<Option<RecordingState>>> = LazyLock::new(|| Mutex::new(None));
 
-/// True from the moment `start_recording` begins until it has published into
-/// STATE — or given up.
-///
 /// Starting a capture is not instant: it checks microphone authorisation,
 /// resolves the device, queries its config and creates a WAV writer, and on
 /// Bluetooth that can take most of a second. `stop_recording` waits 400 ms for
@@ -172,11 +169,25 @@ static STATE: LazyLock<Mutex<Option<RecordingState>>> = LazyLock::new(|| Mutex::
 ///     .930 capture.start                     ← start finishes after the stop
 ///
 /// The recording was lost, which is bad, and the stream was left running with
-/// nobody holding a handle to stop it, which is worse: the microphone stays
-/// live until the next recording replaces it. For an app whose pitch is that
+/// nobody holding a handle to stop it, which is worse: the microphone stayed
+/// live for 10 h 57 m, until the next launch. For an app whose pitch is that
 /// your voice does not leave your machine, a hot mic nobody asked for is the
 /// one bug that must not exist.
-static STARTING: AtomicBool = AtomicBool::new(false);
+///
+/// Two halves close it, and both are needed:
+///
+///   * **This one.** `stop_recording` waits for an in-flight start before
+///     concluding it has nothing to stop, so the recording survives rather
+///     than merely not leaking. It is the good outcome, and it is a timing
+///     guess: it only helps when the start had already begun.
+///   * **`crate::capture_arbiter`.** A start that has built a stream asks
+///     permission before publishing it, and the `Idle` transition reclaims
+///     anything still live. That half has no clock in it and cannot be
+///     defeated by a late poll, a slow device, or a second press — see the
+///     three holes named in that module's header.
+///
+/// Whether a start is in flight now lives in the arbiter, so one fact has one
+/// home and the two halves cannot disagree about it.
 
 /// How long `stop_recording` will wait for an in-flight start to publish.
 ///
@@ -425,10 +436,14 @@ pub async fn start_recording<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(),
 }
 
 async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(), String> {
-    // Cleared on every exit path below — including the `?` ones — by the
-    // guard, so a failed start can never wedge a subsequent stop.
-    STARTING.store(true, Ordering::SeqCst);
+    // Released on every exit path below — including the nine `?` ones — by
+    // the guard, so a failed start can never wedge a subsequent stop. The
+    // ticket carries the generation of the press this start belongs to.
+    let ticket = crate::capture_arbiter::ARBITER.begin_start();
     let _starting_guard = StartingGuard;
+    // How long this start takes to get from "dispatched" to "stream built".
+    // The whole race is a function of that number, and it was never recorded.
+    let start_span = crate::trace::Span::start();
     // 1. Self-heal a stale STATE.
     //
     // Spam clicks on the tray button used to leave a "phantom" cpal stream
@@ -442,11 +457,24 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
     {
         let mut state = STATE.lock().map_err(|e| format!("state lock poisoned: {}", e))?;
         if let Some(stale) = state.take() {
+            let stale_samples = stale.samples_written.load(Ordering::Relaxed);
             log_warn(&format!(
                 "[AudioCapture] start_recording: dropping stale STATE for {} (samples written: {})",
                 stale.save_path.display(),
-                stale.samples_written.load(Ordering::Relaxed)
+                stale_samples
             ));
+            // The arbiter believed a capture was live. It was, and we have
+            // just closed it — so say so, or the Idle backstop will later
+            // find nothing where it expected something and report a
+            // disagreement that is really this line.
+            crate::capture_arbiter::ARBITER.mark_reclaimed();
+            // A stale capture reaching here means a previous cycle ended with
+            // the microphone still open. It used to leave a `log_warn` in a
+            // file that is filtered to Warn in release and read by nobody.
+            crate::trace::event(
+                "capture.stale_dropped",
+                serde_json::json!({ "samples": stale_samples }),
+            );
             // Dropping `stale` closes the stream and releases the writer.
             // We do NOT attempt to finalize the WAV — the file's payload is
             // already discardable since the caller is asking for a fresh
@@ -537,8 +565,59 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
         .play()
         .map_err(|e| format!("Failed to start audio stream: {}", e))?;
 
-    // 6. Stash everything in shared state for stop_recording to pick up.
+    // 6. Ask permission, then stash everything in shared state for
+    //    stop_recording to pick up.
+    //
+    //    The question and the publish share one critical section, so the
+    //    answer cannot be overtaken by the `take()` in `stop_recording_inner`
+    //    between deciding and acting.
     let mut state = STATE.lock().map_err(|e| format!("state lock poisoned: {}", e))?;
+    if let crate::capture_arbiter::Publish::Refuse(reason) =
+        crate::capture_arbiter::ARBITER.try_publish(ticket)
+    {
+        drop(state);
+        // The stream is already playing. Dropping it closes the callback —
+        // this is the microphone going off, and it must happen before we
+        // return.
+        drop(stream);
+        reset_rms();
+        disarm_dead_input_watch();
+        if let Ok(mut w) = writer_handle.lock() {
+            if let Some(writer) = w.take() {
+                let _ = writer.finalize();
+            }
+        }
+        let _ = std::fs::remove_file(&save_path);
+        log_warn(&format!(
+            "[AudioCapture] refusing to publish a capture nobody is waiting for ({})",
+            reason.slug()
+        ));
+        crate::trace::event(
+            "capture.orphan_prevented",
+            serde_json::json!({
+                "reason": reason.slug(),
+                "device": device_name,
+                // How long this start took to build a stream. The 2026-08-30
+                // incident took 544 ms; a number much larger than that is the
+                // next question to ask.
+                "build_ms": start_span.ms(),
+            }),
+        );
+        // `Ok`, not `Err`, and the distinction is the point.
+        //
+        // Returning an error here would route through the frontend's
+        // `handleStartRecording` catch, which renders a red pill. But nothing
+        // has gone wrong from the user's seat: they tapped, they let go, the
+        // app went Idle, and the only thing that happened is that a stream
+        // arriving too late was thrown away instead of being left on. A pill
+        // would be the app apologising for having done the right thing.
+        //
+        // The failure is not being swallowed — `capture.orphan_prevented`
+        // above is the record, and it names the reason, the device and how
+        // long the start took. What is deliberately unchanged is the user's
+        // experience of an abandoned press.
+        return Ok(());
+    }
     *state = Some(RecordingState {
         stream: Some(SafeStream(stream)),
         writer: writer_handle,
@@ -548,17 +627,125 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
     Ok(())
 }
 
-/// Clears [`STARTING`] however `start_recording_inner` returns.
+/// Tells the arbiter the start has returned, however it returned.
 ///
-/// A plain `store(false)` at the end of the function would be skipped by every
-/// `?` in it, and there are nine — leaving `stop_recording` waiting three
-/// seconds for a start that already failed.
+/// A plain call at the end of the function would be skipped by every `?` in
+/// it, and there are nine — leaving `stop_recording` waiting three seconds for
+/// a start that already failed.
 struct StartingGuard;
 
 impl Drop for StartingGuard {
     fn drop(&mut self) {
-        STARTING.store(false, Ordering::SeqCst);
+        crate::capture_arbiter::ARBITER.end_start();
     }
+}
+
+/// Tells the arbiter the stop has returned, and whether it found anything.
+///
+/// `found` starts `false` — the "No recording in progress" arm — and is set
+/// the moment the stop takes ownership of a capture, so every early return in
+/// between still reports the truth.
+struct StoppingGuard {
+    found: std::cell::Cell<bool>,
+}
+
+impl StoppingGuard {
+    fn begin() -> Self {
+        crate::capture_arbiter::ARBITER.begin_stop();
+        Self { found: std::cell::Cell::new(false) }
+    }
+
+    fn took_capture(&self) {
+        self.found.set(true);
+    }
+}
+
+impl Drop for StoppingGuard {
+    fn drop(&mut self) {
+        crate::capture_arbiter::ARBITER.end_stop(self.found.get());
+    }
+}
+
+/// Tear down a capture that is live with nobody coming to collect it.
+///
+/// Called from `AppState::set_state` on the transition to `Idle` — the moment
+/// the app has finished with the user's press. In the healthy case the stop
+/// has already taken the capture, `should_reclaim()` is false, and this costs
+/// one uncontended mutex. It fires only in the reverse-ordered race, where a
+/// start published its stream in the gap between a stop that found nothing and
+/// the Idle transition.
+///
+/// Synchronous and blocking, on the caller's thread, while `AppState` is
+/// locked. That is deliberate: the alternative is spawning, and a microphone
+/// that is closed "soon" is not closed. Dropping a cpal stream and finalising
+/// a WAV is the same work `stop_recording` does, and it only happens on a path
+/// that is already broken.
+pub fn reclaim_orphaned_capture() {
+    use crate::capture_arbiter::ARBITER;
+    if !ARBITER.should_reclaim() {
+        return;
+    }
+    let Ok(mut guard) = STATE.lock() else {
+        // A poisoned STATE lock means a panic while holding it. Say so — the
+        // microphone may well still be live and this is the only place that
+        // would have noticed.
+        crate::trace::degraded(
+            "capture.reclaim",
+            serde_json::json!({ "error": "state lock poisoned" }),
+        );
+        return;
+    };
+    let Some(orphan) = guard.take() else {
+        // The arbiter thought something was live and STATE disagrees. Not
+        // fatal, but the two are supposed to move together, so record it
+        // rather than resyncing in silence.
+        ARBITER.mark_reclaimed();
+        drop(guard);
+        crate::trace::degraded(
+            "capture.reclaim",
+            serde_json::json!({ "error": "arbiter and STATE disagree", "live": true }),
+        );
+        return;
+    };
+    drop(guard);
+
+    let samples = orphan.samples_written.load(Ordering::SeqCst);
+    let path = orphan.save_path.clone();
+    // Dropping the stream closes the cpal callback. This is the line that
+    // turns the microphone off.
+    drop(orphan.stream);
+    reset_rms();
+    disarm_dead_input_watch();
+    let finalised = match orphan.writer.lock() {
+        Ok(mut w) => match w.take() {
+            Some(writer) => writer.finalize().is_ok(),
+            None => true,
+        },
+        Err(poisoned) => match poisoned.into_inner().take() {
+            Some(writer) => writer.finalize().is_ok(),
+            None => true,
+        },
+    };
+    // Nobody will ever transcribe this file: the dictation it belonged to
+    // finished without it. Leaving it would grow the recordings directory
+    // one orphan at a time.
+    let _ = std::fs::remove_file(&path);
+    ARBITER.mark_reclaimed();
+
+    log_warn(&format!(
+        "[AudioCapture] reclaimed an orphaned capture ({} samples) — the microphone was live with no owner",
+        samples
+    ));
+    // The defect was invisible for a day because nothing said the microphone
+    // was on. It now announces itself the moment it happens.
+    crate::trace::event(
+        "capture.orphan_reclaimed",
+        serde_json::json!({
+            "samples": samples,
+            "device": last_capture_device(),
+            "wav_finalised": finalised,
+        }),
+    );
 }
 
 /// Stop the active recording, finalise the WAV file, and return its path.
@@ -584,6 +771,11 @@ pub async fn stop_recording() -> Result<PathBuf, String> {
 }
 
 async fn stop_recording_inner() -> Result<PathBuf, String> {
+    // Registered before the drain, not after it, so a start dispatched during
+    // the 400 ms below is already visible to the arbiter as "a stop is coming
+    // for you" rather than looking like an orphan.
+    let stopping = StoppingGuard::begin();
+
     // Drain delay BEFORE touching STATE.
     //
     // WASAPI (Windows) and several CoreAudio drivers hold up to ~150 ms of
@@ -605,25 +797,36 @@ async fn stop_recording_inner() -> Result<PathBuf, String> {
     //
     // Without this a short tap races: stop takes STATE while start is still
     // building the stream, finds nothing, reports "No recording in progress",
-    // and start then publishes a stream with nobody left to stop it. See
-    // STARTING. Waiting costs nothing in the normal case, where the flag is
-    // already clear by the time the drain above has elapsed.
-    if STARTING.load(Ordering::SeqCst) {
+    // and start then publishes a stream with nobody left to stop it. Waiting
+    // costs nothing in the normal case, where no start is in flight by the
+    // time the drain above has elapsed.
+    //
+    // This wait SAVES the recording. It does not close the leak on its own —
+    // it cannot see a start that has not begun, and it gives up after
+    // START_SETTLE_TIMEOUT_MS. `capture_arbiter::try_publish` is what makes
+    // the leak impossible; this is what makes the good outcome likely.
+    if crate::capture_arbiter::ARBITER.start_in_flight() {
         let waited_from = std::time::Instant::now();
-        while STARTING.load(Ordering::SeqCst) {
+        let mut timed_out = false;
+        while crate::capture_arbiter::ARBITER.start_in_flight() {
             if waited_from.elapsed() >= std::time::Duration::from_millis(START_SETTLE_TIMEOUT_MS) {
+                timed_out = true;
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(START_SETTLE_POLL_MS)).await;
         }
         let waited_ms = waited_from.elapsed().as_millis() as u64;
         log_info(&format!(
-            "[AudioCapture] stop waited {}ms for an in-flight start",
-            waited_ms
+            "[AudioCapture] stop waited {}ms for an in-flight start (timed_out={})",
+            waited_ms, timed_out
         ));
         crate::trace::event(
             "capture.stop_waited_for_start",
-            serde_json::json!({ "ms": waited_ms }),
+            // `timed_out:true` is the hole the settle constant's comment says
+            // cannot happen. If it ever appears, the arbiter is the only thing
+            // standing between the user and a hot microphone, and the number
+            // next to it says how long the start really took.
+            serde_json::json!({ "ms": waited_ms, "timed_out": timed_out }),
         );
     }
 
@@ -631,6 +834,9 @@ async fn stop_recording_inner() -> Result<PathBuf, String> {
     let state = state_guard
         .take()
         .ok_or_else(|| "No recording in progress".to_string())?;
+    // We own a capture: the arbiter can stop considering one live, and the
+    // Idle backstop has nothing to do.
+    stopping.took_capture();
     // Release the outer STATE lock before any blocking work so concurrent
     // status reads from other commands don't pile up behind us.
     drop(state_guard);

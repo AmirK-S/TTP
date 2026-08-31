@@ -90,6 +90,18 @@ impl AppState {
         // to remember to reset them and can never see a stale value.
         match &state {
             RecordingState::Recording => {
+                // The user is asking for the microphone. This is the earliest
+                // and most authoritative statement of that: it runs
+                // synchronously on the hotkey thread, before the event that
+                // makes the frontend invoke `start_recording` has even been
+                // emitted. `crate::capture_arbiter` arbitrates against it.
+                //
+                // Guarded on a real entry into Recording. A Recording →
+                // Recording transition is not a second press and must not
+                // supersede a start that is already in flight for the first.
+                if old_state != RecordingState::Recording {
+                    crate::capture_arbiter::ARBITER.user_wants_capture();
+                }
                 if self.recording_started_at.is_none() {
                     self.recording_started_at = Some(Instant::now());
                 }
@@ -109,6 +121,29 @@ impl AppState {
                 let _ = app.emit("recording-mode-changed", mode);
             }
             RecordingState::Idle => {
+                // The app is done with the user's press, whatever any
+                // in-flight capture command still believes. Anything that has
+                // not published yet is refused; anything that has is reclaimed
+                // below.
+                //
+                // Guarded on a real move INTO Idle. The pipeline sets Idle a
+                // second time when it finishes, long after the first — that
+                // trailing `Idle → Idle` says nothing about what the user
+                // wants now, and acting on it would revoke a recording they
+                // may have started in the meantime.
+                if old_state != RecordingState::Idle {
+                    crate::capture_arbiter::ARBITER.user_done_with_capture();
+                    // The backstop for the reverse-ordered race: a capture
+                    // that went live in the gap between a stop that found
+                    // nothing and this transition. In the healthy case the
+                    // stop already took it and this is one uncontended mutex.
+                    //
+                    // Safe under the AppState lock for the same reason
+                    // `hide_pill` is: it touches STATE in `audio_capture`,
+                    // the trace channel and the filesystem, and re-enters
+                    // nothing here.
+                    crate::audio_capture::reclaim_orphaned_capture();
+                }
                 self.session_hands_free = None;
                 self.recording_started_at = None;
                 // The user is no longer waiting on us; let the OS nap the

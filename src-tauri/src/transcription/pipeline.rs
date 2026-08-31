@@ -1653,7 +1653,38 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         let polish_start = std::time::Instant::now();
         match polish_text(&api_key, &cleaned_text).await {
             Ok(result) => {
-                crate::usage::record_polish_success();
+                // Off the critical path, and deliberately not awaited — the
+                // same treatment `record_transcription` got below, for the
+                // same reason, because this call was left behind.
+                //
+                // `record_polish_success` is `load_usage` + `save_usage`, and
+                // both sides sign with the per-machine HMAC secret, which
+                // comes from the OS keychain. A keychain round-trip is
+                // unbounded: macOS re-evaluates the ACL whenever the binary's
+                // code signature changes, and `ttp-trace.log` for 2026-08-31
+                // records one such read taking **62,304 ms**, another 13,612,
+                // and a third 397,600.
+                //
+                // Sitting here, that cost lands between the Groq response and
+                // the user's text — a minute of nothing, after they finished
+                // speaking, with an empty text field in front of them. The
+                // polish counter is local bookkeeping for a monthly nudge; it
+                // is read by nobody in this dictation and nothing downstream
+                // waits on it. The user's words must never wait on a keychain.
+                let polish_usage_trace = trace.clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    let started = std::time::Instant::now();
+                    crate::usage::record_polish_success();
+                    // Timed, so a keychain stall stays visible instead of
+                    // merely moving somewhere the user cannot feel it. This
+                    // line is also the proof the move happened: it carries a
+                    // timestamp later than `paste.result` on the same
+                    // dictation, which is only possible off the path.
+                    polish_usage_trace.stage(
+                        "usage.polish_recorded",
+                        serde_json::json!({ "ms": started.elapsed().as_millis() as u64 }),
+                    );
+                });
                 let polish_ms = polish_start.elapsed().as_millis() as u64;
 
                 // Post-LLM guards: length ratio, content-word Jaccard,
