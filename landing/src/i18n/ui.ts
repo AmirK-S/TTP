@@ -59,9 +59,9 @@ export const ui = {
     'features.byokTitle': 'Bring Your Own Key',
     'features.byokDesc':
       'Use your Groq API key. No subscription. Pay only for what you use.',
-    'features.privacyTitle': 'Privacy First',
+    'features.privacyTitle': 'No Account, No Tracking',
     'features.privacyDesc':
-      'API keys and history stored locally. Nothing leaves your machine.',
+      'Your key, history and settings stay on your Mac. Audio goes to Groq to be transcribed \u2014 that is the only thing that leaves. Crash reporting is off until you turn it on.',
     'features.updatesTitle': 'Auto Updates',
     'features.updatesDesc':
       'Always up to date. Updates install automatically in the background.',
@@ -233,9 +233,9 @@ export const ui = {
     'features.byokTitle': 'Apportez Votre Cl\u00e9',
     'features.byokDesc':
       "Utilisez votre cl\u00e9 API Groq. Pas d'abonnement. Payez uniquement ce que vous utilisez.",
-    'features.privacyTitle': "Vie Priv\u00e9e d'Abord",
+    'features.privacyTitle': 'Sans compte, sans pistage',
     'features.privacyDesc':
-      'Cl\u00e9s API et historique stock\u00e9s localement. Rien ne quitte votre machine.',
+      "Votre cl\u00e9, votre historique et vos r\u00e9glages restent sur votre Mac. L'audio part chez Groq pour \u00eatre transcrit \u2014 c'est la seule chose qui sort. Le rapport d'erreurs est d\u00e9sactiv\u00e9 tant que vous ne l'activez pas.",
     'features.updatesTitle': 'Mises \u00e0 Jour Auto',
     'features.updatesDesc':
       "Toujours \u00e0 jour. Les mises \u00e0 jour s'installent automatiquement en arri\u00e8re-plan.",
