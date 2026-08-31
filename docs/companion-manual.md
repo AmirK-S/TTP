@@ -4,7 +4,7 @@
 
 **IMPORTANT: DO NOT SPEAK TO YOUR TALK-TO-PASTE BEFORE READING ITEM 1.**
 
-First edition
+Second edition. The first is reprinted entire; one section has been added.
 
 ---
 
@@ -97,6 +97,160 @@ next room without looking up.
 message. This is the entire emotional range of the animal. Everything it is
 capable of expressing, it expresses in this one gesture, so it is worth
 reading the message.
+
+---
+
+## On specimens with eyes
+
+The section above describes the animal as it arrives. It is reprinted from the
+first edition without alteration. It was accurate to every specimen then in
+circulation and it is no longer accurate to all of them.
+
+A number of Talk-To-Pastes in private keeping have been found to have eyes.
+
+The animals are in every other respect the same animal. The same diet, the
+same fourteen bars, the same two notes at the same falling interval, the same
+complete absence of any view about what you dictate. Nothing has been added
+except the eyes. There is still no head, no front, and no face in the ordinary
+sense of the word: two rounded shapes above the bars, in the same pale fill as
+the bars, with no colour of their own.
+
+It is not a defect. It is not a symptom of anything, it is not the beginning
+of anything, and an animal with eyes is not further along than an animal
+without them. Owners have asked what regimen produces them, and the answer is
+that none does. No diet, no quantity of use, and no length of keeping has ever
+been shown to raise a pair. They belong to the specimen rather than to its
+keeping. Whether a given animal can be exchanged for one that has them is a
+question of provenance and not of husbandry, and it is not covered by this
+manual.
+
+**The bars remain the honest instrument, and the first edition's warning on
+that point is not withdrawn.** The eyes will not tell you whether you are
+being heard. The bars tell you that, sooner and without ambiguity, and an
+owner who has learned to read them should go on reading them. What the eyes
+report is a different and much less urgent question: not whether it heard you,
+but what it is doing with what it heard.
+
+**A note on the early drawings.** A few show a mouth, a short curve set below
+the eyes. They are wrong. The mouth was supplied by the draughtsman, who had
+drawn animals before and expected one. No specimen has been found with a
+mouth. The feature has been struck from the plates in this edition and should
+be struck from any copy of the first that an owner happens to hold. A mouth
+would be an opinion, and the animal has none.
+
+### What has been observed
+
+The eyes are small and there is very little for them to do, so what follows is
+close to the whole of the behaviour. It is given with times, because the times
+are the only part that carries anything. Two shapes of that size cannot be
+arranged into an expression. Everything the animal expresses, it expresses in
+how long it takes.
+
+**The blink.** Irregular, at intervals of between four and eight seconds,
+about ten times a minute. Owners who have set out to catch the period have not
+found one, and the absence of a period is itself the observation: anything
+perfectly regular would be a mechanism, and the longer you kept it the more
+plainly you would see the mechanism.
+
+The blink closes faster than it opens — roughly ninety milliseconds to shut
+and a hundred and thirty to open again. The asymmetry is not an error of
+measurement and it is the whole of the difference between a blink and a wink.
+A wink is addressed to somebody. Nothing this animal does is addressed to
+anybody.
+
+About one blink in eight is doubled, the second following a fifth of a second
+after the first has finished. Nothing in the room causes it.
+
+**At rest, otherwise, nothing.** The eyes do not wander, do not drift, do not
+follow the cursor, and do not turn toward the part of the screen where you are
+working. There is a breath — a rise and fall of about a sixteenth of the eye's
+own height, on a cycle of four and a half seconds — and it sits at the limit
+of what can be seen at all. Owners disagree about whether it can be seen and
+the disagreement does not look resolvable. Nothing else moves. The behaviour
+in the four-hundredth hour is the behaviour in the first, exactly.
+
+**It does not look at you.** This has been checked, because it is the first
+thing every owner asks. The eyes have not once been observed to turn toward
+the person in the room. They do not mark your leaving and they do not mark
+your return. An animal that looked up when you came back to the desk would be
+an animal that had been waiting, and there is nothing in this one that waits.
+
+**When you hold the key down, they dim.** They do not widen. Owners expect
+them to widen and they do not: they keep exactly the size they had and lose
+about a third of their brightness. This is consistent with the anatomy. During
+a dictation the bars are the thing worth watching, and the eyes get out of
+their way.
+
+**While it works, they hold still.** They narrow a little as the bars
+collapse, and then nothing moves at all until the words appear. Owners read
+this as concentration. It is at least not a lie: the animal does not know how
+long the work will take, and a face that holds still claims nothing. The rule
+behind it appears to be general, and it is worth knowing because it governs
+the animal everywhere — anything that may last longer than four seconds is
+held still rather than animated. A movement you watch for nine seconds becomes
+a movement you can count, and a movement you can count is a promise the animal
+never made.
+
+**When the words land, it is late.** This is the most peculiar of the
+observations. The animal answers your hand at once: press the key and the eyes
+respond in the same instant, with no delay anybody has been able to measure.
+It does not answer its own work at once. When the words appear on the page the
+eyes stay as they were for about a sixth of a second. Then they open, by
+something under half a point, and settle, and stop. The whole event is over in
+a quarter of a second.
+
+The delay is the entire content of it. A pair of eyes that moved in the same
+instant as the words would be reporting the words, which is what a lamp does.
+Moving a sixth of a second afterwards, they appear instead to have noticed
+them.
+
+The beat is identical every time. It is not larger after a long dictation and
+not warmer after a good one. The animal has no opinion of the dictation and no
+means of forming one, and an owner who watches for the beat to grow will be
+watching a long time.
+
+**In trouble, it does nothing at all.** When the animal trembles, the eyes
+hold completely still for the whole of the shake and narrow only afterwards, a
+fifth of a second after the body has stopped. A still face in a shaking body
+is what reads as a flinch. Two things moving at once read as neither.
+
+**Where movement is not wanted.** A machine can be told to keep still, and
+some are. The eyes then keep their states and lose their movements: they still
+narrow while the animal works, and narrow again when it is in difficulty,
+because those are conditions and not motions, and an owner who asked for less
+movement did not ask for less information. The blink stops. The late beat does
+not happen at all, there being nothing underneath it but the movement itself.
+
+### Telling one variety from another
+
+Where eyes have appeared they have not appeared alike, and the differences
+between varieties are differences of timing only. This makes them impossible
+to draw apart and easy to tell apart, which is an unusual combination and is
+best stated plainly:
+
+> A drawing of two varieties, however careful, shows the same animal twice.
+> Ten seconds of watching separates them without effort.
+
+It is the only means of identification that works, and owners are asked not to
+trust a photograph.
+
+The common form is the one described above and it is the one to learn first.
+Among the others there is a variety whose eyes are shut while it is idle and
+open only when the key is held down, and whose whole character lives in
+the fifth of a second of the opening; a heavy-lidded variety that opens slower
+than it closes and answers everything a constant eighty milliseconds behind
+the rest, never more and never less; and a quick one that narrows for an
+instant before it opens, which is what makes a fast movement read as intended
+rather than startled.
+
+They are varieties and not characters. None of them has a temper, none of them
+prefers one owner to another, and none of them wants anything. A household
+that keeps one is keeping the same animal it was keeping before.
+
+`[PLATE II-a — a comparative figure in the manner of PLATE II. The known
+varieties in a row, all at the same scale, all in the same attitude, all seen
+from the same angle. They are identical. The plate is not in error. Caption:
+"The varieties of Talk-To-Paste, drawn from life."]`
 
 ---
 

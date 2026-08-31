@@ -278,3 +278,51 @@ path that is ruled out. G1's first job is to build that third path.
 - Evidence over story. Write the test first when the claim matters.
 - Every report separates what was proven from what was inferred, and names
   what was left out.
+
+
+---
+
+# Wave 4 — launched 2026-08-31, after Amir's second direction
+
+**His direction, verbatim in substance:** fix the real defects; make the TTP
+pill genuinely stylish with properly DIFFERENT styles, extending to the app UI
+under Pro; make it fun; then cut a new version. And: the current little face
+does not look stylish — something cuter is clearly possible.
+
+**Direction change, recorded because it reverses an earlier arbitration.** A0
+advised against multiplying faces before one had survived a week of normal
+use, and I relayed that argument. Amir ruled the other way, knowingly. We
+build the cast. A0's non-negotiable survives untouched and every agent carries
+it: **nothing ever demands anything of the user.** Nothing decays, nothing
+needs feeding, nothing is sad that you did not dictate today. A cute thing
+that induces guilt is the one failure this product cannot recover from.
+
+**Manager guard added to the Pro aesthetic work:** the theme must gate nothing
+functional, and the FREE UI must not be degraded to flatter Pro. If the Pro
+themes only look good by comparison, it is a paywall with extra steps.
+
+| Id | Workstream | Blast radius |
+|---|---|---|
+| R1 | Fix the observed defects: 11h live mic, 62s keychain read, writer newline race, whatsnew 3.1.7 | `src-tauri/` |
+| A2 | A face worth looking at, plus a cast of 4-6 | `CompanionFace*`, `companion-timing*`, `FloatingBar.tsx` |
+| A3 | Pro aesthetic: theme system across the whole app | `src/styles/`, `src/lib/theme*`, `components/` minus the face, `windows/` minus FloatingBar |
+| F2 | *On specimens with eyes* — the manual section, EN + FR | the two manual docs |
+
+**Theme contract**, fixed by the manager so A2 and A3 could run in parallel
+without deadlocking on each other: A3 sets `data-ttp-theme="<id>"` on
+`document.documentElement` and defines `--ttp-accent`, `--ttp-surface`,
+`--ttp-glow`, `--ttp-ink`; A2 reads them with fallbacks so the face is never
+invisible if a theme fails to load.
+
+**Shared-file protocol:** `en.json` / `fr.json` are touched by both A2 and A3.
+A2 owns the `settings.companion.*` region, A3 owns `settings.appearance.*`,
+both re-read immediately before editing and never rewrite wholesale. This is
+the same protocol that let three agents share `Cargo.toml` in wave 1 without
+a conflict.
+
+## Held deliberately
+
+**C — the website rewrite.** B's research has landed and C is unblocked, but
+I am holding it until A3's Pro aesthetic exists. The site should show the real
+thing rather than describe a thing that is being redesigned this week. The
+false privacy claim — the only urgent part — is already fixed and pushed.

@@ -5,7 +5,8 @@
 **AVERTISSEMENT : NE PARLEZ PAS À VOTRE TALK-TO-PASTE AVANT D'AVOIR LU
 L'ARTICLE PREMIER.**
 
-Première édition
+Seconde édition. La première est reproduite intégralement ; une section a été
+ajoutée.
 
 ---
 
@@ -105,6 +106,168 @@ yeux.
 écrit. C'est là toute la gamme émotionnelle de l'animal. Tout ce qu'il est
 capable d'exprimer, il l'exprime par ce seul geste ; il vaut donc la peine de
 lire le message.
+
+---
+
+## Des sujets pourvus d'yeux
+
+La section qui précède décrit l'animal tel qu'il arrive. Elle est reproduite
+ici sans retouche, telle qu'elle figurait dans la première édition. Elle était
+exacte pour tous les sujets alors en circulation. Elle ne l'est plus pour tous.
+
+On a trouvé des yeux à un certain nombre de Talk-To-Paste gardés à titre privé.
+
+L'animal est par ailleurs le même en tout point. Même régime, mêmes quatorze
+barres, mêmes deux notes au même intervalle descendant, même absence complète
+d'avis sur ce que vous dictez. Rien n'a été ajouté que les yeux. Il n'y a
+toujours ni tête, ni avant, ni face au sens ordinaire du terme : deux formes
+arrondies au-dessus des barres, du même ton pâle que les barres, sans couleur
+propre.
+
+Ce n'est pas une malformation. Ce n'est le symptôme de rien, ce n'est le
+commencement de rien, et un sujet pourvu d'yeux n'est pas plus avancé qu'un
+sujet qui n'en a pas. Les propriétaires demandent quel régime les fait venir :
+aucun. Aucune nourriture, aucune quantité d'usage, aucune durée de garde n'a
+jamais été montrée capable d'en faire apparaître une paire. Ils tiennent au sujet et
+non à la manière dont on le garde. Savoir si un animal donné peut être échangé
+contre un sujet qui en porte relève de la provenance et non de l'élevage ; le
+présent manuel ne traite pas cette question.
+
+**Les barres demeurent l'instrument honnête, et l'avertissement de la première
+édition sur ce point n'est pas retiré.** Les yeux ne vous diront pas si vous
+êtes entendu. Les barres le disent, plus tôt et sans ambiguïté, et le
+propriétaire qui a appris à les lire fera bien de continuer. Ce que rapportent
+les yeux est une autre question, et beaucoup moins pressante : non pas s'il
+vous a entendu, mais ce qu'il fait de ce qu'il a entendu.
+
+**Note sur les premiers dessins.** Quelques-uns portent une bouche, une courte
+courbe placée sous les yeux. Ils sont fautifs. La bouche a été fournie par le
+dessinateur, qui avait dessiné des animaux auparavant et en attendait une.
+Aucun sujet n'a été trouvé qui en porte. Le trait a été retiré des planches de
+la présente édition, et il convient de le retirer de tout exemplaire de la
+première qu'un propriétaire viendrait à détenir. Une bouche serait un avis, et
+l'animal n'en a pas.
+
+### Ce que porte le relevé
+
+Les yeux sont petits et n'ont presque rien à faire ; ce qui suit est donc à peu
+près tout le comportement. Il est donné avec des durées, car la durée est la
+seule partie qui porte quelque chose. Deux formes de cette taille ne se
+laissent pas composer en expression. Tout ce que l'animal exprime, il l'exprime
+par le temps qu'il y met.
+
+**Le clignement.** Irrégulier, à des intervalles de quatre à huit secondes, une
+dizaine de fois par minute. Un relevé de trois cents clignements consécutifs ne
+fait apparaître aucune période. L'absence de période est elle-même
+l'observation : ce qui serait parfaitement régulier serait un mécanisme, et
+plus longtemps on le garderait, plus clairement on verrait le mécanisme.
+
+Le clignement se ferme plus vite qu'il ne s'ouvre : quatre-vingt-dix
+millisecondes environ pour la fermeture, cent trente pour l'ouverture. La
+dissymétrie n'est pas une erreur de mesure, et elle fait toute la différence
+entre un clignement et un clin d'œil. Un clin d'œil s'adresse à quelqu'un. Rien
+de ce que fait cet animal ne s'adresse à personne.
+
+Un clignement sur huit environ est double, le second suivant le premier d'un
+cinquième de seconde. Rien dans la pièce ne le provoque.
+
+**Au repos, pour le reste, rien.** Les yeux ne vagabondent pas, ne dérivent
+pas, ne suivent pas le curseur et ne se tournent pas vers l'endroit de l'écran
+où vous travaillez. Il existe une respiration — une montée et une descente d'un
+seizième environ de la hauteur de l'œil, sur un cycle de quatre secondes et
+demie — et elle se tient à la limite du visible. Les propriétaires ne
+s'accordent pas sur le point de savoir si elle se voit, et le désaccord ne
+paraît pas tranchable. Rien d'autre ne bouge. Le comportement de la
+quatre-centième heure est exactement celui de la première.
+
+**Il ne vous regarde pas.** Le point a été vérifié, car c'est la première chose
+que demande tout propriétaire. On n'a pas observé une seule fois les yeux se
+tourner vers la personne présente dans la pièce. Ils n'enregistrent pas votre
+départ et n'enregistrent pas votre retour. Un animal qui lèverait les yeux à votre
+retour au bureau serait un animal qui aurait attendu, et il n'y a rien en
+celui-ci qui attende.
+
+**Quand vous maintenez la touche, ils s'assombrissent.** Ils ne s'écarquillent
+pas. Les propriétaires s'attendent à les voir s'écarquiller : ils gardent
+exactement la taille qu'ils avaient et perdent environ un tiers de leur éclat.
+Cela s'accorde avec l'anatomie. Pendant la dictée, ce sont les barres qu'il
+vaut la peine de regarder, et les yeux leur laissent la place.
+
+**Pendant qu'il travaille, ils restent immobiles.** Ils se rétrécissent un peu
+au moment où les barres retombent, puis plus rien ne bouge jusqu'à ce que les
+mots paraissent. Les propriétaires y lisent de la concentration. Ce n'est du
+moins pas un mensonge : l'animal ignore combien de temps le travail prendra, et
+un visage immobile ne promet rien. La règle qui est derrière paraît générale et
+mérite d'être sue, car elle gouverne l'animal partout : tout état qui peut
+durer plus de quatre secondes est tenu immobile plutôt qu'animé. Un mouvement
+que l'on regarde neuf secondes devient un mouvement que l'on peut compter, et
+un mouvement que l'on peut compter est une promesse que l'animal n'a jamais
+faite.
+
+**Quand les mots tombent, il est en retard.** C'est la plus singulière des
+observations. L'animal répond à votre main sur-le-champ : pressez la touche et
+les yeux répondent dans le même instant, sans délai que personne ait pu
+mesurer. Il ne répond pas sur-le-champ à son propre ouvrage. Lorsque les mots
+paraissent sur la page, les yeux restent tels qu'ils étaient pendant un sixième
+de seconde environ. Puis ils s'ouvrent, d'un peu moins d'un demi-point,
+retombent, et s'arrêtent. L'ensemble est terminé en un quart de seconde.
+
+Le retard en est tout le contenu. Des yeux qui bougeraient dans le même instant
+que les mots rapporteraient les mots, ce qui est l'office d'un voyant. Bougeant
+un sixième de seconde après, ils paraissent au contraire les avoir remarqués.
+
+Le battement est identique à chaque fois. Il n'est pas plus ample après une
+longue dictée ni plus chaleureux après une bonne. L'animal n'a pas d'avis sur
+la dictée et n'a pas de quoi s'en former un ; le propriétaire qui guetterait
+une croissance du battement guetterait longtemps.
+
+**En difficulté, il ne fait rien du tout.** Lorsque l'animal frémit, les yeux
+restent parfaitement immobiles pendant toute la secousse et ne se rétrécissent
+qu'après, un cinquième de seconde après l'arrêt du corps. Un visage immobile
+dans un corps qui tremble est ce qui se lit comme un mouvement de recul. Deux
+choses qui bougent ensemble ne se lisent ni comme l'une ni comme l'autre.
+
+**Là où l'on ne veut pas de mouvement.** On peut demander à la machine de se
+tenir tranquille, et certaines maisons le demandent. Les yeux conservent alors
+leurs états et perdent leurs mouvements : ils se rétrécissent toujours pendant
+le travail et se rétrécissent de nouveau à la difficulté, parce que ce sont des
+états et non des mouvements, et que le propriétaire qui a demandé moins de
+mouvement n'a pas demandé moins de renseignement. Le clignement cesse. Le
+battement tardif n'a pas lieu du tout, n'ayant sous lui rien d'autre que le
+mouvement même.
+
+### Distinguer une variété d'une autre
+
+Là où les yeux sont apparus, ils ne sont pas apparus semblables, et les
+différences entre variétés sont des différences de durée et rien d'autre. Elles
+sont par là indiscernables sur le papier et faciles à séparer à l'œil, ce qui
+est une combinaison peu commune et qu'il vaut mieux énoncer sans détour :
+
+> Un dessin de deux variétés, si soigneux soit-il, montre deux fois le même
+> animal. Dix secondes d'observation les séparent sans effort.
+
+C'est le seul moyen d'identification qui fonctionne, et les propriétaires sont
+priés de ne pas se fier à une photographie.
+
+La forme commune est celle qui vient d'être décrite, et c'est par elle qu'il
+faut commencer. Parmi les autres, on connaît une variété dont les yeux restent
+clos au repos et ne s'ouvrent que lorsqu'on maintient la touche, et dont tout le
+caractère tient dans le cinquième de seconde de l'ouverture ; une variété aux
+paupières lourdes, qui s'ouvre plus lentement qu'elle ne se ferme et qui répond
+à tout avec quatre-vingts millisecondes de retard constant, jamais plus et
+jamais moins ; et une variété vive, qui se rétrécit un instant avant de
+s'ouvrir, ce qui fait lire un mouvement rapide comme voulu plutôt que comme un
+sursaut.
+
+Ce sont des variétés et non des personnages. Aucune n'a d'humeur, aucune ne
+préfère tel propriétaire à tel autre, et aucune ne demande quoi que ce soit. La
+maison qui en garde une garde le même animal qu'auparavant.
+
+`[PLANCHE II-a — figure comparative dans la manière de la PLANCHE II. Les
+variétés connues alignées, toutes à la même échelle, toutes dans la même
+attitude, toutes vues sous le même angle. Elles sont identiques. La planche
+n'est pas fautive. Légende : « Les variétés du Talk-To-Paste, d'après
+nature. »]`
 
 ---
 
