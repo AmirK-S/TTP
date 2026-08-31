@@ -1,0 +1,731 @@
+/* ----------------------------------------------------------------------------
+   TTP — coats.
+
+   A "coat" is TTP's aesthetic identity: palette, type, corner radius, density,
+   surface treatment and motion character, all at once. It is orthogonal to
+   light/dark. Light and dark decide how the room is lit; the coat decides what
+   the animal looks like in it. Every coat therefore ships BOTH a light and a
+   dark palette, and every combination has to be readable.
+
+   A coat changes nothing about what TTP does. Not one line of the dictation
+   path can observe which coat is set. Four of the five arrive with the
+   Companion; the fifth — `wild` — is the free default and is the one built
+   with the most care, because it is what almost everybody looks at.
+   See docs/ttp-pro-design.md.
+
+   ── The contract ─────────────────────────────────────────────────────────
+   `document.documentElement` carries `data-ttp-theme="<id>"`. Every coat
+   defines, at minimum:
+
+       --ttp-accent    the character / primary colour
+       --ttp-surface   panel and pill body
+       --ttp-glow      emphasis, halo, focus
+       --ttp-ink       high-contrast foreground
+
+   `--ttp-surface` and `--ttp-ink` are context-resolved, and this is
+   deliberate. In a normal window a "surface" is the panel body and the "ink"
+   is the text that sits on it, so they follow light/dark. In the floating-bar
+   window the surface is the *pill*, which floats over the user's wallpaper and
+   is dark in every coat and every appearance — so under `html.floating-bar`
+   the same two names resolve to the pill body and the mark that reads on it.
+   Consumers therefore never have to ask which window they are in: read the
+   four names and they are already correct.
+
+   ── How the file is laid out ─────────────────────────────────────────────
+   Coats declare `--l-*` (light) and `--d-*` (dark) values. A single resolver,
+   written once, picks a side based on the same `data-theme` rules the app has
+   always used. `var()` is resolved after the cascade, so declaration order
+   between the coats and the resolver is irrelevant — only coat-vs-coat order
+   matters, and coats come after the base.
+
+   Adding a coat: copy a block, override what differs, add it to
+   `src/lib/theme-coats.ts` and to `settings.appearance.coats.*` in both
+   locale files. Nothing else knows coats exist.
+   ------------------------------------------------------------------------- */
+
+/* ============================================================================
+   1. BASE — also the definition of `wild`, the free coat.
+
+   These are the values TTP shipped with, unchanged. The free app is not made
+   worse so that a paid one can look better; `wild` is the reference every
+   other coat is a variation on, not the plain option.
+   ========================================================================= */
+
+/* `:root` and the explicit id together, because a coat's tokens must resolve
+   on ANY element carrying the attribute — including the specimen swatches in
+   the picker, which sit inside a document wearing a different coat. Without
+   the second selector a `wild` swatch would inherit the surrounding coat's
+   `--l-*` values and paint the wrong thing, which is the one bug a live
+   swatch is supposed to be immune to. */
+:root,
+[data-ttp-theme="wild"] {
+  /* — light ————————————————————————————————————————————————————— */
+  --l-bg: #ffffff;
+  --l-surface: #fafafa;
+  --l-raised: #f5f5f6;
+  --l-overlay: #ffffff;
+  --l-dim: #f0f0f1;
+  --l-border: rgba(0, 0, 0, 0.08);
+  --l-border-strong: rgba(0, 0, 0, 0.14);
+  --l-text: #18181b;
+  --l-muted: #5b5b62;
+  --l-faint: #8a8a92;
+  --l-accent: #2563eb;
+  --l-accent-hover: #1d4ed8;
+  --l-accent-fg: #ffffff;
+  --l-glow: #2563eb;
+  --l-success: #15803d;
+  --l-warning: #b45309;
+  --l-danger: #b91c1c;
+  --l-highlight: inset 0 1px 0 0 rgba(0, 0, 0, 0.03);
+  --l-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 1px rgba(16, 24, 40, 0.04);
+  --l-shadow-md: 0 2px 4px rgba(16, 24, 40, 0.04), 0 6px 16px rgba(16, 24, 40, 0.08);
+  --l-shadow-lg: 0 4px 8px rgba(16, 24, 40, 0.04), 0 16px 36px rgba(16, 24, 40, 0.12);
+  --l-canvas-wash: none;
+
+  /* — dark —————————————————————————————————————————————————————— */
+  --d-bg: #0a0a0c;
+  --d-surface: #111114;
+  --d-raised: #16161a;
+  --d-overlay: #1c1c21;
+  --d-dim: #08080a;
+  --d-border: rgba(255, 255, 255, 0.06);
+  --d-border-strong: rgba(255, 255, 255, 0.12);
+  --d-text: #ededee;
+  --d-muted: #a1a1aa;
+  --d-faint: #6b6b73;
+  --d-accent: #4c8bf5;
+  --d-accent-hover: #6da0f7;
+  --d-accent-fg: #0a0a0c;
+  --d-glow: #4c8bf5;
+  --d-success: #4ade80;
+  --d-warning: #fbbf24;
+  --d-danger: #f87171;
+  --d-highlight: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+  --d-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30), 0 1px 1px rgba(0, 0, 0, 0.20);
+  --d-shadow-md: 0 2px 4px rgba(0, 0, 0, 0.30), 0 8px 20px rgba(0, 0, 0, 0.40);
+  --d-shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.30), 0 20px 40px rgba(0, 0, 0, 0.50);
+  --d-canvas-wash: none;
+
+  /* — shape ————————————————————————————————————————————————————— */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-pill: 999px;
+
+  /* — type —————————————————————————————————————————————————————— */
+  --ttp-font-body: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --ttp-font-display: var(--ttp-font-body);
+  --ttp-font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+  --ttp-feat: 'ss03', 'cv11', 'calt', 'kern', 'liga';
+  --ttp-track-body: 0em;
+  --ttp-track-display: -0.022em;
+  --ttp-weight-display: 600;
+  --ttp-weight-body: 400;
+  --ttp-line: 1.45;
+
+  /* — motion ———————————————————————————————————————————————————— */
+  --ttp-ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --ttp-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ttp-dur-press: 75ms;
+  --ttp-dur-hover: 150ms;
+  --ttp-dur-modal: 220ms;
+
+  /* — surface treatment ————————————————————————————————————————— */
+  /* Canvas grain — dark speckle on a light appearance, light speckle on a
+     dark one, per coat. `piebald` has none: it is a flat sheet. */
+  --l-grain-img: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0   0 0 0 0 0   0 0 0 0 0   0 0 0 0.035 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --d-grain-img: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1   0 0 0 0 1   0 0 0 0 1   0 0 0 0.03 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --ttp-panel-blur: none;
+  --ttp-border-width: 1px;
+
+  /* — the pill, which floats over the wallpaper and is dark in every coat —
+     and its mark, which is what the Companion's face draws itself with. */
+  /* How far apart the coat likes things. Used by the specimen swatch in the
+     picker so it shows density honestly at swatch scale. */
+  --ttp-spec-gap: 6px;
+  --ttp-pill: #000000;
+  --ttp-pill-ink: #ffffff;
+  --ttp-pill-ring: rgba(255, 255, 255, 0.10);
+  --ttp-pill-glow: #4c8bf5;
+}
+
+/* ============================================================================
+   2. THE COATS.
+
+   Names are from the husbandry register the manual already speaks in — a coat
+   is a coat. Each one is an honest description of what the surface actually
+   does, not a mood word: `roan` really is speckled, `piebald` really is two
+   hard-edged tones, `merle` really is mottled.
+   ========================================================================= */
+
+/* ── roan ────────────────────────────────────────────────────────────────
+   White hairs through a warm base. Paper: ivory light, tobacco dark, a serif
+   for anything that counts as a heading, big radii, generous spacing, the
+   grain turned up until it reads as stock rather than noise, and the slowest
+   motion of the set. It is the coat for people who like a wide margin. */
+[data-ttp-theme="roan"] {
+  --l-bg: #fbf7f0;
+  --l-surface: #f6f0e6;
+  --l-raised: #efe7d9;
+  --l-overlay: #fffdf8;
+  --l-dim: #e9dfce;
+  --l-border: rgba(94, 68, 38, 0.14);
+  --l-border-strong: rgba(94, 68, 38, 0.26);
+  --l-text: #2a2016;
+  --l-muted: #5e4f3d;
+  --l-faint: #8a7861;
+  --l-accent: #9c4a21;
+  --l-accent-hover: #7f3a17;
+  --l-accent-fg: #fffdf8;
+  --l-glow: #c2601f;
+  --l-success: #40662a;
+  --l-warning: #8a5a08;
+  --l-danger: #9c2a22;
+  --l-highlight: inset 0 1px 0 0 rgba(255, 252, 245, 0.7);
+  --l-shadow-sm: 0 1px 2px rgba(74, 52, 28, 0.07), 0 1px 1px rgba(74, 52, 28, 0.05);
+  --l-shadow-md: 0 2px 6px rgba(74, 52, 28, 0.06), 0 8px 20px rgba(74, 52, 28, 0.09);
+  --l-shadow-lg: 0 6px 14px rgba(74, 52, 28, 0.07), 0 22px 48px rgba(74, 52, 28, 0.13);
+
+  --d-bg: #17120c;
+  --d-surface: #1f1811;
+  --d-raised: #271f16;
+  --d-overlay: #2e251a;
+  --d-dim: #120e09;
+  --d-border: rgba(255, 233, 200, 0.10);
+  --d-border-strong: rgba(255, 233, 200, 0.20);
+  --d-text: #f2e7d6;
+  --d-muted: #bfab8e;
+  --d-faint: #8b7a63;
+  --d-accent: #e59058;
+  --d-accent-hover: #f2a771;
+  --d-accent-fg: #17120c;
+  --d-glow: #f2a771;
+  --d-success: #93c97a;
+  --d-warning: #e8b34a;
+  --d-danger: #ee8a7c;
+  --d-highlight: inset 0 1px 0 0 rgba(255, 233, 200, 0.07);
+
+  --r-xs: 6px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+
+  --ttp-font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, ui-serif, serif;
+  --ttp-track-display: -0.006em;
+  --ttp-weight-display: 600;
+  --ttp-line: 1.55;
+
+  --ttp-ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ttp-ease-spring: cubic-bezier(0.28, 1.3, 0.5, 1);
+  --ttp-dur-press: 110ms;
+  --ttp-dur-hover: 240ms;
+  --ttp-dur-modal: 340ms;
+
+  --l-grain-img: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.35   0 0 0 0 0.22   0 0 0 0 0.08   0 0 0 0.1 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --d-grain-img: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1   0 0 0 0 0.92   0 0 0 0 0.8   0 0 0 0.075 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+
+  --ttp-spec-gap: 10px;
+  --ttp-pill: #1f1811;
+  --ttp-pill-ink: #f6ead6;
+  --ttp-pill-ring: rgba(255, 233, 200, 0.14);
+  --ttp-pill-glow: #f2a771;
+}
+
+/* ── piebald ─────────────────────────────────────────────────────────────
+   Two tones, hard edges, nothing in between. Monospace throughout, corners
+   almost square, shadows removed entirely so depth comes from the border and
+   nothing else, and the fastest motion of the set. The only colour in the
+   chrome is the focus halo. Semantic colours are left alone on purpose — a
+   coat is allowed to be austere, it is not allowed to hide an error. */
+[data-ttp-theme="piebald"] {
+  --l-bg: #ffffff;
+  --l-surface: #ffffff;
+  --l-raised: #f1f1f1;
+  --l-overlay: #ffffff;
+  --l-dim: #e9e9e9;
+  --l-border: rgba(0, 0, 0, 0.22);
+  --l-border-strong: rgba(0, 0, 0, 0.55);
+  --l-text: #0b0b0b;
+  --l-muted: #3b3b3b;
+  --l-faint: #646464;
+  --l-accent: #111111;
+  --l-accent-hover: #000000;
+  --l-accent-fg: #ffffff;
+  --l-glow: #ff5c1a;
+  --l-success: #14672f;
+  --l-warning: #8a4a00;
+  --l-danger: #a41111;
+  --l-highlight: none;
+  --l-shadow-sm: none;
+  --l-shadow-md: none;
+  --l-shadow-lg: none;
+
+  --d-bg: #050505;
+  --d-surface: #0c0c0c;
+  --d-raised: #171717;
+  --d-overlay: #101010;
+  --d-dim: #000000;
+  --d-border: rgba(255, 255, 255, 0.24);
+  --d-border-strong: rgba(255, 255, 255, 0.58);
+  --d-text: #fbfbfb;
+  --d-muted: #c4c4c4;
+  --d-faint: #8e8e8e;
+  --d-accent: #fafafa;
+  --d-accent-hover: #ffffff;
+  --d-accent-fg: #050505;
+  --d-glow: #ff6a2c;
+  --d-success: #67d68c;
+  --d-warning: #f6c04a;
+  --d-danger: #fb8a8a;
+  --d-highlight: none;
+  --d-shadow-sm: none;
+  --d-shadow-md: none;
+  --d-shadow-lg: none;
+
+  --r-xs: 0px;
+  --r-sm: 0px;
+  --r-md: 2px;
+  --r-lg: 2px;
+  --r-xl: 4px;
+
+  --ttp-font-body: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, 'Roboto Mono', monospace;
+  --ttp-font-display: var(--ttp-font-body);
+  --ttp-feat: 'kern', 'calt';
+  --ttp-track-body: -0.005em;
+  --ttp-track-display: -0.02em;
+  --ttp-weight-display: 700;
+  --ttp-line: 1.4;
+
+  --ttp-ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ttp-ease-spring: cubic-bezier(0.2, 0, 0, 1);
+  --ttp-dur-press: 40ms;
+  --ttp-dur-hover: 70ms;
+  --ttp-dur-modal: 110ms;
+
+  --l-grain-img: none;
+  --d-grain-img: none;
+  --ttp-border-width: 1px;
+
+  --ttp-spec-gap: 5px;
+  --ttp-pill: #000000;
+  --ttp-pill-ink: #ffffff;
+  --ttp-pill-ring: rgba(255, 255, 255, 0.45);
+  --ttp-pill-glow: #ff6a2c;
+}
+
+/* ── merle ───────────────────────────────────────────────────────────────
+   Mottled blue-grey, and the one variety that famously comes with pale eyes.
+   Cool and atmospheric: the canvas carries two fixed radial washes, panels are
+   translucent and blurred so the wash shows through them, and everything
+   drifts into place on a long decelerating curve. The washes are static
+   gradients — nothing animates, nothing loops, nothing costs a frame. */
+[data-ttp-theme="merle"] {
+  --l-bg: #eef1f6;
+  --l-surface: #fbfdff;
+  --l-raised: #f3f6fb;
+  --l-overlay: #ffffff;
+  --l-dim: #e4e9f1;
+  --l-border: rgba(36, 58, 90, 0.11);
+  --l-border-strong: rgba(36, 58, 90, 0.22);
+  --l-text: #141d2b;
+  --l-muted: #4a5a72;
+  --l-faint: #6b7c95;
+  --l-accent: #146c86;
+  --l-accent-hover: #0d5468;
+  --l-accent-fg: #ffffff;
+  --l-glow: #1a90b3;
+  --l-success: #16704a;
+  --l-warning: #92590a;
+  --l-danger: #a92a3a;
+  --l-highlight: inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
+  --l-shadow-sm: 0 1px 2px rgba(20, 40, 70, 0.05), 0 1px 1px rgba(20, 40, 70, 0.04);
+  --l-shadow-md: 0 2px 8px rgba(20, 40, 70, 0.06), 0 10px 28px rgba(20, 40, 70, 0.09);
+  --l-shadow-lg: 0 8px 20px rgba(20, 40, 70, 0.08), 0 26px 60px rgba(20, 40, 70, 0.14);
+  --l-canvas-wash:
+    radial-gradient(120% 90% at 12% -10%, rgba(120, 176, 214, 0.30), transparent 60%),
+    radial-gradient(110% 80% at 92% 8%, rgba(156, 140, 208, 0.24), transparent 62%);
+
+  --d-bg: #0a0f17;
+  --d-surface: #121a26;
+  --d-raised: #18222f;
+  --d-overlay: #1a2432;
+  --d-dim: #070b11;
+  --d-border: rgba(150, 190, 235, 0.12);
+  --d-border-strong: rgba(150, 190, 235, 0.24);
+  --d-text: #e7eef7;
+  --d-muted: #a3b4c9;
+  --d-faint: #71829a;
+  --d-accent: #5cc6e6;
+  --d-accent-hover: #85d7f0;
+  --d-accent-fg: #061019;
+  --d-glow: #7ad8f4;
+  --d-success: #5fd6a4;
+  --d-warning: #f0c05a;
+  --d-danger: #f4808f;
+  --d-highlight: inset 0 1px 0 0 rgba(180, 215, 245, 0.10);
+  --d-canvas-wash:
+    radial-gradient(120% 90% at 10% -12%, rgba(46, 104, 158, 0.42), transparent 62%),
+    radial-gradient(110% 80% at 94% 6%, rgba(96, 78, 158, 0.34), transparent 64%);
+
+  --r-xs: 6px;
+  --r-sm: 10px;
+  --r-md: 13px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+
+  --ttp-track-body: 0.004em;
+  --ttp-track-display: -0.018em;
+  --ttp-weight-display: 550;
+  --ttp-line: 1.5;
+
+  --ttp-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ttp-ease-spring: cubic-bezier(0.18, 1.2, 0.35, 1);
+  --ttp-dur-press: 120ms;
+  --ttp-dur-hover: 260ms;
+  --ttp-dur-modal: 380ms;
+
+  --l-grain-img: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0   0 0 0 0 0.05   0 0 0 0 0.15   0 0 0 0.022 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --d-grain-img: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.75   0 0 0 0 0.88   0 0 0 0 1   0 0 0 0.026 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --ttp-panel-blur: saturate(140%) blur(14px);
+
+  --ttp-spec-gap: 8px;
+  --ttp-pill: #101b28;
+  --ttp-pill-ink: #d8f0fb;
+  --ttp-pill-ring: rgba(140, 210, 240, 0.22);
+  --ttp-pill-glow: #7ad8f4;
+}
+
+/* ── tortoiseshell ───────────────────────────────────────────────────────
+   Ginger and black mixed close together, with no white anywhere. The dense
+   coat: small radii, tight rows, less air between things, warm near-black even
+   in the light appearance, and a brisk unfussy curve. More of the window is
+   content and less of it is margin. */
+[data-ttp-theme="tortie"] {
+  --l-bg: #f2ece3;
+  --l-surface: #fbf6ee;
+  --l-raised: #eae1d3;
+  --l-overlay: #fffcf6;
+  --l-dim: #e2d7c5;
+  --l-border: rgba(66, 44, 20, 0.15);
+  --l-border-strong: rgba(66, 44, 20, 0.28);
+  --l-text: #241a10;
+  --l-muted: #58493a;
+  --l-faint: #83705a;
+  --l-accent: #9a5410;
+  --l-accent-hover: #7d4205;
+  --l-accent-fg: #fffcf6;
+  --l-glow: #c46a12;
+  --l-success: #3f6423;
+  --l-warning: #8a5300;
+  --l-danger: #99251c;
+  --l-highlight: inset 0 1px 0 0 rgba(255, 250, 240, 0.65);
+  --l-shadow-sm: 0 1px 2px rgba(58, 38, 16, 0.08), 0 1px 1px rgba(58, 38, 16, 0.05);
+  --l-shadow-md: 0 2px 4px rgba(58, 38, 16, 0.06), 0 6px 14px rgba(58, 38, 16, 0.10);
+  --l-shadow-lg: 0 4px 8px rgba(58, 38, 16, 0.07), 0 14px 30px rgba(58, 38, 16, 0.14);
+
+  --d-bg: #100b06;
+  --d-surface: #1a1209;
+  --d-raised: #221809;
+  --d-overlay: #281d0e;
+  --d-dim: #0a0704;
+  --d-border: rgba(255, 198, 120, 0.11);
+  --d-border-strong: rgba(255, 198, 120, 0.22);
+  --d-text: #f7ead6;
+  --d-muted: #c3ab89;
+  --d-faint: #8e7a5e;
+  --d-accent: #f0a12e;
+  --d-accent-hover: #ffb851;
+  --d-accent-fg: #150e05;
+  --d-glow: #ffb851;
+  --d-success: #9ad06a;
+  --d-warning: #ffc857;
+  --d-danger: #f78d78;
+  --d-highlight: inset 0 1px 0 0 rgba(255, 198, 120, 0.08);
+
+  --r-xs: 2px;
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 12px;
+
+  --ttp-font-body: 'SF Compact Display', 'Avenir Next Condensed', 'Inter', -apple-system, system-ui, sans-serif;
+  --ttp-font-display: var(--ttp-font-body);
+  --ttp-track-body: -0.004em;
+  --ttp-track-display: -0.026em;
+  --ttp-weight-display: 700;
+  --ttp-line: 1.38;
+
+  --ttp-ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ttp-ease-spring: cubic-bezier(0.4, 1.4, 0.5, 1);
+  --ttp-dur-press: 55ms;
+  --ttp-dur-hover: 110ms;
+  --ttp-dur-modal: 170ms;
+
+  --l-grain-img: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.3   0 0 0 0 0.18   0 0 0 0 0.05   0 0 0 0.05 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --d-grain-img: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1   0 0 0 0 0.85   0 0 0 0 0.62   0 0 0 0.045 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+
+  --ttp-spec-gap: 3px;
+  --ttp-pill: #1a1209;
+  --ttp-pill-ink: #ffd9a0;
+  --ttp-pill-ring: rgba(255, 198, 120, 0.18);
+  --ttp-pill-glow: #ffb851;
+}
+
+/* ============================================================================
+   3. THE RESOLVER.
+
+   Written once for every coat. It reads the `--l-*` / `--d-*` pair the coat
+   declared and publishes the names the rest of the app has always used, using
+   exactly the light/dark rules TTP already had:
+
+     • bare `:root`                          → light
+     • `prefers-color-scheme: dark` and the
+       user has not forced light             → dark
+     • `[data-theme="dark"]`                 → dark, whatever the OS says
+
+   Each selector is doubled with a descendant form so that ANY element carrying
+   `data-ttp-theme` becomes a fully-painted island of that coat. That is what
+   makes the specimen swatches in Settings possible: they are not screenshots
+   or hand-copied hex values, they are the real coat, rendered live, and they
+   cannot drift from what you get when you pick it.
+
+   Soft/tint variants are mixed from the resolved colour rather than declared,
+   so a coat that changes its accent gets consistent pills for free.
+   ========================================================================= */
+
+:root,
+[data-ttp-theme] {
+  --bg: var(--l-bg);
+  --surface: var(--l-surface);
+  --raised: var(--l-raised);
+  --overlay: var(--l-overlay);
+  --dim: var(--l-dim);
+  --border: var(--l-border);
+  --border-strong: var(--l-border-strong);
+  --text: var(--l-text);
+  --muted: var(--l-muted);
+  --faint: var(--l-faint);
+  --accent: var(--l-accent);
+  --accent-hover: var(--l-accent-hover);
+  --accent-fg: var(--l-accent-fg);
+  --success: var(--l-success);
+  --warning: var(--l-warning);
+  --danger: var(--l-danger);
+  --glow: var(--l-glow);
+  --highlight: var(--l-highlight);
+  --shadow-sm: var(--l-shadow-sm);
+  --shadow-md: var(--l-shadow-md);
+  --shadow-lg: var(--l-shadow-lg);
+  --canvas-wash: var(--l-canvas-wash);
+  --ttp-grain-img: var(--l-grain-img);
+  --soft-mix: 10%;
+  --tint-mix: 6%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]),
+  :root:not([data-theme="light"]) [data-ttp-theme] {
+    --bg: var(--d-bg);
+    --surface: var(--d-surface);
+    --raised: var(--d-raised);
+    --overlay: var(--d-overlay);
+    --dim: var(--d-dim);
+    --border: var(--d-border);
+    --border-strong: var(--d-border-strong);
+    --text: var(--d-text);
+    --muted: var(--d-muted);
+    --faint: var(--d-faint);
+    --accent: var(--d-accent);
+    --accent-hover: var(--d-accent-hover);
+    --accent-fg: var(--d-accent-fg);
+    --success: var(--d-success);
+    --warning: var(--d-warning);
+    --danger: var(--d-danger);
+    --glow: var(--d-glow);
+    --highlight: var(--d-highlight);
+    --shadow-sm: var(--d-shadow-sm);
+    --shadow-md: var(--d-shadow-md);
+    --shadow-lg: var(--d-shadow-lg);
+    --canvas-wash: var(--d-canvas-wash);
+    --ttp-grain-img: var(--d-grain-img);
+    --soft-mix: 16%;
+    --tint-mix: 10%;
+  }
+}
+
+:root[data-theme="dark"],
+:root[data-theme="dark"] [data-ttp-theme] {
+  --bg: var(--d-bg);
+  --surface: var(--d-surface);
+  --raised: var(--d-raised);
+  --overlay: var(--d-overlay);
+  --dim: var(--d-dim);
+  --border: var(--d-border);
+  --border-strong: var(--d-border-strong);
+  --text: var(--d-text);
+  --muted: var(--d-muted);
+  --faint: var(--d-faint);
+  --accent: var(--d-accent);
+  --accent-hover: var(--d-accent-hover);
+  --accent-fg: var(--d-accent-fg);
+  --success: var(--d-success);
+  --warning: var(--d-warning);
+  --danger: var(--d-danger);
+  --highlight: var(--d-highlight);
+  --shadow-sm: var(--d-shadow-sm);
+  --shadow-md: var(--d-shadow-md);
+  --shadow-lg: var(--d-shadow-lg);
+  --canvas-wash: var(--d-canvas-wash);
+  --ttp-grain-img: var(--d-grain-img);
+  --soft-mix: 16%;
+  --tint-mix: 10%;
+}
+
+/* Derived alpha variants — one definition, every coat, both appearances. */
+:root,
+[data-ttp-theme] {
+  --accent-soft: color-mix(in srgb, var(--accent) var(--soft-mix), transparent);
+  --accent-tint: color-mix(in srgb, var(--accent) var(--tint-mix), transparent);
+  --success-soft: color-mix(in srgb, var(--success) var(--soft-mix), transparent);
+  --success-tint: color-mix(in srgb, var(--success) var(--tint-mix), transparent);
+  --warning-soft: color-mix(in srgb, var(--warning) var(--soft-mix), transparent);
+  --warning-tint: color-mix(in srgb, var(--warning) var(--tint-mix), transparent);
+  --danger-soft: color-mix(in srgb, var(--danger) var(--soft-mix), transparent);
+  --danger-tint: color-mix(in srgb, var(--danger) var(--tint-mix), transparent);
+}
+
+/* ============================================================================
+   4. THE FOUR CONTRACT NAMES.
+
+   Everything above is TTP's private vocabulary. These four are public: the
+   Companion's face reads them and must keep working when a coat it has never
+   heard of is added. Nothing else may be assumed.
+   ========================================================================= */
+
+:root,
+[data-ttp-theme] {
+  --ttp-accent: var(--accent);
+  --ttp-surface: var(--surface);
+  --ttp-ink: var(--text);
+  /* Opaque on purpose. A consumer may read this with `getComputedStyle` and
+     hand it to something that only understands a colour — a `color-mix()`
+     string would survive in CSS and break everywhere else. Alpha is the
+     caller's business. */
+  --ttp-glow: var(--glow);
+}
+
+/* In the floating-bar window the surface IS the pill. It sits over whatever
+   wallpaper the user has, so it does not follow light/dark — and neither does
+   the mark that has to stay legible on it. Same four names, correct values. */
+html.floating-bar {
+  --ttp-surface: var(--ttp-pill);
+  --ttp-ink: var(--ttp-pill-ink);
+  --ttp-glow: var(--ttp-pill-glow);
+}
+
+/* ============================================================================
+   5. SHAPE, TYPE AND DENSITY.
+
+   Colour alone is a palette swap, and a palette swap is not a coat. These are
+   the rules that make the coats structurally different from each other.
+
+   The hooks (`.ttp-section`, `.ttp-row`, `.ttp-card`, …) are stable class
+   names carried by the UI primitives. They exist so density is expressed once
+   per coat here rather than smeared through component code — and so a new coat
+   never requires touching a component.
+   ========================================================================= */
+
+/* Roan: a wide margin. */
+[data-ttp-theme="roan"] .ttp-section { padding: 30px; margin-bottom: 26px; }
+[data-ttp-theme="roan"] .ttp-section-bare { margin-bottom: 26px; }
+[data-ttp-theme="roan"] .ttp-row { padding-top: 14px; padding-bottom: 14px; }
+[data-ttp-theme="roan"] .ttp-card-body { padding: 26px 28px; }
+[data-ttp-theme="roan"] .ttp-card-head { padding: 20px 28px; }
+[data-ttp-theme="roan"] .ttp-radio { padding: 15px 18px; }
+[data-ttp-theme="roan"] .ttp-scroll { padding-left: 44px; padding-right: 44px; }
+
+/* Piebald: rules, not shadows. The border does all the work, so it is drawn
+   at full strength and nothing is allowed to float. */
+[data-ttp-theme="piebald"] .ttp-section { padding: 20px; margin-bottom: 18px; border-color: var(--border-strong); }
+[data-ttp-theme="piebald"] .ttp-section-bare { margin-bottom: 18px; }
+[data-ttp-theme="piebald"] .ttp-row { padding-top: 9px; padding-bottom: 9px; }
+[data-ttp-theme="piebald"] .ttp-card,
+[data-ttp-theme="piebald"] .ttp-radio,
+[data-ttp-theme="piebald"] .ttp-input { border-color: var(--border-strong); }
+[data-ttp-theme="piebald"] .ttp-card-body { padding: 18px 20px; }
+[data-ttp-theme="piebald"] .ttp-card-head { padding: 14px 20px; }
+[data-ttp-theme="piebald"] .ttp-radio { padding: 11px 14px; }
+/* The knob. Piebald's accent is very nearly the knob's own colour, so without
+   an edge the "on" switch is an undifferentiated white capsule. The other
+   coats leave the knob exactly as it was. */
+[data-ttp-theme="piebald"] .ttp-toggle > span {
+  box-shadow: inset 0 0 0 1.5px var(--bg), 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+[data-ttp-theme="piebald"] .shine,
+[data-ttp-theme="piebald"] .shine-sm,
+[data-ttp-theme="piebald"] .shine-md,
+[data-ttp-theme="piebald"] .shine-lg { box-shadow: none; }
+/* Headings in a monospace coat want to be shouted, quietly. */
+[data-ttp-theme="piebald"] .ttp-section > div > div > h2,
+[data-ttp-theme="piebald"] .text-display-xs,
+[data-ttp-theme="piebald"] .text-display-sm { text-transform: uppercase; letter-spacing: 0.02em; }
+
+/* Merle: translucent panels over the canvas wash. */
+[data-ttp-theme="merle"] .ttp-section,
+[data-ttp-theme="merle"] .ttp-card {
+  background-color: color-mix(in srgb, var(--surface) 74%, transparent);
+  backdrop-filter: var(--ttp-panel-blur);
+  -webkit-backdrop-filter: var(--ttp-panel-blur);
+}
+[data-ttp-theme="merle"] .ttp-section { padding: 26px; margin-bottom: 22px; }
+[data-ttp-theme="merle"] .ttp-section-bare { margin-bottom: 22px; background: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+[data-ttp-theme="merle"] .ttp-row { padding-top: 11px; padding-bottom: 11px; }
+[data-ttp-theme="merle"] .ttp-radio { padding: 13px 16px; }
+/* The sidebar lets the wash through too, or the window has a pane of frosted
+   glass sitting next to a slab of opaque paint. */
+[data-ttp-theme="merle"] .ttp-sidebar {
+  background-color: color-mix(in srgb, var(--dim) 55%, transparent);
+  backdrop-filter: var(--ttp-panel-blur);
+  -webkit-backdrop-filter: var(--ttp-panel-blur);
+}
+
+/* Tortoiseshell: everything closer together. */
+[data-ttp-theme="tortie"] .ttp-section { padding: 17px 18px; margin-bottom: 13px; }
+[data-ttp-theme="tortie"] .ttp-section-bare { margin-bottom: 13px; }
+[data-ttp-theme="tortie"] .ttp-row { padding-top: 5px; padding-bottom: 5px; }
+[data-ttp-theme="tortie"] .ttp-card-body { padding: 14px 16px; }
+[data-ttp-theme="tortie"] .ttp-card-head { padding: 11px 16px; }
+[data-ttp-theme="tortie"] .ttp-radio { padding: 9px 13px; }
+[data-ttp-theme="tortie"] .ttp-scroll { padding-left: 22px; padding-right: 22px; }
+
+/* ============================================================================
+   6. CHANGING COAT.
+
+   The one moment of theatre in the whole feature, and it costs one timer.
+   While `.ttp-coat-shifting` is on <html>, colour properties everywhere
+   interpolate instead of snapping, so the window turns into the new coat
+   rather than being replaced by it. The class is removed as soon as it lands.
+
+   It transitions colour only — never layout, never transform — so nothing
+   reflows and nothing moves under the pointer. Reduced motion switches it off
+   entirely and the change is instant, which is also fine.
+   ========================================================================= */
+
+html.ttp-coat-shifting,
+html.ttp-coat-shifting * {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow, opacity !important;
+  transition-duration: 420ms !important;
+  transition-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1) !important;
+  transition-delay: 0s !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.ttp-coat-shifting,
+  html.ttp-coat-shifting * {
+    transition-duration: 0.01ms !important;
+  }
+}

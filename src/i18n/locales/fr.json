@@ -159,7 +159,31 @@
       "soundsLabel": "Voix",
       "preview": "Écouter",
       "faceLabel": "Lui donner un visage",
-      "faceDesc": "La pilule cligne des yeux au repos, reste immobile pendant qu'elle travaille, et marque l'instant où tes mots arrivent. Discret par défaut, et elle ne te demande jamais rien.",
+      "faceDesc": "Deux marques qui clignent quand il ne se passe rien, restent immobiles pendant qu'elle travaille, et marquent l'instant où tes mots arrivent. Chaque variété est discrète par défaut, et aucune ne te demande jamais rien.",
+      "faceOff": "Aucun",
+      "previewFace": "Regarder",
+      "faces": {
+        "house": {
+          "name": "Maison",
+          "desc": "Celui avec lequel elle est née. Tu cesses de le voir vers le troisième jour, et tu remarquerais s'il partait."
+        },
+        "shut": {
+          "name": "Fermé",
+          "desc": "Les yeux fermés jusqu'à ce que tu appuies. Tout ce qu'il a tient dans le cinquième de seconde où ils s'ouvrent."
+        },
+        "drowsy": {
+          "name": "Somnolent",
+          "desc": "Paupières lourdes, un clignement long et lent, toujours un temps derrière toi. Il ne te fait jamais sursauter."
+        },
+        "quick": {
+          "name": "Vif",
+          "desc": "Des clignements courts et nets, souvent deux d'affilée. Bonne compagnie pour une dictée de quatre secondes, mauvaise pour un après-midi d'écriture."
+        },
+        "bead": {
+          "name": "Perle",
+          "desc": "Deux petits points aussi écartés que le corps le permet. Immobile dix secondes, deux clignements, immobile à nouveau."
+        }
+      },
       "nameLabel": "Son nom",
       "namePlaceholder": "Donne un nom à ton Talk-To-Paste",
       "packs": {
@@ -344,6 +368,34 @@
       "optionSystem": "Système",
       "optionLight": "Clair",
       "optionDark": "Sombre"
+    },
+    "appearance": {
+      "title": "Robe",
+      "desc": "Le mode clair ou sombre décide de l'éclairage de la pièce. La robe décide de l'allure de l'animal dedans.",
+      "lockedNote": "Ces quatre-là arrivent avec le Compagnon.",
+      "footnote": "Les robes sont ornementales. Un Talk-To-Paste entend exactement aussi bien dans chacune d'entre elles.",
+      "coats": {
+        "wild": {
+          "name": "Type sauvage",
+          "desc": "La forme dans laquelle il arrive. Personne ne l'a sélectionnée."
+        },
+        "roan": {
+          "name": "Rouan",
+          "desc": "Des poils blancs sur un fond chaud. Du papier, une serif et de grandes marges."
+        },
+        "piebald": {
+          "name": "Pie",
+          "desc": "Deux tons et une frontière nette entre eux. Angles droits, et rien ne flotte."
+        },
+        "merle": {
+          "name": "Arlequin",
+          "desc": "Gris-bleu marbré. Les panneaux laissent passer le fond et rien ne se presse."
+        },
+        "tortie": {
+          "name": "Écaille de tortue",
+          "desc": "Roux et noir, serrés l'un contre l'autre. Plus de fenêtre, moins de marge."
+        }
+      }
     },
     "sidebar": {
       "thisMonth": "Ce mois",

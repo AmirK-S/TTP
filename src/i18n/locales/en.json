@@ -159,7 +159,31 @@
       "soundsLabel": "Voice",
       "preview": "Listen",
       "faceLabel": "Give it a face",
-      "faceDesc": "The pill blinks when idle, keeps still while it works, and marks the moment your words land. Subtle by default, and it never asks you for anything.",
+      "faceDesc": "Two marks that blink when nothing is happening, hold still while it works, and mark the moment your words land. Every variety is subtle by default, and none of them ever ask you for anything.",
+      "faceOff": "None",
+      "previewFace": "Watch",
+      "faces": {
+        "house": {
+          "name": "House",
+          "desc": "The one it was born with. You stop seeing it around the third day, and you would notice if it left."
+        },
+        "shut": {
+          "name": "Shut",
+          "desc": "Eyes closed until you press the key. Everything it has is in the fifth of a second where they open."
+        },
+        "drowsy": {
+          "name": "Drowsy",
+          "desc": "Heavy lids, a long slow blink, and always a beat behind you. It never once startles you."
+        },
+        "quick": {
+          "name": "Quick",
+          "desc": "Short sharp blinks, often two at a time. Good company for a four-second dictation and bad company for an afternoon of writing."
+        },
+        "bead": {
+          "name": "Bead",
+          "desc": "Two small dots set as wide as the body allows. Still for ten seconds, two blinks, still again."
+        }
+      },
       "nameLabel": "Its name",
       "namePlaceholder": "Name your Talk-To-Paste",
       "packs": {
@@ -344,6 +368,34 @@
       "optionSystem": "System",
       "optionLight": "Light",
       "optionDark": "Dark"
+    },
+    "appearance": {
+      "title": "Coat",
+      "desc": "Light and dark decide how the room is lit. The coat decides what the animal looks like in it.",
+      "lockedNote": "These four arrive with the Companion.",
+      "footnote": "Coats are decorative. A Talk-To-Paste in any of them hears exactly as well as one in any other.",
+      "coats": {
+        "wild": {
+          "name": "Wild type",
+          "desc": "The form it arrives in. Nobody bred this one."
+        },
+        "roan": {
+          "name": "Roan",
+          "desc": "White hairs through a warm base. Paper, a serif, and a wide margin."
+        },
+        "piebald": {
+          "name": "Piebald",
+          "desc": "Two tones with a hard edge between them. Square corners, and nothing floats."
+        },
+        "merle": {
+          "name": "Merle",
+          "desc": "Mottled blue-grey. The panels let the background through and nothing is in a hurry."
+        },
+        "tortie": {
+          "name": "Tortoiseshell",
+          "desc": "Ginger and black, kept close together. More window, less margin."
+        }
+      }
     },
     "sidebar": {
       "thisMonth": "This month",

@@ -25,10 +25,17 @@ import {
   RESOLVE_PEAK_HEIGHT,
   RESOLVE_SETTLE,
   RESOLVE_TOTAL_MS,
+  DEFAULT_FACE_VARIETY,
+  FACE_VARIETIES,
+  FACE_VARIETY_IDS,
+  HOUSE_BLINK,
+  asFaceVariety,
   breathPhaseOffsetMs,
   createBlinkScheduler,
   cssTransition,
   doubleBlinkGap,
+  eyePath,
+  faceVariety,
   isDoubleBlink,
   nextBlinkDelay,
   reactionDelayFor,
@@ -174,9 +181,17 @@ describe('the states', () => {
     expect(EYE_OPACITY.listening).toBeLessThan(EYE_OPACITY.idle);
   });
 
-  it('is quieter at idle than the shipped face was', () => {
-    expect(EYE_HEIGHT.idle).toBe(3.0); // was 3.5
-    expect(EYE_OPACITY.idle).toBe(0.85); // was 0.90
+  it('is quieter at idle than the shipped face was, and lower-contrast', () => {
+    // A knowing deviation from the doc's §3.5, which took idle down to 3.0.
+    // What made the shipped face read as punctuation was the *proportion* —
+    // narrow, high, tightly spaced — not the size, and shrinking it made a
+    // beadier colon rather than a quieter face. So the eye grows a little and
+    // the ink gets paid for in opacity and, far more, in the idle pill
+    // dropping from 28px tall to 16px.
+    expect(EYE_HEIGHT.idle).toBeLessThan(3.5); // the shipped height
+    expect(EYE_HEIGHT.idle).toBe(3.3);
+    expect(EYE_OPACITY.idle).toBeLessThan(0.9); // the shipped opacity
+    expect(EYE_OPACITY.idle).toBe(0.82);
   });
 
   it('holds completely still through the error shake, then settles', () => {
@@ -216,16 +231,16 @@ describe('the resolve beat — the moment the words land', () => {
 
 describe('the breath', () => {
   it('stays under the peripheral texture threshold of ~1px per ~2s', () => {
-    // ±6% of a 3.0px eye is ±0.18px of eye height.
+    // ±6% of a 3.3px eye is ±0.198px of eye height.
     const amplitudePx = EYE_HEIGHT.idle * BREATH_AMPLITUDE;
-    expect(amplitudePx).toBeCloseTo(0.18, 10);
+    expect(amplitudePx).toBeCloseTo(0.198, 10);
 
     // Over one period the height goes down, up, and back: 4 x amplitude of
     // total travel. Law 2 says a change of less than ~1px over more than ~2s
     // is texture rather than an event, and events are what steal a saccade.
     const travelPerPeriodPx = 4 * amplitudePx;
     const travelPerTwoSecondsPx = travelPerPeriodPx * (2000 / BREATH_PERIOD_MS);
-    expect(travelPerTwoSecondsPx).toBeCloseTo(0.313, 3);
+    expect(travelPerTwoSecondsPx).toBeCloseTo(0.344, 3);
     expect(travelPerTwoSecondsPx).toBeLessThan(1);
   });
 
@@ -361,5 +376,208 @@ describe('createBlinkScheduler', () => {
     expect(phases).toContain('closing');
     scheduler.stop();
     vi.useRealTimers();
+  });
+});
+
+/* -- The cast --------------------------------------------------------------- */
+
+describe('the varieties', () => {
+  it('is a set of five, complete and in a stable order', () => {
+    // M6 fires on *completeness*, not on count: the whole set unlocks at once,
+    // so it needs to be finishable, not large. Ids are persisted in settings
+    // and must never be renamed — renaming one silently resets someone's
+    // choice back to the default.
+    expect(FACE_VARIETY_IDS).toEqual(['house', 'shut', 'drowsy', 'quick', 'bead']);
+    for (const id of FACE_VARIETY_IDS) expect(FACE_VARIETIES[id].id).toBe(id);
+    expect(DEFAULT_FACE_VARIETY).toBe('house');
+  });
+
+  it('falls back to the default rather than drawing nothing', () => {
+    expect(faceVariety(null).id).toBe('house');
+    expect(faceVariety(undefined).id).toBe('house');
+    expect(asFaceVariety('drowsy')).toBe('drowsy');
+    expect(asFaceVariety('rupert')).toBeNull();
+    expect(asFaceVariety(null)).toBeNull();
+    expect(asFaceVariety(42)).toBeNull();
+  });
+
+  it('leaves `house` exactly as the design doc specified it', () => {
+    const house = FACE_VARIETIES.house;
+    expect(house.blink).toBe(HOUSE_BLINK);
+    expect(house.blink!.minMs).toBe(4200);
+    expect(house.blink!.spreadMs).toBe(3600);
+    expect(house.blink!.closeMs).toBe(90);
+    expect(house.blink!.holdMs).toBe(40);
+    expect(house.blink!.openMs).toBe(130);
+    expect(house.blink!.chainChance).toBe(0.12);
+    expect(house.breath).toEqual({ periodMs: 4600, amplitude: 0.06 });
+    expect(house.wake.delay).toBe(0);
+    expect(house.wake.duration).toBe(140);
+    expect(house.resolve).toEqual({ delayMs: 140, peakHeight: 3.9, riseMs: 90, settleMs: 170 });
+  });
+
+  it('is genuinely different in TIMING — the ten-second-recording falsifier', () => {
+    // The design doc's own test for the cast: two varieties must be
+    // distinguishable in a ten-second silent recording of the idle state. The
+    // mechanical half of that is that no two share an idle rhythm.
+    const rhythms = FACE_VARIETY_IDS.map((id) => {
+      const v = FACE_VARIETIES[id];
+      return JSON.stringify([v.blink, v.breath]);
+    });
+    expect(new Set(rhythms).size).toBe(FACE_VARIETY_IDS.length);
+  });
+
+  it('is genuinely different in DRAWING — and this is a knowing deviation', () => {
+    // §4.1 asks for the opposite: "take a still screenshot of two varieties —
+    // you should NOT be able to tell them apart". That rule cannot survive its
+    // own §4.3, where `shut` sits with its eyes closed at idle, and it does
+    // not survive the brief either: a picker whose five rows are identical
+    // gives the person choosing nothing to choose between. So the drawings
+    // differ too, and the recording test above is kept as the stricter one.
+    const drawings = FACE_VARIETY_IDS.map((id) => {
+      const v = FACE_VARIETIES[id];
+      return JSON.stringify([v.open, v.height.idle, v.spacing, v.cy, v.squeeze, v.closedAtIdle]);
+    });
+    expect(new Set(drawings).size).toBe(FACE_VARIETY_IDS.length);
+  });
+
+  it('never lets a variety demand anything', () => {
+    for (const id of FACE_VARIETY_IDS) {
+      const v = FACE_VARIETIES[id];
+      // Everything a variety can express is keyed to the current dictation
+      // state and nothing else. No counters, no streaks, no decay, no calendar
+      // — and no reward for frequency either, which is the same obligation
+      // with the sign flipped and the one that feels like a good idea.
+      expect(Object.keys(v.height).sort()).toEqual(
+        ['error', 'idle', 'listening', 'resolving', 'thinking'].sort(),
+      );
+      expect(Object.keys(v.opacity).sort()).toEqual(
+        ['error', 'idle', 'listening', 'resolving', 'thinking'].sort(),
+      );
+    }
+  });
+
+  it('keeps every variety quieter while listening than at idle', () => {
+    for (const id of FACE_VARIETY_IDS) {
+      const v = FACE_VARIETIES[id];
+      expect(v.height.listening).toBeLessThanOrEqual(v.height.idle);
+      expect(v.opacity.listening).toBeLessThan(v.opacity.idle);
+      // Any state that can outlast four seconds holds a stable appearance.
+      expect(v.height.thinking).toBeGreaterThan(v.shutHeight);
+      // The overshoot stays inside the glyph. It never moves toward the viewer.
+      expect(v.resolve.peakHeight).toBeLessThan(6);
+      expect(v.resolve.peakHeight).toBeGreaterThanOrEqual(v.height.resolving);
+    }
+  });
+
+  it('gives `drowsy` the inverted blink that reads as heavy-lidded', () => {
+    const d = FACE_VARIETIES.drowsy.blink!;
+    expect(d.openMs).toBeGreaterThan(d.closeMs); // opens SLOWER than it closes
+    expect(d.chainChance).toBe(0); // never a flurry
+    expect(d.minMs).toBe(7000);
+    // Late, and late by exactly the same amount every time: a consistent delay
+    // reads as character, a variable one reads as jank.
+    expect(FACE_VARIETIES.drowsy.wake.delay).toBe(80);
+    expect(FACE_VARIETIES.drowsy.resolve.settleMs).toBe(0); // one slow open, no bounce
+  });
+
+  it('gives `quick` short blinks, chains, and an anticipation beat', () => {
+    const q = FACE_VARIETIES.quick;
+    expect(q.blink!.closeMs).toBeLessThan(FACE_VARIETIES.house.blink!.closeMs);
+    expect(q.blink!.chainMax).toBe(2); // doubles, and the occasional triple
+    expect(q.wakeAnticipationMs).toBe(50);
+    expect(q.squeeze).toBeLessThan(1); // taller than it is wide
+  });
+
+  it('gives `shut` and `bead` nothing at all to habituate to at idle', () => {
+    // `shut` has nothing open to blink; `bead` simply holds still. Both solve
+    // the peripheral-vision problem outright rather than mitigating it.
+    expect(FACE_VARIETIES.shut.blink).toBeNull();
+    expect(FACE_VARIETIES.shut.breath).toBeNull();
+    expect(FACE_VARIETIES.shut.closedAtIdle).toBe(true);
+    expect(FACE_VARIETIES.bead.breath).toBeNull();
+    expect(FACE_VARIETIES.bead.blink!.chainChance).toBeGreaterThan(0.5);
+  });
+
+  it('never wakes `shut` up by itself — the sleep is late, not part of the beat', () => {
+    expect(FACE_VARIETIES.shut.sleepDelayMs).toBe(400);
+    expect(FACE_VARIETIES.shut.sleepDelayMs).toBeGreaterThan(RESOLVE_SETTLE.duration);
+    expect(FACE_VARIETIES.shut.wake.duration).toBe(200);
+  });
+
+  it('keeps every reaction to the app inside Law 3\'s 120-200 ms band', () => {
+    for (const id of FACE_VARIETY_IDS) {
+      const d = FACE_VARIETIES[id].resolve.delayMs;
+      expect(d).toBeGreaterThanOrEqual(120);
+      expect(d).toBeLessThanOrEqual(200);
+      // And the reaction to the user's own key is never delayed by more than
+      // the one variety that is late on purpose.
+      expect(FACE_VARIETIES[id].wake.delay).toBeLessThanOrEqual(80);
+    }
+  });
+});
+
+/* -- The eye ---------------------------------------------------------------- */
+
+/** The sequence of path commands, which is what has to stay constant. */
+const commands = (d: string) => d.replace(/[^A-Z]/g, '');
+
+describe('eyePath', () => {
+  it('emits the same command structure for every drawing', () => {
+    // The precondition for `d` interpolating rather than snapping: same
+    // number of segments, same types, same order. If this ever drifts, blinks
+    // stop morphing and start cutting, silently.
+    const shapes = FACE_VARIETY_IDS.flatMap((id) => {
+      const v = FACE_VARIETIES[id];
+      return [
+        eyePath(4, 8, v.open.width, v.height.idle, v.open.bow, v.squeeze),
+        eyePath(4, 8, v.open.width, v.height.thinking, v.open.bow, v.squeeze),
+        eyePath(4, 8, v.open.width, v.resolve.peakHeight, v.open.bow, v.squeeze),
+        eyePath(4, 8, v.shut.width, v.shutHeight, v.shut.bow, v.squeeze),
+      ];
+    });
+    for (const d of shapes) expect(commands(d)).toBe('MCACAZ');
+    expect(new Set(shapes.map(commands)).size).toBe(1);
+  });
+
+  it('centres the ink on cy, so bowing an eye does not shift it up the box', () => {
+    const flat = eyePath(8, 8, 3.8, 3.3, 0);
+    const bowed = eyePath(8, 8, 3.8, 1.0, 0.62);
+    for (const d of [flat, bowed]) {
+      const ys = [...d.matchAll(/-?\d+(?:\.\d+)?(?=\s|$)/g)]
+        .map((m) => Number(m[0]))
+        .filter((n) => n > 3 && n < 13);
+      const mid = (Math.min(...ys) + Math.max(...ys)) / 2;
+      expect(mid).toBeCloseTo(8, 1);
+    }
+  });
+
+  it('produces a closed lid that actually curves, and an open eye that does not', () => {
+    const house = FACE_VARIETIES.house;
+    // The single biggest improvement in the drawing: a shut eye rendered as a
+    // flat bar reads as an equals sign, and rendered as a shallow arc reads
+    // unmistakably as a closed eye. It bows the way a lid bows over a round
+    // eyeball, not the way a smile bows, so it is anatomy and not expression.
+    expect(house.shut.bow).toBeGreaterThan(0.5);
+    expect(house.open.bow).toBeLessThan(0.2);
+    expect(eyePath(8, 8, house.shut.width, house.shutHeight, house.shut.bow)).not.toBe(
+      eyePath(8, 8, house.shut.width, house.shutHeight, 0),
+    );
+  });
+
+  it('refuses a crown taller than the span it crosses', () => {
+    // An arch that rises further than its own half-length renders as a little
+    // hat rather than an eye. Rendered, looked at, and clamped.
+    const silly = eyePath(8, 8, 3.0, 3.0, 40);
+    const capped = eyePath(8, 8, 3.0, 3.0, 0.33);
+    expect(silly).toBe(capped);
+    expect(commands(silly)).toBe('MCACAZ');
+  });
+
+  it('squeezes horizontally without changing the command structure', () => {
+    const wide = eyePath(8, 8, 3.4, 3.4, 0.05, 1);
+    const narrow = eyePath(8, 8, 3.4, 3.4, 0.05, 0.76);
+    expect(wide).not.toBe(narrow);
+    expect(commands(narrow)).toBe('MCACAZ');
   });
 });

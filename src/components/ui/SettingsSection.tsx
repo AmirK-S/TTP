@@ -33,8 +33,11 @@ export function SettingsSection({
       id={id}
       data-section={id}
       className={cn(
+        // `ttp-section` / `ttp-section-bare` are the density hooks the coat
+        // layer targets (src/styles/coats.css §5). They carry no styles of
+        // their own — a coat that does not mention them changes nothing.
         'scroll-mt-6 mb-6',
-        !bare && 'bg-app-surface rounded-app-lg shine-sm border border-app-border p-6',
+        bare ? 'ttp-section-bare' : 'ttp-section bg-app-surface rounded-app-lg shine-sm border border-app-border p-6',
         className,
       )}
     >
@@ -87,7 +90,7 @@ export function SettingsRow({
     return cloneElement(el, { 'aria-labelledby': labelId });
   });
   return (
-    <div className={cn('flex items-center justify-between gap-4 py-2', className)}>
+    <div className={cn('ttp-row flex items-center justify-between gap-4 py-2', className)}>
       <div className="min-w-0">
         <p id={labelId} className="text-[13px] font-medium text-app-text">{label}</p>
         {description && (

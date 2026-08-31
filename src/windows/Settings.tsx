@@ -2,7 +2,7 @@
 // Settings window — configure app behavior, manage dictionary/history, manage
 // the Pro license. Five IA groups: General / Capture / Pro / Data / Advanced.
 
-import { useEffect, useState, useCallback, useRef, memo } from 'react';
+import { useEffect, useState, useCallback, useRef, memo, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Volume2,
   Copy, Check, Download, RefreshCw, Crown, ArrowRight, ExternalLink,
@@ -19,9 +19,11 @@ import { trackEvent } from '../lib/analytics';
 import { useUpdater } from '../hooks/useUpdater';
 import { useSettingsStore, DictionaryEntry, HistoryEntry } from '../stores/settings-store';
 import { PermissionBanner } from '../components/PermissionBanner';
+import { CoatPicker } from '../components/CoatPicker';
 import { FnEmojiNudge } from '../components/FnEmojiNudge';
 import type { LanguageChoice } from '../i18n/config';
 import type { ThemeChoice } from '../lib/theme';
+import { getCoatSnapshot, setCoat, subscribeCoat } from '../lib/theme-coats';
 import WhatsNew from '../components/WhatsNew';
 import {
   Button, Input, Banner, Spinner, Toggle, ConfirmDialog,
@@ -634,6 +636,11 @@ export function Settings() {
     { value: 'fr', label: t('settings.language.optionFrench') },
   ];
 
+  // The painted coat, read from the DOM attribute rather than mirrored into
+  // component state, so the picker and the document cannot disagree — a coat
+  // set from another window arrives as an event, not as a re-render here.
+  const coat = useSyncExternalStore(subscribeCoat, getCoatSnapshot, getCoatSnapshot);
+
   const themeOptions: { value: ThemeChoice; label: string }[] = [
     { value: 'system', label: t('settings.theme.optionSystem') },
     { value: 'light', label: t('settings.theme.optionLight') },
@@ -644,7 +651,7 @@ export function Settings() {
     <div className="h-screen flex bg-app-bg text-app-text bg-noise">
       <SettingsSidebar />
       <main className="flex-1 min-w-0 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-8 pt-8 pb-12">
+        <div className="ttp-scroll max-w-2xl mx-auto px-8 pt-8 pb-12">
           <PermissionBanner />
 
           {/* ===== GENERAL ===== */}
@@ -698,6 +705,27 @@ export function Settings() {
                   />
                 ))}
               </div>
+            </SettingsSection>
+
+            {/* The coat.
+
+                It sits with the other appearance settings rather than in the
+                Support section on purpose. Four of the five coats arrive with
+                the Companion, but a picker parked inside the purchase block
+                reads as a shop window, and a picker that turns into an upsell
+                the moment you scroll to it is the thing this product does not
+                do. This is an appearance setting. The free coat is the default
+                and it is first. */}
+            <SettingsSection title={t('settings.appearance.title')} description={t('settings.appearance.desc')}>
+              <CoatPicker
+                value={coat}
+                unlocked={cosmeticsUnlocked}
+                disabled={loading}
+                onSelect={(id) => {
+                  setCoat(id, cosmeticsUnlocked, { animate: true });
+                  trackEvent('setting_changed', { setting_name: 'coat', new_value: id });
+                }}
+              />
             </SettingsSection>
 
             <SettingsSection title={t('settings.startup.title')}>
@@ -1461,7 +1489,7 @@ function SettingsSidebar() {
   };
 
   return (
-    <aside className="w-56 shrink-0 bg-app-dim border-r border-app-border flex flex-col h-screen sticky top-0">
+    <aside className="ttp-sidebar w-56 shrink-0 bg-app-dim border-r border-app-border flex flex-col h-screen sticky top-0">
       <div className="px-5 pt-6 pb-4">
         <div className="flex items-center gap-2.5">
           <BrandTile size="sm" />

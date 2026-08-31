@@ -19,7 +19,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   return (
     <div
       className={cn(
-        'flex items-center h-9 rounded-app-md border bg-app-surface text-sm text-app-text',
+        'ttp-input flex items-center h-9 rounded-app-md border bg-app-surface text-sm text-app-text',
         'transition-[border-color,box-shadow] duration-hover ease-app-out',
         invalid
           ? 'border-app-danger focus-within:shadow-[0_0_0_3px_var(--danger-soft)]'

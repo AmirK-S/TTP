@@ -15,7 +15,12 @@ import { useTranscription } from '../hooks/useTranscription';
 import { TutorialPill } from '../components/TutorialPill';
 import { DarkPill } from '../components/ui';
 import { CompanionFace } from '../components/ui/CompanionFace';
-import type { FaceState } from '../components/ui/companion-timing';
+import {
+  DEFAULT_FACE_VARIETY,
+  asFaceVariety,
+  type FaceState,
+  type FaceVarietyId,
+} from '../components/ui/companion-timing';
 import { cn } from '../lib/cn';
 import { Lock } from 'lucide-react';
 
@@ -62,17 +67,32 @@ export function FloatingBar() {
   const { t } = useTranslation();
   const recordingState = useRecordingState();
 
-  // The Companion's face. Off unless the user both owns and enabled it —
-  // asked once at mount and refreshed when settings change, because this
-  // window has no settings store of its own.
-  const [faceEnabled, setFaceEnabled] = useState(false);
+  /* The Companion's face, and which variety of it. Off unless the user both
+     owns and chose one — asked once at mount and refreshed when settings
+     change, because this window has no settings store of its own.
+
+     Two shapes of setting are accepted on purpose. `companion_face` is a
+     variety id (or null for off) and is what the picker writes; the older
+     `companion_face_enabled` boolean is only consulted when the newer field is
+     absent entirely, so an install that predates the cast shows `house` rather
+     than nothing, and an install that has the field never has a stale boolean
+     resurrect a face the user turned off. */
+  const [face, setFace] = useState<FaceVarietyId | null>(null);
   useEffect(() => {
     const refresh = async () => {
       const [settings, unlocked] = await Promise.all([
-        safeInvoke<{ companion_face_enabled?: boolean }>('get_settings'),
+        safeInvoke<{ companion_face_enabled?: boolean; companion_face?: string | null }>(
+          'get_settings',
+        ),
         safeInvoke<boolean>('cosmetics_unlocked'),
       ]);
-      setFaceEnabled(Boolean(settings?.companion_face_enabled) && Boolean(unlocked));
+      const chosen =
+        settings && 'companion_face' in settings
+          ? asFaceVariety(settings.companion_face)
+          : settings?.companion_face_enabled
+            ? DEFAULT_FACE_VARIETY
+            : null;
+      setFace(unlocked ? chosen : null);
     };
     refresh();
     const un = listen('settings-changed', refresh);
@@ -82,6 +102,11 @@ export function FloatingBar() {
   useEffect(() => {
     document.documentElement.style.background = 'transparent';
     document.body.style.background = 'transparent';
+    /* The coat layer resolves `--ttp-surface` and `--ttp-ink` differently in
+       this window — here the surface IS the pill and the ink is the mark that
+       has to stay legible on it, over whatever wallpaper is behind. That block
+       is keyed on `html.floating-bar`, so the class has to be on. */
+    document.documentElement.classList.add('floating-bar');
   }, []);
 
   const { stage, message, params, isProcessing: isTranscribing } = useTranscription();
@@ -226,6 +251,10 @@ export function FloatingBar() {
           ? 'listening'
           : 'idle';
 
+  /* At rest with a face on there is nothing else in the pill, so the pill can
+     stop being a bar with a face in it and become the face's body. */
+  const faceIsThePill = face !== null && isIdle;
+
   const pillTone: 'idle' | 'active' | 'danger' = isError
     ? 'danger'
     : isRecording || isProcessing
@@ -240,17 +269,32 @@ export function FloatingBar() {
         tone={pillTone}
         className={cn(
           'flex items-center gap-2 transition-[background-color,color,padding] duration-200 ease-app-out',
-          isRecording || isProcessing || isError ? 'px-3.5 py-1.5' : 'px-4 py-1.5',
+          isRecording || isProcessing || isError
+            ? 'px-3.5 py-1.5'
+            : /* At rest with a face on, the face IS the pill: the padding comes
+                 off so the 16px box sets the height exactly, and the sides pull
+                 in so the body hugs it. Rendered at 1x and looked at — with the
+                 old `py-1.5` the idle pill stood 28px tall for two 3px marks
+                 floating in the middle of it, which is what made the face read
+                 as a decal on a bar rather than as a head. */
+              faceIsThePill
+              ? 'px-[7px] py-0'
+              : 'px-4 py-1.5',
           isError && 'anim-shake',
         )}
-        style={{
-          minHeight: isRecording || isProcessing || isError ? 28 : 16,
-        }}
+        /* The body's colour is `DarkPill`'s business and it already reads the
+           coat. Nothing here overrides it — a second declaration in this file
+           would win on the style spread and silently undo it. */
+        style={{ minHeight: isRecording || isProcessing || isError ? 28 : 16 }}
         role="status"
         aria-live="polite"
       >
-        {faceEnabled && (
-          <CompanionFace state={faceState} reducedMotion={prefersReducedMotion} />
+        {face && (
+          <CompanionFace
+            state={faceState}
+            reducedMotion={prefersReducedMotion}
+            variety={face}
+          />
         )}
 
         {isRecording && (
