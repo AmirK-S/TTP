@@ -147,6 +147,19 @@ export function FloatingBar() {
   const isError = stage === 'error';
   const isIdle = !isRecording && !isProcessing && !isError;
 
+  /* Dead microphone, announced while there is still time to act on it. -------
+     Emitted by audio_monitor once a capture has passed its grace period with
+     nothing but silence. Cleared whenever recording stops, so the warning is
+     about this recording and never a leftover from the last one. */
+  const [deadInput, setDeadInput] = useState(false);
+  useEffect(() => {
+    if (!isRecording) setDeadInput(false);
+  }, [isRecording]);
+  useEffect(() => {
+    const un = listen('audio-dead-input', () => setDeadInput(true));
+    return () => { un.then((f) => f()); };
+  }, []);
+
   /* Elapsed timer during recording. Reset on each recording start. ----------- */
   const [elapsedMs, setElapsedMs] = useState(0);
   useEffect(() => {
@@ -302,9 +315,18 @@ export function FloatingBar() {
                 />
               ))}
             </span>
-            <span className="text-[11px] font-medium tabular-nums text-white/90 tracking-tight">
-              {formatElapsed(elapsedMs)}
-            </span>
+            {deadInput ? (
+              // Replaces the timer rather than sitting beside it: a counter
+              // ticking up next to "no sound" reads as though the recording is
+              // fine, which is the impression we are trying to correct.
+              <span className="text-[11px] font-medium text-app-warning whitespace-nowrap">
+                {t('floatingBar.deadInput')}
+              </span>
+            ) : (
+              <span className="text-[11px] font-medium tabular-nums text-white/90 tracking-tight">
+                {formatElapsed(elapsedMs)}
+              </span>
+            )}
             {isHandsFree && (
               <Lock
                 className="size-3 text-white/80 shrink-0"

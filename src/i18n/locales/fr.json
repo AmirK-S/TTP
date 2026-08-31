@@ -453,7 +453,8 @@
     "tutorialSuffix": "pour dicter",
     "errorFallback": "Quelque chose a cassé",
     "statusTranscribing": "Transcription…",
-    "handsFreeIndicatorLabel": "Mode mains libres, un seul tap pour arrêter"
+    "handsFreeIndicatorLabel": "Mode mains libres, un seul tap pour arrêter",
+    "deadInput": "Aucun son — vérifie ton micro"
   },
   "permissionBanner": {
     "titleOne": "Permission {{item}} manquante",

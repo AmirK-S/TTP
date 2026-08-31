@@ -66,6 +66,8 @@ pub fn stop() {
 /// to the pill window, and enforce the hard recording-duration ceiling.
 fn run(app: &AppHandle) -> Result<(), String> {
     let started_at = Instant::now();
+    // Latched so a dead input is announced once, not thirty times a second.
+    let mut dead_input_reported = false;
     while ACTIVE.load(Ordering::SeqCst) {
         // Hard duration cap. We check from the audio_monitor (always live
         // during Recording) so the cap applies regardless of whether VAD
@@ -80,6 +82,34 @@ fn run(app: &AppHandle) -> Result<(), String> {
             crate::shortcuts::handle_shortcut_event_public(app, ShortcutState::Released);
             ACTIVE.store(false, Ordering::SeqCst);
             break;
+        }
+
+        // Say it while there is still time to act on it.
+        //
+        // A capture that has delivered nothing but zeros past the grace
+        // period is not going to start working, and the user is talking into
+        // it. Told at second two they lose one sentence and go fix their
+        // headphones; told at the end — which is how we found this, after a
+        // twenty-one second dictation came back empty — they lose everything
+        // and have no idea why. Emitted once per capture, so it is a warning
+        // rather than a stream of them.
+        if !dead_input_reported {
+            if let Some(elapsed) = crate::audio_capture::dead_input_elapsed_ms() {
+                dead_input_reported = true;
+                crate::logging::log_warn(&format!(
+                    "[AudioMonitor] {}ms into this recording and the microphone has \
+                     delivered nothing but silence.",
+                    elapsed
+                ));
+                crate::trace::event(
+                    "capture.dead_input_detected",
+                    serde_json::json!({
+                        "ms": elapsed,
+                        "device": crate::audio_capture::last_capture_device(),
+                    }),
+                );
+                app.emit("audio-dead-input", elapsed).ok();
+            }
         }
 
         let rms = crate::audio_capture::current_rms();

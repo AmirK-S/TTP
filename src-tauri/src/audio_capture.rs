@@ -31,7 +31,7 @@
 
 use std::path::PathBuf;
 use std::sync::{
-    atomic::{AtomicU32, AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
     Arc, LazyLock, Mutex,
 };
 
@@ -155,6 +155,37 @@ struct RecordingState {
 
 static STATE: LazyLock<Mutex<Option<RecordingState>>> = LazyLock::new(|| Mutex::new(None));
 
+/// True from the moment `start_recording` begins until it has published into
+/// STATE — or given up.
+///
+/// Starting a capture is not instant: it checks microphone authorisation,
+/// resolves the device, queries its config and creates a WAV writer, and on
+/// Bluetooth that can take most of a second. `stop_recording` waits 400 ms for
+/// the driver to drain and then takes STATE, so a short enough tap has the two
+/// crossing in mid-air.
+///
+/// Observed 2026-08-30, a 60 ms tap:
+///
+///     .386 press    → Recording
+///     .446 release  → Processing
+///     .852 capture.stop_failed "No recording in progress"
+///     .930 capture.start                     ← start finishes after the stop
+///
+/// The recording was lost, which is bad, and the stream was left running with
+/// nobody holding a handle to stop it, which is worse: the microphone stays
+/// live until the next recording replaces it. For an app whose pitch is that
+/// your voice does not leave your machine, a hot mic nobody asked for is the
+/// one bug that must not exist.
+static STARTING: AtomicBool = AtomicBool::new(false);
+
+/// How long `stop_recording` will wait for an in-flight start to publish.
+///
+/// Generous, because the alternative to waiting is the orphaned stream above.
+/// It only ever elapses in full when a start genuinely failed, and the
+/// existing "No recording in progress" path then handles it as before.
+const START_SETTLE_TIMEOUT_MS: u64 = 3_000;
+const START_SETTLE_POLL_MS: u64 = 20;
+
 /// Most recent RMS level computed inside the audio callback, stored as the
 /// bit-pattern of an `f32` in [0.0, 1.0].
 ///
@@ -179,7 +210,54 @@ pub fn current_rms() -> f32 {
     f32::from_bits(RMS_BUCKET.load(Ordering::Relaxed))
 }
 
+/// Whether any non-zero audio has arrived since the current capture began.
+static SIGNAL_SEEN: AtomicBool = AtomicBool::new(false);
+
+/// Wall-clock ms at which the current capture began. Zero when idle.
+static CAPTURE_STARTED_MS: AtomicU64 = AtomicU64::new(0);
+
+/// How long a capture may deliver nothing but zeros before we say so.
+///
+/// A Bluetooth device that is still handing itself over from a phone needs
+/// about a second, and interrupting that would be worse than useless. But
+/// there is no honest reading of two seconds of pure digital silence other
+/// than "this microphone is not going to produce anything", and on
+/// 2026-08-30 that state lasted **twenty-one seconds** while the user talked:
+/// 503520 samples at 24 kHz, every one of them zero, discovered only after
+/// they let go of the key.
+///
+/// Telling them at second two costs one interrupted sentence. Not telling
+/// them costs the whole thing, and the trust that the app was listening.
+const DEAD_INPUT_GRACE_MS: u64 = 2_000;
+
+/// How long the current capture has been delivering pure silence, if it has
+/// passed the grace period and nothing has arrived at all.
+///
+/// `None` while idle, inside the grace window, or once any signal has been
+/// seen — so a recording that starts slowly and then works never reports.
+pub fn dead_input_elapsed_ms() -> Option<u64> {
+    if SIGNAL_SEEN.load(Ordering::Relaxed) {
+        return None;
+    }
+    let started = CAPTURE_STARTED_MS.load(Ordering::Relaxed);
+    if started == 0 {
+        return None;
+    }
+    let elapsed = now_ms().saturating_sub(started);
+    (elapsed >= DEAD_INPUT_GRACE_MS).then_some(elapsed)
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
 fn store_rms(value: f32) {
+    if value > 0.0 {
+        SIGNAL_SEEN.store(true, Ordering::Relaxed);
+    }
     // Clamp to a sane range so a freakishly loud sample can't break the
     // pill's transform-based animation.
     let clamped = value.clamp(0.0, 4.0);
@@ -188,6 +266,18 @@ fn store_rms(value: f32) {
 
 fn reset_rms() {
     RMS_BUCKET.store(0u32, Ordering::Relaxed);
+}
+
+/// Arm dead-input detection for a capture that is about to begin.
+fn arm_dead_input_watch() {
+    SIGNAL_SEEN.store(false, Ordering::Relaxed);
+    CAPTURE_STARTED_MS.store(now_ms(), Ordering::Relaxed);
+}
+
+/// Disarm it. Called on stop so an idle app never reports a dead input.
+fn disarm_dead_input_watch() {
+    CAPTURE_STARTED_MS.store(0, Ordering::Relaxed);
+    SIGNAL_SEEN.store(false, Ordering::Relaxed);
 }
 
 fn rms_from_i8(data: &[i8]) -> f32 {
@@ -322,6 +412,10 @@ pub async fn start_recording<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(),
 }
 
 async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    // Cleared on every exit path below — including the `?` ones — by the
+    // guard, so a failed start can never wedge a subsequent stop.
+    STARTING.store(true, Ordering::SeqCst);
+    let _starting_guard = StartingGuard;
     // 1. Self-heal a stale STATE.
     //
     // Spam clicks on the tray button used to leave a "phantom" cpal stream
@@ -424,6 +518,7 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
     // Reset the RMS bucket so the pill doesn't briefly mirror the previous
     // session's last sample on session start.
     reset_rms();
+    arm_dead_input_watch();
     let stream = build_stream(&device, &supported_config, &writer_handle, &samples_written, &app)?;
     stream
         .play()
@@ -438,6 +533,19 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
         samples_written,
     });
     Ok(())
+}
+
+/// Clears [`STARTING`] however `start_recording_inner` returns.
+///
+/// A plain `store(false)` at the end of the function would be skipped by every
+/// `?` in it, and there are nine — leaving `stop_recording` waiting three
+/// seconds for a start that already failed.
+struct StartingGuard;
+
+impl Drop for StartingGuard {
+    fn drop(&mut self) {
+        STARTING.store(false, Ordering::SeqCst);
+    }
 }
 
 /// Stop the active recording, finalise the WAV file, and return its path.
@@ -480,6 +588,32 @@ async fn stop_recording_inner() -> Result<PathBuf, String> {
     // makes the Tauri command macro fail to compile).
     tokio::time::sleep(std::time::Duration::from_millis(400)).await;
 
+    // Let any in-flight start finish publishing before we look for it.
+    //
+    // Without this a short tap races: stop takes STATE while start is still
+    // building the stream, finds nothing, reports "No recording in progress",
+    // and start then publishes a stream with nobody left to stop it. See
+    // STARTING. Waiting costs nothing in the normal case, where the flag is
+    // already clear by the time the drain above has elapsed.
+    if STARTING.load(Ordering::SeqCst) {
+        let waited_from = std::time::Instant::now();
+        while STARTING.load(Ordering::SeqCst) {
+            if waited_from.elapsed() >= std::time::Duration::from_millis(START_SETTLE_TIMEOUT_MS) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(START_SETTLE_POLL_MS)).await;
+        }
+        let waited_ms = waited_from.elapsed().as_millis() as u64;
+        log_info(&format!(
+            "[AudioCapture] stop waited {}ms for an in-flight start",
+            waited_ms
+        ));
+        crate::trace::event(
+            "capture.stop_waited_for_start",
+            serde_json::json!({ "ms": waited_ms }),
+        );
+    }
+
     let mut state_guard = STATE.lock().map_err(|e| format!("state lock poisoned: {}", e))?;
     let state = state_guard
         .take()
@@ -496,6 +630,7 @@ async fn stop_recording_inner() -> Result<PathBuf, String> {
     // The pill subscribes to RMS via current_rms(); reset it now so it
     // doesn't briefly render the last captured frame after the stream ends.
     reset_rms();
+    disarm_dead_input_watch();
 
     // Finalise the WAV — flushes BufWriter and patches the RIFF/data chunk
     // sizes. Errors here mean the file on disk is unusable, so we surface

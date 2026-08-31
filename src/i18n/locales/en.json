@@ -453,7 +453,8 @@
     "tutorialSuffix": "to dictate",
     "errorFallback": "Something broke",
     "statusTranscribing": "Transcribing…",
-    "handsFreeIndicatorLabel": "Hands-free recording, single tap to stop"
+    "handsFreeIndicatorLabel": "Hands-free recording, single tap to stop",
+    "deadInput": "No sound — check your mic"
   },
   "permissionBanner": {
     "titleOne": "{{item}} permission missing",
