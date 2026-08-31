@@ -77,7 +77,35 @@ Weak standalone, so it ships bundled. Zero engineering, substantial writing —
 and per the research, the writing has to be genuinely, laboriously good or it
 reads as a cheap gag and undermines everything above it.
 
-### 4. Deferred: supporters wall
+### 4. Deferred: appearance — pill variants and animation
+
+Amir's own idea, 2026-08-31, after seeing the face land: not one face but
+several, with different animation personalities, as the substance of the
+Companion rather than a garnish on the sound packs.
+
+It is the right instinct and it deepens exactly the mechanism the research
+puts most weight on. Anthropomorphism plus collecting plus endowment already
+carry idea #2; a *cast* to choose from turns a single customisation into a
+recurring one, and the pill is the surface the user looks at all day. It is
+plausibly a stronger headline than the sounds.
+
+Deliberately not started. Three reasons, all worth writing down so this is a
+decision and not a slip:
+
+  - The single face has not been lived with yet. Whether a face in peripheral
+    vision stays charming past a week is the open question the whole feature
+    rests on, and building five of them before answering it multiplies the
+    bet rather than testing it.
+  - It is a design problem, not a coding one. Getting a character to feel
+    alive rather than gimmicky is where this succeeds or fails, and that
+    needs someone drawing, not someone typing.
+  - The sound packs are not finished. Three of five were rejected on first
+    listen; shipping breadth on top of an unsettled foundation is how a
+    purchase ends up feeling thin.
+
+Revisit once the face has survived normal use and the sounds are settled.
+
+### 5. Deferred: supporters wall
 
 Opt-in name on a public page. Cheap, and the only other route to genuine image
 motivation. Needs a website and a backend, so it is out of this pass. Recorded
