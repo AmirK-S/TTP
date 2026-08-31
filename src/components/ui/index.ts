@@ -10,3 +10,4 @@ export { SettingsSection, SettingsRow, SettingsGroup } from './SettingsSection';
 export { RadioOption } from './RadioOption';
 export { BrandTile } from './BrandTile';
 export { DarkPill } from './DarkPill';
+export { CompanionFace } from './CompanionFace';

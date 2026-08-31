@@ -159,7 +159,7 @@
       "soundsLabel": "Voix",
       "preview": "Écouter",
       "faceLabel": "Lui donner un visage",
-      "faceDesc": "La pilule cligne des yeux au repos et réagit quand tu parles. Discret par défaut, et elle ne te demande jamais rien.",
+      "faceDesc": "La pilule cligne des yeux au repos, reste immobile pendant qu'elle travaille, et marque l'instant où tes mots arrivent. Discret par défaut, et elle ne te demande jamais rien.",
       "nameLabel": "Son nom",
       "namePlaceholder": "Donne un nom à ton Talk-To-Paste",
       "packs": {

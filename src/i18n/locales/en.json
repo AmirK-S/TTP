@@ -159,7 +159,7 @@
       "soundsLabel": "Voice",
       "preview": "Listen",
       "faceLabel": "Give it a face",
-      "faceDesc": "The pill blinks when idle and reacts while you speak. Subtle by default, and it never asks you for anything.",
+      "faceDesc": "The pill blinks when idle, keeps still while it works, and marks the moment your words land. Subtle by default, and it never asks you for anything.",
       "nameLabel": "Its name",
       "namePlaceholder": "Name your Talk-To-Paste",
       "packs": {

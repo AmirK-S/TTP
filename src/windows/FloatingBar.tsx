@@ -14,93 +14,41 @@ import { useRecordingMode } from '../hooks/useRecordingMode';
 import { useTranscription } from '../hooks/useTranscription';
 import { TutorialPill } from '../components/TutorialPill';
 import { DarkPill } from '../components/ui';
+import { CompanionFace } from '../components/ui/CompanionFace';
+import type { FaceState } from '../components/ui/companion-timing';
 import { cn } from '../lib/cn';
 import { Lock } from 'lucide-react';
 
 const TUTORIAL_DISMISSED_KEY = 'tutorial_pill_dismissed';
 
-/** How often the idle face blinks, in ms. Slow on purpose — see CompanionFace. */
-const BLINK_INTERVAL_MS = 5200;
-const BLINK_DURATION_MS = 140;
 const BAR_COUNT = 14;
 const MIN_HEIGHT = 2;
 const MAX_HEIGHT = 16;
 
 /**
- * The pill's face.
+ * Subscribe to `prefers-reduced-motion` rather than reading it once.
  *
- * Deliberately two dots and a line. The research this comes from (see
- * docs/ttp-pro-design.md) is clear that the mechanism is anthropomorphism —
- * the user is already watching this thing wondering whether it heard them —
- * and anthropomorphism does not need detail. It needs *timing*. A blink every
- * five seconds reads as alive; a blink every second reads as a cartoon and
- * becomes unbearable in a working day.
- *
- * Three rules it must never break:
- *   - it never demands anything. Nothing decays, nothing needs feeding,
- *     nothing is ever sad that you did not dictate today. We take Tamagotchi's
- *     attachment and explicitly refuse its care burden.
- *   - it honours prefers-reduced-motion by holding still, eyes open.
- *   - it is decorative, so it is aria-hidden. The pill already announces its
- *     state through the live region around it; a face that also spoke would
- *     make a screen reader read every blink.
+ * The shipped code read `.matches` at render with no `change` listener, so a
+ * user who turned Reduce Motion on while TTP was running kept the old
+ * behaviour until the window reloaded — and the floating bar is a window that
+ * essentially never reloads.
  */
-function CompanionFace({
-  state,
-  reducedMotion,
-}: {
-  state: 'idle' | 'listening' | 'thinking' | 'error';
-  reducedMotion: boolean;
-}) {
-  const [blinking, setBlinking] = useState(false);
+export function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return false;
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  });
 
   useEffect(() => {
-    if (reducedMotion || state !== 'idle') {
-      setBlinking(false);
-      return;
-    }
-    const id = window.setInterval(() => {
-      setBlinking(true);
-      window.setTimeout(() => setBlinking(false), BLINK_DURATION_MS);
-    }, BLINK_INTERVAL_MS);
-    return () => window.clearInterval(id);
-  }, [reducedMotion, state]);
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const onChange = (event: MediaQueryListEvent) => setReduced(event.matches);
+    setReduced(query.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
 
-  // Eyes close while thinking (it is concentrating, not asleep) and narrow on
-  // error. The pill itself already shakes on error, so the face understates
-  // it rather than competing.
-  const eyesShut = blinking || state === 'thinking';
-  const eyeHeight = eyesShut ? 1 : state === 'error' ? 2 : state === 'listening' ? 4.5 : 3.5;
-
-  return (
-    <span className="shrink-0 flex items-center" aria-hidden>
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-        {[5, 11].map((cx) => (
-          <rect
-            key={cx}
-            x={cx - 1.1}
-            y={8 - eyeHeight / 2}
-            width={2.2}
-            height={eyeHeight}
-            rx={1.1}
-            className="fill-white/90"
-            style={{ transition: reducedMotion ? undefined : 'all 120ms ease-out' }}
-          />
-        ))}
-        {/* A mouth only while listening — an always-on smile is the fastest
-            way to make something like this feel like clip art. */}
-        {state === 'listening' && (
-          <path
-            d="M 5.6 11.6 Q 8 13.2 10.4 11.6"
-            className="stroke-white/70"
-            strokeWidth={1.1}
-            strokeLinecap="round"
-            fill="none"
-          />
-        )}
-      </svg>
-    </span>
-  );
+  return reduced;
 }
 
 function formatElapsed(ms: number): string {
@@ -201,10 +149,7 @@ export function FloatingBar() {
    * motion, we mount the bars at a clean static silhouette and skip the RAF
    * loop entirely — recording state is still conveyed by the red dot, the
    * timer, and aria-live on the pill, so there's no information loss. */
-  const prefersReducedMotion =
-    typeof window !== 'undefined' &&
-    window.matchMedia &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const prefersReducedMotion = usePrefersReducedMotion();
   const barRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const levelRef = useRef(0);
   const rafRef = useRef(0);
@@ -265,6 +210,22 @@ export function FloatingBar() {
     };
   }, [isRecording, prefersReducedMotion]);
 
+  /* The face's state.
+     `resolving` is the beat when the words land — 140 ms late, because it is a
+     reaction to the app's own result rather than to the user's key, and that
+     delay is the whole difference between a status light and a thing that
+     noticed. `stage === 'complete'` holds for 500 ms (useTranscription), which
+     comfortably contains the 400 ms beat. */
+  const faceState: FaceState = isError
+    ? 'error'
+    : stage === 'complete'
+      ? 'resolving'
+      : isProcessing
+        ? 'thinking'
+        : isRecording
+          ? 'listening'
+          : 'idle';
+
   const pillTone: 'idle' | 'active' | 'danger' = isError
     ? 'danger'
     : isRecording || isProcessing
@@ -289,10 +250,7 @@ export function FloatingBar() {
         aria-live="polite"
       >
         {faceEnabled && (
-          <CompanionFace
-            state={isError ? 'error' : isProcessing ? 'thinking' : isRecording ? 'listening' : 'idle'}
-            reducedMotion={prefersReducedMotion}
-          />
+          <CompanionFace state={faceState} reducedMotion={prefersReducedMotion} />
         )}
 
         {isRecording && (
