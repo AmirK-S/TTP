@@ -321,6 +321,17 @@ mod rms_tests {
         (a - b).abs() < 0.001
     }
 
+    /// Serialises the two tests that mutate the process-global RMS bucket.
+    ///
+    /// `store_rms` / `current_rms` / `reset_rms` operate on one `AtomicU32`
+    /// shared by the whole process. Two tests writing it concurrently under
+    /// the default parallel runner clobber each other: measured failing about
+    /// one run in three with just those two tests selected. It was latent
+    /// before — the suite happened not to schedule them together — which is
+    /// exactly the shape of flake that gets re-run until it passes and then
+    /// believed.
+    static BUCKET: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn empty_buffers_return_zero() {
         assert_eq!(rms_from_f32(&[]), 0.0);
@@ -370,6 +381,7 @@ mod rms_tests {
 
     #[test]
     fn store_and_read_rms_round_trip() {
+        let _guard = BUCKET.lock().unwrap_or_else(|e| e.into_inner());
         store_rms(0.42);
         assert!(approx(current_rms(), 0.42));
         reset_rms();
@@ -378,6 +390,7 @@ mod rms_tests {
 
     #[test]
     fn store_rms_clamps_obnoxious_values() {
+        let _guard = BUCKET.lock().unwrap_or_else(|e| e.into_inner());
         store_rms(99.0);
         // Clamp ceiling is 4.0 — anything higher gets pinned.
         assert!(current_rms() <= 4.0);

@@ -32,6 +32,7 @@ mod sounds;
 mod state;
 mod telemetry;
 mod trace;
+mod trace_api;
 pub(crate) mod transcription;
 mod tray;
 mod uninstall;
@@ -606,6 +607,11 @@ pub fn run() {
         .manage(Mutex::new(AppState::default()))
         .manage(Mutex::new(RecordingContext::default()))
         .setup(move |app| {
+            // Hand the trace writer an app handle before the first line is
+            // emitted, so a viewer opened later can subscribe without the
+            // writer having to learn about it mid-stream.
+            trace::set_app_handle(app.handle().clone());
+
             // First line of every run. Without a session boundary the trace is
             // one undifferentiated stream across restarts, and "did the app
             // restart between these two dictations?" — the question you ask
@@ -618,6 +624,13 @@ pub fn run() {
                     "arch": std::env::consts::ARCH,
                 }),
             );
+
+            // Where the Companion stood at this session boundary. Rotation can
+            // age out the event that turned the face off; a state line per
+            // launch means the retained window always shows the configuration
+            // the dictations in it were made under. See
+            // `docs/companion-faces-design.md` §2.2.
+            settings::trace_companion_state();
 
             // Pay the keychain's one-time ACL evaluation now, on a blocking
             // thread nobody waits on, rather than during the first dictation
@@ -857,6 +870,11 @@ pub fn run() {
             get_analytics_summary,
             uninstall::uninstall_app,
             logging::reveal_log_folder,
+            trace_api::trace_recent_dictations,
+            trace_api::trace_get_dictation,
+            trace_api::trace_recent_events,
+            trace_api::trace_set_live,
+            trace_api::trace_status,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

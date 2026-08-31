@@ -11,6 +11,43 @@
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
+
+/// Anything slower than this gets a line of its own.
+///
+/// A warm keychain round-trip is sub-millisecond; the pathological one is
+/// seconds. 50 ms is comfortably above the former and two orders of magnitude
+/// below the latter, so the threshold does not have to be defended precisely —
+/// it only has to separate "cached" from "macOS is re-evaluating the ACL".
+/// Below it we would be writing a line per usage record for no information.
+const SLOW_KEYCHAIN_MS: u128 = 50;
+
+/// Record a keychain interaction that was slow enough to be felt.
+///
+/// The keychain-on-the-critical-path defect cost a user 7.6 seconds of a
+/// wedged state machine and was found by reading a gap between two trace
+/// lines that happened to bracket it. Timing the call itself means the next
+/// one names itself instead of having to be inferred from a hole.
+fn record(op: &str, account: &str, started: Instant, extra: serde_json::Value) {
+    let ms = started.elapsed().as_millis();
+    if ms < SLOW_KEYCHAIN_MS {
+        return;
+    }
+    let mut fields = serde_json::json!({
+        "op": op,
+        // The account name is a fixed slug from this crate
+        // (`ttp_usage_hmac`, `ttp_license_hmac`), never anything the user
+        // typed, and never the secret itself.
+        "account": account,
+        "ms": ms as u64,
+    });
+    if let (Some(dst), Some(src)) = (fields.as_object_mut(), extra.as_object()) {
+        for (k, v) in src {
+            dst.insert(k.clone(), v.clone());
+        }
+    }
+    crate::trace::event("keychain.slow", fields);
+}
 
 const KEYCHAIN_SERVICE: &str = "com.ttp.desktop";
 
@@ -60,7 +97,9 @@ pub fn get_or_create_hmac_secret(account: &str, legacy_fallback: &[u8; 32]) -> [
         }
     }
 
+    let started = Instant::now();
     let secret = read_or_create_hmac_secret(account, legacy_fallback);
+    record("secret_read", account, started, serde_json::Value::Null);
 
     if let Ok(mut cache) = secret_cache().lock() {
         cache.insert(account.to_string(), secret);
@@ -73,7 +112,21 @@ pub fn get_or_create_hmac_secret(account: &str, legacy_fallback: &[u8; 32]) -> [
 fn read_or_create_hmac_secret(account: &str, legacy_fallback: &[u8; 32]) -> [u8; 32] {
     let entry = match keyring::Entry::new(KEYCHAIN_SERVICE, account) {
         Ok(e) => e,
-        Err(_) => return *legacy_fallback,
+        Err(e) => {
+            // The keychain is unavailable and we quietly fall back to the
+            // constant every copy of TTP ships with. The tamper resistance
+            // the per-machine secret exists for is gone for this session, and
+            // nothing anywhere said so.
+            crate::trace::degraded(
+                "keychain.secret",
+                serde_json::json!({
+                    "account": account,
+                    "error": e.to_string(),
+                    "fallback": "legacy_constant",
+                }),
+            );
+            return *legacy_fallback;
+        }
     };
 
     if let Ok(stored) = entry.get_password() {
@@ -88,13 +141,30 @@ fn read_or_create_hmac_secret(account: &str, legacy_fallback: &[u8; 32]) -> [u8;
     }
 
     let mut bytes = [0u8; 32];
-    if getrandom::fill(&mut bytes).is_err() {
+    if let Err(e) = getrandom::fill(&mut bytes) {
+        crate::trace::degraded(
+            "keychain.csprng",
+            serde_json::json!({
+                "account": account,
+                "error": e.to_string(),
+                "fallback": "legacy_constant",
+            }),
+        );
         // CSPRNG failure is exotic; fall back to the constant rather than
         // crashing the user's app over a tamper-resistance feature.
         return *legacy_fallback;
     }
     let encoded = hex::encode(bytes);
-    let _ = entry.set_password(&encoded);
+    if let Err(e) = entry.set_password(&encoded) {
+        // A secret that could not be persisted is regenerated on the next
+        // launch, which silently invalidates every record signed with this
+        // one — the user's license cache and usage file stop verifying and
+        // are treated as tampered.
+        crate::trace::degraded(
+            "keychain.secret_write",
+            serde_json::json!({ "account": account, "error": e.to_string() }),
+        );
+    }
     bytes
 }
 
@@ -128,13 +198,24 @@ pub fn legacy_migration_complete(account: &str) -> bool {
         }
     }
 
+    let started = Instant::now();
     let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, &migration_flag_account(account)) else {
         // Not cached: an unavailable keychain may become available later
         // (the user grants access), and answering `false` forever would keep
         // the legacy verification path alive past its migration.
+        crate::trace::degraded(
+            "keychain.migration_flag",
+            serde_json::json!({ "account": account, "assumed": false }),
+        );
         return false;
     };
     let complete = matches!(entry.get_password().as_deref(), Ok("1"));
+    record(
+        "migration_flag_read",
+        account,
+        started,
+        serde_json::json!({ "complete": complete }),
+    );
 
     if let Ok(mut cache) = migration_cache().lock() {
         cache.insert(account.to_string(), complete);
@@ -156,10 +237,18 @@ pub fn mark_legacy_migration_complete(account: &str) {
         }
     }
 
+    let started = Instant::now();
     let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, &migration_flag_account(account)) else {
         return;
     };
-    if entry.set_password("1").is_ok() {
+    let wrote = entry.set_password("1").is_ok();
+    record(
+        "migration_flag_write",
+        account,
+        started,
+        serde_json::json!({ "ok": wrote }),
+    );
+    if wrote {
         if let Ok(mut cache) = migration_cache().lock() {
             cache.insert(account.to_string(), true);
         }
@@ -181,8 +270,21 @@ pub fn mark_legacy_migration_complete(account: &str) {
 /// or it does not, in which case we are no worse off than before.
 pub fn warm_caches(accounts: &[(&str, &[u8; 32])]) {
     for (account, fallback) in accounts {
+        let started = Instant::now();
         let _ = get_or_create_hmac_secret(account, fallback);
         let _ = legacy_migration_complete(account);
+        // Always emitted, however fast. This is the bill for the whole
+        // session's keychain use and the number that says whether warming
+        // worked: a large value here is good news, because it means the cost
+        // was paid on a thread nobody was waiting on. The same number showing
+        // up on `keychain.api_key` or `usage.recorded` instead is the bug.
+        crate::trace::event(
+            "keychain.warmed",
+            serde_json::json!({
+                "account": account,
+                "ms": started.elapsed().as_millis() as u64,
+            }),
+        );
     }
 }
 

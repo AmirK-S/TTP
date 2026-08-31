@@ -45,6 +45,14 @@ pub const MAX_SILENCE_SECS: u32 = 10;
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 static STOP_AT_NS: AtomicU64 = AtomicU64::new(0);
+/// Set the instant VAD decides to cut the recording, cleared on arm.
+///
+/// Purely so `vad.disarmed` can say whether the watchdog stopped because it
+/// fired or because the user released the key. Firing calls into
+/// `handle_shortcut_event_public`, which re-enters `stop()` through
+/// `set_state` before the loop clears `ACTIVE` — so without this the trace
+/// would report every auto-stop as a manual one.
+static FIRED: AtomicBool = AtomicBool::new(false);
 
 /// Pure decision: given an RMS value and the consecutive silent-ticks
 /// counter, return the new counter and whether VAD should fire.
@@ -79,12 +87,27 @@ pub fn required_ticks(silence_secs: u32) -> u32 {
 pub fn start(app: AppHandle) {
     let settings = crate::settings::get_settings();
     if !settings.vad_auto_stop_enabled {
+        // Deliberately silent about the common case: VAD is off by default and
+        // a line per recording saying so is noise, not signal. `settings.snapshot`
+        // on every dictation already records that the feature was off.
         return;
     }
     if ACTIVE.swap(true, Ordering::SeqCst) {
+        // A second start against a live watchdog. Benign today, and exactly
+        // the shape of the start/stop race that once left the microphone open.
+        crate::trace::event("vad.armed", serde_json::json!({ "already_running": true }));
         return;
     }
     let required = required_ticks(settings.vad_silence_secs);
+    FIRED.store(false, Ordering::SeqCst);
+    crate::trace::event(
+        "vad.armed",
+        serde_json::json!({
+            "silence_secs": settings.vad_silence_secs,
+            "required_ticks": required,
+            "grace_ms": START_GRACE_MS,
+        }),
+    );
 
     // Stamp the "no fire before this absolute time" deadline so the loop
     // doesn't have to re-read the clock to know when it started.
@@ -122,6 +145,21 @@ pub fn start(app: AppHandle) {
                     "[VAD] auto-stop after {}s of silence",
                     settings.vad_silence_secs
                 ));
+                // docs/tracing.md listed this as a blind spot in as many
+                // words: "the decision to cut a recording short is not
+                // recorded". A user whose sentence was truncated mid-thought
+                // had no way to tell VAD from a dropped hotkey release, and
+                // the two have opposite fixes.
+                crate::trace::event(
+                    "vad.fired",
+                    serde_json::json!({
+                        "silence_secs": settings.vad_silence_secs,
+                        "silent_ticks": new_count,
+                        "rms": rms,
+                        "threshold": SILENCE_RMS_THRESHOLD,
+                    }),
+                );
+                FIRED.store(true, Ordering::SeqCst);
                 // Drive the same code path as a hotkey release. shortcuts
                 // already handles "stop while recording", "stop while
                 // hands-free", and the post-stop transcription kickoff —
@@ -137,7 +175,15 @@ pub fn start(app: AppHandle) {
 /// Stop the VAD loop. Called from `state.rs::set_state` whenever the
 /// recording state leaves Recording.
 pub fn stop() {
-    ACTIVE.store(false, Ordering::SeqCst);
+    // Only report a stop that actually stopped something. `set_state` calls
+    // this on every transition that is not Recording, most of which had no
+    // watchdog running.
+    if ACTIVE.swap(false, Ordering::SeqCst) {
+        crate::trace::event(
+            "vad.disarmed",
+            serde_json::json!({ "fired": FIRED.load(Ordering::SeqCst) }),
+        );
+    }
 }
 
 /// Whether the VAD watchdog is currently running. Read-only diagnostic.

@@ -16,7 +16,11 @@ an empty target app. The trace makes each one leave a line.
 ```
 
 Settings → Advanced → Diagnostics → **Show log folder** opens it. Rotates at
-2 MB, keeping `ttp-trace.log.1` … `.3`.
+2.5 MB, keeping `ttp-trace.log.1` … `.3`.
+
+It is also readable from inside the app: `docs/trace-api.md` is the command
+surface a viewer UI consumes, and it returns the same records this file
+describes.
 
 Unlike `ttp.log`, the trace is **not** filtered by log level. Release builds
 default to `warn`, which is precisely why every silent-drop path used to be
@@ -26,17 +30,22 @@ spot it was written to remove.
 ## Line format
 
 ```
-[2026-08-26 08:48:57.412] [0007-3f2a] +    0ms dictation.start  {"kind":"recording","verbose":false}
-[2026-08-26 08:48:57.418] [0007-3f2a] +    6ms audio.duration   {"secs":7.52,"wav_bytes":481324}
-[2026-08-26 08:48:58.902] [0007-3f2a] + 1490ms whisper.response {"chars":87,"sha8":"9f2c1ab0","attempt":1,"ms":1484}
+[2026-08-26 08:48:57.412] [0007-3f2a] +    0ms dictation.start  {"kind":"recording","verbose":false,"dur_ms":0}
+[2026-08-26 08:48:57.418] [0007-3f2a] +    6ms audio.duration   {"secs":7.52,"wav_bytes":481324,"dur_ms":6}
+[2026-08-26 08:48:58.902] [0007-3f2a] + 1490ms whisper.response {"chars":87,"sha8":"9f2c1ab0","attempt":1,"ms":1484,"dur_ms":1484}
 [2026-08-26 08:48:59.118] [0007-3f2a] + 1706ms paste.verify     {"ax_readable":true,"changed":true,"delta_chars":87,"expected_chars":87,"settled_ms":48}
-[2026-08-26 08:48:59.121] [0007-3f2a] + 1709ms dictation.finish {"outcome":"pasted","ms":1709,"chars":87,"words":16}
+[2026-08-26 08:48:59.121] [0007-3f2a] + 1709ms dictation.finish {"outcome":"pasted","ms":1709,"chars":87,"words":16,"dur_ms":3}
 ```
 
 - `[0007-3f2a]` — the trace id. `grep 0007-3f2a ttp-trace.log` gives you that
   one dictation and nothing else. The `0007` is a per-session sequence number,
   so ids sort in the order the dictations happened.
 - `+1490ms` — elapsed since the dictation began, so slow stages are obvious.
+- `dur_ms` — on **every** stage of a dictation: milliseconds since the previous
+  stage. The elapsed column tells you when a stage ended; `dur_ms` tells you
+  what it cost, without subtracting by hand. `ms`, where a stage also carries
+  it, times one specific call inside that stage — `dur_ms` includes whatever
+  happened before the call started, `ms` does not.
 - `[········]` in the id column marks a standalone event (a hotkey press, an
   event-tap recovery) rather than a dictation stage.
 
@@ -59,6 +68,7 @@ spot it was written to remove.
 | `audio.duration` / `audio.signal` | How much audio, how loud. `avg_rms` below `floor` means the silence gate will drop it; `peak` and `nonzero_ratio` distinguish a quiet room from a dead device. |
 | `audio.convert` | Stereo 48 kHz → mono 16 kHz, and the size change. |
 | `whisper.request` / `whisper.response` | Bytes sent, language pinned, latency, and how many characters came back. `attempt:2` means the first call returned an empty body. |
+| `polish` | Now also carries `ms`, and the *reason*: `guard_reason` when the guard rejected the model's answer, `error_category` (`rate_limited` / `invalid_api_key` / `polish_failed`) when the call failed. Both used to exist only as a Sentry breadcrumb, which is off by default and is not in the file a user attaches to a bug report. |
 | `cleanup`, `polish`, `dictionary` | Each text transformation, with `changed` and before/after character counts. A `to.chars` of 0 names the stage that emptied the transcription. `polish.outcome` is `applied` / `failed` / `guard_rejected` / `skipped` — what actually happened, not whether it was allowed to try. |
 | `polish.outage` | Polish has failed `consecutive_failures` times in a row against `model`. Emitted on every failure; the user is notified once per session at three. |
 | `paste.accessibility` | `tcc_trusted` vs `ax_probe_ok`. Trusted-but-not-working is the stale-TCC state left behind by in-place app updates. |
@@ -69,6 +79,20 @@ spot it was written to remove.
 | `clipboard.restore` | The user's pre-record clipboard was put back. |
 | `correction_window.started` | The dictionary correction watcher was armed. |
 | `history.saved`, `usage.recorded`, `files.cleaned` | Post-paste bookkeeping. All trivial and synchronous — a large jump between any two of these means the process stalled, not that the step is slow. |
+| `settings.snapshot` | The configuration this dictation ran under: polish, transcription language, VAD, hands-free, history, diagnostics, companion face. A dictation is a function of its settings and now says which ones. |
+| `keychain.api_key` | The Groq key read, **timed**. It is a keychain round-trip sitting between the user's last word and the Whisper call, and it is unbounded — see "When a dictation takes minutes". |
+| `keychain.warmed` | The startup pre-warm, per account, with its cost. A large number here is *good news*: the bill was paid on a thread nobody was waiting on. |
+| `keychain.slow` | Any keychain call that took more than 50 ms. Emitted only when it did, because a warm read is sub-millisecond and a line per usage record would be noise. |
+| `filter.hallucination` | `matched` — **including `false`**. Whisper returned real characters and the filter let them through. |
+| `filter.glossary_ghost` | `matched`, plus `considered`: whether the filter was eligible at all (a dictionary exists, the take is short). |
+| `filter.prompt_introducer` | Same shape. `considered:false` means the recording was too long or too wordy for the filter to apply. |
+| `clipboard.write` | The transcription going onto the clipboard, timed. `ok:false` is followed by an abort — the text is gone from everywhere. |
+| `history.saved` | Now also emitted when history is **off**, as `{"skipped":"history_disabled"}`. |
+| `correction_window.started` | Carries `armed`. It used to be written unconditionally, including on the path that skipped arming. |
+| `vad.armed` / `vad.fired` / `vad.disarmed` | The auto-stop watchdog: when it started, whether it cut the recording, and whether the stop that ended it was its own or the user's. |
+| `hotkey.tap_health` | **The event tap is alive.** Every five minutes while healthy, and immediately after a recovery. The absence of `hotkey.tap_*` lines used to be ambiguous between "fine" and "not running"; this settles it and bounds any outage to five minutes. |
+| `companion.face` / `companion.named` / `companion.pill_hidden` / `companion.state` | The Companion survival test — see `docs/companion-faces-design.md` §2. Booleans, lengths and day counts; never the name. |
+| `degraded` | Any place a failure was swallowed and a polite default returned. See below. |
 | `dictation.finish` | `outcome` plus `reason` when nothing was produced. |
 
 ## `paste.verify` is the important one
@@ -121,6 +145,36 @@ Every path that ends without text writes `dictation.finish` with an
 Each of these also writes one WARN line to `ttp.log` naming the trace id, so a
 user who only attaches `ttp.log` to a bug report still shows that a dictation
 was dropped and why.
+
+## `degraded` — the failures that were swallowed
+
+Seven defects in this app stayed invisible for weeks because every layer
+degraded politely: `unwrap_or_default`, `.ok()`, `if let Ok(..)` with no
+`else`. The behaviour is often right — a dictation should not die because the
+audio backup failed — but until Polaris the fallback was taken in silence.
+
+Every such site on the dictation path now writes one line first. The
+behaviour is unchanged; only the silence is.
+
+```sh
+grep ' degraded ' ttp-trace.log
+```
+
+| `site` | What was swallowed |
+|---|---|
+| `audio.convert` | Stereo→mono conversion failed; the original WAV was uploaded instead. Six times the bytes, and much closer to the 25 MB ceiling. |
+| `audio.size` | The converted file's size could not be read; every size check below it ran against the pre-conversion number. |
+| `backup.audio` | The pre-API audio backup failed. A later API failure now loses the recording the user would have retried. |
+| `input_mode` | The `AppState` lock was busy — the same contention that makes hotkey presses vanish. |
+| `clipboard.restore` | The user's pre-record clipboard was not put back. Their transcription is sitting in it instead. |
+| `history.save` | The transcription was pasted but not recorded. |
+| `keychain.secret` | The keychain was unavailable and the **shared legacy constant** was used to sign local records. The per-machine tamper resistance is off for this session. |
+| `keychain.secret_write` | A freshly generated secret could not be persisted, so the next launch generates another one and every record signed with this one stops verifying. |
+| `keychain.migration_flag` | The migration flag could not be read; we assumed "not migrated", which keeps the legacy verification path alive. |
+| `keychain.csprng` | The OS CSPRNG failed. Exotic, and worth knowing about. |
+
+A `degraded` line is not an error. It is the sentence "we carried on without
+this", written down.
 
 ## Seeing the text itself
 
@@ -233,22 +287,58 @@ outside:
   recording. An already-open cpal stream does not follow it, so it keeps
   reading from a device that has stopped producing audio.
 
+## Retention
+
+~10 MB across four files at 2.5 MB each. The number that matters is not the
+total but the **three rotated files**: the live one can be nearly empty right
+after a rotation, so the guaranteed floor is 7.5 MB.
+
+At the Polaris per-dictation cost of ~5.1 KB (up from ~3.7 KB — every stage
+gained a `dur_ms`, the filters record their negative verdicts, the keychain is
+timed, and settings are snapshotted) that floor holds about **1470 dictations**,
+which at the observed rate of ~68 a day is **about three weeks**. The ceiling,
+just after a rotation fills, is nearer four.
+
+The standalone stream costs on top of that: the event-tap heartbeat is the
+only periodic writer, at five-minute intervals and ~90 bytes, so ~26 KB a day —
+under 1% of the window. Everything else in the standalone stream is driven by
+user action.
+
+If you add a stage that fires per dictation, add ~100 bytes to that 5.1 KB and
+redo this arithmetic. Losing history to verbosity would defeat the point.
+
 ## What is not covered
 
-Honest limits, so nobody reads silence as proof of health:
+Honest limits, so nobody reads silence as proof of health. Several items that
+used to be on this list have moved off it — `vad.*`, `settings.snapshot`,
+`hotkey.tap_health` and the `degraded` family exist now. What remains:
 
 - **The frontend.** The JS side drives `stop_recording` → `process_audio`. An
   exception in that handoff leaves `capture.stop` with no `dictation.start`
-  after it. That gap is visible, but the reason for it is not.
-- **VAD auto-stop.** Off by default; when on, the decision to cut a recording
-  short is not recorded.
-- **Settings changes.** A dictation's behaviour depends on settings read at
-  the time; the trace shows the resulting values (`whisper.request.lang`,
-  `polish.decision`) but not when the user changed them.
+  after it. That gap is visible, but the reason for it is not. This is still
+  the one shape the trace can only bound, not explain, and it is the largest
+  remaining hole: nothing in `src/` writes to the trace.
+- **When a setting changed.** `settings.snapshot` now records the
+  configuration each dictation ran under, so two dictations can be compared —
+  but the trace still does not record the moment a user flipped a switch. The
+  `companion.*` events are the exception, and only for the fields they cover.
 - **Anything before `app.launched`.** A crash during Tauri setup leaves
   nothing.
-- **Rotation.** ~8 MB across four files, roughly three weeks of heavy use.
-  Older evidence is gone, which matters for "it happened last month".
-
-A dictation that leaves `capture.stop` with no `dictation.start` after it is
-the one shape the trace can currently only bound, not explain.
+- **Anything after the last line.** The writer is a background thread with a
+  bounded queue. A hard kill (`panic = "abort"`, SIGKILL) can lose whatever was
+  queued and not yet written — at most a few lines, and precisely the last few,
+  which is the worst place to lose them. A queue overflow is reported as
+  `trace_dropped_lines` on the next line through; a process death is not
+  reported at all, because there is nobody left to report it.
+- **The audio callback.** `capture.start` and `capture.stop` bracket the
+  recording and `audio.signal` measures the result, but the cpal callback
+  itself is untraced by design — it is a real-time audio thread and a channel
+  push is not free enough to put in it. A stream that delivers buffers late
+  rather than not at all is still invisible.
+- **Whether the paste landed, on Windows and in Electron apps.**
+  `paste.verify` needs Accessibility to read the target back; where it cannot,
+  `ax_readable:false` is an honest "unknown", not evidence.
+- **Cause, everywhere.** The trace records what the app decided and how long it
+  took. It does not record why macOS disabled the tap, why the keychain took
+  seven seconds, or why the Bluetooth headset sent silence. It narrows those
+  to one component and one moment, which is the whole job, and then stops.

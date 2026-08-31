@@ -914,6 +914,32 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // see `crate::trace`.
     let trace = crate::trace::Trace::start("recording");
 
+    // The settings that govern THIS dictation, recorded once at the top.
+    //
+    // docs/tracing.md used to list "settings changes" as a blind spot: the
+    // trace showed the consequences of a setting (`whisper.request.lang`,
+    // `polish.decision`) but never the configuration itself, so a dictation
+    // that behaved oddly could not be compared against one that did not. A
+    // dictation is a function of its settings; the inputs belong in the record.
+    // All slugs and booleans — nothing here is user text.
+    {
+        let s = get_settings();
+        trace.stage(
+            "settings.snapshot",
+            serde_json::json!({
+                "ai_polish": s.ai_polish_enabled,
+                "transcription_language": s.transcription_language.as_deref().unwrap_or("auto"),
+                "vad_auto_stop": s.vad_auto_stop_enabled,
+                "vad_silence_secs": s.vad_silence_secs,
+                "hands_free": s.hands_free_mode,
+                "history": s.history_enabled,
+                "diagnostics": s.diagnostics_enabled,
+                "audio_device_pinned": s.audio_device_name.is_some(),
+                "companion_face": s.companion_face_enabled,
+            }),
+        );
+    }
+
     // Set state to Processing
     set_state(app, RecordingState::Processing);
 
@@ -1102,10 +1128,19 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     }
 
     // Convert stereo 48kHz WAV → mono 16kHz WAV (reduces size ~6x)
+    let convert_span = crate::trace::Span::start();
     let converted_path = match convert_to_mono_16khz(&audio_path) {
         Ok(path) => path,
         Err(e) => {
             crate::logging::log_warn(&format!("[Pipeline] Conversion failed: {} - sending original", e));
+            // Degrading, not failing: we upload the original instead. Six
+            // times the bytes, six times the upload, and a much closer brush
+            // with the 25 MB ceiling — none of which was visible in the trace
+            // before, because the fallback path wrote no line at all.
+            trace.degraded(
+                "audio.convert",
+                serde_json::json!({ "error": e.to_string(), "fallback": "original_wav" }),
+            );
             // Tell the user the next stage may reject it (~25 MB cap on
             // un-compressed audio is hit much earlier than on compressed).
             emit_progress(app, "transcribing", "error.compression_failed", None);
@@ -1139,13 +1174,24 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     }
 
     // Check size AFTER conversion (raw WAV can be large but converts down)
-    let final_size = std::fs::metadata(&final_upload_path)
-        .map(|m| m.len())
-        .unwrap_or(file_size);
+    let final_size = match std::fs::metadata(&final_upload_path).map(|m| m.len()) {
+        Ok(len) => len,
+        Err(e) => {
+            // Every size check below now runs against the PRE-conversion
+            // size. That can pass a file the API will reject, and used to do
+            // so without leaving a trace of why the number was wrong.
+            trace.degraded(
+                "audio.size",
+                serde_json::json!({ "error": e.to_string(), "fell_back_to": file_size }),
+            );
+            file_size
+        }
+    };
     let final_mb = final_size as f64 / 1_000_000.0;
 
-    trace.stage(
+    trace.timed(
         "audio.convert",
+        &convert_span,
         serde_json::json!({
             "converted": use_converted,
             "in_bytes": file_size,
@@ -1187,14 +1233,45 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         if let Ok(guard) = state.try_lock() {
             if guard.effective_hands_free() { "toggle" } else { "push_to_talk" }
         } else {
+            // Contention on the AppState mutex during a dictation is the same
+            // condition that makes hotkey presses vanish (`hotkey.event_dropped`).
+            // "unknown" in the analytics payload hid it; this names it.
+            trace.degraded("input_mode", serde_json::json!({ "reason": "state_lock_busy" }));
             "unknown"
         }
     } else {
+        trace.degraded("input_mode", serde_json::json!({ "reason": "state_unmanaged" }));
         "unknown"
     };
 
-    // Get Groq API key
-    let groq_key = get_groq_api_key_internal(app)?.filter(|k| !k.is_empty());
+    // Get Groq API key.
+    //
+    // This is a keychain read, and a keychain read is not bounded: macOS
+    // re-evaluates the ACL whenever the requesting binary's code signature
+    // changes and blocks while it does — for seconds, and in the worst case
+    // until someone clicks an authorization dialog they never saw. It sits
+    // directly between the user finishing their sentence and Whisper being
+    // called, and it was completely untimed. The `?` below was also the one
+    // early return in this function that produced NO `dictation.finish` line
+    // at all, so a keychain error ended a dictation invisibly.
+    let key_span = crate::trace::Span::start();
+    let groq_key = match get_groq_api_key_internal(app) {
+        Ok(k) => {
+            let k = k.filter(|k| !k.is_empty());
+            trace.timed(
+                "keychain.api_key",
+                &key_span,
+                serde_json::json!({ "found": k.is_some() }),
+            );
+            k
+        }
+        Err(e) => {
+            trace.timed("keychain.api_key", &key_span, serde_json::json!({ "error": e.clone() }));
+            trace.abort("api_key_read_failed", serde_json::json!({ "error": e.clone() }));
+            set_state(app, RecordingState::Idle);
+            return Err(e);
+        }
+    };
 
     let api_key = match groq_key {
         Some(key) => key,
@@ -1227,6 +1304,14 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             crate::telemetry::analytics::track(app, "backup_failed", Some(serde_json::json!({
                 "category": category
             })));
+            // Analytics only leaves the machine when telemetry is on, and
+            // telemetry is off by default. Locally this was a log_warn nobody
+            // reads. It matters: with no backup, a later API failure loses the
+            // audio the user would have wanted to retry.
+            trace.degraded(
+                "backup.audio",
+                serde_json::json!({ "category": category, "retryable": false }),
+            );
             None // Continue without backup -- don't block transcription
         }
     };
@@ -1390,33 +1475,50 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     let approx_duration_secs = final_size as f64 / 32_000.0; // 16kHz mono 16-bit
     {
         let dict_entries = crate::dictionary::store::get_dictionary();
-        if !dict_entries.is_empty() && approx_duration_secs < 10.0 {
-            let words: Vec<&str> = raw_text.trim().split_whitespace().collect();
-            if words.len() <= 2 {
-                let dict_words: Vec<String> = dict_entries.iter()
-                    .map(|e| e.correction.to_lowercase())
-                    .collect();
-                let all_in_dict = words.iter().all(|w| {
-                    let w_lower = w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()).to_string();
-                    dict_words.iter().any(|d| d == &w_lower)
-                });
-                if all_in_dict {
-                    let _ = std::fs::remove_file(&audio_path);
-                    if use_converted { let _ = std::fs::remove_file(&converted_path); }
-                    if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
-                    emit_progress(app, "error", "error.no_speech", None);
-                    crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
-                    trace.abort(
-                        "glossary_ghost",
-                        serde_json::json!({
-                            "words": words.len(),
-                            "audio_secs": approx_duration_secs,
-                        }),
-                    );
-                    set_state(app, RecordingState::Idle);
-                    return Err("No speech detected (glossary ghost)".to_string());
-                }
-            }
+        let words: Vec<&str> = raw_text.trim().split_whitespace().collect();
+        // Whether the filter was even eligible to run, kept separate from
+        // whether it fired. "No dictionary" and "long recording" are the two
+        // reasons this filter routinely does nothing, and a reader who cannot
+        // tell those from "it ran and passed the text" cannot rule the filter
+        // out as the thing that ate a transcription.
+        let considered =
+            !dict_entries.is_empty() && approx_duration_secs < 10.0 && words.len() <= 2;
+        let all_in_dict = if considered {
+            let dict_words: Vec<String> = dict_entries.iter()
+                .map(|e| e.correction.to_lowercase())
+                .collect();
+            words.iter().all(|w| {
+                let w_lower = w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()).to_string();
+                dict_words.iter().any(|d| d == &w_lower)
+            })
+        } else {
+            false
+        };
+        trace.decision(
+            "filter.glossary_ghost",
+            all_in_dict,
+            serde_json::json!({
+                "considered": considered,
+                "dict_entries": dict_entries.len(),
+                "words": words.len(),
+                "audio_secs": approx_duration_secs,
+            }),
+        );
+        if all_in_dict {
+            let _ = std::fs::remove_file(&audio_path);
+            if use_converted { let _ = std::fs::remove_file(&converted_path); }
+            if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
+            emit_progress(app, "error", "error.no_speech", None);
+            crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
+            trace.abort(
+                "glossary_ghost",
+                serde_json::json!({
+                    "words": words.len(),
+                    "audio_secs": approx_duration_secs,
+                }),
+            );
+            set_state(app, RecordingState::Idle);
+            return Err("No speech detected (glossary ghost)".to_string());
         }
     }
 
@@ -1438,10 +1540,18 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             .unwrap_or("");
         let intro_words = ["glossary", "glossaire", "vocabulary", "vocabulaire", "lexique"];
         let word_count = raw_text.trim().split_whitespace().count();
-        if approx_duration_secs < 6.0
-            && word_count <= 8
-            && intro_words.iter().any(|&w| leading == w)
-        {
+        let considered = approx_duration_secs < 6.0 && word_count <= 8;
+        let leaked = considered && intro_words.iter().any(|&w| leading == w);
+        trace.decision(
+            "filter.prompt_introducer",
+            leaked,
+            serde_json::json!({
+                "considered": considered,
+                "words": word_count,
+                "audio_secs": approx_duration_secs,
+            }),
+        );
+        if leaked {
             crate::logging::log_info(&format!(
                 "[Pipeline] Filtered prompt-introducer hallucination chars={}, leading={:?}",
                 raw_text.chars().count(),
@@ -1465,8 +1575,19 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         }
     }
 
-    // Filter out common Whisper hallucinations on silent audio
-    if is_hallucination(&raw_text) {
+    // Filter out common Whisper hallucinations on silent audio.
+    //
+    // This filter once deleted real speech, and the only evidence it left was
+    // an absence. `matched:false` is the line that makes the absence legible:
+    // with it, "no hallucination line" means the pipeline never got here, and
+    // an empty target app after a `matched:false` is somebody else's fault.
+    let hallucinated = is_hallucination(&raw_text);
+    trace.decision(
+        "filter.hallucination",
+        hallucinated,
+        serde_json::json!({ "chars": raw_text.chars().count() }),
+    );
+    if hallucinated {
         let _ = std::fs::remove_file(&audio_path);
         if use_converted { let _ = std::fs::remove_file(&converted_path); }
 
@@ -1489,8 +1610,14 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // commands, tech term normalization, acronyms, repetitions, standalone
     // fillers. Idempotent. Roughly 80% of cleanups happen here without
     // touching the LLM — faster, cheaper, safer.
+    let cleanup_span = crate::trace::Span::start();
     let cleaned_text = cleanup(&raw_text);
-    trace.transform("cleanup", &raw_text, &cleaned_text, serde_json::Value::Null);
+    trace.transform(
+        "cleanup",
+        &raw_text,
+        &cleaned_text,
+        serde_json::json!({ "ms": cleanup_span.ms() }),
+    );
 
     // Stage 2: Polish text (if enabled)
     //
@@ -1513,7 +1640,13 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // What actually happened to the polish call, as opposed to whether we
     // were allowed to attempt it. Set on every branch below.
     let mut polish_outcome = "skipped";
+    // Why it went that way, and how long it took. Both used to exist only as
+    // a Sentry breadcrumb — which is off by default, leaves the machine when
+    // it is on, and is not in the file the user attaches to a bug report.
+    let mut polish_detail = serde_json::json!({});
+    let mut polish_total_ms: u64 = 0;
 
+    let polish_span = crate::trace::Span::start();
     let final_text = if polish_quota_ok {
         emit_progress(app, "polishing", "progress.polishing", None);
 
@@ -1529,6 +1662,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 // popup mid-dictation, just slightly less-polished text).
                 match guard_polish(&cleaned_text, &result.polished) {
                     GuardVerdict::Accept => {
+                        polish_detail = serde_json::json!({ "intent": format!("{:?}", result.intent) });
                         let mut data = std::collections::BTreeMap::new();
                         data.insert("intent".to_string(), format!("{:?}", result.intent).into());
                         data.insert("latency_ms".to_string(), polish_ms.into());
@@ -1547,6 +1681,13 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                         result.polished
                     }
                     GuardVerdict::Reject(reason) => {
+                        // The single most opaque polish outcome: the model
+                        // answered, we threw the answer away, and the user got
+                        // the cleaned text with no indication anything happened.
+                        polish_detail = serde_json::json!({
+                            "guard_reason": reason,
+                            "intent": format!("{:?}", result.intent),
+                        });
                         log_error(&format!(
                             "Polish guard rejected: {} (intent={:?}, polish_ms={})",
                             reason, result.intent, polish_ms
@@ -1575,6 +1716,11 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             Err(e) => {
                 crate::logging::log_warn(&format!("[Pipeline] Polish failed, using cleaned text: {}", e));
                 let category = classify_polish_error(&e);
+                // `rate_limited` here is the exhausted-quota defect and
+                // `invalid_api_key` is the decommissioned-model / no-access
+                // one. They were distinguished in analytics and not in the
+                // trace, which is backwards: the trace is the local artefact.
+                polish_detail = serde_json::json!({ "error_category": category });
                 if category == "polish_failed" {
                     emit_progress(app, "pasting", "error.polish_unavailable", None);
                 }
@@ -1588,17 +1734,22 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     } else {
         cleaned_text.clone()
     };
+    if polish_quota_ok {
+        polish_total_ms = polish_span.ms();
+    }
 
-    trace.transform(
-        "polish",
-        &cleaned_text,
-        &final_text,
-        serde_json::json!({
-            "outcome": polish_outcome,
-            "model": crate::transcription::polish::MODEL,
-            "quota_ok": polish_quota_ok,
-        }),
-    );
+    let mut polish_fields = serde_json::json!({
+        "outcome": polish_outcome,
+        "model": crate::transcription::polish::MODEL,
+        "quota_ok": polish_quota_ok,
+        "ms": polish_total_ms,
+    });
+    if let (Some(dst), Some(src)) = (polish_fields.as_object_mut(), polish_detail.as_object()) {
+        for (k, v) in src {
+            dst.insert(k.clone(), v.clone());
+        }
+    }
+    trace.transform("polish", &cleaned_text, &final_text, polish_fields);
 
     // A polish that fails on every call is invisible from the user's seat:
     // the text still arrives, just unpolished, while the setting keeps
@@ -1636,12 +1787,16 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // guarantee — applied after polish (and after cleanup) so user-specific
     // term spellings always win.
     let pre_dictionary_text = final_text;
+    let dict_span = crate::trace::Span::start();
     let final_text = apply_dictionary(&pre_dictionary_text);
     trace.transform(
         "dictionary",
         &pre_dictionary_text,
         &final_text,
-        serde_json::Value::Null,
+        serde_json::json!({
+            "ms": dict_span.ms(),
+            "entries": crate::dictionary::store::get_dictionary().len(),
+        }),
     );
 
     // Stage 3: Paste into active app
@@ -1655,12 +1810,19 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // (b) we error out (in which case we deliberately leave it).
     let clipboard_guard = ClipboardGuard::new(app);
 
+    let clip_span = crate::trace::Span::start();
     if let Err(e) = clipboard_guard.write_text(&final_text) {
+        // Transcription succeeded, polish succeeded, and the text is gone —
+        // not even on the clipboard. This return wrote nothing to the trace,
+        // so the dictation simply stopped mid-timeline with no finish line.
+        trace.timed("clipboard.write", &clip_span, serde_json::json!({ "ok": false }));
+        trace.abort("clipboard_write_failed", serde_json::json!({ "error": e.clone() }));
         emit_progress(app, "error", "error.clipboard_write_failed", None);
         notify(app, &crate::i18n::tr("notification.clipboardFailed"));
         set_state(app, RecordingState::Idle);
         return Err(e);
     }
+    trace.timed("clipboard.write", &clip_span, serde_json::json!({ "ok": true }));
 
     // Check accessibility permission and try to paste.
     //
@@ -1679,10 +1841,15 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // a "TTP is enabled but not really" entry.
     #[cfg(target_os = "macos")]
     let has_accessibility = {
+        let ax_span = crate::trace::Span::start();
         let trusted_flag = check_accessibility();
         let actually_works = probe_accessibility();
-        trace.stage(
+        // `AXUIElementCopyAttributeValue` against an unresponsive target app
+        // blocks until its own timeout. That wait lands between the user
+        // finishing their sentence and the text appearing, and it was untimed.
+        trace.timed(
             "paste.accessibility",
+            &ax_span,
             serde_json::json!({ "tcc_trusted": trusted_flag, "ax_probe_ok": actually_works }),
         );
         if trusted_flag && !actually_works {
@@ -1744,6 +1911,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // "there is no reactor running" on macOS when the call site is somehow
     // detached from the active runtime (see sounds.rs / audio_monitor.rs
     // for the same fix pattern).
+    let paste_span = crate::trace::Span::start();
     let paste_success = if has_accessibility {
         let paste_result = if use_direct_typing {
             let text_for_typing = final_text.clone();
@@ -1760,7 +1928,10 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
         match paste_result {
             Ok(Ok(Ok(()))) => {
-                trace.stage("paste.result", serde_json::json!({ "ok": true }));
+                // Direct typing walks the string one synthetic keystroke at a
+                // time, so this scales with the transcription. `paste.decision`
+                // records the strategy; this records what the strategy cost.
+                trace.timed("paste.result", &paste_span, serde_json::json!({ "ok": true }));
                 if use_direct_typing {
                     // Direct typing already delivered every character to the
                     // focused app — no async pasteboard read in flight, so we
@@ -1792,6 +1963,11 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 let restore_result = clipboard_guard.restore();
                 if let Err(ref e) = restore_result {
                     crate::logging::log_warn(&format!("[Pipeline] Failed to restore clipboard: {}", e));
+                    // The user's pre-record clipboard is gone and their
+                    // transcription is sitting in it instead. Small, silent,
+                    // and exactly the kind of thing they later describe as
+                    // "TTP ate my clipboard".
+                    trace.degraded("clipboard.restore", serde_json::json!({ "error": e.to_string() }));
                 }
                 trace.stage(
                     "clipboard.restore",
@@ -1801,35 +1977,45 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 // Start correction detection window (10 seconds to detect user corrections).
                 // Skip when the final text is empty — the detection task would otherwise
                 // poll Accessibility API for 15s for no reason (phantom F5 race, empty API).
-                if final_text.trim().is_empty() {
-                    crate::logging::log_info("[Pipeline] start_correction_window skipped - empty final_text");
-                } else {
+                let armed = !final_text.trim().is_empty();
+                if armed {
                     start_correction_window(app, final_text.clone());
+                } else {
+                    crate::logging::log_info("[Pipeline] start_correction_window skipped - empty final_text");
                 }
-                trace.stage("correction_window.started", serde_json::Value::Null);
+                // Was written unconditionally, including on the path that
+                // skipped arming — so the line claimed a watcher that did not
+                // exist, and a missing dictionary correction had no explanation.
+                trace.stage(
+                    "correction_window.started",
+                    serde_json::json!({ "armed": armed }),
+                );
 
                 true
             }
             Ok(Ok(Err(e))) => {
                 crate::logging::log_error(&format!("[Pipeline] Paste simulation failed: {}", e));
-                trace.stage(
+                trace.timed(
                     "paste.result",
+                    &paste_span,
                     serde_json::json!({ "ok": false, "error": e, "kind": "simulate_failed" }),
                 );
                 false
             }
             Ok(Err(_)) => {
                 crate::logging::log_error("[Pipeline] Paste simulation panicked");
-                trace.stage(
+                trace.timed(
                     "paste.result",
+                    &paste_span,
                     serde_json::json!({ "ok": false, "kind": "panic" }),
                 );
                 false
             }
             Err(e) => {
                 crate::logging::log_error(&format!("[Pipeline] Paste task failed: {}", e));
-                trace.stage(
+                trace.timed(
                     "paste.result",
+                    &paste_span,
                     serde_json::json!({ "ok": false, "error": e.to_string(), "kind": "join_failed" }),
                 );
                 false
@@ -1862,13 +2048,24 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             None // No raw text if polish was disabled (they're the same)
         };
 
+        let hist_span = crate::trace::Span::start();
         let history_result = add_history_entry(&final_text, raw_for_history);
         if let Err(ref e) = history_result {
             crate::logging::log_warn(&format!("[Pipeline] Failed to save to history: {}", e));
+            trace.degraded("history.save", serde_json::json!({ "error": e.to_string() }));
         }
+        trace.timed(
+            "history.saved",
+            &hist_span,
+            serde_json::json!({ "ok": history_result.is_ok() }),
+        );
+    } else {
+        // Not a failure — but "no history.saved line" previously meant either
+        // "the setting is off" or "we never got here", and those are opposite
+        // conclusions when you are chasing a lost transcription.
         trace.stage(
             "history.saved",
-            serde_json::json!({ "ok": history_result.is_ok() }),
+            serde_json::json!({ "skipped": "history_disabled" }),
         );
     }
 

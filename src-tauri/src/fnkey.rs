@@ -250,6 +250,24 @@ const TIMER_STALL_THRESHOLD_MS: u64 = 1_000;
 /// being told about it.
 const TAP_WATCHDOG_TICKS: u64 = 100;
 
+/// How often the watchdog records that the tap is *healthy*.
+///
+/// The tap's failures have been traced since v3.1 and its successes have not,
+/// which leaves the most common reading of the log ambiguous: no
+/// `hotkey.tap_*` line between two dictations is equally consistent with "the
+/// tap was fine" and "the watchdog was not running because the process was
+/// napping". A heartbeat every five minutes settles that, and bounds any
+/// outage to five minutes without it.
+///
+/// Five minutes rather than one: at ~90 bytes a line this costs ~26 KB a day,
+/// which is under 1% of the retained trace window. At one minute it would be
+/// five times that, for five times the resolution on a question whose answer
+/// is measured in hours.
+const TAP_HEALTH_INTERVAL_MS: u64 = 300_000;
+
+/// Wall clock of the last `hotkey.tap_health` line.
+static LAST_TAP_HEALTH_MS: AtomicU64 = AtomicU64::new(0);
+
 /// Timestamp (ms) when the current hands-free recording started. A single tap
 /// may only stop the recording after [`HANDS_FREE_STOP_GRACE_MS`] has elapsed —
 /// this stops the *second* tap of the starting double-tap (and HID jitter right
@@ -577,8 +595,33 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
                     // Healthy: end any flapping streak so the next genuine
                     // failure logs immediately instead of being rate-limited,
                     // and forgive earlier rebuilds — they evidently worked.
-                    REARM_STREAK.store(0, Ordering::Relaxed);
-                    REBUILD_ATTEMPTS.store(0, Ordering::Relaxed);
+                    let streak_before = REARM_STREAK.swap(0, Ordering::Relaxed);
+                    let rebuilds_before = REBUILD_ATTEMPTS.swap(0, Ordering::Relaxed);
+
+                    // Say so, periodically. A recovery is only legible against
+                    // a baseline of health, and "the Fn key worked all
+                    // afternoon" is a claim the trace could not previously
+                    // support. Emitted immediately after a streak rather than
+                    // waiting out the interval, so the line that closes an
+                    // outage sits next to the ones that opened it.
+                    let last = LAST_TAP_HEALTH_MS.load(Ordering::Relaxed);
+                    let recovered = streak_before > 0 || rebuilds_before > 0;
+                    if recovered
+                        || last == 0
+                        || tick_now.saturating_sub(last) >= TAP_HEALTH_INTERVAL_MS
+                    {
+                        LAST_TAP_HEALTH_MS.store(tick_now, Ordering::Relaxed);
+                        crate::trace::event(
+                            "hotkey.tap_health",
+                            serde_json::json!({
+                                "enabled": true,
+                                "recovered": recovered,
+                                "cleared_rearm_streak": streak_before,
+                                "cleared_rebuilds": rebuilds_before,
+                                "ticks": tick,
+                            }),
+                        );
+                    }
                 } else if REARM_STREAK.load(Ordering::Relaxed) >= TAP_REBUILD_AFTER_FAILED_REARMS {
                     // Re-enabling has demonstrably stopped working. Stop
                     // asking and build a new tap.

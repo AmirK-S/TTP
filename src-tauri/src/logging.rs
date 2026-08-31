@@ -30,16 +30,54 @@ const MAX_LOG_SIZE: u64 = 500_000;
 /// roughly `(KEEP_ROTATIONS + 1) * MAX_LOG_SIZE`.
 const KEEP_ROTATIONS: usize = 2;
 
-/// Max dictation-trace file size before rotation (2MB per file).
+/// Max dictation-trace file size before rotation (2.5MB per file).
 ///
-/// Four times the main log's cap, and with one more historical file: the
+/// Five times the main log's cap, and with one more historical file: the
 /// trace is verbose by design, and its entire value is still holding the
 /// dictation the user is asking about — which is usually the one from twenty
 /// minutes ago, not the one from ten seconds ago.
-const MAX_TRACE_SIZE: u64 = 2_000_000;
+///
+/// Raised from 2 MB in Polaris. Per-dictation volume went from ~3.7 KB to
+/// ~5.1 KB when every stage gained a `dur_ms`, the filters started recording
+/// their negative verdicts, and the keychain got timed. At 2 MB that would
+/// have cut the retained window by a third; at 2.5 MB it is back where it
+/// was. The guaranteed floor is the three ROTATED files — the live one can
+/// be nearly empty right after a rotation — so the number that matters is
+/// 3 x 2.5 MB = 7.5 MB, about 1470 dictations, three weeks at the observed
+/// rate of ~68 a day. See `docs/tracing.md`, "Retention".
+const MAX_TRACE_SIZE: u64 = 2_500_000;
 
 /// Historical trace files retained (`ttp-trace.log.1` .. `.3`).
 const KEEP_TRACE_ROTATIONS: usize = 3;
+
+/// Rotation policy, exposed so the trace API can report the real retained
+/// window to a viewer instead of the viewer hardcoding a guess.
+pub fn trace_rotation() -> (u64, usize) {
+    (MAX_TRACE_SIZE, KEEP_TRACE_ROTATIONS)
+}
+
+/// Every trace file that currently exists, newest first: the live
+/// `ttp-trace.log` followed by `.1` .. `.3`.
+///
+/// The read side of the trace API walks these in order. Returning paths
+/// rather than contents keeps the "where do the files live" knowledge in the
+/// one module that already owns it.
+pub fn trace_files_newest_first() -> Vec<PathBuf> {
+    let Some(live) = trace_path() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    if live.exists() {
+        out.push(live.clone());
+    }
+    for i in 1..=KEEP_TRACE_ROTATIONS {
+        let p = rotated_path(&live, i);
+        if p.exists() {
+            out.push(p);
+        }
+    }
+    out
+}
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 enum Level {

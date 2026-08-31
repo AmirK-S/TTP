@@ -104,6 +104,18 @@ pub struct Settings {
     /// possession — so an empty value simply means "not named yet".
     #[serde(default)]
     pub companion_name: Option<String>,
+    /// Epoch seconds at which `companion_face_enabled` last became true;
+    /// `None` while the face is off.
+    ///
+    /// The denominator for the fourteen-day survival question in
+    /// `docs/companion-faces-design.md` §2.2: "how long did the face last
+    /// before it was turned off" needs a start, and a process-lifetime timer
+    /// would reset on every relaunch. Managed entirely by `set_settings` —
+    /// the frontend never sends it, and a payload that omits it (every
+    /// payload, since the UI does not know the field) keeps the stored value
+    /// rather than clearing it.
+    #[serde(default)]
+    pub companion_face_enabled_at: Option<i64>,
 }
 
 fn default_vad_silence_secs() -> u32 {
@@ -152,8 +164,167 @@ impl Default for Settings {
             sound_pack: None,
             companion_face_enabled: false,
             companion_name: None,
+            companion_face_enabled_at: None,
         }
     }
+}
+
+// ── Companion survival instrumentation ──────────────────────────────────
+//
+// `docs/companion-faces-design.md` §2 asks one question — does a face in
+// peripheral vision survive fourteen days of ordinary work — and answers it
+// from the trace rather than from memory, because the test subject is also
+// the person who wants the answer to be yes.
+//
+// Everything below is slugs, booleans and numbers. In particular
+// `companion.named` records the LENGTH of the name and never the name: it is
+// user text, it is local and private, and a diagnostic log is not where it
+// belongs. That is not a style preference, it is the same rule that keeps
+// transcriptions behind `diagnostics_enabled`.
+
+/// Fractional days since `since`, or 0.0 when the clock has nothing to say.
+fn days_since(since: Option<i64>) -> f64 {
+    let Some(start) = since else { return 0.0 };
+    let now = chrono::Utc::now().timestamp();
+    if now <= start {
+        return 0.0;
+    }
+    ((now - start) as f64 / 86_400.0 * 100.0).round() / 100.0
+}
+
+/// Dictations completed since `since`, from the daily buckets the usage store
+/// already keeps. Day-granular, which is the resolution the question needs —
+/// no new counter, and nothing extra on the dictation path.
+fn dictations_since(since: Option<i64>) -> u32 {
+    let Some(start) = since else { return 0 };
+    let Some(start_day) = chrono::DateTime::from_timestamp(start, 0) else {
+        return 0;
+    };
+    let start_key = start_day.format("%Y-%m-%d").to_string();
+    crate::usage::load_usage()
+        .daily_stats
+        .iter()
+        .filter(|(date, _)| **date >= start_key)
+        .map(|(_, stats)| stats.transcriptions)
+        .sum()
+}
+
+/// Emit the companion events implied by the difference between two settings.
+///
+/// Called from `set_settings` with the value that was stored and the value
+/// about to replace it. Emits nothing when nothing companion-related moved,
+/// which is almost every save.
+fn companion_events(
+    prev: &Settings,
+    next: &Settings,
+    days_on: f64,
+    dictations_on: u32,
+) -> Vec<(&'static str, serde_json::Value)> {
+    let mut out = Vec::new();
+
+    if prev.companion_face_enabled != next.companion_face_enabled {
+        // The primary measurement. On enable both spans are zero; on disable
+        // they are the finding — how long the face lasted, and across how
+        // many dictations.
+        out.push((
+            "companion.face",
+            serde_json::json!({
+                "enabled": next.companion_face_enabled,
+                "days_on": days_on,
+                "dictations_on": dictations_on,
+            }),
+        ));
+    }
+
+    if prev.companion_name != next.companion_name {
+        let len = next
+            .companion_name
+            .as_deref()
+            .map(|n| n.chars().count())
+            .unwrap_or(0);
+        out.push((
+            "companion.named",
+            serde_json::json!({ "len": len, "cleared": len == 0 }),
+        ));
+    }
+
+    if prev.hide_pill_when_inactive != next.hide_pill_when_inactive {
+        // The sharper tell, per §2.3: hiding the idle pill while the face is
+        // still enabled is "get this off my screen" without saying why.
+        // `face_on` is the whole point of the event — the correlation is the
+        // signal, and the event is nearly worthless without it.
+        out.push((
+            "companion.pill_hidden",
+            serde_json::json!({
+                "hidden": next.hide_pill_when_inactive,
+                "face_on": next.companion_face_enabled,
+            }),
+        ));
+    }
+
+    out
+}
+
+/// Emit whatever `companion_events` decided. The split exists so the decision
+/// can be tested without a filesystem, a usage record or a writer thread —
+/// and the spans are computed here, once, because `dictations_since` reads
+/// (and HMAC-verifies) the usage file and must not run when nothing changed.
+fn trace_companion_diff(prev: &Settings, next: &Settings) {
+    let face_changed = prev.companion_face_enabled != next.companion_face_enabled;
+    let name_changed = prev.companion_name != next.companion_name;
+    let pill_changed = prev.hide_pill_when_inactive != next.hide_pill_when_inactive;
+    if !(face_changed || name_changed || pill_changed) {
+        return;
+    }
+    let (days_on, dictations_on) = if face_changed {
+        (
+            days_since(prev.companion_face_enabled_at),
+            dictations_since(prev.companion_face_enabled_at),
+        )
+    } else {
+        (0.0, 0)
+    };
+    for (name, fields) in companion_events(prev, next, days_on, dictations_on) {
+        crate::trace::event(name, fields);
+    }
+}
+
+/// Where `companion_face_enabled_at` should land after a save.
+///
+/// Carry the stored value forward while the face stays on, stamp on the
+/// transition to on, clear on the transition to off. Pure so the rule can be
+/// tested; the alternative is a test that has to write settings files and
+/// wait for a clock.
+fn resolve_face_timestamp(
+    enabled: bool,
+    incoming: Option<i64>,
+    stored: Option<i64>,
+    now: i64,
+) -> Option<i64> {
+    if !enabled {
+        return None;
+    }
+    incoming.or(stored).or(Some(now))
+}
+
+/// One line per session, next to `app.launched`.
+///
+/// Rotation is why this exists: a `companion.face {"enabled":false}` line can
+/// age out of the retained window, and without a state line at every session
+/// boundary the log would then show no evidence the face had ever been on.
+pub fn trace_companion_state() {
+    let s = get_settings();
+    crate::trace::event(
+        "companion.state",
+        serde_json::json!({
+            "face": s.companion_face_enabled,
+            "named": s.companion_name.as_deref().map(|n| !n.is_empty()).unwrap_or(false),
+            "pack": crate::cosmetics::effective_sound_pack(s.sound_pack.as_deref()).id,
+            "pill_hidden": s.hide_pill_when_inactive,
+            "days_on": days_since(s.companion_face_enabled_at),
+            "dictations_on": dictations_since(s.companion_face_enabled_at),
+        }),
+    );
 }
 
 // In-memory cache so get_settings() doesn't re-read + re-parse the JSON
@@ -332,7 +503,26 @@ pub(crate) fn write_settings_atomic(path: &std::path::Path, settings: &Settings)
 pub fn set_settings(settings: Settings, app: AppHandle) -> Result<(), String> {
     let path = get_settings_path().ok_or("Could not determine config directory")?;
 
+    // Read the outgoing value before it is overwritten. `get_settings()` is
+    // the cache, and the cache is refreshed on every write, so it holds
+    // exactly what this call is about to replace.
+    let previous = get_settings();
+
+    // Own the timestamp here rather than in the UI. The frontend does not
+    // know this field exists and every payload it sends omits it, so the
+    // rules are: carry the stored value forward while the face stays on,
+    // stamp on the transition to on, clear on the transition to off.
+    let mut settings = settings;
+    settings.companion_face_enabled_at = resolve_face_timestamp(
+        settings.companion_face_enabled,
+        settings.companion_face_enabled_at,
+        previous.companion_face_enabled_at,
+        chrono::Utc::now().timestamp(),
+    );
+
     write_settings_atomic(&path, &settings)?;
+
+    trace_companion_diff(&previous, &settings);
 
     // Refresh the .bak only AFTER the new file is durably in place. Best-effort:
     // if this copy fails we still proceed (the live file is good, the .bak is
@@ -381,6 +571,182 @@ pub fn reset_settings() -> Result<(), String> {
 //     on power loss / kill -9, and
 //   - the .bak fallback never asserted in any test.
 // ─────────────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+mod companion_instrumentation_tests {
+    use super::*;
+
+    fn base() -> Settings {
+        Settings::default()
+    }
+
+    fn names(events: &[(&'static str, serde_json::Value)]) -> Vec<&'static str> {
+        events.iter().map(|(n, _)| *n).collect()
+    }
+
+    #[test]
+    fn an_unrelated_save_emits_nothing() {
+        // set_settings runs on every toggle in the Settings window. If this
+        // ever fires on an unrelated change, the fourteen-day window fills
+        // with noise and the signal it was built for is unreadable.
+        let prev = base();
+        let mut next = base();
+        next.ai_polish_enabled = !prev.ai_polish_enabled;
+        next.vad_silence_secs = 9;
+        assert!(companion_events(&prev, &next, 0.0, 0).is_empty());
+    }
+
+    #[test]
+    fn enabling_the_face_reports_zero_spans() {
+        let prev = base();
+        let mut next = base();
+        next.companion_face_enabled = true;
+        let ev = companion_events(&prev, &next, 0.0, 0);
+        assert_eq!(names(&ev), vec!["companion.face"]);
+        assert_eq!(ev[0].1["enabled"], true);
+        assert_eq!(ev[0].1["days_on"], 0.0);
+        assert_eq!(ev[0].1["dictations_on"], 0);
+    }
+
+    #[test]
+    fn disabling_the_face_carries_the_span_it_survived() {
+        // The finding, per docs/companion-faces-design.md §2.3(1): the answer
+        // is not "it was turned off", it is "it was turned off after N days
+        // and M dictations".
+        let mut prev = base();
+        prev.companion_face_enabled = true;
+        prev.companion_face_enabled_at = Some(1_756_000_000);
+        let next = base();
+        let ev = companion_events(&prev, &next, 4.25, 118);
+        assert_eq!(ev[0].1["enabled"], false);
+        assert_eq!(ev[0].1["days_on"], 4.25);
+        assert_eq!(ev[0].1["dictations_on"], 118);
+    }
+
+    #[test]
+    fn hiding_the_pill_records_whether_the_face_was_still_on() {
+        // §2.3(2) rates this the more reliable tell, and it is only a tell in
+        // conjunction with `face_on` — "get this off my screen" while the
+        // face is still enabled. Without the correlation the event says
+        // nothing about the face at all.
+        let mut prev = base();
+        prev.companion_face_enabled = true;
+        let mut next = prev.clone();
+        next.hide_pill_when_inactive = true;
+        let ev = companion_events(&prev, &next, 0.0, 0);
+        assert_eq!(names(&ev), vec!["companion.pill_hidden"]);
+        assert_eq!(ev[0].1["hidden"], true);
+        assert_eq!(ev[0].1["face_on"], true);
+    }
+
+    #[test]
+    fn hiding_the_pill_with_no_face_is_recorded_but_not_a_tell() {
+        let prev = base();
+        let mut next = base();
+        next.hide_pill_when_inactive = true;
+        let ev = companion_events(&prev, &next, 0.0, 0);
+        assert_eq!(ev[0].1["face_on"], false);
+    }
+
+    #[test]
+    fn naming_records_the_length_and_never_the_name() {
+        // Non-negotiable: the name is user text. A diagnostic log that
+        // contains it is a privacy defect, not a richer diagnostic.
+        let prev = base();
+        let mut next = base();
+        next.companion_name = Some("Hervé".to_string());
+        let ev = companion_events(&prev, &next, 0.0, 0);
+        assert_eq!(names(&ev), vec!["companion.named"]);
+        assert_eq!(ev[0].1["len"], 5); // chars, not bytes — "Hervé" is 6 bytes
+        assert_eq!(ev[0].1["cleared"], false);
+        let rendered = ev[0].1.to_string();
+        assert!(
+            !rendered.contains("Herv"),
+            "the companion's name reached the trace payload: {}",
+            rendered
+        );
+    }
+
+    #[test]
+    fn clearing_the_name_is_distinguishable_from_never_naming() {
+        let mut prev = base();
+        prev.companion_name = Some("Hervé".to_string());
+        let mut next = base();
+        next.companion_name = Some(String::new());
+        let ev = companion_events(&prev, &next, 0.0, 0);
+        assert_eq!(ev[0].1["len"], 0);
+        assert_eq!(ev[0].1["cleared"], true);
+    }
+
+    #[test]
+    fn several_companion_changes_in_one_save_all_report() {
+        let prev = base();
+        let mut next = base();
+        next.companion_face_enabled = true;
+        next.companion_name = Some("Bip".to_string());
+        next.hide_pill_when_inactive = true;
+        assert_eq!(
+            names(&companion_events(&prev, &next, 0.0, 0)),
+            vec!["companion.face", "companion.named", "companion.pill_hidden"]
+        );
+    }
+
+    #[test]
+    fn the_enable_timestamp_is_stamped_once_and_carried_forward() {
+        const NOW: i64 = 1_756_600_000;
+        // Turning it on with nothing stored: stamp now.
+        assert_eq!(resolve_face_timestamp(true, None, None, NOW), Some(NOW));
+        // Any later save while it stays on: the frontend omits the field, so
+        // the stored value has to survive or `days_on` resets on every toggle
+        // of an unrelated setting.
+        assert_eq!(
+            resolve_face_timestamp(true, None, Some(1_756_000_000), NOW),
+            Some(1_756_000_000)
+        );
+        // Turning it off clears it, so a later re-enable measures the second
+        // run and not the first.
+        assert_eq!(resolve_face_timestamp(false, Some(1_756_000_000), Some(1_756_000_000), NOW), None);
+    }
+
+    #[test]
+    fn days_since_is_zero_for_absent_or_future_timestamps() {
+        assert_eq!(days_since(None), 0.0);
+        // A clock that moved backwards must not produce a negative span the
+        // analysis would then average into a nonsense number.
+        assert_eq!(days_since(Some(chrono::Utc::now().timestamp() + 10_000)), 0.0);
+    }
+
+    #[test]
+    fn days_since_reports_fractional_days() {
+        let twelve_hours_ago = chrono::Utc::now().timestamp() - 43_200;
+        let d = days_since(Some(twelve_hours_ago));
+        assert!((d - 0.5).abs() < 0.01, "expected ~0.5 days, got {}", d);
+    }
+
+    #[test]
+    fn companion_face_timestamp_survives_a_serde_round_trip() {
+        // The field is `#[serde(default)]` and the frontend never sends it;
+        // if it failed to persist, `days_on` would be zero on every disable
+        // and the fourteen-day question would be unanswerable.
+        let mut s = Settings::default();
+        s.companion_face_enabled = true;
+        s.companion_face_enabled_at = Some(1_756_000_000);
+        let json = serde_json::to_string(&s).unwrap();
+        let back: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.companion_face_enabled_at, Some(1_756_000_000));
+
+        // And a payload from the current frontend, which does not know the
+        // field exists, deserialises rather than failing — otherwise adding
+        // the field would break every save from the Settings window.
+        let mut obj: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&serde_json::to_string(&Settings::default()).unwrap()).unwrap();
+        obj.remove("companion_face_enabled_at");
+        assert!(!obj.contains_key("companion_face_enabled_at"));
+        let from_ui: Settings =
+            serde_json::from_value(serde_json::Value::Object(obj)).expect("frontend payload loads");
+        assert_eq!(from_ui.companion_face_enabled_at, None);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
