@@ -51,13 +51,14 @@ pub fn unlocked() -> bool {
 #[derive(Debug, Clone, Serialize)]
 pub struct SoundPack {
     pub id: &'static str,
-    /// Shown in Settings. Deliberately a name, not a description.
-    pub name: &'static str,
-    /// One line, written in the same register as the manual.
-    pub description: &'static str,
     /// True for the pack everyone has without buying anything.
     pub free: bool,
 }
+
+// Names and descriptions deliberately live in the frontend's i18n files,
+// keyed by `id`, rather than here. They were hard-coded English strings in
+// this file and rendered untranslated into a French UI — a bilingual app
+// cannot keep user-facing prose on the Rust side of the boundary.
 
 /// The pack that plays when nothing else has been chosen, or when cosmetics
 /// are locked. Its id is never absent from `SOUND_PACKS`.
@@ -66,38 +67,26 @@ pub const DEFAULT_PACK_ID: &str = "default";
 pub const SOUND_PACKS: &[SoundPack] = &[
     SoundPack {
         id: DEFAULT_PACK_ID,
-        name: "House",
-        description: "The two polite tones TTP was born with.",
         free: true,
     },
     SoundPack {
         id: "bowl",
-        name: "Bowl",
-        description: "A small brass bowl. The stop is someone's hand on it.",
         free: false,
     },
     SoundPack {
         id: "marimba",
-        name: "Marimba",
-        description: "Two notes on a wooden bar. Up to begin, down to finish.",
         free: false,
     },
     SoundPack {
         id: "submarine",
-        name: "Submarine",
-        description: "A sonar ping into the quiet. Something down there heard it.",
         free: false,
     },
     SoundPack {
         id: "felt",
-        name: "Felt",
-        description: "A piano with a blanket over it. Barely a sound at all.",
         free: false,
     },
     SoundPack {
         id: "bubble",
-        name: "Bubble",
-        description: "A drop going in, and a drop coming back out.",
         free: false,
     },
 ];
@@ -199,10 +188,17 @@ mod tests {
     }
 
     #[test]
-    fn every_pack_has_a_name_and_a_description() {
+    fn pack_ids_are_i18n_safe() {
+        // Ids key into the frontend's translation files, so they must be
+        // plain lowercase identifiers — anything else silently produces a
+        // missing translation rather than an error.
         for p in SOUND_PACKS {
-            assert!(!p.name.is_empty(), "{} has no name", p.id);
-            assert!(!p.description.is_empty(), "{} has no description", p.id);
+            assert!(!p.id.is_empty());
+            assert!(
+                p.id.chars().all(|c| c.is_ascii_lowercase() || c == '_'),
+                "pack id {:?} is not a safe translation key",
+                p.id
+            );
         }
     }
 }

@@ -43,6 +43,8 @@ function leafString(obj, dottedKey) {
 // Keep this list tight — every entry is a future excuse for an untranslated
 // menu item to slip through.
 const ALLOW_IDENTICAL = new Set([
+  // Instrument names that are the same word in both languages.
+  'settings.companion.packs.marimba.name',
   // Product / brand names
   'tray.tooltip',
   'setup.title',

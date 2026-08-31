@@ -161,7 +161,33 @@
       "faceLabel": "Give it a face",
       "faceDesc": "The pill blinks when idle and reacts while you speak. Subtle by default, and it never asks you for anything.",
       "nameLabel": "Its name",
-      "namePlaceholder": "Name your Talk-To-Paste"
+      "namePlaceholder": "Name your Talk-To-Paste",
+      "packs": {
+        "default": {
+          "name": "House",
+          "desc": "The two polite tones TTP was born with."
+        },
+        "bowl": {
+          "name": "Bowl",
+          "desc": "A small brass bowl. The stop is someone's hand on it."
+        },
+        "marimba": {
+          "name": "Marimba",
+          "desc": "Two notes on a wooden bar. Up to begin, down to finish."
+        },
+        "submarine": {
+          "name": "Submarine",
+          "desc": "A sonar ping into the quiet. Something down there heard it."
+        },
+        "felt": {
+          "name": "Felt",
+          "desc": "A piano with a blanket over it. Barely a sound at all."
+        },
+        "bubble": {
+          "name": "Bubble",
+          "desc": "A drop going in, and a drop coming back out."
+        }
+      }
     },
     "recordingTrigger": {
       "title": "Shortcut",

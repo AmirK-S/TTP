@@ -161,7 +161,33 @@
       "faceLabel": "Lui donner un visage",
       "faceDesc": "La pilule cligne des yeux au repos et réagit quand tu parles. Discret par défaut, et elle ne te demande jamais rien.",
       "nameLabel": "Son nom",
-      "namePlaceholder": "Donne un nom à ton Talk-To-Paste"
+      "namePlaceholder": "Donne un nom à ton Talk-To-Paste",
+      "packs": {
+        "default": {
+          "name": "Maison",
+          "desc": "Les deux tons polis avec lesquels TTP est né."
+        },
+        "bowl": {
+          "name": "Bol",
+          "desc": "Un petit bol en laiton. L'arrêt, c'est une main posée dessus."
+        },
+        "marimba": {
+          "name": "Marimba",
+          "desc": "Deux notes sur une lame de bois. Vers le haut pour commencer, vers le bas pour finir."
+        },
+        "submarine": {
+          "name": "Sous-marin",
+          "desc": "Un ping sonar dans le silence. Quelque chose en dessous a entendu."
+        },
+        "felt": {
+          "name": "Feutre",
+          "desc": "Un piano avec une couverture dessus. À peine un son."
+        },
+        "bubble": {
+          "name": "Bulle",
+          "desc": "Une goutte qui entre, une goutte qui ressort."
+        }
+      }
     },
     "recordingTrigger": {
       "title": "Raccourci",

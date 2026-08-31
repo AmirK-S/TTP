@@ -1277,8 +1277,6 @@ export function Settings() {
 
 interface SoundPack {
   id: string;
-  name: string;
-  description: string;
   free: boolean;
 }
 
@@ -1322,19 +1320,50 @@ function CompanionPanel({
             // click roughly half the time. Passing `trailing` also suppresses
             // the description, which is why the pack blurbs were invisible.
             <div key={pack.id} className="flex items-center gap-2">
-              <div className="flex-1 min-w-0">
-                <RadioOption
-                  selected={selected === pack.id}
-                  onSelect={() => !locked && onSelect(pack.id)}
-                  disabled={locked || loading}
-                  label={pack.name}
-                  description={pack.description}
-                />
-              </div>
+              {/* Not RadioOption. That component lays label and description
+                  side by side in a justify-between row with shrink-0 on the
+                  description — it is built for a short trailing word like
+                  "Recommended", and a full sentence collides with the name,
+                  which is exactly what shipped. A sentence goes underneath. */}
+              <button
+                type="button"
+                onClick={() => !locked && onSelect(pack.id)}
+                disabled={locked || loading}
+                aria-pressed={selected === pack.id}
+                className={cn(
+                  'flex-1 min-w-0 flex items-start gap-3 px-4 py-3 text-left',
+                  'rounded-app-md border border-app-border bg-app-surface',
+                  'transition-[background-color,border-color] duration-hover ease-app-out',
+                  'hover:bg-app-raised hover:border-app-border-strong',
+                  selected === pack.id && 'border-app-accent bg-app-accent-tint',
+                  (locked || loading) && 'opacity-50 cursor-not-allowed',
+                )}
+              >
+                <span
+                  className={cn(
+                    'mt-0.5 size-4 rounded-full border-2 grid place-items-center shrink-0',
+                    selected === pack.id ? 'border-app-accent' : 'border-app-border-strong',
+                  )}
+                  aria-hidden
+                >
+                  {selected === pack.id && <span className="size-2 rounded-full bg-app-accent" />}
+                </span>
+                <span className="min-w-0">
+                  <span className={cn(
+                    'block text-[13px]',
+                    selected === pack.id ? 'text-app-accent font-medium' : 'text-app-text',
+                  )}>
+                    {t(`settings.companion.packs.${pack.id}.name`)}
+                  </span>
+                  <span className="block text-[12px] text-app-faint mt-0.5">
+                    {t(`settings.companion.packs.${pack.id}.desc`)}
+                  </span>
+                </span>
+              </button>
               <button
                 type="button"
                 onClick={() => { invoke('preview_sound_pack', { packId: pack.id }).catch(() => {}); }}
-                aria-label={`${t('settings.companion.preview')} — ${pack.name}`}
+                aria-label={`${t('settings.companion.preview')} — ${t(`settings.companion.packs.${pack.id}.name`)}`}
                 className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-app-sm border border-app-border
                            text-[12px] font-medium text-app-muted
                            hover:text-app-text hover:bg-app-raised active:scale-[0.97] transition"
