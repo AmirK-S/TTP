@@ -326,3 +326,79 @@ a conflict.
 I am holding it until A3's Pro aesthetic exists. The site should show the real
 thing rather than describe a thing that is being redesigned this week. The
 false privacy claim — the only urgent part — is already fixed and pushed.
+
+
+## Wave 4 results — 2026-08-31
+
+All four landed. Gates after: `cargo test --lib` **271 passed / 1 ignored, no
+`--skip`, in 0.47s**; `tsc` clean; **220 tests / 16 files**; i18n clean at 396
+keys; landing `tsc` clean.
+
+**R1 — the three proven defects.**
+- The 11h live microphone was the SHIPPED FIX BEING INCOMPLETE, not a second
+  race. `STARTING` is set by the first line of an `async fn`, so the window
+  between the JS `invoke` and the future's first poll is unbounded and
+  invisible; the wait is capped at 3s on an assumption; one process-wide bool
+  stands in for two possible concurrent starts. New `capture_arbiter.rs`
+  enforces the real invariant, driven from `set_state`, no clock anywhere.
+  **Not reproduced live, and no claim that it could be.**
+- The keychain is a check-then-act: the cache was consulted, the lock
+  released, then the unbounded read performed. Eight sequential reads in one
+  process with a lifetime cache — 62,304 / 13,612 / **397,600** / 97,407 ms.
+  `warm_caches` protected nobody; it added a concurrent reader.
+- The lost newline is PROVEN: two `write_all` calls, and the corpus shows 20
+  merged records against exactly 20 blank lines. **The single writer thread
+  does not close it** — it serialises trace callers but not `ttp.log`'s
+  threads and not a second process, and an installed build alongside a dev
+  build is the normal state here.
+
+**MANAGER CORRECTION.** I reported G0's keychain result as "proven, not
+assumed: no running test reaches the keychain". Too strong. The dialog was
+genuinely gone, but the suite still took **200 s per rebuild** because
+`cosmetics::unlocked()` reached the real keychain by a second path. G0's proof
+was environment-dependent — both stores early-return when their JSON is
+absent, and Amir's `usage.json` exists. Now diverted at the choke point:
+**200 s -> 0.47 s**.
+
+**A2 — the face.** Round, wide, set low and slightly asymmetric. The closed
+eye is now a curve from one shape family rather than a flat bar that read as
+an equals sign. The idle pill went 28px -> 16px: at rest the face IS the pill.
+Five varieties distinguishable in a ten-second silent recording, mechanised as
+a test. Looking at renders rejected a catchlight and a halo, and caught two
+drawing bugs the code did not show.
+
+**A3 — the coats.** `data-ttp-theme` plus four tokens, context-resolved so the
+same face is legible in the pill and in a settings preview. Wild type is the
+shipped palette byte-for-byte. The free UI was NOT degraded and no coat's
+contrast floor goes below Wild type's own. Swatches are each coat rendering
+itself live, so they cannot drift; locked coats render at full fidelity.
+
+**F2 — the second edition.** No retcon: the first edition is reprinted entire
+and the still-true half explicitly upheld. Manual 3,639 -> 5,225 words EN,
+4,427 -> 6,025 FR, still zero exclamation marks in the French.
+
+## Open debt, named
+
+1. **The coat persists in `localStorage`, not the Rust `Settings` struct** —
+   `set_settings` round-trips a fixed serde shape and would have silently
+   dropped an unknown field, which is precisely the polite-degradation
+   anti-pattern D documented. `readCoat`/`writeCoat` are the two functions to
+   change. A coat will not survive clearing site data.
+2. **`tests/polish_golden.rs` does not compile** — pre-existing, references
+   `ttp_lib::transcription` which is `pub(crate)`. So `cargo build --tests`
+   fails while `cargo test --lib` passes.
+3. **`whatsnew.rs` emits user-facing prose from Rust**, violating the standing
+   rule. Pre-existing across every entry; fixing it properly means moving the
+   mechanism to locale keys, a frontend change.
+4. **R1's new trace stages are undocumented** — `capture.orphan_prevented`,
+   `capture.orphan_reclaimed`, `capture.stale_dropped`,
+   `usage.polish_recorded`, `permission.tcc_reset{,_result}`,
+   `permission.notify{,_failed}`, `keychain.warmed{account:"groq_api_key"}`,
+   `degraded` sites `settings.fsync` and `capture.reclaim`, plus the
+   `timed_out` and `trace_write_failures` fields. `check_trace.py` will list
+   them as unknown vocabulary until `docs/tracing.md` catches up.
+5. **C — the website** is still unwritten against B's research. Only the false
+   privacy claim was fixed.
+6. **The face survival question is now weaker by construction** — the test
+   runs on the corrected face and a cast of five, not on the pessimal single
+   face A0 designed the experiment around.
