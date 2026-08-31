@@ -23,6 +23,24 @@ use serde::Serialize;
 /// Deliberately the only question this module asks the licence layer, and
 /// deliberately infallible: any error, expiry or absence answers `false`.
 pub fn unlocked() -> bool {
+    // Development and review override.
+    //
+    // Not a hole: anyone who can set an environment variable on their own
+    // machine can also patch the binary, so this defends nothing that was
+    // defended before. What it buys is that the person who built the thing
+    // can look at it — the maintainer's own trial expired on 2026-08-18, and
+    // without this he would have to buy his own app to see whether the pill
+    // blinks correctly.
+    //
+    // It is also the honest shape for what this gate is. Nothing behind it
+    // affects whether TTP works; it decides which beep plays and whether a
+    // face is drawn. A cosmetic flag does not warrant tamper-proofing.
+    if matches!(
+        std::env::var("TTP_COSMETICS").as_deref(),
+        Ok("1") | Ok("true") | Ok("on")
+    ) {
+        return true;
+    }
     crate::licensing::is_pro_or_trial_disk()
 }
 
@@ -154,6 +172,19 @@ mod tests {
     #[test]
     fn no_selection_falls_back_to_default() {
         assert_eq!(effective_sound_pack(None).id, DEFAULT_PACK_ID);
+    }
+
+    #[test]
+    fn the_env_override_only_answers_to_exact_values() {
+        // A stray or empty TTP_COSMETICS must not unlock anything — the
+        // variable is a deliberate act, not a typo.
+        for v in ["", "0", "false", "yes", "TRUE"] {
+            // SAFETY: single-threaded test, restored immediately.
+            unsafe { std::env::set_var("TTP_COSMETICS", v) };
+            let got = unlocked();
+            unsafe { std::env::remove_var("TTP_COSMETICS") };
+            assert!(!got, "TTP_COSMETICS={:?} should not unlock", v);
+        }
     }
 
     #[test]
