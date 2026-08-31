@@ -33,10 +33,10 @@ fn pack_bytes(pack_id: &str) -> Option<(&'static [u8], &'static [u8])> {
         };
     }
     match pack_id {
-        "radio" => pack!("radio"),
-        "arcade" => pack!("arcade"),
+        "bowl" => pack!("bowl"),
+        "marimba" => pack!("marimba"),
         "submarine" => pack!("submarine"),
-        "typewriter" => pack!("typewriter"),
+        "felt" => pack!("felt"),
         "bubble" => pack!("bubble"),
         _ => None,
     }

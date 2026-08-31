@@ -71,15 +71,15 @@ pub const SOUND_PACKS: &[SoundPack] = &[
         free: true,
     },
     SoundPack {
-        id: "radio",
-        name: "Radio",
-        description: "A squelch of static, as though someone somewhere received you.",
+        id: "bowl",
+        name: "Bowl",
+        description: "A small brass bowl. The stop is someone's hand on it.",
         free: false,
     },
     SoundPack {
-        id: "arcade",
-        name: "Arcade",
-        description: "Two square-wave blips. Your words are worth points.",
+        id: "marimba",
+        name: "Marimba",
+        description: "Two notes on a wooden bar. Up to begin, down to finish.",
         free: false,
     },
     SoundPack {
@@ -89,9 +89,9 @@ pub const SOUND_PACKS: &[SoundPack] = &[
         free: false,
     },
     SoundPack {
-        id: "typewriter",
-        name: "Typewriter",
-        description: "A key, and later a small bell. Nothing is actually typed.",
+        id: "felt",
+        name: "Felt",
+        description: "A piano with a blanket over it. Barely a sound at all.",
         free: false,
     },
     SoundPack {

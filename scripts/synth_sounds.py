@@ -3,16 +3,19 @@
 Synthesise TTP's cosmetic sound packs from scratch.
 
 Everything here is generated with the Python standard library only (`wave`,
-`math`, `struct`, `array`, `random`). No samples, no downloads, no numpy
+`math`, `cmath`, `struct`, `array`). No samples, no downloads, no numpy
 dependency -- if numpy happens to be installed it is not used, so the output
-bytes are identical on every machine.
+bytes are identical on every machine. There is no random number generator
+involved anywhere any more either (see "why no noise" below), so determinism
+is now structural rather than a matter of remembering to seed things.
 
 Writes, for each pack:
     src-tauri/sounds/packs/<pack>/start.wav
     src-tauri/sounds/packs/<pack>/stop.wav
 
 and then verifies every file it wrote (format, duration, peak, clipping,
-boundary samples) and prints a loudness table.
+boundary samples, first-50ms timbre) and prints a loudness and brightness
+table.
 
     python3 scripts/synth_sounds.py            # generate + verify
     python3 scripts/synth_sounds.py --verify   # verify existing files only
@@ -25,29 +28,51 @@ Design constraints (see docs/ttp-pro-design.md, "1. A voice -- sound packs"):
     edges, so no pack ever ticks on playback.
   * Loudness-matched to the built-in beeps at -14.8 dBFS RMS, under a -3.0
     dBFS peak ceiling.
+  * Warm and tonal: a first-50ms spectral centroid under 2 kHz and a spectral
+    flatness under 0.05, and no two packs within 2 semitones of each other on
+    that centroid.
 
 Why loudness and not peak is the normalisation target: the built-in beeps peak
-at -10.5 dBFS, not -3. Peak-normalising all ten files to -3 dBFS produces a
-13 dB RMS spread across packs -- the bit-crushed arcade square lands at -5 dBFS
-RMS while the radio squelch lands at -19 -- which is exactly the volume jump on
+at -10.5 dBFS, not -3. Peak-normalising every file to -3 dBFS would spread the
+RMS across packs by more than 10 dB, because a sound's peak-to-average ratio
+depends entirely on how percussive it is -- which is exactly the volume jump on
 pack switch that we are trying to avoid. So the chain peak-normalises to the
--3 dBFS ceiling first (that is the never-clip guarantee, and transient-led
-packs end up sitting right on it) and then trims down to the reference RMS.
-Attenuation only: nothing is ever pushed back up through the ceiling.
+-3 dBFS ceiling first (that is the never-clip guarantee) and then trims down to
+the reference RMS. Attenuation only: nothing is ever pushed back up through the
+ceiling.
 
 For packs that come out quieter than the reference at the ceiling, gain is not
 available -- it would breach -3 dBFS -- so the crest factor is reduced instead,
 by searching for the mild tanh drive that lands the sound on target loudness
 while still peaking at -3. That is a synthesis change, not a gain change.
+
+Why no noise, anywhere: the first version of this file leaned on transients and
+band-limited noise for character -- a squelch, a bit-crushed square, a type-bar
+click. Measured, those three packs sat at 2.7-4.0 kHz centroid and up to 0.27
+flatness, and they were the three that got rejected on listening. The failure is
+structural, not a matter of taste: a noise burst is charming on first hearing and
+abrasive on the fiftieth, and these fire dozens of times a day from a laptop
+speaker a foot from someone's face. Everything here is now a small set of
+decaying sinusoids at fixed ratios to a fundamental. Timbre carries the identity
+of a pack; the transient is only how the timbre arrives.
+
+Why the pitches are what they are: the packs have to be told apart inside the
+first 50 ms, and warm pitched material all wants to live in the same 300-900 Hz
+window, so the fundamentals are chosen against a measured map of the whole set
+(including the two built-in beeps) rather than for musical reasons alone. The
+`--verify` pass enforces the resulting spacing. The other constraint on pitch is
+the speaker: nothing carries its identity much below 200 Hz on a laptop, so no
+fundamental here goes under F3, and the pack that gets closest to that floor
+(felt) is voiced in octaves so that the notes above the root carry the loudness.
 """
 
 from __future__ import annotations
 
 import argparse
 import array
+import cmath
 import math
 import os
-import random
 import struct
 import sys
 import wave
@@ -67,6 +92,15 @@ PACKS_DIR = os.path.join(REPO_ROOT, "src-tauri", "sounds", "packs")
 REFERENCE_RMS_DBFS = -14.8
 RMS_TOLERANCE_DB = 0.75    # how far a pack may sit from the reference
 
+# Timbre budget, measured over the first 50 ms -- the window in which the user
+# has to know which pack is playing, and the window that decides whether the
+# sound is warm or bright. See "why no noise" in the module docstring; the three
+# packs that were replaced measured 2740-4023 Hz and 0.128-0.269.
+TIMBRE_WINDOW = 2048             # 46.4 ms at 44.1 kHz, the largest power of two
+CENTROID_CEILING_HZ = 2000.0     # above this a sound reads as bright, not warm
+FLATNESS_CEILING = 0.05          # above this it reads as noise, not as a note
+MIN_PACK_SEPARATION_ST = 2.0     # semitones between any two packs' centroids
+
 
 # --------------------------------------------------------------------------
 # tiny DSP kit
@@ -79,51 +113,6 @@ def n_samples(ms: float) -> int:
 
 def silence(n: int) -> list:
     return [0.0] * n
-
-
-def noise(n: int, seed: int) -> list:
-    """Deterministic white noise in [-1, 1). Seeded explicitly, always."""
-    rng = random.Random(seed)
-    return [rng.uniform(-1.0, 1.0) for _ in range(n)]
-
-
-def one_pole_lp(sig: list, cutoff: float) -> list:
-    a = 1.0 - math.exp(-2.0 * math.pi * cutoff / SR)
-    out, y = [], 0.0
-    for x in sig:
-        y += a * (x - y)
-        out.append(y)
-    return out
-
-
-def one_pole_hp(sig: list, cutoff: float) -> list:
-    return [x - y for x, y in zip(sig, one_pole_lp(sig, cutoff))]
-
-
-def biquad_bp(sig: list, freq: float, q: float) -> list:
-    """RBJ constant-peak-gain bandpass. Cascade it for steeper skirts."""
-    w0 = 2.0 * math.pi * freq / SR
-    alpha = math.sin(w0) / (2.0 * q)
-    cw = math.cos(w0)
-    b0, b1, b2 = alpha, 0.0, -alpha
-    a0, a1, a2 = 1.0 + alpha, -2.0 * cw, 1.0 - alpha
-    b0, b1, b2, a1, a2 = b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0
-    out = []
-    x1 = x2 = y1 = y2 = 0.0
-    for x in sig:
-        y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2
-        x2, x1 = x1, x
-        y2, y1 = y1, y
-        out.append(y)
-    return out
-
-
-def band_noise(n: int, seed: int, freq: float, q: float, stages: int = 2) -> list:
-    """Band-limited noise -- the raw material for every squelch and click."""
-    sig = noise(n, seed)
-    for _ in range(stages):
-        sig = biquad_bp(sig, freq, q)
-    return normalise(sig, 1.0)
 
 
 def osc(freqs, n: int, shape: str = "sin", duty: float = 0.5, phase0: float = 0.0) -> list:
@@ -221,15 +210,23 @@ def apply_env(sig: list, env: list) -> list:
     return [s * e for s, e in zip(sig, env)]
 
 
-def bitcrush(sig: list, bits: int, hold: int) -> list:
-    """Quantise to `bits` and sample-and-hold every `hold` samples. 8-bit charm."""
-    levels = float(2 ** (bits - 1))
-    out, held = [], 0.0
-    for i, x in enumerate(sig):
-        if i % hold == 0:
-            held = max(-1.0, min(1.0, x))
-            held = round(held * levels) / levels
-        out.append(held)
+def damp_env(n: int, hold_ms: float, mute_ms: float) -> list:
+    """
+    Full level, then a raised-cosine mute down to silence -- a hand laid on
+    something that is still ringing. Not the same shape as a decay: a decay
+    fades because the energy ran out, a mute stops because someone stopped it,
+    and the ear hears the difference as intent.
+    """
+    h = max(1, min(n, n_samples(hold_ms)))
+    m = max(1, min(n - h, n_samples(mute_ms))) if n > h else 1
+    out = [1.0] * n
+    for i in range(m):
+        j = h + i
+        if j >= n:
+            break
+        out[j] = 0.5 + 0.5 * math.cos(math.pi * i / m)
+    for j in range(min(n, h + m), n):
+        out[j] = 0.0
     return out
 
 
@@ -349,81 +346,133 @@ def write_wav(path: str, sig: list) -> None:
 
 
 # --------------------------------------------------------------------------
-# pack 1 -- radio: 1970s walkie-talkie
+# the struck-resonator kit
+#
+# Three of the five packs are built entirely from this one function: a handful
+# of decaying sinusoids at fixed ratios to a fundamental. Which ratios, and how
+# fast each one dies, is the whole difference between a bowl, a bar and a
+# string. Nothing here has a noise source or a hard transient in it.
 # --------------------------------------------------------------------------
 
-def radio_squelch(n: int, seed: int, freq: float, q: float,
-                  env: list, crackle_seed: int) -> list:
-    """Band-limited hiss with slow amplitude crackle, the squelch texture."""
-    sig = band_noise(n, seed, freq, q, stages=2)
-    crackle = one_pole_lp(noise(n, crackle_seed), 90.0)
-    cp = peak_of(crackle) or 1.0
-    sig = [s * (0.80 + 0.20 * (c / cp)) for s, c in zip(sig, crackle)]
-    return apply_env(sig, env)
-
-
-def radio_click(seed: int, freq: float, ring: float) -> list:
-    """The relay click: 4 ms of hard transient plus a short damped ring."""
-    n = n_samples(14.0)
-    trans = band_noise(n, seed, freq, 0.7, stages=1)
-    trans = apply_env(trans, env_exp(n, 0.12, 1.4, tail_ms=4.0))
-    tone = apply_env(osc(ring, n, "sin"), env_exp(n, 0.15, 4.5, tail_ms=4.0))
-    return [0.85 * a + 0.35 * b for a, b in zip(trans, tone)]
-
-
-def pack_radio():
-    # START -- squelch opens, then the relay clicks shut on it. The squelch
-    # holds its body before decaying: a spikier envelope would peak on the
-    # click and leave the noise too quiet to carry the sound's loudness.
-    n = n_samples(205.0)
-    start = silence(n)
-    sq_n = n_samples(152.0)
-    sq_env = env_ar(sq_n, 4.0, 62.0, 86.0, curve=1.25)
-    mix(start, radio_squelch(sq_n, 1001, 1750.0, 0.85, sq_env, 1002), 0.0, 0.80)
-    mix(start, radio_click(1003, 2400.0, 1450.0), 152.0, 0.92)
-
-    # STOP -- click first, squelch tail dies away behind it. Duller band and a
-    # shorter body so the pair reads as closing rather than opening.
-    n2 = n_samples(195.0)
-    stop = silence(n2)
-    mix(stop, radio_click(2003, 2200.0, 1180.0), 5.0, 0.80)   # 5 ms clear of the fade
-    t_n = n_samples(172.0)
-    t_env = env_ar(t_n, 3.0, 34.0, 135.0, curve=1.45)
-    mix(stop, radio_squelch(t_n, 2001, 1250.0, 0.80, t_env, 2002), 15.0, 0.92)
-
-    return master(start), master(stop)
+def struck(n: int, f0: float, modes, attack_ms: float, amp: float = 1.0) -> list:
+    """A struck resonator. `modes` is (ratio, amp, tau_ms) relative to `f0`."""
+    return bell(n, [(f0 * r, a, tau) for r, a, tau in modes],
+                start_amp=amp, attack_ms=attack_ms)
 
 
 # --------------------------------------------------------------------------
-# pack 2 -- arcade: 8-bit
+# pack 1 -- bowl: a small brass bowl, struck with something soft
 # --------------------------------------------------------------------------
 
-def arcade_blip(f_lo: float, f_hi: float, rising: bool,
-                first_ms: float, second_ms: float) -> list:
-    """
-    Two-tone square blip, phase-continuous across the note change so the
-    interval steps without a click. Bit-crushed, then tamed with a lowpass.
-    """
-    f1, f2 = (f_lo, f_hi) if rising else (f_hi, f_lo)
-    n1, n2 = n_samples(first_ms), n_samples(second_ms)
-    freqs = [f1] * n1 + [f2] * n2
-    sig = osc(freqs, n1 + n2, "square", duty=0.5)
-    sig = bitcrush(sig, bits=5, hold=3)          # 5-bit, ~14.7 kHz S&H
-    # Two gentle poles rather than one: a square plus S&H aliasing is very
-    # bright, and a single 6 dB/oct pole leaves enough top to read as harsh.
-    sig = one_pole_lp(one_pole_lp(sig, 4300.0), 4300.0)
-    env = env_ar(n1 + n2, 2.0, first_ms + second_ms * 0.42,
-                 second_ms * 0.58, curve=2.2)
-    # 4 ms of lead-in silence: the master fade-in then shapes silence rather
-    # than smearing the attack that makes the blip read as 8-bit.
-    return silence(n_samples(4.0)) + apply_env(sig, env)
+# Modes, not harmonics. The 2.68 ratio is what keeps this from reading as an
+# organ, and the reason the fundamental gets more than half the energy is that
+# a bowl's identity is its slow warble, not its shimmer -- so the modes above
+# 3f are present enough to be heard on the strike and gone within 100 ms.
+#
+# The fundamental is a doublet. A real bowl is never perfectly circular, so its
+# modes split into close pairs that beat against their twins, and that slow
+# breathing is the whole character of the pack for the cost of one extra
+# sinusoid. The pair is deliberately lopsided, 0.66 against 0.32: at equal
+# amplitudes the two cancel almost completely at the trough and the sound
+# pulses rather than breathes, which is the sort of thing nobody notices once
+# and everybody notices fifty times a day. 0.7 % apart is a 2.5 Hz beat, so
+# roughly one slow swell across the length of the sound.
+#
+# The 520 ms time constant is longer than the sound is, which is not an
+# oversight. A bowl that decays away inside its own 380 ms has a high crest
+# factor, and `master` answers a high crest factor with tanh drive, and tanh
+# drive adds harmonics -- which moved the start's measured centroid 35 Hz above
+# the stop's and pushed the pair out of the narrow gap it has to fit into. A
+# bowl that barely decays needs no drive at all, so both ends of the pair
+# measure identically and the release is done by the fade instead.
+BOWL_MODES = [
+    (1.000, 0.66, 520.0),
+    (1.007, 0.32, 520.0),
+    (2.680, 0.30, 210.0),
+    (2.694, 0.25, 210.0),
+    (4.120, 0.07,  95.0),
+    (5.150, 0.05,  60.0),
+]
 
 
-def pack_arcade():
-    # B5 -> E6, the coin interval. Start rises, stop falls and is shorter.
-    start = arcade_blip(987.77, 1318.51, rising=True, first_ms=52.0, second_ms=132.0)
-    stop = arcade_blip(987.77, 1318.51, rising=False, first_ms=44.0, second_ms=106.0)
-    return master(start), master(stop)
+def pack_bowl():
+    # 360 Hz, which is not a note -- about a quarter tone under F#4. This pack
+    # has the least room of the five: it lives in the 4.95 semitones between
+    # submarine's stop (552 Hz) and its start (739 Hz), and after 2 semitones of
+    # clearance either side that leaves a window barely a semitone wide. 360 Hz
+    # puts the measured centroid at 638, as near the middle of that window as it
+    # can be placed: 2.50 semitones above one neighbour, 2.55 below the other.
+    # Nobody tunes a bowl to concert pitch anyway.
+    f = 360.0
+
+    # START -- struck once, left to bloom, then released over the last 60 ms.
+    start = struck(n_samples(380.0), f, BOWL_MODES, attack_ms=9.0)
+
+    # STOP -- the same bowl at the same pitch, with a hand laid on it.
+    #
+    # The closing gesture is the damping, not a pitch drop. There is nowhere to
+    # drop to: every slot below F#4 is taken by submarine's stop, bubble's start
+    # or felt, so transposing down would collide with another pack inside the
+    # first 50 ms and buy nothing. Damping is the better gesture anyway -- a
+    # long ring means the machine is listening and a short one means it has
+    # stopped, which is exactly the information the sound is carrying.
+    n2 = n_samples(190.0)
+    stop = struck(n2, f, BOWL_MODES, attack_ms=9.0)
+    stop = apply_env(stop, damp_env(n2, hold_ms=84.0, mute_ms=80.0))
+
+    return master(start, fade_out_ms=60.0), master(stop, fade_out_ms=8.0)
+
+
+# --------------------------------------------------------------------------
+# pack 2 -- marimba: a rosewood bar and a yarn mallet
+# --------------------------------------------------------------------------
+
+# A marimba bar is undercut on its underside precisely to pull its second mode
+# onto 4f and its third onto 10f. Those two are what say "wood" rather than
+# "metal", and both are gone inside 40 ms -- which is why the note is bright on
+# the strike and warm for the rest of its life. The 0.63 ratio is not a mode at
+# all, it is the mallet's knock against the bar: inharmonic on purpose, so it
+# does not fuse with the fundamental, and over in 10 ms.
+MARIMBA_BAR = [
+    (1.000, 1.000, 185.0),
+    (3.930, 0.260,  38.0),
+    (9.550, 0.055,  13.0),
+    (0.630, 0.160,  10.0),
+]
+
+
+def marimba_note(f0: float, dur_ms: float, amp: float = 1.0) -> list:
+    return struck(n_samples(dur_ms), f0, MARIMBA_BAR, attack_ms=2.2, amp=amp)
+
+
+def pack_marimba():
+    # E5 and G#5, a major third. Higher than a marimba's warmest register, and
+    # chosen for spacing rather than for tone: everything below this is taken,
+    # and the nearest neighbour underneath is bubble's stop at 878 Hz. E5 puts
+    # the strike 3.35 semitones clear of it. The measured centroid still lands
+    # at 1061 Hz -- less than half of what the 8-bit blip this replaces measured
+    # -- because the bar's bright modes are over inside 40 ms.
+    e5, gs5 = 659.25, 830.61
+    total = n_samples(378.0)
+    # 4 ms of lead-in silence, as the old arcade blip had: the master fade-in
+    # then shapes silence instead of softening the mallet strike.
+    lead, first_ms, second_ms = 4.0, 374.0, 256.0
+
+    # START -- two notes, rising. STOP -- the same two, falling. The second
+    # note is struck at 0.68 in both, which is what it takes for the figure to
+    # settle rather than arrive twice: by 122 ms the first note has decayed far
+    # enough that an evenly-struck second one measures as the loudest moment of
+    # the sound, and a two-note figure whose accent is on the second note reads
+    # as a question rather than an answer.
+    start = silence(total)
+    mix(start, marimba_note(e5, first_ms), lead)
+    mix(start, marimba_note(gs5, second_ms, amp=0.68), 122.0)
+
+    stop = silence(total)
+    mix(stop, marimba_note(gs5, first_ms), lead)
+    mix(stop, marimba_note(e5, second_ms, amp=0.68), 122.0)
+
+    return master(start, fade_out_ms=10.0), master(stop, fade_out_ms=10.0)
 
 
 # --------------------------------------------------------------------------
@@ -475,42 +524,76 @@ def pack_submarine():
 
 
 # --------------------------------------------------------------------------
-# pack 4 -- typewriter
+# pack 4 -- felt: a piano with cloth over the strings
 # --------------------------------------------------------------------------
 
-def key_click(seed: int) -> list:
-    """Type-bar strike: 3 ms of highpassed noise over a short wooden thock."""
-    n = n_samples(16.0)
-    tick = one_pole_hp(noise(n, seed), 1900.0)
-    tick = normalise(apply_env(tick, env_exp(n, 0.08, 1.25, tail_ms=5.0)), 1.0)
-    thock = apply_env(osc(232.0, n, "sin"), env_exp(n, 0.4, 5.0, tail_ms=5.0))
-    return [a + 0.30 * b for a, b in zip(tick, thock)]
+# The darkest thing in the set, and the point of it. A felted hammer barely
+# excites anything above the third harmonic, so the partial amplitudes fall off
+# a cliff -- which is what makes this readable as a piano heard through a wall
+# rather than as a sine. The ratios are slightly sharp of the integers because
+# real strings are stiff, not ideal: that inharmonicity is small enough to be
+# inaudible as pitch and large enough to stop the partials phase-locking into
+# something that sounds synthetic.
+#
+# The 1.41 entry is the hammer's knock. Nine milliseconds, inharmonic so it
+# cannot fuse with the note, and without it the whole thing reads as an organ.
+FELT_STRINGS = [
+    (1.000, 1.000, 300.0),
+    (2.002, 0.260, 195.0),
+    (3.008, 0.075, 125.0),
+    (4.020, 0.030,  85.0),
+    (1.410, 0.100,   9.0),
+]
 
 
-def pack_typewriter():
-    # START -- key click, then the small inharmonic bell it sets ringing.
-    n = n_samples(220.0)
-    start = silence(n)
-    mix(start, key_click(3001), 5.0, 1.0)   # 5 ms clear of the master fade-in
-    bn = n_samples(205.0)
-    start = mix(start, bell(bn, [
-        (2274.0, 1.00, 152.0),
-        (3416.0, 0.55, 108.0),
-        (4688.0, 0.30, 78.0),
-        (6130.0, 0.17, 58.0),
-    ], attack_ms=1.2), 11.0, 0.52)
+def felt_chord(notes, dur_ms: float, attack_ms: float = 15.0) -> list:
+    """
+    Several felt notes struck together. The 15 ms attack is the pack: a hard
+    attack on this spectrum sounds like a broken sine, and a soft one sounds
+    like something with hammers in it.
+    """
+    n = n_samples(dur_ms)
+    out = silence(n)
+    for f0, amp in notes:
+        mix(out, struck(n, f0, FELT_STRINGS, attack_ms=attack_ms, amp=amp))
+    return out
 
-    # STOP -- the carriage-return ding alone. Same bell family, no strike
-    # transient, pitched down and left to ring: a closing gesture.
-    n2 = n_samples(340.0)
-    stop = bell(n2, [
-        (2102.0, 1.00, 235.0),
-        (3157.0, 0.50, 168.0),
-        (4334.0, 0.27, 120.0),
-        (5668.0, 0.14, 88.0),
-    ], attack_ms=2.6)
 
-    return master(start), master(stop, fade_out_ms=10.0)
+def pack_felt():
+    # A root, its fifth and its octave -- an open voicing, no third, so the
+    # chord has no mood for anyone to get tired of.
+    #
+    # The upper two are weighted much heavier than they would be on a real
+    # piano (0.55 and 0.42 against the root's 1.0) for the speaker rather than
+    # for the ear. Measured through a 2-pole 250 Hz highpass, which is roughly
+    # what a laptop speaker does to a signal, this pack loses 6 dB where every
+    # other pack loses one to three -- so although all ten files sit at exactly
+    # -14.8 dBFS RMS, felt comes out of a laptop around 3 dB under its
+    # neighbours. Weighting the octave up recovers most of one of those dB.
+    #
+    # It does not recover the rest, and it cannot: loudness through a small
+    # speaker *is* energy above 250 Hz, and spectral centroid *is* where the
+    # energy sits, so the two constraints are the same quantity pulling in
+    # opposite directions. Everything that makes this pack more audible on a
+    # laptop makes it measure brighter, and the ceiling on brightness here is
+    # hard -- 378 Hz, two semitones under bubble's start.
+    #
+    # The remaining 3 dB is accepted rather than fixed, for two reasons. It is
+    # a difference, not a jump: the thing the loudness matching exists to
+    # prevent was a 13 dB step on pack switch, and the two built-in beeps
+    # already differ by 1.8 dB through the same filter. And the low slot has to
+    # be occupied by something -- it is the only gap left in the map wide
+    # enough for a start/stop pair -- so the question is only which pack should
+    # take the hit. A marimba that came out 3 dB quiet would sound broken. A
+    # piano with cloth over the strings sounds like a piano with cloth over the
+    # strings.
+    #
+    # STOP is the same voicing a whole tone down and 50 ms shorter: the oldest
+    # closing gesture there is. The drop puts the pair 2 semitones apart on
+    # centroid, so the two never read as the same event fired twice.
+    start = felt_chord([(196.00, 1.00), (293.66, 0.55), (392.00, 0.42)], 390.0)
+    stop = felt_chord([(174.61, 1.00), (261.63, 0.55), (349.23, 0.42)], 340.0)
+    return master(start, fade_out_ms=10.0), master(stop, fade_out_ms=10.0)
 
 
 # --------------------------------------------------------------------------
@@ -538,10 +621,10 @@ def pack_bubble():
 
 
 PACKS = {
-    "radio": pack_radio,
-    "arcade": pack_arcade,
+    "bowl": pack_bowl,
+    "marimba": pack_marimba,
     "submarine": pack_submarine,
-    "typewriter": pack_typewriter,
+    "felt": pack_felt,
     "bubble": pack_bubble,
 }
 
@@ -552,6 +635,81 @@ PACKS = {
 
 class CheckFailure(Exception):
     pass
+
+
+def fft(x: list) -> list:
+    """
+    Iterative radix-2 Cooley-Tukey, in-place, `cmath` only. Length must be a
+    power of two. This exists so the timbre checks below do not need numpy: at
+    2048 points it is about eleven thousand butterflies, which is nothing.
+    """
+    n = len(x)
+    if n & (n - 1):
+        raise ValueError("fft length must be a power of two, got %d" % n)
+    x = list(x)
+    j = 0                                      # bit-reversal permutation
+    for i in range(1, n):
+        bit = n >> 1
+        while j & bit:
+            j ^= bit
+            bit >>= 1
+        j |= bit
+        if i < j:
+            x[i], x[j] = x[j], x[i]
+    size = 2
+    while size <= n:
+        step = cmath.exp(-2j * math.pi / size)
+        half = size // 2
+        for i in range(0, n, size):
+            w = 1 + 0j
+            for k in range(half):
+                u, v = x[i + k], x[i + k + half] * w
+                x[i + k], x[i + k + half] = u + v, u - v
+                w *= step
+        size <<= 1
+    return x
+
+
+def timbre_of(samples, rate: int = SR) -> tuple:
+    """
+    Spectral centroid and flatness over the first 50 ms -- the window in which
+    a pack has to announce which pack it is, and the window that decides
+    whether it is warm or bright.
+
+    Centroid is the brightness: the amplitude-weighted mean frequency, in Hz,
+    restricted to 40 Hz - 16 kHz so that DC offset and inaudible top end cannot
+    move it. Flatness is the tonality: the ratio of the geometric to the
+    arithmetic mean of the magnitude spectrum, near zero for a note with a few
+    partials and approaching one for white noise. Both are computed through a
+    Hann window, without which the rectangular edge of the frame smears energy
+    across the whole spectrum and every sound measures noisy.
+    """
+    seg = [float(s) / FULL_SCALE for s in samples[:TIMBRE_WINDOW]]
+    seg += [0.0] * (TIMBRE_WINDOW - len(seg))
+    seg = [v * (0.5 - 0.5 * math.cos(2.0 * math.pi * i / (TIMBRE_WINDOW - 1)))
+           for i, v in enumerate(seg)]
+    spec = fft([complex(v, 0.0) for v in seg])
+
+    mags = [abs(spec[k]) for k in range(TIMBRE_WINDOW // 2 + 1)]
+    freqs = [k * rate / float(TIMBRE_WINDOW) for k in range(len(mags))]
+
+    band = [(f, m) for f, m in zip(freqs, mags) if 40.0 <= f <= 16000.0]
+    total = sum(m for _, m in band)
+    centroid = sum(f * m for f, m in band) / total if total > 0 else 0.0
+
+    eps = 1e-20
+    geo = math.exp(sum(math.log(m + eps) for m in mags) / len(mags))
+    arith = sum(mags) / len(mags)
+    flatness = geo / arith if arith > 0 else 0.0
+
+    return centroid, flatness
+
+
+def semitones(f_a: float, f_b: float) -> float:
+    """Absolute distance between two frequencies, in semitones."""
+    if f_a <= 0 or f_b <= 0:
+        return 0.0
+    return abs(12.0 * math.log(f_a / f_b, 2.0))
 
 
 def verify(path: str) -> dict:
@@ -588,6 +746,7 @@ def verify(path: str) -> dict:
     peak_db = 20.0 * math.log10(peak / FULL_SCALE) if peak else -999.0
     rms_db = 20.0 * math.log10(rms / FULL_SCALE) if rms else -999.0
     first, last = samples[0], samples[-1]
+    centroid, flatness = timbre_of(samples, p.framerate)
 
     if dur >= MAX_DURATION_S:
         problems.append("duration %.1f ms >= %.0f ms cap" % (dur * 1000, MAX_DURATION_S * 1000))
@@ -606,6 +765,12 @@ def verify(path: str) -> dict:
         problems.append("first sample %d, expected |x| <= %d" % (first, BOUNDARY_MAX))
     if abs(last) > BOUNDARY_MAX:
         problems.append("last sample %d, expected |x| <= %d" % (last, BOUNDARY_MAX))
+    if centroid > CENTROID_CEILING_HZ:
+        problems.append("first-50ms centroid %.0f Hz above the %.0f Hz warmth ceiling"
+                        % (centroid, CENTROID_CEILING_HZ))
+    if flatness > FLATNESS_CEILING:
+        problems.append("first-50ms spectral flatness %.3f above the %.2f ceiling "
+                        "(noise-led, not pitched)" % (flatness, FLATNESS_CEILING))
 
     if problems:
         raise CheckFailure("%s: %s" % (os.path.relpath(path, REPO_ROOT), "; ".join(problems)))
@@ -621,30 +786,73 @@ def verify(path: str) -> dict:
         "rms_db": rms_db,
         "first": first,
         "last": last,
+        "centroid": centroid,
+        "flatness": flatness,
     }
 
 
 def print_table(rows: list) -> None:
-    hdr = ("%-11s %-6s %-14s %8s %10s %9s %7s %7s"
-           % ("pack", "sound", "format", "dur ms", "peak dBFS", "rms dBFS", "first", "last"))
+    hdr = ("%-11s %-6s %-14s %8s %10s %9s %6s %6s %10s %9s"
+           % ("pack", "sound", "format", "dur ms", "peak dBFS", "rms dBFS",
+              "first", "last", "cent. Hz", "flatness"))
     print()
     print(hdr)
     print("-" * len(hdr))
     for pack, kind, st in rows:
         fmt = "%d/%d-bit/mono" % (st["rate"], st["bits"])
-        print("%-11s %-6s %-14s %8.1f %10.2f %9.2f %7d %7d"
+        print("%-11s %-6s %-14s %8.1f %10.2f %9.2f %6d %6d %10.0f %9.3f"
               % (pack, kind, fmt, st["ms"], st["peak_db"], st["rms_db"],
-                 st["first"], st["last"]))
+                 st["first"], st["last"], st["centroid"], st["flatness"]))
     print("-" * len(hdr))
     rmss = [st["rms_db"] for _, _, st in rows]
     peaks = [st["peak_db"] for _, _, st in rows]
     durs = [st["ms"] for _, _, st in rows]
+    cents = [st["centroid"] for _, _, st in rows]
+    flats = [st["flatness"] for _, _, st in rows]
     print("RMS spread   %.2f dB  (%.2f .. %.2f)   reference: built-in beeps at %.1f dBFS"
           % (max(rmss) - min(rmss), min(rmss), max(rmss), REFERENCE_RMS_DBFS))
     print("peak range   %.2f .. %.2f dBFS   (ceiling %.1f, floor %.1f)"
           % (min(peaks), max(peaks), PEAK_CEILING_DBFS, PEAK_FLOOR_DBFS))
     print("duration     %.1f .. %.1f ms      (cap %.0f)"
           % (min(durs), max(durs), MAX_DURATION_S * 1000))
+    print("centroid     %.0f .. %.0f Hz       (ceiling %.0f)   flatness %.3f .. %.3f  (ceiling %.2f)"
+          % (min(cents), max(cents), CENTROID_CEILING_HZ,
+             min(flats), max(flats), FLATNESS_CEILING))
+
+
+def check_separation(rows: list) -> list:
+    """
+    Every pack has to be identifiable inside the first 50 ms, so no two packs
+    may sit on top of each other on that window's centroid.
+
+    Sounds from the *same* pack are exempt: a matched pair is supposed to share
+    a timbre, and bowl deliberately puts its start and its stop on the same
+    pitch and separates them by damping instead. What is checked is that you
+    can never confuse one pack for another, which is the thing that actually
+    goes wrong -- submarine's original 762 Hz ping measured within a semitone
+    of the built-in beep and read as "the normal sound, but longer".
+    """
+    problems = []
+    worst = None
+    for i, (pack_a, kind_a, st_a) in enumerate(rows):
+        for pack_b, kind_b, st_b in rows[i + 1:]:
+            if pack_a == pack_b:
+                continue
+            d = semitones(st_a["centroid"], st_b["centroid"])
+            if worst is None or d < worst[0]:
+                worst = (d, pack_a, kind_a, pack_b, kind_b)
+            if d < MIN_PACK_SEPARATION_ST:
+                problems.append(
+                    "%s/%s and %s/%s are %.2f semitones apart on first-50ms "
+                    "centroid (%.0f vs %.0f Hz), under the %.1f minimum"
+                    % (pack_a, kind_a, pack_b, kind_b, d,
+                       st_a["centroid"], st_b["centroid"], MIN_PACK_SEPARATION_ST))
+    if worst:
+        print("separation  closest two packs %.2f semitones apart "
+              "(%s/%s vs %s/%s)   minimum %.1f"
+              % (worst[0], worst[1], worst[2], worst[3], worst[4],
+                 MIN_PACK_SEPARATION_ST))
+    return problems
 
 
 def main() -> int:
@@ -670,6 +878,7 @@ def main() -> int:
 
     if rows:
         print_table(rows)
+        failures.extend(check_separation(rows))
     if failures:
         print("\nFAILED:")
         for f in failures:
