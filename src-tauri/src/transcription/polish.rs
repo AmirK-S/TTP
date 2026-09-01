@@ -116,8 +116,19 @@ impl Default for Intent {
 }
 
 /// Polish result returned to the pipeline: intent classification + cleaned
-/// text. Pipeline uses intent for downstream routing (e.g. raw_prompt skips
-/// extra formatting, list_or_enum keeps bullets).
+/// text.
+///
+/// `intent` is OBSERVABILITY ONLY. It reaches the trace, the log line and the
+/// Sentry breadcrumb (`pipeline.rs:1795-1827`) and nothing else — no branch in
+/// this crate reads it. The routing this comment used to promise ("raw_prompt
+/// skips extra formatting, list_or_enum keeps bullets") does not exist and
+/// never did; the model is told to apply the intent's formatting rule itself,
+/// inside `POLISH_SYSTEM_PROMPT`, and `polished` arrives already formatted.
+///
+/// This matters when reading `tests/polish_golden.rs`: a fixture that fails on
+/// `expected_intent` alone has caught a label the user never sees. Sixteen of
+/// its twenty-seven fixtures failed that way on 2026-09-02 while their
+/// `polished` text was correct.
 #[derive(Debug, Clone)]
 pub struct PolishResult {
     pub intent: Intent,

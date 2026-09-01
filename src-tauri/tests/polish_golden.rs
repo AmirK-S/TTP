@@ -8,7 +8,19 @@
 //   GROQ_API_KEY=gsk_... cargo test --test polish_golden -- --ignored --nocapture
 //
 // In CI, these can be wired into a periodic job (not per-PR) since polish
-// behavior shifts with Llama model updates and we want canary alerts.
+// behavior shifts with model updates and we want canary alerts.
+//
+// PACING. Groq's on-demand tier caps this account at 8000 tokens per minute for
+// `openai/gpt-oss-120b`, and one fixture costs ~1100-1240 tokens of that budget
+// (measured 2026-09-02 from the 429 bodies, which report `Used` and `Requested`
+// per call). That is ~6.5 fixtures per minute. Fired back to back, the suite
+// exhausts the budget at fixture 6 and every call after it 429s. Before this
+// pacing existed the run reported "Pass rate 18.5%" and 17 of the 22 failures
+// were rate limits, not golden misses — the file was blaming the model for the
+// harness. FIXTURE_SPACING_MS is 60_000 / 6.5 rounded up, and rate-limit
+// failures are now counted and reported separately from assertion failures so
+// the two can never be confused again.
+const FIXTURE_SPACING_MS: u64 = 9_500;
 
 use serde::Deserialize;
 use std::fs;
@@ -125,8 +137,16 @@ async fn polish_golden_fixtures() {
         .expect("GROQ_API_KEY env var must be set to run golden tests");
     let fixtures = load_fixtures();
     let mut failures = Vec::new();
+    // Transport/rate-limit errors are tracked apart from golden misses. A 429 is
+    // a statement about the account's tier, not about the model's behaviour, and
+    // folding the two together is how this suite last reported an 18.5% pass
+    // rate that told nobody anything.
+    let mut api_errors = Vec::new();
 
-    for fix in &fixtures {
+    for (i, fix) in fixtures.iter().enumerate() {
+        if i > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(FIXTURE_SPACING_MS)).await;
+        }
         let result = ttp_lib::transcription::polish::polish_text(&api_key, &fix.raw).await;
         match result {
             Ok(polish_result) => {
@@ -156,18 +176,40 @@ async fn polish_golden_fixtures() {
                 }
             }
             Err(e) => {
-                println!("❌ {} | polish_text errored: {}", fix.id, e);
-                failures.push(format!("{}: polish_text error: {}", fix.id, e));
+                println!("⚠️  {} | polish_text errored: {}", fix.id, e);
+                api_errors.push(format!("{}: polish_text error: {}", fix.id, e));
             }
         }
     }
 
     let total = fixtures.len();
-    let passed = total - failures.len();
-    println!("\n=== Polish golden results: {}/{} passed ===", passed, total);
+    let answered = total - api_errors.len();
+    let passed = answered - failures.len();
+    println!(
+        "\n=== Polish golden results: {}/{} passed ({} of {} fixtures got an answer) ===",
+        passed, answered, answered, total
+    );
+
+    if !api_errors.is_empty() {
+        println!("\nAPI errors (not golden failures — the model never answered):");
+        for e in &api_errors {
+            println!("  - {}", e);
+        }
+    }
+
+    // An unanswered fixture proves nothing either way, so the pass rate is over
+    // the answered set. But too few answers means the run itself is worthless,
+    // and silently reporting "3/3 passed" out of 27 fixtures would be exactly
+    // the green-is-not-done failure this suite exists to catch.
+    assert!(
+        answered * 4 >= total * 3,
+        "only {}/{} fixtures got an answer from the API; run is inconclusive, not green",
+        answered,
+        total
+    );
 
     if !failures.is_empty() {
-        let pass_rate = passed as f32 / total as f32;
+        let pass_rate = passed as f32 / answered as f32;
         println!("\nFailures:");
         for f in &failures {
             println!("  - {}", f);

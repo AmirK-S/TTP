@@ -175,32 +175,6 @@ pub fn check_microphone_permission() -> PermissionStatus {
     }
 }
 
-/// Return the translation key (not the finished message) for a microphone
-/// permission status. The frontend resolves it via i18next so the surfaced
-/// text is localized; doing translation lookups here would couple the Rust
-/// side to the user's language at command-call time, which is fragile
-/// across language changes.
-pub fn get_permission_message(status: PermissionStatus) -> String {
-    match status {
-        PermissionStatus::Granted => "permission.microphone_granted".to_string(),
-        PermissionStatus::Denied => "permission.microphone_denied".to_string(),
-        PermissionStatus::Undetermined => "permission.microphone_undetermined".to_string(),
-    }
-}
-
-/// Get instructions for enabling microphone permission in System Settings
-pub fn get_permission_instructions(status: &PermissionStatus) -> String {
-    match status {
-        PermissionStatus::Granted => String::new(),
-        PermissionStatus::Denied => {
-            "1. Open System Settings\n2. Go to Privacy & Security\n3. Click on Microphone\n4. Enable TTP (Talk To Paste)".to_string()
-        }
-        PermissionStatus::Undetermined => {
-            "1. Open System Settings\n2. Go to Privacy & Security\n3. Click on Microphone\n4. Enable TTP to allow microphone access".to_string()
-        }
-    }
-}
-
 // ============================================================================
 // Accessibility Permission
 // ============================================================================

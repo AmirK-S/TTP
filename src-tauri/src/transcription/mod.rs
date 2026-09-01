@@ -4,7 +4,7 @@
 pub(crate) mod cleanup;
 pub(crate) mod convert;
 pub(crate) mod pipeline;
-pub(crate) mod polish;
+pub mod polish; // public for tests/polish_golden.rs; see lib.rs
 pub(crate) mod whisper;
 pub(crate) mod backup;
 

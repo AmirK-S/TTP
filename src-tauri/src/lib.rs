@@ -37,7 +37,12 @@ mod state;
 mod telemetry;
 mod trace;
 mod trace_api;
-pub(crate) mod transcription;
+// `pub`, not `pub(crate)`: `tests/polish_golden.rs` is an integration test and
+// therefore an external crate. It was `pub(crate)` for a long time, which meant
+// that file did not compile — and because `cargo test --lib` never builds
+// `tests/`, every gate stayed green while an entire test file was not running.
+// Only `transcription::polish` is re-exported publicly; the rest stays internal.
+pub mod transcription;
 mod tray;
 mod uninstall;
 mod usage;

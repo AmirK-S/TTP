@@ -186,11 +186,6 @@ pub fn stop() {
     }
 }
 
-/// Whether the VAD watchdog is currently running. Read-only diagnostic.
-pub fn is_active() -> bool {
-    ACTIVE.load(Ordering::SeqCst)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

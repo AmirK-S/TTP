@@ -277,19 +277,6 @@ pub fn log_trace_line(line: &str) -> bool {
     append_line(&path, MAX_TRACE_SIZE, KEEP_TRACE_ROTATIONS, line)
 }
 
-/// Back-compat helper for callers that pass a level string directly.
-/// Prefer `log_error` / `log_warn` / `log_info`.
-pub fn log_to_file(level: &str, message: &str) {
-    let lvl = match level.to_uppercase().as_str() {
-        "ERROR" => Level::Error,
-        "WARN" => Level::Warn,
-        "INFO" => Level::Info,
-        "DEBUG" => Level::Debug,
-        _ => Level::Info,
-    };
-    log_to_file_at(lvl, message);
-}
-
 /// Log an error. Always echoes to stderr in addition to the file because
 /// errors are the only level a user is asked to inspect via Console.app
 /// for live triage.

@@ -118,6 +118,13 @@ pub fn probe_accessibility() -> bool {
     }
 }
 
+/// This app's bundle identifier, as `tccutil` needs it. Also spelled in
+/// `credentials.rs` and `keychain.rs` as `KEYCHAIN_SERVICE`; the audit's B1
+/// (one definition per quantity) covers that triplication and is not this
+/// file's to fix.
+#[cfg(target_os = "macos")]
+const BUNDLE_ID: &str = "com.ttp.desktop";
+
 /// Reset the stale TCC accessibility entry for this app.
 ///
 /// When an app update changes the binary, the old TCC entry becomes stale.
@@ -142,8 +149,15 @@ pub fn probe_accessibility() -> bool {
 /// not survive what happens next. The outcome follows on its own line.
 #[cfg(target_os = "macos")]
 pub fn reset_accessibility_tcc() -> Result<(), String> {
-    // Get the bundle identifier
-    let bundle_id = get_bundle_id().ok_or("Could not determine bundle identifier")?;
+    // Was `get_bundle_id().ok_or("Could not determine bundle identifier")?`,
+    // where `get_bundle_id` was `fn() -> Option<String>` whose entire body was
+    // `Some("com.ttp.desktop".to_string())`. The `?` could not fire and the
+    // error string it carried could never be produced, so the only thing that
+    // arm did was tell the next reader that this call might fail. It cannot.
+    // If TTP ever needs the *real* identifier — read from the running bundle
+    // via `CFBundleGetIdentifier` — that IS fallible, and the handling should
+    // be written then, against the real failure, not left standing in advance.
+    let bundle_id = BUNDLE_ID;
 
     // The state that led here. Re-probed rather than passed in, so the record
     // describes the moment of the reset and not the caller's older reading.
@@ -186,10 +200,4 @@ pub fn reset_accessibility_tcc() -> Result<(), String> {
         );
         Err(format!("tccutil failed: {}", stderr))
     }
-}
-
-/// Get the app's bundle identifier
-#[cfg(target_os = "macos")]
-fn get_bundle_id() -> Option<String> {
-    Some("com.ttp.desktop".to_string())
 }

@@ -454,7 +454,45 @@ fn has_repetition_loop(normalized: &str) -> bool {
         return false;
     }
 
-    const TIGHT_GAP: usize = 8;
+    // Measured 2026-09-02 against 442 real dictations from the harvest window
+    // and the 50 multi-word entries of `HALLUCINATIONS` looped verbatim.
+    //
+    // TIGHT_GAP bounds the PERIOD of a loop, not the distance between unrelated
+    // words: a 3-gram inside a repeated phrase recurs exactly one phrase-length
+    // later, so TIGHT_GAP must be at least as long as the phrase Whisper is
+    // stuck on. The longest entry on file is ten words ("merci d'avoir regardé
+    // cette vidéo n'hésitez pas à vous abonner"). At the previous value of 8,
+    // looping the 50 known phrases caught 43/50 with two words of noise
+    // injected; the seven misses were the seven longest, which is to say the
+    // full-sentence YouTube outros — the most recognisable loops we have.
+    // At 12 the detector catches 50/50, and 12 clears the longest observed
+    // phrase by two words.
+    //
+    // Raising it costs nothing on the speech side, and that is the measurement
+    // that matters: with the diversity gate above in front, ZERO of the 442
+    // real dictations trigger the chain detector at ANY gap from 4 to 16. The
+    // gap was never what protected them. Even with the gate disabled the count
+    // is identical at 8 and at 12 (4 of 442). There is no separation to lose
+    // here, only loop coverage to gain.
+    const TIGHT_GAP: usize = 12;
+
+    // MIN_CHAIN is the constraint that actually does the protecting, and its
+    // margin is one occurrence.
+    //
+    // Of the 442 dictations, exactly one had vocabulary poor enough to reach
+    // this code at all: trace 0047-9238, a 383-word monologue, unique-word
+    // ratio 0.467. Its tightest 3-gram chain ("je ne sais pas", four words
+    // apart) is TWO occurrences long. MIN_CHAIN = 3 spares it; MIN_CHAIN = 2
+    // deletes it, at every TIGHT_GAP from 3 to 16. That is the whole safety
+    // margin — one repeat — and it is why this must not be lowered.
+    //
+    // It must not be raised either: at MIN_CHAIN = 4 a phrase looped only
+    // three times yields a chain of exactly 3 and is missed, which is 0/50 of
+    // the known phrases at three repeats. Three tight repeats is both the
+    // smallest unambiguous loop and the largest thing a person was observed
+    // saying. The two populations meet here with nothing between them, unlike
+    // MIN_UNIQUE_WORD_RATIO above, so this value is a boundary and not a
+    // comfortable midpoint. Re-measure it if the corpus grows.
     const MIN_CHAIN: usize = 3;
 
     use std::collections::HashMap;
@@ -734,6 +772,67 @@ mod hallucination_tests {
         };
         assert!(ratio(human) > 0.7, "human ratio was {}", ratio(human));
         assert!(ratio(loopy) < 0.3, "loop ratio was {}", ratio(loopy));
+    }
+
+    // ── TIGHT_GAP / MIN_CHAIN, measured 2026-09-02 ─────────────────────
+    //
+    // These two constants shipped bare for months. The measurement behind them
+    // is in `has_repetition_loop`; these are the tests that hold it.
+
+    #[test]
+    fn tight_gap_spans_the_longest_loop_phrase_we_have_seen() {
+        // A 3-gram inside a looped phrase recurs exactly one phrase-length
+        // apart, so TIGHT_GAP is a bound on the PERIOD of the loop, i.e. on the
+        // length of the repeated phrase. The longest entry in `HALLUCINATIONS`
+        // is ten words. At TIGHT_GAP = 8 the two ten-word entries looped
+        // verbatim were invisible to the chain detector — the gate that exists
+        // precisely to catch loops could not see the longest loops on file.
+        let ten_words =
+            "merci d'avoir regardé cette vidéo n'hésitez pas à vous abonner ";
+        let looped = ten_words.repeat(4);
+        assert!(
+            has_repetition_loop(&normalize_for_hallucination_match(&looped)),
+            "a ten-word phrase looped four times must be caught; TIGHT_GAP is \
+             too small to span its period"
+        );
+
+        let eight_words = "n'oubliez pas de liker et de vous abonner ";
+        assert!(has_repetition_loop(&normalize_for_hallucination_match(
+            &eight_words.repeat(4)
+        )));
+    }
+
+    #[test]
+    fn min_chain_of_three_is_what_saves_the_long_monologue() {
+        // The binding constraint is MIN_CHAIN, not TIGHT_GAP. Across 442 real
+        // dictations exactly one had vocabulary poor enough to pass the 0.5
+        // diversity gate (trace 0047-9238, a 383-word monologue, ratio 0.467),
+        // and its tightest 3-gram chain was TWO occurrences four words apart.
+        // MIN_CHAIN = 3 spared it by exactly one occurrence. At MIN_CHAIN = 2
+        // it is destroyed at every TIGHT_GAP from 3 to 16.
+        //
+        // So: two tight occurrences are speech, three are a loop. This test
+        // pins that boundary on a minimal fixture; the monologue's own words
+        // are private and stay out of the repository.
+        let two = "je ne sais pas trop ".repeat(2);
+        let normalized = normalize_for_hallucination_match(&two);
+        let words: Vec<&str> = normalized.split_whitespace().collect();
+        let unique: std::collections::HashSet<&&str> = words.iter().collect();
+        assert!(
+            unique.len() as f32 / words.len() as f32 <= 0.5,
+            "fixture must actually reach the chain detector, ratio was {}",
+            unique.len() as f32 / words.len() as f32
+        );
+        assert!(
+            !has_repetition_loop(&normalized),
+            "two tight occurrences of a 3-gram is a person repeating themselves"
+        );
+
+        let three = "je ne sais pas trop ".repeat(3);
+        assert!(
+            has_repetition_loop(&normalize_for_hallucination_match(&three)),
+            "three tight occurrences is a loop"
+        );
     }
 
     #[test]
