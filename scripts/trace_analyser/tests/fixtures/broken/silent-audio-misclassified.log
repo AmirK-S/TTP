@@ -1,0 +1,17 @@
+[2026-09-01 10:00:00.010] [········]          app.launched {"arch":"aarch64","os":"macos","version":"3.1.6"}
+[2026-09-01 10:00:00.020] [········]          hotkey.press {"flags":"0x800000","held_ms":160}
+[2026-09-01 10:00:00.021] [········]          state.transition {"from":"Idle","to":"Recording"}
+[2026-09-01 10:00:00.061] [········]          capture.start {"channels":1,"device":"MacBook Air Microphone","format":"F32","is_os_default":true,"preferred":null,"rate":48000}
+[2026-09-01 10:00:05.061] [········]          hotkey.release {"flags":"0x0"}
+[2026-09-01 10:00:05.062] [········]          state.transition {"from":"Recording","to":"Processing"}
+[2026-09-01 10:00:05.462] [········]          capture.stop {"default_now":"MacBook Air Microphone","device":"MacBook Air Microphone","device_changed":false,"samples":240000}
+[2026-09-01 10:00:05.464] [0000-1111] +     0ms dictation.start {"kind":"recording","verbose":false}
+[2026-09-01 10:00:05.464] [0000-1111] +     0ms audio.duration {"secs":8.0,"wav_bytes":768000}
+[2026-09-01 10:00:05.467] [0000-1111] +     3ms audio.signal {"avg_rms":0.0,"floor":0.005,"nonzero_ratio":0.0,"peak":0.0,"samples":384000}
+[2026-09-01 10:00:05.469] [0000-1111] +     5ms dictation.finish {"avg_rms":0.0,"device":"MacBook Air Microphone","floor":0.005,"ms":5,"nonzero_ratio":0.0,"outcome":"aborted","peak":0.0,"reason":"silent_audio","samples":384000}
+[2026-09-01 10:00:05.474] [········]          state.transition {"from":"Processing","to":"Idle"}
+[2026-09-01 10:00:05.475] [········]          state.transition {"from":"Idle","to":"Idle"}
+[2026-09-01 10:00:06.475] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:07.475] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:08.475] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:09.475] [········]          hotkey.tap_armed {}

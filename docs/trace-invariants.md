@@ -37,7 +37,11 @@ Python 3.10+, standard library only.
 
 ## What it prints
 
-1. **Corpus summary** — files, events, sessions, dictations, time span.
+1. **Corpus summary** — files, events, sessions, dictations, time span, and a
+   `writer` line giving the merged-record and blank-line counts. Those two are
+   printed whether or not they are zero: the parser repairs both silently, and
+   a number that only appears when something is wrong cannot be read as
+   evidence that nothing is.
 2. **Stages it has not been taught about** — informational, never a
    violation. See "Adding an invariant" below.
 3. **Outcome distribution** — every dictation by outcome and abort reason.
@@ -62,8 +66,14 @@ corpus and still fire. Read the timestamp before reading the severity.
 
 ## The invariants
 
-Thirty-four checks. `--list` prints the full reasoning for each; this is the
+Thirty-seven checks. `--list` prints the full reasoning for each; this is the
 map.
+
+Three of them — `capture-arbiter-left-live`, `keychain-not-single-flighted`
+and `writer-newline-lost` — are a different kind from the rest. Every other
+check asserts the *absence* of a failure that has happened. Those three assert
+that a fix which has shipped is still engaged, so a hit means a regression
+rather than a historical scar. They are marked **(regression)** below.
 
 ### Lifecycle — does every dictation have a shape
 
@@ -72,7 +82,8 @@ map.
 | `dictation-finish-missing` | Every `dictation.start` has a `dictation.finish`. Tail-truncated dictations at the end of the corpus are exempt. |
 | `dictation-start-missing` | Every `dictation.finish` has a `dictation.start`. Info inside the rotation-truncated first session. |
 | `capture-handoff-missing` | Every `capture.stop` is followed by a `dictation.start`. **This is `tracing.md`'s "one shape the trace can only bound, not explain".** |
-| `capture-stop-missing` | Every `capture.start` is followed by a `capture.stop` — otherwise the microphone was left live. |
+| `capture-stop-missing` | Every `capture.start` is followed by a `capture.stop` — or by one of the arbiter's closes (`capture.orphan_prevented`, `capture.orphan_reclaimed`, `capture.stale_dropped`). Otherwise the microphone was left live. |
+| `capture-arbiter-left-live` | **(regression)** When the arbiter refuses or reclaims a stream, the microphone actually goes off. See below. |
 | `capture-stop-without-start` | `capture.stop` only fires against an open capture. |
 | `paste-result-missing` | Every `paste.decision` is followed by a `paste.result`. This is the signature audit item A4 names for a panic under `panic = "abort"`. |
 | `paste-verify-missing` | Every successful `paste.result` is followed by a `paste.verify`. |
@@ -136,6 +147,8 @@ map.
 | id | Asserts |
 |---|---|
 | `keychain-on-critical-path` | No `keychain.slow` event, and none inside a dictation's stages. |
+| `keychain-not-single-flighted` | **(regression)** At most one uncoalesced read per (session, account, op). `lock_wait_ms > 0` is coalescing working and is not counted; two or more reads that each did their own securityd call is the check-then-act shape returning. |
+| `writer-newline-lost` | **(regression)** Every record occupies its own line. Merged records and blank lines are counted and printed unconditionally, so a recurrence is visible in the corpus summary before any check runs. |
 | `bookkeeping-stall` | No gap over 1 s between two adjacent post-`paste.result` stages. `tracing.md`: none of that region "can take seconds, let alone minutes". |
 | `process-suspended` | No `hotkey.timer_stall` overlapping a dictation in flight. |
 
@@ -150,6 +163,72 @@ bookkeeping region it reports the two discriminators and lets them decide:
 - neither → `bookkeeping-stall`, stated as evidence ("no stall covers it, no
   keychain.slow inside it, N other events logged during the window") rather
   than as a verdict. Go and read the window.
+
+
+## The three that prove a fix, rather than a failure
+
+`docs/tracing.md` describes what each defect looked like. These three describe
+what the *fix* looks like, which is the harder and more useful direction:
+absence of the old shape is consistent with the fix working and with the code
+path never being exercised, and only one of those is worth knowing.
+
+**`capture-arbiter-left-live`.** The old 11-hour-microphone failure is a
+`capture.start` with no `capture.stop` after it, and `capture-stop-missing`
+already catches that. But a start refused by the arbiter emits its
+`capture.start` first — the refusal happens after the stream is built — so
+`capture-stop-missing` had to be taught that `capture.orphan_prevented`,
+`capture.orphan_reclaimed` and `capture.stale_dropped` each close a capture.
+Without that it reports the fix *working* as an eleven-hour microphone, which
+is the most expensive kind of false positive this tool can produce; the test
+`test_arbiter_closing_a_capture_is_not_read_as_a_leak` exists to keep it
+taught. The positive check is then: the Rust drops the cpal stream **before**
+writing either line, so by the time the line exists the microphone is off and
+the capture slot is empty. Three log shapes say otherwise, and each is
+reported —
+
+1. a second close (`capture.stop`, `capture.stale_dropped`,
+   `capture.orphan_reclaimed`) with no `capture.start` between: the stream the
+   arbiter said it dropped was still published and something else found it;
+2. `degraded {"site":"capture.reclaim"}`: the arbiter and
+   `audio_capture::STATE` disagree about whether a capture is live, and their
+   agreement is what the whole guarantee rests on;
+3. `capture.stop_waited_for_start {"timed_out":true}`: the 3-second settle
+   window elapsed, which its own comment says cannot happen. Not a leak by
+   itself — it means the arbiter is now the only thing between the user and a
+   live microphone, and the wait is named so you can see how far off the
+   assumption was.
+
+**`keychain-not-single-flighted`.** Both keychain caches live for the whole
+process and `read_once` makes at most one call however many callers arrive
+together, so exactly one timed read per (session, account, op) can exist. The
+defect produced eight in one process — 62,304 / 13,612 / **397,600** / 97,407
+/ 157 / 56,037 / 106 / 86 ms — because each caller checked the cache, released
+the lock, and then made its own unbounded securityd call. `lock_wait_ms` is
+used as evidence rather than as a gate: a read with `lock_wait_ms > 0` waited
+behind somebody else's and is coalescing working, so it is not counted; a read
+with `lock_wait_ms == 0`, **or without the field at all** — a trace from
+before the fix — did its own call and is. Two or more of those for one account
+in one session is the regression. Before calling a hit a bug, read the
+timestamps: a session here is a span between `app.launched` lines in one file,
+and a dev or test binary appending to the same log contributes its reads to
+that span with no launch line of its own.
+
+**`writer-newline-lost`.** `append_line` used to issue two `write_all` calls,
+the record and then the newline, and two writes are not one append: a second
+writer landing between them produces one physical line carrying two records
+and a matching blank line where the stray newline went. The corpus signature
+was exact — 20 merged records against exactly 20 blank lines. The awkward part
+is that **the analyser was repairing the evidence**: the parser splits merged
+records on the JSON payload's true end and skips blank lines, so the damage
+was invisible to everything downstream, which is a small instance of the
+polite-degradation failure this whole programme is about. Both counts are now
+printed in the corpus summary whether or not they are zero — a number that
+only appears when it is non-zero cannot be read as evidence that the fix is
+holding — and any occurrence is a finding. A hit means two writers were
+appending concurrently, which is not necessarily two threads of one app: an
+installed build running alongside a dev build is the normal state on this
+machine, and a second process is precisely what a single writer thread cannot
+serialise.
 
 ## Two things it deliberately does not do
 
@@ -251,4 +330,14 @@ scripts/trace_analyser/report.py                text and JSON rendering
 scripts/trace_analyser/tests/make_fixtures.py   regenerates the fixtures
 scripts/trace_analyser/tests/test_invariants.py the suite
 scripts/trace_analyser/tests/fixtures/          clean.log, and one per invariant
+scripts/trace_analyser/tests/fixtures/.gitignore  re-includes them (see below)
 ```
+
+**The fixtures were not actually committed.** The repository root `.gitignore`
+has `*.log` on line 3, which swallowed every file in `fixtures/` — so the
+sentence above about fixtures being committed rather than generated was true
+of the intent and false of the tree, and on a fresh clone
+`test_every_invariant_has_a_fixture_that_violates_it` would have failed for
+all thirty-seven checks. A nested `fixtures/.gitignore` containing `!*.log`
+re-includes them; the directory itself was never excluded, so the negation
+works. They are synthetic logs, not runtime output, and they belong in git.

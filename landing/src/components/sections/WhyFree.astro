@@ -1,0 +1,41 @@
+---
+/**
+ * "Why is this free?"
+ *
+ * Research C5: a free product provokes the question and every successful
+ * comparable answers it in copy — Raycast in an FAQ entry, Obsidian with "100%
+ * user-supported", Superwhisper by disarming "is the free tier a trap?"
+ * directly. TTP's answer is unusually good and was, until now, unstated.
+ *
+ * Set as a signed note rather than a marketing block, because the answer only
+ * works in the first person.
+ */
+import { useTranslations, type Lang } from '@/i18n/utils';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+---
+
+<section id="free" class="band">
+  <div class="wrap">
+    <p class="plate-label">{t('free.plate')}</p>
+
+    <div class="mx-auto max-w-2xl" data-reveal>
+      <h2 class="display text-[clamp(1.75rem,1.2rem+2vw,2.75rem)]">{t('free.heading')}</h2>
+
+      <p class="mt-6 font-display text-[1.375rem] leading-snug text-text sm:text-[1.5rem]">{t('free.p1')}</p>
+
+      <div class="mt-5 grid gap-4 text-[1.0625rem] leading-relaxed text-muted">
+        <p>{t('free.p2')}</p>
+        <p>{t('free.p3')}</p>
+        <p>{t('free.p4')}</p>
+      </div>
+
+      <p class="mt-7 flex items-center gap-3 text-sm text-faint">
+        <span class="h-px w-8 bg-line-strong"></span>
+        {t('free.sig')}
+      </p>
+    </div>
+  </div>
+</section>

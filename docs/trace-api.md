@@ -46,7 +46,7 @@ One line of the log.
 | Field | Type | Notes |
 |---|---|---|
 | `ts` | `string` | Local wall clock, `YYYY-MM-DD HH:MM:SS.mmm`. Not ISO-8601 and not UTC — it is the same string the log file shows, deliberately, so a user reading both sees the same timestamps. Parse with care if you need a `Date`. |
-| `id` | `string \| null` | The dictation id. `null` for standalone events (`hotkey.*`, `state.transition`, `app.launched`, `companion.*`, `vad.*`, `capture.*`, `keychain.*`, `degraded`). |
+| `id` | `string \| null` | The dictation id. `null` for standalone events (`hotkey.*`, `state.transition`, `app.launched`, `companion.*`, `vad.*`, `capture.*`, `keychain.*`, `permission.*`, `degraded`). |
 | `elapsed_ms` | `number \| null` | Milliseconds since that dictation began. `null` whenever `id` is `null`. |
 | `stage` | `string` | Dotted stage name. See `docs/tracing.md` for the vocabulary. |
 | `fields` | `object` | Always an object, never `null`. Contents vary per stage. |
@@ -168,12 +168,13 @@ Useful prefixes:
 | Prefix | Answers |
 |---|---|
 | `hotkey.` | Did the input layer see the key? Is the event tap alive? |
-| `capture.` | Which microphone, and did it deliver samples? |
+| `capture.` | Which microphone, and did it deliver samples? Also whether the arbiter had to close one (`capture.orphan_prevented` / `capture.orphan_reclaimed` / `capture.stale_dropped`). |
 | `state.transition` | Is the state machine parked in `Processing`? |
 | `degraded` | Every place a failure was swallowed and replaced with a default. |
 | `keychain.` | The latency class that once wedged the app for 7.6 s. |
 | `companion.` | The face survival test — see `docs/companion-faces-design.md` §2. |
 | `vad.` | Was the recording cut short by auto-stop rather than by the user? |
+| `permission.` | Was the user's Accessibility grant destroyed by a `tccutil reset`, and was the UI ever told a permission was missing? |
 
 ### `trace_set_live`
 

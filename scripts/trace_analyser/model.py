@@ -140,6 +140,7 @@ class Corpus:
     sessions: list[Session]
     dictations: list[Dictation]
     merged_records: int = 0
+    blank_lines: int = 0
     unparsed: list[tuple[str, str]] = field(default_factory=list)
     files: list[str] = field(default_factory=list)
 
@@ -214,12 +215,18 @@ def load(paths: list[str]) -> Corpus:
     """
     records: list[tuple[datetime, int, int, Event]] = []
     merged = 0
+    # Blank lines are the other half of the lost-newline race: one append got
+    # two newlines while another got none. The parser skips them silently, so
+    # the count has to be carried out or the recurrence is invisible. See
+    # the `writer-newline-lost` invariant.
+    blank = 0
     unparsed: list[tuple[str, str]] = []
     for fi, path in enumerate(paths):
         with open(path, "r", encoding="utf-8", errors="replace") as fh:
             for lineno, raw in enumerate(fh, 1):
                 raw = raw.rstrip("\n")
                 if not raw.strip():
+                    blank += 1
                     continue
                 src = f"{os.path.basename(path)}:{lineno}"
                 evs, was_merged = parse_line(raw, src)
@@ -267,6 +274,7 @@ def load(paths: list[str]) -> Corpus:
         sessions=sessions,
         dictations=order,
         merged_records=merged,
+        blank_lines=blank,
         unparsed=unparsed,
         files=list(paths),
     )

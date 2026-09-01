@@ -1,0 +1,59 @@
+---
+/**
+ * One Companion face, rendered at build time and animated by `lib/face.ts`.
+ *
+ * The eyes are emitted with their correct resting `d` here rather than being
+ * drawn by script, so the face is right before any JavaScript runs and right
+ * forever if none does. `data-face` is what the driver looks for.
+ *
+ * Decorative in every use on this site, so `aria-hidden`. The surrounding copy
+ * says what a reader needs to know; a face that also spoke would make a screen
+ * reader announce every blink.
+ */
+import { FACE_VARIETIES, eyeCentres, eyePath, type FaceVarietyId } from '@/lib/face';
+
+interface Props {
+  variety: FaceVarietyId;
+  size?: number;
+  /** Unique within the page — the sheen gradient needs its own id. */
+  uid: string;
+  class?: string;
+}
+
+const { variety, size = 16, uid, class: className = '' } = Astro.props;
+const v = FACE_VARIETIES[variety];
+const centres = eyeCentres(v);
+/* `shut` is drawn closed, because that is what it is when nothing is
+   happening, and the page it sits on is not happening to it. */
+const resting = v.closedAtIdle ? v.shutHeight : v.height.idle;
+const shape = v.closedAtIdle ? v.shut : v.open;
+const gradId = `sheen-${uid}`;
+---
+
+<span class={`face inline-flex shrink-0 items-center ${className}`} data-face={variety} aria-hidden="true">
+  <span class="breath">
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+      {v.gloss > 0 && (
+        <defs>
+          {/* A sheen, not a highlight: it shades the lower right down rather
+              than lighting the upper left up, so the state's own opacity stays
+              the brightest the eye ever gets. A punched-out catchlight was
+              tried in the app first and reads at every size as a pupil looking
+              somewhere, which is a gaze, and a gaze is a demand. */}
+          <radialGradient id={gradId} cx="34%" cy="24%" r="80%">
+            <stop offset="0%" stop-color="currentColor" stop-opacity="1" />
+            <stop offset="100%" stop-color="currentColor" stop-opacity={1 - v.gloss} />
+          </radialGradient>
+        </defs>
+      )}
+      {centres.map((c) => (
+        <path
+          data-eye
+          d={eyePath(c.cx, c.cy, shape.width, resting, shape.bow, v.squeeze)}
+          fill={v.gloss > 0 ? `url(#${gradId})` : 'currentColor'}
+          fill-opacity={v.opacity.idle}
+        />
+      ))}
+    </svg>
+  </span>
+</span>

@@ -1,0 +1,43 @@
+---
+/**
+ * The feature list, with the one thing that matters about it stated at the top:
+ * there is no second column. The old page had a Free tier reading "30 AI Polish
+ * per month · 20 dictionary entries · 50 history entries" beside a Pro tier
+ * reading "Unlimited everything". Those caps were removed on 2026-08-28.
+ */
+import { useTranslations, type Lang } from '@/i18n/utils';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+
+const items = [
+  { title: t('does.polishTitle'), desc: t('does.polishDesc') },
+  { title: t('does.dictTitle'), desc: t('does.dictDesc') },
+  { title: t('does.histTitle'), desc: t('does.histDesc') },
+  { title: t('does.langTitle'), desc: t('does.langDesc') },
+  { title: t('does.anywhereTitle'), desc: t('does.anywhereDesc') },
+  { title: t('does.handsTitle'), desc: t('does.handsDesc') },
+  { title: t('does.platformsTitle'), desc: t('does.platformsDesc') },
+  { title: t('does.updatesTitle'), desc: t('does.updatesDesc') },
+] as const;
+---
+
+<section class="band">
+  <div class="wrap">
+    <p class="plate-label">{t('does.plate')}</p>
+    <div class="max-w-2xl" data-reveal>
+      <h2 class="display text-[clamp(1.75rem,1.2rem+2vw,2.75rem)]">{t('does.heading')}</h2>
+      <p class="mt-4 text-[1.0625rem] text-muted">{t('does.sub')}</p>
+    </div>
+
+    <ul class="mt-10 grid gap-px overflow-hidden rounded-[var(--r-lg)] border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
+      {items.map((item, i) => (
+        <li class="bg-surface p-6" data-reveal style={`transition-delay:${(i % 4) * 70}ms`}>
+          <h3 class="text-[0.9375rem] font-semibold">{item.title}</h3>
+          <p class="mt-2 text-sm leading-relaxed text-muted">{item.desc}</p>
+        </li>
+      ))}
+    </ul>
+  </div>
+</section>

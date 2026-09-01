@@ -1,0 +1,111 @@
+---
+/**
+ * The coat picker.
+ *
+ * Every swatch carries `data-coat` itself, so it is painted by the coat it
+ * names — the same mechanism the app's settings panel uses. A swatch cannot
+ * drift from the thing it advertises, because it *is* the thing.
+ *
+ * Disclosure is a native `<details>`: it opens with the keyboard, it opens
+ * without JavaScript, and the choice it offers still works if the script that
+ * remembers the choice never loads.
+ */
+import { useTranslations, type Lang } from '@/i18n/utils';
+import { COATS } from '@/lib/coats';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+---
+
+<details class="relative" data-coat-picker>
+  <summary
+    class="flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-[var(--r-sm)] border border-line px-2.5 text-xs font-medium text-muted transition-colors hover:text-text [&::-webkit-details-marker]:hidden"
+    title={t('nav.coatHint')}
+  >
+    <span class="h-2.5 w-2.5 rounded-full bg-accent"></span>
+    <span class="hidden sm:inline">{t('nav.coat')}</span>
+  </summary>
+
+  <div class="panel absolute right-0 top-11 z-50 w-64 p-3">
+    <p class="mb-2 px-1 text-xs text-faint">{t('nav.coatHint')}</p>
+    <ul class="grid gap-2">
+      {COATS.map((c) => (
+        <li>
+          <button
+            type="button"
+            class="specimen"
+            data-coat={c.id}
+            data-set-coat={c.id}
+            aria-pressed={c.id === 'wild' ? 'true' : 'false'}
+          >
+            <span class="flex items-center gap-2.5">
+              <span class="spec-dot shrink-0"></span>
+              <span class="spec-stack flex-1">
+                <span class="spec-row block" style="width: 78%"></span>
+                <span class="spec-row block" style="width: 54%"></span>
+                <span class="spec-row block" style="width: 66%"></span>
+              </span>
+            </span>
+            <span class="mt-2 block text-xs font-medium">{t(c.nameKey)}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  </div>
+</details>
+
+<script>
+  const root = document.documentElement;
+  const COAT_IDS = ['wild', 'roan', 'piebald', 'merle', 'tortie'];
+
+  function paint(id: string) {
+    root.setAttribute('data-coat', id);
+    document.querySelectorAll<HTMLElement>('[data-set-coat]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(b.dataset.setCoat === id));
+    });
+    /* "This page is wearing ___." The names live on the element as data, in
+       whichever language the page was built in, so the script never has a
+       string of its own to translate. */
+    document.querySelectorAll<HTMLElement>('[data-wearing]').forEach((el) => {
+      try {
+        const names = JSON.parse(el.dataset.names ?? '{}') as Record<string, string>;
+        if (names[id]) el.textContent = names[id];
+      } catch {}
+    });
+  }
+
+  /* The colour transition is switched on only for the duration of the swap.
+     Leaving it on permanently would put a transition on every hover state in
+     the document, which is how a page starts feeling like treacle. */
+  let shiftTimer: number | undefined;
+  function shift(id: string) {
+    if (!COAT_IDS.includes(id)) return;
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      root.classList.add('coat-shifting');
+      window.clearTimeout(shiftTimer);
+      shiftTimer = window.setTimeout(() => root.classList.remove('coat-shifting'), 460);
+    }
+    paint(id);
+    try { localStorage.setItem('ttp-coat', id); } catch {}
+  }
+
+  document.addEventListener('click', (e) => {
+    const button = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-set-coat]');
+    if (button?.dataset.setCoat) {
+      shift(button.dataset.setCoat);
+      return;
+    }
+    // Close the disclosure when the click lands outside it.
+    document.querySelectorAll<HTMLDetailsElement>('[data-coat-picker][open]').forEach((d) => {
+      if (!d.contains(e.target as Node)) d.open = false;
+    });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    document.querySelectorAll<HTMLDetailsElement>('[data-coat-picker][open]').forEach((d) => { d.open = false; });
+  });
+
+  paint(root.getAttribute('data-coat') ?? 'wild');
+</script>

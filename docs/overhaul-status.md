@@ -390,15 +390,44 @@ and the still-true half explicitly upheld. Manual 3,639 -> 5,225 words EN,
 3. **`whatsnew.rs` emits user-facing prose from Rust**, violating the standing
    rule. Pre-existing across every entry; fixing it properly means moving the
    mechanism to locale keys, a frontend change.
-4. **R1's new trace stages are undocumented** — `capture.orphan_prevented`,
-   `capture.orphan_reclaimed`, `capture.stale_dropped`,
-   `usage.polish_recorded`, `permission.tcc_reset{,_result}`,
-   `permission.notify{,_failed}`, `keychain.warmed{account:"groq_api_key"}`,
-   `degraded` sites `settings.fsync` and `capture.reclaim`, plus the
-   `timed_out` and `trace_write_failures` fields. `check_trace.py` will list
-   them as unknown vocabulary until `docs/tracing.md` catches up.
+4. **~~R1's new trace stages are undocumented~~ — CLOSED 2026-09-02 (T1).**
+   `docs/tracing.md` now documents all of them and `check_trace.py` knows the
+   vocabulary; the "stages not taught about" section is empty against the real
+   corpus. Reconciled by grepping every `.stage(` / `.event(` / `.degraded(`
+   call site in `src-tauri/src/` rather than by trusting the list above, which
+   **missed four**: `capture.stop_waited_for_start` (the list named only its
+   `timed_out` field, not the stage), `capture.dead_input_detected`,
+   `paste.skipped` and `whisper.retry`. Also folded in were `polish.decision`,
+   `polish.attempt` and five `hotkey.*` stages the table had never listed.
+   Three new invariants were added at the same time — see item 7.
 5. **C — the website** is still unwritten against B's research. Only the false
    privacy claim was fixed.
 6. **The face survival question is now weaker by construction** — the test
    runs on the corrected face and a cast of five, not on the pessimal single
    face A0 designed the experiment around.
+7. **R1's three fixes are unverified against real data, because the fixed
+   binary is not running.** The analyser now has the invariants that would
+   prove each one engaged (`capture-arbiter-left-live`,
+   `keychain-not-single-flighted`, `writer-newline-lost`), and all three are
+   silent-or-historical on the corpus for the same reason: the app on Amir's
+   machine has been the same 3.1.6 process since **2026-08-31 16:43:34** and
+   emits none of H1's or R1's vocabulary. Not one of the 477 traced dictations
+   carries `dur_ms`, which every stage of the current code emits. The 2026-09-02
+   evidence is old-binary evidence and nothing in it may be attributed to a
+   fix. Closing this needs the build installed, not more analysis.
+8. **The 21-day trace retention window is projected to fail once the current
+   build ships.** Measured cost is 4.9 KB/dictation at ~73 dictations a day →
+   ~21 days, and that measurement is of the *pre-Polaris* verbosity. Adding
+   what the current code writes and the corpus has never seen (`dur_ms` on
+   every line, `settings.snapshot`, three `filter.*` verdicts,
+   `keychain.api_key`, `clipboard.write`, `usage.polish_recorded`, the
+   `hotkey.tap_health` heartbeat) puts it near 6.6 KB → **15–16 days, and 8–9
+   at the observed peak rate of 131 dictations/day**. Arithmetic, not a
+   measurement; re-measure from the log after the build lands. The cheap lever
+   is `KEEP_TRACE_ROTATIONS` (3 today), not deleting stages.
+9. **A live Groq 429 storm on 2026-09-02, found by this run and not previously
+   recorded.** 54 `polish.attempt` calls returned 429 against
+   `openai/gpt-oss-120b` between 00:20:08 and 00:20:29, with a
+   `polish.outage`. Dictations still pasted — polish degrades to the cleaned
+   text — so nothing was lost, but it is a live condition on Amir's machine
+   and not a historical scar.

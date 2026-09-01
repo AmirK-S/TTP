@@ -49,12 +49,36 @@ spot it was written to remove.
 - `[········]` in the id column marks a standalone event (a hotkey press, an
   event-tap recovery) rather than a dictation stage.
 
+### Fields that can appear on any line
+
+Three fields are not part of any one stage. They are attached to whatever
+record happens to be passing when there is something to report, because the
+thing they report is the trace itself being damaged, and a report that needs
+its own line would be lost by the same failure.
+
+- `trace_dropped_lines` — the writer's bounded queue overflowed and this many
+  records were never handed to it. Carried by the next record that fits.
+- `trace_write_failures` — this many records were handed to the writer and the
+  *file* rejected them. `append_line` cannot report its own failure by
+  logging, so it counts and the next record that lands carries the tally. If
+  that record is also lost the tally is put back, so the number is a true
+  total rather than a most-recent one. **A trace that goes quiet has to say
+  that it did**; these two are how it says so.
+- `lock_wait_ms` — on `keychain.slow`. How long this caller blocked behind
+  *another* caller's in-flight keychain read. Zero means it did the read
+  itself. This is the single-flight proof: a burst of concurrent callers
+  should produce one read with `lock_wait_ms:0` and the rest either cached
+  (no line at all) or waiting, and never N callers each paying the full
+  securityd cost. See "When a dictation takes minutes".
+
 ## The stages
 
 | Stage | What it tells you |
 |---|---|
 | `app.launched` | Session boundary, with version and platform. Everything below it belongs to one run of the app. |
 | `hotkey.press` / `hotkey.release` | The Fn/Globe key was seen. **No line here means the input layer never fired** — the recording never started. |
+| `hotkey.double_tap` / `hotkey.hands_free_stop` | The two hands-free edges: the double tap that latched recording on, and the press that ended it. |
+| `hotkey.tap_armed` / `hotkey.tap_create_failed` / `hotkey.tap_abandoned` | The tap's lifecycle at its ends. `tap_abandoned` is terminal: after three rebuilds the Fn key does nothing until relaunch. |
 | `hotkey.event_dropped` | A hotkey event arrived while the state lock was held and was discarded. The press happened; nothing came of it. |
 | `state.transition` | Every move between Idle / Recording / Processing. A session parked in Processing makes all later presses silent no-ops. |
 | `capture.start_failed` / `capture.stop_failed` | Recording never started, or the finished recording could not be retrieved. Covers all nine early exits in the capture layer. |
@@ -65,23 +89,33 @@ spot it was written to remove.
 | `hotkey.timer_stall` | The 20 ms poll timer skipped `gap_ms`. The process was descheduled — nothing advanced during that window: no hotkey, no state machine, no in-flight dictation. TTP now holds an activity assertion for the whole Recording → Idle window (see `crate::activity`), so a stall spanning a dictation should no longer be possible; one that still appears is worth investigating. |
 | `capture.start` | Which microphone actually served the recording, its rate/channels/format, whether it is the OS default, and what the user had asked for. |
 | `capture.stop` | Samples the callback delivered, and whether the OS default input changed while the user was talking. |
+| `capture.stop_waited_for_start` | The stop path found a start still in flight and waited for it, so the recording is collected rather than orphaned. `ms` is how long it waited; **`timed_out:true` is the interesting one** — it means the 3-second settle window elapsed with the start still unfinished, which the constant's own comment says cannot happen. When it does, `capture_arbiter` is the only thing between the user and a live microphone. |
+| `capture.orphan_prevented` | **The arbiter refused a start.** A stream had been built, and by the time it asked to go live the state machine no longer wanted one — `reason:"user_idle"` (the press already concluded; this is the 2026-08-30 shape) or `reason:"superseded_by_newer_press"`. The stream is torn down before this line is written, so the line means the microphone is off. `build_ms` is how long the start took to build; the incident's was 544 ms. |
+| `capture.orphan_reclaimed` | **The Idle backstop closed a live capture nobody was coming to collect.** The reverse ordering: the start published in the gap between a stop that found nothing and the transition to Idle. Carries `samples`, the `device`, and `wav_finalised`. The unusable WAV is deleted. As with `orphan_prevented`, the stream is dropped before the line is written. |
+| `capture.stale_dropped` | A new `start_recording` found a capture still in `STATE` from a previous cycle and closed it. `samples` says how much it had written. One of these means an earlier cycle ended with the microphone open and neither the stop nor the backstop caught it. |
+| `capture.dead_input_detected` | The microphone has delivered nothing but zeros for `ms` past the grace period, **while the user is still talking**. Emitted once per capture. This is `dead_capture` said at second two instead of at the end: told early, the user loses one sentence and goes to fix their headphones. |
 | `audio.duration` / `audio.signal` | How much audio, how loud. `avg_rms` below `floor` means the silence gate will drop it; `peak` and `nonzero_ratio` distinguish a quiet room from a dead device. |
 | `audio.convert` | Stereo 48 kHz → mono 16 kHz, and the size change. |
 | `whisper.request` / `whisper.response` | Bytes sent, language pinned, latency, and how many characters came back. `attempt:2` means the first call returned an empty body. |
+| `whisper.retry` | The first call came back with nothing and we are asking once more before surfacing `no_speech`. Carries `reason:"empty_body"`. |
+| `polish.decision` | Whether polish was going to be attempted at all, and why: `setting_enabled`, `quota_ok`. Emitted before the attempt, so a dictation with no `polish.attempt` says here whether it was skipped or never eligible. |
+| `polish.attempt` | One call to the polish model, with its `model`, `status` and `ms`. A non-200 here is the shape `remote-call-failed` keys off — 403, 429 and 404 look identical to the user and are three different bugs. |
 | `polish` | Now also carries `ms`, and the *reason*: `guard_reason` when the guard rejected the model's answer, `error_category` (`rate_limited` / `invalid_api_key` / `polish_failed`) when the call failed. Both used to exist only as a Sentry breadcrumb, which is off by default and is not in the file a user attaches to a bug report. |
 | `cleanup`, `polish`, `dictionary` | Each text transformation, with `changed` and before/after character counts. A `to.chars` of 0 names the stage that emptied the transcription. `polish.outcome` is `applied` / `failed` / `guard_rejected` / `skipped` — what actually happened, not whether it was allowed to try. |
 | `polish.outage` | Polish has failed `consecutive_failures` times in a row against `model`. Emitted on every failure; the user is notified once per session at three. |
 | `paste.accessibility` | `tcc_trusted` vs `ax_probe_ok`. Trusted-but-not-working is the stale-TCC state left behind by in-place app updates. |
 | `paste.decision` | `type` (direct keystrokes) or `clipboard` (Cmd+V), and how many characters. |
+| `paste.skipped` | Injection was not attempted at all. `reason:"no_accessibility"` — the text went to the clipboard and System Settings was opened for the user. Distinct from `paste.result {"ok":false}`, which means we tried and failed. |
 | `paste.modifiers` | A modifier key was still held at injection time. Only emitted when one was. |
 | `paste.result` | Whether the events were posted. |
 | `paste.verify` | Whether they **landed**. See below. |
 | `clipboard.restore` | The user's pre-record clipboard was put back. |
 | `correction_window.started` | The dictionary correction watcher was armed. |
 | `history.saved`, `usage.recorded`, `files.cleaned` | Post-paste bookkeeping. All trivial and synchronous — a large jump between any two of these means the process stalled, not that the step is slow. |
+| `usage.polish_recorded` | The polish usage record was written, **and it was written off the critical path**. That is what the line is for: it is emitted from a `spawn_blocking`, so its timestamp lands *after* `paste.result` on the same dictation. A timestamp that lands before it means the move back onto the path has been undone. `ms` is what the write cost, keychain included. |
 | `settings.snapshot` | The configuration this dictation ran under: polish, transcription language, VAD, hands-free, history, diagnostics, companion face. A dictation is a function of its settings and now says which ones. |
 | `keychain.api_key` | The Groq key read, **timed**. It is a keychain round-trip sitting between the user's last word and the Whisper call, and it is unbounded — see "When a dictation takes minutes". |
-| `keychain.warmed` | The startup pre-warm, per account, with its cost. A large number here is *good news*: the bill was paid on a thread nobody was waiting on. |
+| `keychain.warmed` | The startup pre-warm, per account, with its cost. A large number here is *good news*: the bill was paid on a thread nobody was waiting on. Three accounts warm at launch; `account:"groq_api_key"` is the one that matters, because it is the only one whose read sits between the user's last word and the Whisper call. It also carries `found` — whether a key exists, never the key and never its length. |
 | `keychain.slow` | Any keychain call that took more than 50 ms. Emitted only when it did, because a warm read is sub-millisecond and a line per usage record would be noise. |
 | `filter.hallucination` | `matched` — **including `false`**. Whisper returned real characters and the filter let them through. |
 | `filter.glossary_ghost` | `matched`, plus `considered`: whether the filter was eligible at all (a dictionary exists, the take is short). |
@@ -92,6 +126,9 @@ spot it was written to remove.
 | `vad.armed` / `vad.fired` / `vad.disarmed` | The auto-stop watchdog: when it started, whether it cut the recording, and whether the stop that ended it was its own or the user's. |
 | `hotkey.tap_health` | **The event tap is alive.** Every five minutes while healthy, and immediately after a recovery. The absence of `hotkey.tap_*` lines used to be ambiguous between "fine" and "not running"; this settles it and bounds any outage to five minutes. |
 | `companion.face` / `companion.named` / `companion.pill_hidden` / `companion.state` | The Companion survival test — see `docs/companion-faces-design.md` §2. Booleans, lengths and day counts; never the name. |
+| `permission.tcc_reset` | **We are about to destroy the user's granted Accessibility permission.** `tccutil reset` is run when a stale-TCC state is detected, and until Polaris it left one `log_warn` and no trace line at all — so a user who was suddenly re-prompted had nothing explaining why. Emitted *before* the command runs, from the one function that runs it, carrying the two probe values that justified the decision (`api_trusted`, `ax_probe_ok`) plus the `bundle_id` and `version`. |
+| `permission.tcc_reset_result` | What `tccutil` said. `ok:true`, or `ok:false` with `stderr` / `error`. The grant is gone either way; this separates "reset and re-prompted" from "asked to reset and was refused". |
+| `permission.notify` / `permission.notify_failed` | The UI was told a permission is missing. Both fire during Tauri `setup()`, when the webview may not have mounted, so the banner can be emitted to nobody. `notify` with `emitted:true` is not proof a window received it — that limit is real, which is why the line carries the `event` name rather than only an outcome. |
 | `degraded` | Any place a failure was swallowed and a polite default returned. See below. |
 | `dictation.finish` | `outcome` plus `reason` when nothing was produced. |
 
@@ -172,6 +209,8 @@ grep ' degraded ' ttp-trace.log
 | `keychain.secret_write` | A freshly generated secret could not be persisted, so the next launch generates another one and every record signed with this one stops verifying. |
 | `keychain.migration_flag` | The migration flag could not be read; we assumed "not migrated", which keeps the legacy verification path alive. |
 | `keychain.csprng` | The OS CSPRNG failed. Exotic, and worth knowing about. |
+| `settings.fsync` | `sync_all` on the temp settings file failed, so the atomic-rename write installed a file whose bytes are not on disk. `architecture.md` advertises "a crash mid-write can never corrupt the live settings file"; this line is that guarantee reporting its own absence. `installed:false` — the temp file was removed and the error was returned as well as recorded. |
+| `capture.reclaim` | The Idle backstop could not close an orphaned capture: either `STATE`'s lock was poisoned, or the arbiter and `STATE` disagreed about whether a capture was live. **This one is not benign.** The whole 11-hour-microphone guarantee rests on those two agreeing, so a line here means the guarantee is unverified for that cycle. `check_trace.py` reports it as `capture-arbiter-left-live`. |
 
 A `degraded` line is not an error. It is the sentence "we carried on without
 this", written down.
@@ -238,6 +277,90 @@ for timeout and the Fn key dies.
 `re_arm_tap` writes at most one line per 30 s to `ttp.log` while the tap is
 flapping, carrying a `streak` count. The trace keeps every occurrence.
 
+### The keychain, and how to tell it is single-flighted
+
+`keychain.slow` fires above 50 ms and names the `op` and the `account`.
+Historically that account read for tens of seconds *between the user's last
+word and their text appearing*, and the reason was a check-then-act: the cache
+was consulted, the lock released, and only then the unbounded read performed —
+so every caller that arrived before the first one finished missed the cache
+and made its own securityd call. One process, one lifetime cache, and eight
+`secret_read` lines for `usage_hmac_secret`:
+
+    62,304 / 13,612 / 397,600 / 97,407 / 157 / 56,037 / 106 / 86 ms
+
+`keychain::read_once` now performs at most one call however many callers
+arrive together, and `lock_wait_ms` is how you check that from the log:
+
+- **one** line with `lock_wait_ms:0`, and any others carrying a non-zero
+  `lock_wait_ms`, is coalescing working — those callers waited for someone
+  else's read rather than paying again;
+- **several** lines with `lock_wait_ms:0` for the same account in one session
+  is the old shape back. `check_trace.py` reports it as
+  `keychain-not-single-flighted`.
+
+A slow read is still worth reading even when it coalesced: single-flighting
+removes the multiplier, not the securityd cost. That is what `warm_caches`
+and `keychain.warmed` are for — paying it at launch, on a thread nobody is
+waiting on.
+
+One caveat when counting: sessions in the log are the spans between
+`app.launched` lines, and a dev or test binary appending to the same
+`ttp-trace.log` contributes reads to whichever span it lands in without a
+launch line of its own. Check the timestamps against what was running before
+attributing a burst to the app.
+
+## When the microphone was left on
+
+On 2026-08-30 a 60 ms tap left a capture live for **ten hours and fifty-seven
+minutes**. The trace of it is five lines long and reads perfectly ordinary:
+
+```
+23:18:21.386  hotkey.press                          → Recording
+23:18:21.446  hotkey.release                        → Processing
+23:18:21.852  capture.stop_failed "No recording in progress"
+23:18:21.854  state.transition Processing → Idle
+23:18:21.930  capture.start   {"device":"AirPods Pro"}
+```
+
+The stop ran, found nothing, and went home 78 ms before the start published a
+stream that only the stop could have closed. Nothing said the microphone was
+on, so nothing was noticed until `hotkey.timer_stall {"gap_ms":963122}` the
+next morning.
+
+`src-tauri/src/capture_arbiter.rs` now enforces the property that was being
+assumed: **a live capture exists only while the state machine wants one.** It
+is driven from `AppState::set_state` and uses no clock anywhere, so it cannot
+be defeated by a slow Bluetooth device or a future polled late.
+
+What that means for reading the log:
+
+- The **old** failure is a `capture.start` with no `capture.stop` after it.
+  That is what the five lines above are.
+- The **fix engaging** is `capture.orphan_prevented` or
+  `capture.orphan_reclaimed`. Both are written *after* the cpal stream has
+  been dropped, so either line is the microphone reporting that it went off.
+- A refused start still writes its `capture.start` first — the refusal
+  happens after the stream is built. So `capture.start` followed by
+  `capture.orphan_prevented` and no `capture.stop` is the healthy shape, not
+  a leak. Anything reading only for `capture.stop` will get this exactly
+  backwards and report the fix as the bug.
+- The shapes that would mean the guarantee has failed: a second close with no
+  `capture.start` between (the stream the arbiter said it dropped was still
+  there), `degraded {"site":"capture.reclaim"}` (the arbiter and `STATE`
+  disagree), and `capture.stop_waited_for_start {"timed_out":true}` (the
+  settle window elapsed, so the arbiter is now the only guard). All three are
+  checked as `capture-arbiter-left-live` — see `docs/trace-invariants.md`.
+
+```sh
+# The fix engaging, and what it refused
+grep -E 'capture\.(orphan_prevented|orphan_reclaimed|stale_dropped)' ttp-trace.log
+
+# The guarantee failing
+grep 'capture.reclaim' ttp-trace.log
+grep 'capture.stop_waited_for_start' ttp-trace.log | grep '"timed_out":true'
+```
+
 ## Telling a dead microphone from a quiet room
 
 `silent_audio` and `dead_capture` both end a dictation with no text, and used
@@ -293,19 +416,45 @@ outside:
 total but the **three rotated files**: the live one can be nearly empty right
 after a rotation, so the guaranteed floor is 7.5 MB.
 
-At the Polaris per-dictation cost of ~5.1 KB (up from ~3.7 KB — every stage
-gained a `dur_ms`, the filters record their negative verdicts, the keychain is
-timed, and settings are snapshotted) that floor holds about **1470 dictations**,
-which at the observed rate of ~68 a day is **about three weeks**. The ceiling,
-just after a rotation fills, is nearer four.
+Measured over the 477-dictation corpus of 26 August – 2 September 2026, the
+observed cost is **4.9 KB per dictation** (2.9 KB of it in the dictation's own
+staged lines, the rest its share of the standalone stream) at a rate of **~73
+dictations a day** over the elapsed window, peaking at 131 on 30 August. That
+floor therefore holds about **1,530 dictations, or roughly three weeks** —
+the projection stands.
+
+**It stands for the binary that produced the corpus, and that binary is not
+the current one.** No line in those 477 dictations carries `dur_ms`, and none
+of `settings.snapshot`, `filter.*`, `keychain.api_key`, `clipboard.write`,
+`vad.*` or `hotkey.tap_health` appears anywhere in it. Every one of those is
+in the code and none has ever run on the machine being harvested, so 4.9 KB is
+a measurement of the *previous* verbosity, and the 5.1 KB this section used to
+claim was an estimate that was never observed either.
+
+Adding up what the current code writes per dictation and is missing from that
+measurement — `dur_ms` on every staged line (~11 B × ~24), `settings.snapshot`
+(~280 B), the three `filter.*` verdicts (~450 B), `keychain.api_key`,
+`clipboard.write` and `usage.polish_recorded` (~340 B), and the five-minute
+`hotkey.tap_health` heartbeat amortised across a day's dictations (~360 B) —
+puts it near **6.6 KB**, and nearer 7 KB with VAD armed. At that cost the
+floor holds ~1,140 dictations: **about 15–16 days at 73 a day, and 8 or 9 at
+the observed peak rate.**
+
+So: the three-week window is **projected to fail** the moment the current
+build is installed, and to fail hardest in exactly the weeks a heavy user
+generates the most evidence. It has not failed yet, and the number above is
+arithmetic on stage sizes rather than a measurement — the honest form of the
+claim is that the next harvest should re-measure this from the log rather
+than trust either figure. If it needs fixing, the cheap lever is
+`KEEP_TRACE_ROTATIONS` (three files today), not deleting stages.
 
 The standalone stream costs on top of that: the event-tap heartbeat is the
-only periodic writer, at five-minute intervals and ~90 bytes, so ~26 KB a day —
-under 1% of the window. Everything else in the standalone stream is driven by
-user action.
+only periodic writer, at five-minute intervals and ~90 bytes, so ~26 KB a day.
 
-If you add a stage that fires per dictation, add ~100 bytes to that 5.1 KB and
-redo this arithmetic. Losing history to verbosity would defeat the point.
+If you add a stage that fires per dictation, add ~150 bytes — the observed
+average line length in the real log, not the ~100 this section used to
+assume — and redo this arithmetic. Losing history to verbosity would defeat
+the point.
 
 ## What is not covered
 
@@ -328,8 +477,9 @@ used to be on this list have moved off it — `vad.*`, `settings.snapshot`,
   bounded queue. A hard kill (`panic = "abort"`, SIGKILL) can lose whatever was
   queued and not yet written — at most a few lines, and precisely the last few,
   which is the worst place to lose them. A queue overflow is reported as
-  `trace_dropped_lines` on the next line through; a process death is not
-  reported at all, because there is nobody left to report it.
+  `trace_dropped_lines` on the next line through, and a rejected write as
+  `trace_write_failures`; a process death is not reported at all, because
+  there is nobody left to report it.
 - **The audio callback.** `capture.start` and `capture.stop` bracket the
   recording and `audio.signal` measures the result, but the cpal callback
   itself is untraced by design — it is a real-time audio thread and a channel

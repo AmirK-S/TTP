@@ -1,0 +1,122 @@
+[2026-09-01 10:00:00.010] [········]          app.launched {"arch":"aarch64","os":"macos","version":"3.1.6"}
+[2026-09-01 10:00:00.020] [········]          hotkey.press {"flags":"0x800000","held_ms":160}
+[2026-09-01 10:00:00.021] [········]          state.transition {"from":"Idle","to":"Recording"}
+[2026-09-01 10:00:00.061] [········]          capture.start {"channels":1,"device":"MacBook Air Microphone","format":"F32","is_os_default":true,"preferred":null,"rate":48000}
+[2026-09-01 10:00:05.061] [········]          hotkey.release {"flags":"0x0"}
+[2026-09-01 10:00:05.062] [········]          state.transition {"from":"Recording","to":"Processing"}
+[2026-09-01 10:00:05.462] [········]          capture.stop {"default_now":"MacBook Air Microphone","device":"MacBook Air Microphone","device_changed":false,"samples":240000}
+[2026-09-01 10:00:05.464] [0000-1111] +     0ms dictation.start {"kind":"recording","verbose":false}
+[2026-09-01 10:00:05.464] [0000-1111] +     0ms audio.duration {"secs":5.0,"wav_bytes":480000}
+[2026-09-01 10:00:05.467] [0000-1111] +     3ms audio.signal {"avg_rms":0.02,"floor":0.005,"nonzero_ratio":1.0,"peak":0.16,"samples":240000}
+[2026-09-01 10:00:05.473] [0000-1111] +     9ms audio.convert {"converted":true,"in_bytes":1,"out_bytes":1}
+[2026-09-01 10:00:05.476] [0000-1111] +    12ms whisper.request {"bytes":1,"input_mode":"push_to_talk","lang":"auto","prompt":false}
+[2026-09-01 10:00:05.876] [0000-1111] +   412ms whisper.response {"attempt":1,"chars":64,"ms":400,"sha8":"aaaa1111"}
+[2026-09-01 10:00:05.896] [0000-1111] +   432ms cleanup {"changed":false,"from":{"chars":64,"sha8":"aaaa1111"},"to":{"chars":64,"sha8":"aaaa1111"}}
+[2026-09-01 10:00:05.897] [0000-1111] +   433ms polish.decision {"quota_ok":true,"setting_enabled":true}
+[2026-09-01 10:00:06.497] [0000-1111] +  1033ms polish {"changed":true,"from":{"chars":64,"sha8":"aaaa1111"},"model":"openai/gpt-oss-120b","outcome":"applied","quota_ok":true,"to":{"chars":64,"sha8":"bbbb2222"}}
+[2026-09-01 10:00:06.498] [0000-1111] +  1034ms dictionary {"changed":false,"from":{"chars":64,"sha8":"bbbb2222"},"to":{"chars":64,"sha8":"bbbb2222"}}
+[2026-09-01 10:00:06.500] [0000-1111] +  1036ms paste.accessibility {"ax_probe_ok":true,"tcc_trusted":true}
+[2026-09-01 10:00:06.501] [0000-1111] +  1037ms paste.decision {"chars":64,"has_accessibility":true,"strategy":"type"}
+[2026-09-01 10:00:06.611] [0000-1111] +  1147ms paste.result {"ok":true}
+[2026-09-01 10:00:06.612] [0000-1111] +  1148ms clipboard.restore {"ok":true}
+[2026-09-01 10:00:06.613] [0000-1111] +  1149ms correction_window.started {}
+[2026-09-01 10:00:06.614] [0000-1111] +  1150ms history.saved {"ok":true}
+[2026-09-01 10:00:06.615] [0000-1111] +  1151ms ui.completed {"pasted":true}
+[2026-09-01 10:00:06.616] [0000-1111] +  1152ms usage.recorded {"ms":0}
+[2026-09-01 10:00:06.617] [0000-1111] +  1153ms files.cleaned {}
+[2026-09-01 10:00:06.619] [0000-1111] +  1155ms dictation.finish {"chars":64,"has_accessibility":true,"ms":1155,"outcome":"pasted","words":12}
+[2026-09-01 10:00:07.019] [0000-1111] +  1555ms paste.verify {"after_chars":64,"ax_readable":true,"before_chars":0,"changed":true,"delta_chars":64,"expected_chars":64,"first_change_ms":30,"settled_ms":48}
+[2026-09-01 10:00:07.020] [········]          state.transition {"from":"Processing","to":"Idle"}
+[2026-09-01 10:00:07.021] [········]          state.transition {"from":"Idle","to":"Idle"}
+[2026-09-01 10:00:07.031] [········]          hotkey.press {"flags":"0x800000","held_ms":160}
+[2026-09-01 10:00:07.032] [········]          state.transition {"from":"Idle","to":"Recording"}
+[2026-09-01 10:00:07.072] [········]          capture.start {"channels":1,"device":"MacBook Air Microphone","format":"F32","is_os_default":true,"preferred":null,"rate":48000}
+[2026-09-01 10:00:12.072] [········]          hotkey.release {"flags":"0x0"}
+[2026-09-01 10:00:12.073] [········]          state.transition {"from":"Recording","to":"Processing"}
+[2026-09-01 10:00:12.473] [········]          capture.stop {"default_now":"MacBook Air Microphone","device":"MacBook Air Microphone","device_changed":false,"samples":240000}
+[2026-09-01 10:00:12.475] [0001-2222] +     0ms dictation.start {"kind":"recording","verbose":false}
+[2026-09-01 10:00:12.475] [0001-2222] +     0ms audio.duration {"secs":5.0,"wav_bytes":480000}
+[2026-09-01 10:00:12.478] [0001-2222] +     3ms audio.signal {"avg_rms":0.02,"floor":0.005,"nonzero_ratio":1.0,"peak":0.16,"samples":240000}
+[2026-09-01 10:00:12.484] [0001-2222] +     9ms audio.convert {"converted":true,"in_bytes":1,"out_bytes":1}
+[2026-09-01 10:00:12.487] [0001-2222] +    12ms whisper.request {"bytes":1,"input_mode":"push_to_talk","lang":"auto","prompt":false}
+[2026-09-01 10:00:12.887] [0001-2222] +   412ms whisper.response {"attempt":1,"chars":64,"ms":400,"sha8":"aaaa1111"}
+[2026-09-01 10:00:12.907] [0001-2222] +   432ms cleanup {"changed":false,"from":{"chars":64,"sha8":"aaaa1111"},"to":{"chars":64,"sha8":"aaaa1111"}}
+[2026-09-01 10:00:12.908] [0001-2222] +   433ms polish.decision {"quota_ok":true,"setting_enabled":true}
+[2026-09-01 10:00:13.508] [0001-2222] +  1033ms polish {"changed":true,"from":{"chars":64,"sha8":"aaaa1111"},"model":"openai/gpt-oss-120b","outcome":"applied","quota_ok":true,"to":{"chars":64,"sha8":"bbbb2222"}}
+[2026-09-01 10:00:13.509] [0001-2222] +  1034ms dictionary {"changed":false,"from":{"chars":64,"sha8":"bbbb2222"},"to":{"chars":64,"sha8":"bbbb2222"}}
+[2026-09-01 10:00:13.511] [0001-2222] +  1036ms paste.accessibility {"ax_probe_ok":true,"tcc_trusted":true}
+[2026-09-01 10:00:13.512] [0001-2222] +  1037ms paste.decision {"chars":64,"has_accessibility":true,"strategy":"type"}
+[2026-09-01 10:00:13.622] [0001-2222] +  1147ms paste.result {"ok":true}
+[2026-09-01 10:00:13.623] [0001-2222] +  1148ms clipboard.restore {"ok":true}
+[2026-09-01 10:00:13.624] [0001-2222] +  1149ms correction_window.started {}
+[2026-09-01 10:00:13.625] [0001-2222] +  1150ms history.saved {"ok":true}
+[2026-09-01 10:00:13.626] [0001-2222] +  1151ms ui.completed {"pasted":true}
+[2026-09-01 10:00:13.627] [0001-2222] +  1152ms usage.recorded {"ms":0}
+[2026-09-01 10:00:13.628] [0001-2222] +  1153ms files.cleaned {}
+[2026-09-01 10:00:13.630] [0001-2222] +  1155ms dictation.finish {"chars":64,"has_accessibility":true,"ms":1155,"outcome":"pasted","words":12}
+[2026-09-01 10:00:14.030] [0001-2222] +  1555ms paste.verify {"after_chars":64,"ax_readable":true,"before_chars":0,"changed":true,"delta_chars":64,"expected_chars":64,"first_change_ms":30,"settled_ms":48}
+[2026-09-01 10:00:14.031] [········]          state.transition {"from":"Processing","to":"Idle"}
+[2026-09-01 10:00:14.032] [········]          state.transition {"from":"Idle","to":"Idle"}
+[2026-09-01 10:01:14.032] [········]          app.launched {"arch":"aarch64","os":"macos","version":"3.1.6"}
+[2026-09-01 10:01:14.042] [········]          hotkey.press {"flags":"0x800000","held_ms":160}
+[2026-09-01 10:01:14.043] [········]          state.transition {"from":"Idle","to":"Recording"}
+[2026-09-01 10:01:14.083] [········]          capture.start {"channels":1,"device":"MacBook Air Microphone","format":"F32","is_os_default":true,"preferred":null,"rate":48000}
+[2026-09-01 10:01:19.083] [········]          hotkey.release {"flags":"0x0"}
+[2026-09-01 10:01:19.084] [········]          state.transition {"from":"Recording","to":"Processing"}
+[2026-09-01 10:01:19.484] [········]          capture.stop {"default_now":"MacBook Air Microphone","device":"MacBook Air Microphone","device_changed":false,"samples":240000}
+[2026-09-01 10:01:19.486] [0000-1111] +     0ms dictation.start {"kind":"recording","verbose":false}
+[2026-09-01 10:01:19.486] [0000-1111] +     0ms audio.duration {"secs":5.0,"wav_bytes":480000}
+[2026-09-01 10:01:19.489] [0000-1111] +     3ms audio.signal {"avg_rms":0.02,"floor":0.005,"nonzero_ratio":1.0,"peak":0.16,"samples":240000}
+[2026-09-01 10:01:19.495] [0000-1111] +     9ms audio.convert {"converted":true,"in_bytes":1,"out_bytes":1}
+[2026-09-01 10:01:19.498] [0000-1111] +    12ms whisper.request {"bytes":1,"input_mode":"push_to_talk","lang":"auto","prompt":false}
+[2026-09-01 10:01:19.898] [0000-1111] +   412ms whisper.response {"attempt":1,"chars":64,"ms":400,"sha8":"aaaa1111"}
+[2026-09-01 10:01:19.918] [0000-1111] +   432ms cleanup {"changed":false,"from":{"chars":64,"sha8":"aaaa1111"},"to":{"chars":64,"sha8":"aaaa1111"}}
+[2026-09-01 10:01:19.919] [0000-1111] +   433ms polish.decision {"quota_ok":true,"setting_enabled":true}
+[2026-09-01 10:01:20.519] [0000-1111] +  1033ms polish {"changed":true,"from":{"chars":64,"sha8":"aaaa1111"},"model":"openai/gpt-oss-120b","outcome":"applied","quota_ok":true,"to":{"chars":64,"sha8":"bbbb2222"}}
+[2026-09-01 10:01:20.520] [0000-1111] +  1034ms dictionary {"changed":false,"from":{"chars":64,"sha8":"bbbb2222"},"to":{"chars":64,"sha8":"bbbb2222"}}
+[2026-09-01 10:01:20.522] [0000-1111] +  1036ms paste.accessibility {"ax_probe_ok":true,"tcc_trusted":true}
+[2026-09-01 10:01:20.523] [0000-1111] +  1037ms paste.decision {"chars":64,"has_accessibility":true,"strategy":"type"}
+[2026-09-01 10:01:20.633] [0000-1111] +  1147ms paste.result {"ok":true}
+[2026-09-01 10:01:20.634] [0000-1111] +  1148ms clipboard.restore {"ok":true}
+[2026-09-01 10:01:20.635] [0000-1111] +  1149ms correction_window.started {}
+[2026-09-01 10:01:20.636] [0000-1111] +  1150ms history.saved {"ok":true}
+[2026-09-01 10:01:20.637] [0000-1111] +  1151ms ui.completed {"pasted":true}
+[2026-09-01 10:01:20.638] [0000-1111] +  1152ms usage.recorded {"ms":0}
+[2026-09-01 10:01:20.639] [0000-1111] +  1153ms files.cleaned {}
+[2026-09-01 10:01:20.641] [0000-1111] +  1155ms dictation.finish {"chars":64,"has_accessibility":true,"ms":1155,"outcome":"pasted","words":12}
+[2026-09-01 10:01:21.041] [0000-1111] +  1555ms paste.verify {"after_chars":64,"ax_readable":true,"before_chars":0,"changed":true,"delta_chars":64,"expected_chars":64,"first_change_ms":30,"settled_ms":48}
+[2026-09-01 10:01:21.042] [········]          state.transition {"from":"Processing","to":"Idle"}
+[2026-09-01 10:01:21.043] [········]          state.transition {"from":"Idle","to":"Idle"}
+[2026-09-01 10:01:21.053] [········]          hotkey.press {"flags":"0x800000","held_ms":160}
+[2026-09-01 10:01:21.054] [········]          state.transition {"from":"Idle","to":"Recording"}
+[2026-09-01 10:01:21.094] [········]          capture.start {"channels":1,"device":"MacBook Air Microphone","format":"F32","is_os_default":true,"preferred":null,"rate":48000}
+[2026-09-01 10:01:26.094] [········]          hotkey.release {"flags":"0x0"}
+[2026-09-01 10:01:26.095] [········]          state.transition {"from":"Recording","to":"Processing"}
+[2026-09-01 10:01:26.495] [········]          capture.stop {"default_now":"MacBook Air Microphone","device":"MacBook Air Microphone","device_changed":false,"samples":240000}
+[2026-09-01 10:01:26.497] [0001-2222] +     0ms dictation.start {"kind":"recording","verbose":false}
+[2026-09-01 10:01:26.497] [0001-2222] +     0ms audio.duration {"secs":5.0,"wav_bytes":480000}
+[2026-09-01 10:01:26.500] [0001-2222] +     3ms audio.signal {"avg_rms":0.02,"floor":0.005,"nonzero_ratio":1.0,"peak":0.16,"samples":240000}
+[2026-09-01 10:01:26.506] [0001-2222] +     9ms audio.convert {"converted":true,"in_bytes":1,"out_bytes":1}
+[2026-09-01 10:01:26.509] [0001-2222] +    12ms whisper.request {"bytes":1,"input_mode":"push_to_talk","lang":"auto","prompt":false}
+[2026-09-01 10:01:26.909] [0001-2222] +   412ms whisper.response {"attempt":1,"chars":64,"ms":400,"sha8":"aaaa1111"}
+[2026-09-01 10:01:26.929] [0001-2222] +   432ms cleanup {"changed":false,"from":{"chars":64,"sha8":"aaaa1111"},"to":{"chars":64,"sha8":"aaaa1111"}}
+[2026-09-01 10:01:26.930] [0001-2222] +   433ms polish.decision {"quota_ok":true,"setting_enabled":true}
+[2026-09-01 10:01:27.530] [0001-2222] +  1033ms polish {"changed":true,"from":{"chars":64,"sha8":"aaaa1111"},"model":"openai/gpt-oss-120b","outcome":"applied","quota_ok":true,"to":{"chars":64,"sha8":"bbbb2222"}}
+[2026-09-01 10:01:27.531] [0001-2222] +  1034ms dictionary {"changed":false,"from":{"chars":64,"sha8":"bbbb2222"},"to":{"chars":64,"sha8":"bbbb2222"}}
+[2026-09-01 10:01:27.533] [0001-2222] +  1036ms paste.accessibility {"ax_probe_ok":true,"tcc_trusted":true}
+[2026-09-01 10:01:27.534] [0001-2222] +  1037ms paste.decision {"chars":64,"has_accessibility":true,"strategy":"type"}
+[2026-09-01 10:01:27.644] [0001-2222] +  1147ms paste.result {"ok":true}
+[2026-09-01 10:01:27.645] [0001-2222] +  1148ms clipboard.restore {"ok":true}
+[2026-09-01 10:01:27.646] [0001-2222] +  1149ms correction_window.started {}
+[2026-09-01 10:01:27.647] [0001-2222] +  1150ms history.saved {"ok":true}
+[2026-09-01 10:01:27.648] [0001-2222] +  1151ms ui.completed {"pasted":true}
+[2026-09-01 10:01:27.649] [0001-2222] +  1152ms usage.recorded {"ms":0}
+[2026-09-01 10:01:27.650] [0001-2222] +  1153ms files.cleaned {}
+[2026-09-01 10:01:27.652] [0001-2222] +  1155ms dictation.finish {"chars":64,"has_accessibility":true,"ms":1155,"outcome":"pasted","words":12}
+[2026-09-01 10:01:28.052] [0001-2222] +  1555ms paste.verify {"after_chars":64,"ax_readable":true,"before_chars":0,"changed":true,"delta_chars":64,"expected_chars":64,"first_change_ms":30,"settled_ms":48}
+[2026-09-01 10:01:28.053] [········]          state.transition {"from":"Processing","to":"Idle"}
+[2026-09-01 10:01:28.054] [········]          state.transition {"from":"Idle","to":"Idle"}
+[2026-09-01 10:01:29.054] [········]          hotkey.tap_armed {}
+[2026-09-01 10:01:30.054] [········]          hotkey.tap_armed {}
+[2026-09-01 10:01:31.054] [········]          hotkey.tap_armed {}
+[2026-09-01 10:01:32.054] [········]          hotkey.tap_armed {}

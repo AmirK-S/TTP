@@ -36,10 +36,12 @@ def render(corpus: Corpus, findings: list[Finding], context: int = 0,
                f"{len(corpus.sessions)}   dictations "
                f"{len(corpus.dictations)}")
     out.append(f"  window   {span}")
-    if corpus.merged_records:
-        out.append(f"  note     {corpus.merged_records} records shared a "
-                   f"physical line with another (a lost newline between two "
-                   f"concurrent writes); all were recovered")
+    # Printed whether or not it is zero. The parser repairs both symptoms
+    # silently, which is exactly how the lost-newline race survived weeks of
+    # people reading this log; a zero here is the fix reporting itself.
+    out.append(f"  writer   {corpus.merged_records} merged records, "
+               f"{corpus.blank_lines} blank lines "
+               f"({'clean' if not (corpus.merged_records or corpus.blank_lines) else 'see writer-newline-lost'})")
     if corpus.unparsed:
         out.append(f"  note     {len(corpus.unparsed)} lines could not be "
                    f"parsed at all")
@@ -143,6 +145,7 @@ def render_json(corpus: Corpus, findings: list[Finding]) -> str:
             "sessions": len(corpus.sessions),
             "dictations": len(corpus.dictations),
             "merged_records": corpus.merged_records,
+            "blank_lines": corpus.blank_lines,
             "unknown_stages": sorted(corpus.stages_seen() - KNOWN_STAGES),
             "outcomes": [
                 {"outcome": k, "count": n, "pct": round(p, 2)}

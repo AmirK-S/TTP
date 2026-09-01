@@ -580,9 +580,71 @@ def broken():
     tail(log)
     out["process-suspended"] = log
 
+    # -- R1's fixes, seen from the other side ----------------------------
+    #
+    # These three do not describe an old failure; each is the shape that
+    # would mean a shipped fix had stopped working.
+
+    log = new()
+    # The arbiter says it tore the stream down, and then something else
+    # closes a capture with no capture.start in between — so the stream was
+    # still published and the microphone was still live.
+    log.free("state.transition", {"from": "Idle", "to": "Recording"})
+    log.free("capture.start", {"channels": 1, "device": "AirPods Pro",
+                               "format": "F32", "is_os_default": True,
+                               "preferred": None, "rate": 24000}, ms=40)
+    log.free("state.transition", {"from": "Recording", "to": "Idle"}, ms=60)
+    log.free("capture.orphan_prevented",
+             {"build_ms": 544, "device": "AirPods Pro",
+              "reason": "user_idle"}, ms=6)
+    log.free("capture.stop", {"default_now": "AirPods Pro",
+                              "device": "AirPods Pro",
+                              "device_changed": False, "samples": 480000},
+             ms=9000)
+    # And the two other ways the guarantee can be seen to fail.
+    log.free("degraded", {"error": "arbiter and STATE disagree", "live": True,
+                          "site": "capture.reclaim"}, ms=50)
+    log.free("capture.stop_waited_for_start", {"ms": 3000, "timed_out": True},
+             ms=50)
+    tail(log, from_state=None)
+    out["capture-arbiter-left-live"] = log
+
+    log = new()
+    # Eight sequential secret_reads of one account in one session, none of
+    # which waited on another. This is the pre-fix ladder, in milliseconds.
+    for ms in (62304, 13612, 397600, 97407, 157, 56037, 106, 86):
+        log.free("keychain.slow", {"account": "usage_hmac_secret",
+                                   "lock_wait_ms": 0, "ms": ms,
+                                   "op": "secret_read"}, ms=30000)
+    tail(log, from_state=None)
+    out["keychain-not-single-flighted"] = log
+
+    log = new()
+    healthy(log, "0000-1111")
+    tail(log, from_state=None)
+    out["writer-newline-lost"] = log
+
     for name, log in out.items():
         log.write(os.path.join("broken", f"{name}.log"))
+
+    # writer-newline-lost is the one fixture whose defect is in the file's
+    # physical layout rather than in any record, so it is damaged after
+    # writing: one newline moved from between two records to a line of its
+    # own, which is precisely what two racing write_all calls did.
+    _lose_a_newline(os.path.join(OUT, "broken", "writer-newline-lost.log"))
     return sorted(out)
+
+
+def _lose_a_newline(path: str):
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read().split("\n")
+    for i, line in enumerate(text):
+        if "usage.recorded" in line:
+            text[i] = line + text[i + 1]
+            text[i + 1] = ""          # the stray newline lands here
+            break
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(text))
 
 
 if __name__ == "__main__":

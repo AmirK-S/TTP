@@ -44,6 +44,22 @@ def fired(findings) -> set[str]:
     return {f.invariant for f in findings}
 
 
+def _analyse_text(raw: str):
+    """Analyse a log written for one assertion, in a temp file.
+
+    Fixtures on disk are for invariants that have to keep firing. A shape
+    whose whole point is that it stays SILENT is clearer inline, and cannot
+    be mistaken for a fixture that has stopped working.
+    """
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "t.log")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(raw)
+        corpus = model.load([path])
+        return corpus, run_all(corpus)
+
+
 class TestParser(unittest.TestCase):
     def test_parses_both_record_shapes(self):
         corpus, _ = analyse("clean.log")
@@ -65,18 +81,42 @@ class TestParser(unittest.TestCase):
             self.assertEqual(d.outcome, "pasted")
 
     def test_recovers_records_that_share_a_physical_line(self):
-        """The real log has 20 of these — a newline lost between two writes.
+        """The real log has 28 of these — a newline lost between two writes.
 
         Splitting on the JSON payload's true end rather than on a regex is
         what makes this exact, and immune to a transcript that happens to
         contain a bracketed timestamp.
+
+        The recovery must not INVENT findings — no check may misread a
+        recovered record as a broken dictation — but recovery is no longer
+        silent: `writer-newline-lost` reports the damage itself, which is the
+        whole point of R1's single-buffer fix having a signature. So the
+        expected set is exactly that one invariant and nothing else.
         """
         corpus, findings = analyse("merged_lines.log")
         self.assertEqual(corpus.merged_records, 1)
         self.assertEqual(len(corpus.unparsed), 0)
         self.assertIn("usage.recorded", {e.stage for e in corpus.events})
-        self.assertEqual(fired(findings), set(),
+        self.assertEqual(fired(findings), {"writer-newline-lost"},
                          "recovering a merged line must not invent findings")
+
+    def test_a_clean_file_reports_zero_writer_damage(self):
+        """The counts are reported whether or not they are zero.
+
+        A number that only appears when it is non-zero cannot be read as
+        evidence that the fix is holding.
+        """
+        corpus, findings = analyse("clean.log")
+        self.assertEqual(corpus.merged_records, 0)
+        self.assertEqual(corpus.blank_lines, 0)
+        self.assertNotIn("writer-newline-lost", fired(findings))
+        self.assertIn("0 merged records, 0 blank lines",
+                      render(corpus, findings))
+
+    def test_blank_lines_are_counted_not_merely_skipped(self):
+        corpus, _ = analyse("writer-newline-lost.log")
+        self.assertGreaterEqual(corpus.merged_records, 1)
+        self.assertGreaterEqual(corpus.blank_lines, 1)
 
     def test_dictation_identity_includes_the_session(self):
         """The sequence number in a trace id restarts every session."""
@@ -230,6 +270,50 @@ class TestSpecificShapes(unittest.TestCase):
         self.assertIn("dead-capture-misclassified", fired(findings))
         _, clean_findings = analyse("dead-capture.log")
         self.assertNotIn("dead-capture-misclassified", fired(clean_findings))
+
+    def test_arbiter_closing_a_capture_is_not_read_as_a_leak(self):
+        """The false positive that would discredit the whole R1 check.
+
+        A start refused by the arbiter emits `capture.start` first — the
+        refusal happens after the stream is built — so a capture-stop-missing
+        that only knows about `capture.stop` would report the fix working as
+        an eleven-hour microphone.
+        """
+        raw = (
+            '[2026-09-01 10:00:00.000] [········]          capture.start '
+            '{"device":"AirPods Pro","rate":24000}\n'
+            '[2026-09-01 10:00:00.500] [········]          '
+            'capture.orphan_prevented '
+            '{"reason":"user_idle","device":"AirPods Pro","build_ms":544}\n'
+            '[2026-09-01 10:00:09.000] [········]          capture.start '
+            '{"device":"AirPods Pro","rate":24000}\n'
+            '[2026-09-01 10:00:14.000] [········]          capture.stop '
+            '{"device":"AirPods Pro","samples":240000,'
+            '"device_changed":false}\n'
+            '[2026-09-01 10:00:15.000] [········]          hotkey.tap_armed '
+            '{}\n'
+        )
+        corpus, findings = _analyse_text(raw)
+        self.assertEqual(fired(findings), set(),
+                         "the arbiter doing its job must be silent")
+
+    def test_a_coalesced_keychain_read_is_not_a_regression(self):
+        """lock_wait_ms > 0 is single-flighting working, not a second read."""
+        raw = (
+            '[2026-09-01 10:00:00.000] [········]          keychain.slow '
+            '{"account":"usage_hmac_secret","ms":9500,"op":"secret_read",'
+            '"lock_wait_ms":0}\n'
+            '[2026-09-01 10:00:00.010] [········]          keychain.slow '
+            '{"account":"usage_hmac_secret","ms":9490,"op":"secret_read",'
+            '"lock_wait_ms":9490}\n'
+            '[2026-09-01 10:00:00.020] [········]          keychain.slow '
+            '{"account":"usage_hmac_secret","ms":9480,"op":"secret_read",'
+            '"lock_wait_ms":9480}\n'
+        )
+        _, findings = _analyse_text(raw)
+        self.assertNotIn("keychain-not-single-flighted", fired(findings))
+        self.assertIn("keychain-on-critical-path", fired(findings),
+                      "a slow read is still a slow read")
 
     def test_silent_audio_check_works_without_nonzero_ratio(self):
         """Older traces predate nonzero_ratio; avg_rms == 0 is equivalent."""

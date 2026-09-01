@@ -1,0 +1,6 @@
+[2026-09-01 10:00:00.010] [········]          app.launched {"arch":"aarch64","os":"macos","version":"3.1.6"}
+[2026-09-01 10:00:00.020] [0000-1111] +   900ms dictation.finish {"chars":10,"ms":900,"outcome":"pasted","words":2}
+[2026-09-01 10:00:01.020] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:02.020] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:03.020] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:04.020] [········]          hotkey.tap_armed {}

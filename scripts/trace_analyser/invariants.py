@@ -54,20 +54,52 @@ KNOWN_STAGES = {
     "hotkey.double_tap", "hotkey.hands_free_stop", "state.transition",
     "capture.start_failed", "capture.stop_failed", "dictation.rejected",
     "hotkey.tap_armed", "hotkey.tap_rearmed", "hotkey.tap_rebuilt",
-    "hotkey.tap_abandoned", "hotkey.tap_create_failed",
+    "hotkey.tap_abandoned", "hotkey.tap_create_failed", "hotkey.tap_health",
     "hotkey.stale_fn_cleared", "hotkey.timer_stall", "capture.start",
     "capture.stop", "audio.duration", "audio.signal", "audio.rms",
-    "audio.convert", "whisper.request", "whisper.response", "cleanup",
-    "polish", "polish.decision", "polish.attempt", "polish.outage",
+    "audio.convert", "whisper.request", "whisper.response", "whisper.retry",
+    "cleanup", "polish", "polish.decision", "polish.attempt", "polish.outage",
     "dictionary", "paste.accessibility", "paste.decision", "paste.modifiers",
-    "paste.result", "paste.verify", "clipboard.restore",
-    "correction_window.started", "history.saved", "usage.recorded",
-    "files.cleaned", "ui.completed", "dictation.start", "dictation.finish",
+    "paste.result", "paste.skipped", "paste.verify", "clipboard.restore",
+    "clipboard.write", "correction_window.started", "history.saved",
+    "usage.recorded", "usage.polish_recorded", "files.cleaned", "ui.completed",
+    "dictation.start", "dictation.finish", "settings.snapshot",
+    "filter.hallucination", "filter.glossary_ghost", "filter.prompt_introducer",
+    "vad.armed", "vad.fired", "vad.disarmed",
+    "companion.face", "companion.named", "companion.pill_hidden",
+    "companion.state",
     # docs/trace-api.md's families. Listed so they do not clutter the
     # "not taught about" section; the checks below still ignore what they
     # do not name.
-    "keychain.slow", "keychain.api_key", "degraded",
+    "keychain.slow", "keychain.api_key", "keychain.warmed", "degraded",
+    # R1 (wave 4). The capture arbiter's four vocabulary items, the two
+    # permission families, and the dead-input watchdog. Documented in
+    # docs/tracing.md § "The stages"; `capture-arbiter-left-live` and
+    # `keychain-not-single-flighted` are the checks that key off them.
+    "capture.orphan_prevented", "capture.orphan_reclaimed",
+    "capture.stale_dropped", "capture.stop_waited_for_start",
+    "capture.dead_input_detected",
+    "permission.tcc_reset", "permission.tcc_reset_result",
+    "permission.notify", "permission.notify_failed",
 }
+
+# The four ways a live capture is closed. `capture.stop` is the healthy one;
+# the other three are the capture arbiter (`src-tauri/src/capture_arbiter.rs`)
+# closing a stream nobody is waiting for. A start refused by the arbiter still
+# emits `capture.start` first — the refusal happens after the stream is built —
+# so a check that only knows about `capture.stop` reports the arbiter *working*
+# as a microphone left live. That would be exactly the confident-and-wrong
+# finding this analyser exists not to produce.
+CAPTURE_CLOSED_BY = {
+    "capture.stop", "capture.stop_failed",
+    "capture.orphan_prevented", "capture.orphan_reclaimed",
+    "capture.stale_dropped",
+}
+
+# The arbiter's two "I closed a stream" events. After either one the
+# microphone is off, and the next capture-layer event must be a fresh
+# `capture.start`.
+ARBITER_CLOSED = {"capture.orphan_prevented", "capture.orphan_reclaimed"}
 
 # The keychain account read on the dictation critical path. A read that
 # takes this long is the keychain defect: securityd can block for seconds,
@@ -353,7 +385,12 @@ def check_capture_handoff(corpus: Corpus):
     "The start/stop race: a capture.start that lands after the stop path has "
     "already run leaves a cpal stream open with nobody to close it — the "
     "microphone stays live. Terminated by the next capture.start, an "
-    "app.launched, or the end of the corpus.",
+    "app.launched, or the end of the corpus. Since R1 a capture is also "
+    "closed by the arbiter — capture.orphan_prevented, "
+    "capture.orphan_reclaimed, capture.stale_dropped — and each of those "
+    "counts as a stop here, because the refused start emitted its "
+    "capture.start before the refusal. Reading the arbiter working as a "
+    "microphone left live would be a false positive of the worst kind.",
 )
 def check_capture_stop_missing(corpus: Corpus):
     open_start: Event | None = None
@@ -371,7 +408,7 @@ def check_capture_stop_missing(corpus: Corpus):
                             "open_seconds": round(held, 1)},
                 )
             open_start = e
-        elif e.stage in ("capture.stop", "capture.stop_failed"):
+        elif e.stage in CAPTURE_CLOSED_BY:
             open_start = None
         elif e.stage == "app.launched" and open_start is not None:
             held = (e.ts - open_start.ts).total_seconds()
@@ -398,8 +435,9 @@ def check_stop_without_start(corpus: Corpus):
     for e in corpus.events:
         if e.stage == "capture.start":
             open_start = True
-        elif e.stage in ("capture.stop", "capture.stop_failed"):
-            if not open_start:
+        elif e.stage in CAPTURE_CLOSED_BY:
+            if not open_start and e.stage in ("capture.stop",
+                                              "capture.stop_failed"):
                 yield Finding(
                     "capture-stop-without-start", WARN,
                     f"{e.stage} with no open capture "
@@ -408,6 +446,71 @@ def check_stop_without_start(corpus: Corpus):
                     detail=dict(e.payload),
                 )
             open_start = False
+
+
+@invariant(
+    "capture-arbiter-left-live", ERROR,
+    "When the capture arbiter refuses or reclaims a stream, the microphone "
+    "goes off",
+    "The positive half of the 11-hour-microphone fix, and the only check that "
+    "can say the fix WORKED rather than that the old failure is absent. "
+    "capture-stop-missing catches the old shape — a capture.start with no "
+    "capture.stop ever following. R1's arbiter "
+    "(src-tauri/src/capture_arbiter.rs) is supposed to make that shape "
+    "impossible by refusing a start that lands after its stop concluded "
+    "(capture.orphan_prevented) or tearing down a stream published with "
+    "nobody to collect it (capture.orphan_reclaimed). In both the Rust drops "
+    "the cpal stream before it writes the line, so by the time the line "
+    "exists the microphone is off and the capture slot is empty. Three things "
+    "in the log would say otherwise, and each is reported here: (1) the next "
+    "capture-layer event is another close — a capture.stop, "
+    "capture.stale_dropped or capture.orphan_reclaimed with no capture.start "
+    "between — which means the stream the arbiter said it tore down was still "
+    "published and something else found it; (2) degraded{site:capture.reclaim} "
+    "— the arbiter and audio_capture::STATE disagree about whether a capture "
+    "is live, which is the bookkeeping that the whole guarantee rests on; "
+    "(3) capture.stop_waited_for_start with timed_out:true, the hole the "
+    "3-second settle constant's own comment says cannot happen — not a leak "
+    "by itself, but it means the arbiter is the only thing between the user "
+    "and a hot microphone, so it is reported and the wait is named.",
+)
+def check_arbiter_left_live(corpus: Corpus):
+    for i, e in enumerate(corpus.events):
+        if e.stage in ARBITER_CLOSED:
+            for nxt in corpus.events[i + 1:]:
+                if nxt.stage == "capture.start" or nxt.stage == "app.launched":
+                    break
+                if nxt.stage in CAPTURE_CLOSED_BY:
+                    yield Finding(
+                        "capture-arbiter-left-live", ERROR,
+                        f"{e.stage} on {e.get('device')} claimed to close the "
+                        f"capture, then {nxt.stage} closed one again "
+                        f"{(nxt.ts - e.ts).total_seconds():.1f}s later with no "
+                        f"capture.start between — the stream was still live",
+                        ts=str(e.ts), index=e.index,
+                        detail={"closed_by": e.stage,
+                                "then": nxt.stage,
+                                "device": e.get("device"),
+                                "gap_secs": round(
+                                    (nxt.ts - e.ts).total_seconds(), 1)},
+                    )
+                    break
+        elif e.stage == "degraded" and e.get("site") == "capture.reclaim":
+            yield Finding(
+                "capture-arbiter-left-live", ERROR,
+                f"the Idle backstop could not reclaim: {e.get('error')} — the "
+                f"arbiter and audio_capture::STATE disagree about whether a "
+                f"microphone is live",
+                ts=str(e.ts), index=e.index, detail=dict(e.payload),
+            )
+        elif e.stage == "capture.stop_waited_for_start" and e.get("timed_out"):
+            yield Finding(
+                "capture-arbiter-left-live", ERROR,
+                f"stop gave up waiting for an in-flight start after "
+                f"{e.get('ms')} ms (timed_out) — the settle window is the "
+                f"hole the arbiter now has to cover alone",
+                ts=str(e.ts), index=e.index, detail=dict(e.payload),
+            )
 
 
 @invariant(
@@ -1169,6 +1272,67 @@ def check_keychain(corpus: Corpus):
 
 
 @invariant(
+    "keychain-not-single-flighted", ERROR,
+    "One uncoalesced keychain read per account per session",
+    "The regression check for R1's single-flight keychain, written to catch "
+    "the shape the OLD check-then-act produced rather than the one the fix "
+    "produces. Both keychain caches live for the whole process and "
+    "keychain::read_once now performs at most one call however many callers "
+    "arrive together, so a process pays each account exactly once and at most "
+    "one timed read per (session, account, op) can exist. The defect looked "
+    "like this: one process, one lifetime cache, and EIGHT sequential "
+    "secret_read lines for usage_hmac_secret — 62,304 / 13,612 / 397,600 / "
+    "97,407 / 157 / 56,037 / 106 / 86 ms. Every one of those callers checked "
+    "the cache, released the lock, and then made its own unbounded securityd "
+    "call. lock_wait_ms is the discriminator and it is used as evidence, not "
+    "as a gate: a read that waited behind someone else's (lock_wait_ms > 0) "
+    "is coalescing working and is not counted, while a read with "
+    "lock_wait_ms == 0 — or without the field at all, which is a trace from "
+    "before the fix — did its own call and is. Two or more of those for one "
+    "account in one session is the regression. Caveat worth reading before "
+    "calling a hit a bug: a session here is the span between app.launched "
+    "lines in ONE file, and a dev or test binary writing into the same "
+    "ttp-trace.log contributes its own reads to that span with no launch "
+    "line of its own — which is the same co-tenancy that causes the lost "
+    "newline. Check the timestamps against a build before blaming the app.",
+)
+def check_keychain_single_flight(corpus: Corpus):
+    groups: dict[tuple, list] = {}
+    for e in corpus.events:
+        if e.stage != "keychain.slow":
+            continue
+        op = e.get("op")
+        account = e.get("account")
+        if op is None or account is None:
+            continue  # rule 2: a field we need is absent, so abstain
+        if not str(op).endswith("read"):
+            continue  # a write is not a read and does not single-flight
+        if (e.get("lock_wait_ms") or 0) > 0:
+            continue  # this caller waited for someone else's read: coalesced
+        groups.setdefault((e.session, account, op), []).append(e)
+
+    for (session, account, op), evs in groups.items():
+        if len(evs) < 2:
+            continue
+        ladder = " / ".join(f"{e.get('ms')}" for e in evs[:10])
+        if len(evs) > 10:
+            ladder += " / ..."
+        worst = max((e.get("ms") or 0) for e in evs)
+        yield Finding(
+            "keychain-not-single-flighted", ERROR,
+            f"session {session}: {len(evs)} uncoalesced {op}({account}) "
+            f"reads, none of which waited on another — {ladder} ms "
+            f"(worst {worst / 1000.0:.1f}s). A lifetime cache plus "
+            f"read_once permits exactly one.",
+            ts=str(evs[0].ts), index=evs[0].index,
+            detail={"session": session, "account": account, "op": op,
+                    "reads": len(evs),
+                    "ms": [e.get("ms") for e in evs],
+                    "worst_ms": worst},
+        )
+
+
+@invariant(
     "process-suspended", WARN,
     "The process is not descheduled during a dictation",
     "A hotkey.timer_stall whose skipped window overlaps a dictation in "
@@ -1198,6 +1362,58 @@ def check_stall_spanning_dictation(corpus: Corpus):
                     detail={"gap_ms": s.get("gap_ms"),
                             "dictation_secs": round(hi - lo, 1)},
                 )
+
+
+@invariant(
+    "writer-newline-lost", ERROR,
+    "Every trace record occupies its own line",
+    "The lost-newline race, made visible instead of being silently repaired. "
+    "logging::append_line used to issue two write_all calls — the record, "
+    "then the newline — and two writes are not one append: a second writer "
+    "landing between them produces one physical line carrying two records, "
+    "and a matching blank line where the stray newline went. The corpus "
+    "signature was exact: 20 merged records against exactly 20 blank lines. "
+    "R1 fixed it by framing the record and its newline into one buffer and "
+    "writing that. The parser recovers merged records — it splits on the JSON "
+    "payload's true end — and skips blank lines, which is why this went "
+    "unnoticed for weeks: the evidence was being repaired before anyone could "
+    "read it. So the counts are reported unconditionally in the corpus "
+    "summary, and any occurrence is a finding here. What a hit means: two "
+    "writers were appending to this file concurrently. That is not "
+    "necessarily two threads of one app — an installed build running "
+    "alongside a dev build is the normal state on this machine, and a second "
+    "process is precisely what the single writer thread cannot serialise. "
+    "Read the dates on the merged lines against which builds were running "
+    "before concluding the fix regressed.",
+)
+def check_writer_newline(corpus: Corpus):
+    if not corpus.merged_records and not corpus.blank_lines:
+        return
+    by_source: dict[str, list[Event]] = {}
+    for e in corpus.events:
+        by_source.setdefault(e.source, []).append(e)
+    shared = [evs for evs in by_source.values() if len(evs) > 1]
+    shared.sort(key=lambda evs: evs[0].index)
+    anchor = shared[0][0].index if shared else (
+        corpus.events[0].index if corpus.events else -1)
+    if anchor < 0:
+        return
+    first = shared[0][0] if shared else corpus.events[0]
+    where = ", ".join(evs[0].source for evs in shared[:6])
+    if len(shared) > 6:
+        where += f", ... ({len(shared) - 6} more)"
+    yield Finding(
+        "writer-newline-lost", ERROR,
+        f"{corpus.merged_records} record(s) shared a physical line with "
+        f"another and {corpus.blank_lines} blank line(s) were written — two "
+        f"appends raced and one lost its newline. All records were recovered "
+        f"by the parser; nothing was lost, and that is the problem. "
+        f"First at {where}",
+        ts=str(first.ts), index=anchor,
+        detail={"merged_records": corpus.merged_records,
+                "blank_lines": corpus.blank_lines,
+                "merged_lines": [evs[0].source for evs in shared]},
+    )
 
 
 def run_all(corpus: Corpus, only: set[str] | None = None) -> list[Finding]:
