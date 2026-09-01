@@ -1,7 +1,14 @@
 // TTP - Talk To Paste
 // "What's New" modal — shown once after an app update completes. Token-driven,
-// blurred backdrop, animated entry — replaces the bare bg-black/50 + bg-blue-600
-// modal from before.
+// blurred backdrop, animated entry.
+//
+// The changelog text is a TRANSLATION, read from `whatsNew.notes.<version>` in
+// the locale files. It used to arrive from Rust as a finished string, which
+// meant ~500 lines of user-facing prose lived in `whatsnew.rs` behind a
+// hand-written French dispatcher that could silently serve English — the
+// standing "no user-facing prose in Rust" rule, broken by every entry rather
+// than by one. `check_whats_new` now answers the only question Rust can
+// answer: which version is running, and has this user seen its note.
 
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -10,32 +17,62 @@ import { Sparkles } from 'lucide-react';
 import { Button, Modal } from './ui';
 import { cn } from '../lib/cn';
 
-interface WhatsNewData {
-  version: string;
-  changelog: string;
+/**
+ * The i18next key segment a version's note lives under.
+ *
+ * i18next reads `.` as a path separator, so `whatsNew.notes.3.1.7` would
+ * address three nested objects instead of one entry. `whatsnew.rs::note_key`
+ * performs the same substitution and has its own test; if either side changes
+ * it, one of the two goes red.
+ */
+export function noteKey(version: string): string {
+  return version.replace(/\./g, '-');
 }
 
 export default function WhatsNew() {
-  const { t } = useTranslation();
-  const [data, setData] = useState<WhatsNewData | null>(null);
+  const { t, i18n } = useTranslation();
+  const [version, setVersion] = useState<string | null>(null);
 
   useEffect(() => {
-    invoke<[string, string] | null>('check_whats_new')
-      .then((result) => { if (result) setData({ version: result[0], changelog: result[1] }); })
+    invoke<string | null>('check_whats_new')
+      .then((result) => { if (result) setVersion(result); })
       .catch((err) => console.error('[WhatsNew] Failed to check:', err));
   }, []);
 
-  if (!data) return null;
+  const key = version ? `whatsNew.notes.${noteKey(version)}` : null;
+  // `exists` walks the fallback chain, so a note that is in en.json but not
+  // yet in fr.json still shows (in English) rather than vanishing.
+  const hasNote = key !== null && i18n.exists(key);
+
+  useEffect(() => {
+    if (!version || hasNote) return;
+    // Say it out loud. The 3.1.7 release shipped with no note at all and
+    // nobody noticed for a full version, because the missing case rendered
+    // nothing and reported nothing — indistinguishable from "already seen".
+    // `whatsnew.rs`'s guard test now fails the build on this, and if one ever
+    // gets past it, the console names the version and the key.
+    console.error(
+      `[WhatsNew] v${version} has no changelog entry — add \`whatsNew.notes.${noteKey(version)}\`` +
+      ' to src/i18n/locales/en.json and fr.json',
+    );
+  }, [version, hasNote]);
+
+  // Nothing to show, and deliberately NOT dismissed: writing
+  // `last_seen_version` here would skip the note forever, including after
+  // somebody adds it.
+  if (!version || !key || !hasNote) return null;
+
+  const changelog = t(key);
 
   const dismiss = async () => {
     try { await invoke('dismiss_whats_new'); }
     catch (err) { console.error('[WhatsNew] Failed to dismiss:', err); }
-    setData(null);
+    setVersion(null);
   };
 
-  // Light markdown: bullets, bold (**...**), inline code (`...`). The changelog
-  // is authored by us in Rust as plain text with `- ` bullets; we render it
-  // semantically rather than dumping raw lines.
+  // Light markdown: bullets, bold (**...**), inline code (`...`). The note is
+  // authored in the locale files as plain text whose lines start with `• `;
+  // we render it semantically rather than dumping raw lines.
   const renderLine = (line: string, i: number) => {
     const isBullet = /^\s*[-*•]\s+/.test(line);
     const clean = isBullet ? line.replace(/^\s*[-*•]\s+/, '') : line;
@@ -62,7 +99,7 @@ export default function WhatsNew() {
           <Sparkles className="size-5 text-app-accent" aria-hidden />
         </div>
       }
-      title={t('whatsNew.title', { version: data.version })}
+      title={t('whatsNew.title', { version })}
       subtitle={t('whatsNew.subtitle')}
       footer={
         <Button onClick={dismiss} fullWidth size="lg">
@@ -71,7 +108,7 @@ export default function WhatsNew() {
       }
     >
       <div className="space-y-1.5">
-        {data.changelog.split('\n').map(renderLine)}
+        {changelog.split('\n').map(renderLine)}
       </div>
     </Modal>
   );

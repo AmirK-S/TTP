@@ -15,16 +15,23 @@
 // true this has become a paywall again — see docs/ttp-pro-design.md.
 //
 // ── Storage ─────────────────────────────────────────────────────────────────
-// localStorage('ttp-coat'), mirrored into the inline bootstrap in index.html
-// so the first paint of every window is already wearing the right coat.
+// `Settings.coat` in the Rust store is the SOURCE OF TRUTH.
+// localStorage('ttp-coat') is a MIRROR of it, and nothing else.
 //
-// Deliberately NOT a field on the Rust `Settings` struct. `set_settings` takes
-// a fixed shape and round-trips it through serde; a key the struct does not
-// know about is dropped on the way in, so persisting there would silently lose
-// the choice on the next launch. The existing light/dark preference has the
-// same localStorage mirror for the same anti-flash reason — this rides along
-// with it. If a coat field is ever added to the Rust settings, `readCoat` and
-// `writeCoat` are the two functions that change.
+// It was the other way round until the P1 debt payoff, and the reason is worth
+// keeping: `set_settings` used to round-trip a fixed serde shape, so a key the
+// struct did not know was dropped on the way in and a key the payload omitted
+// was reset to its default. Persisting the coat there would have lost it on
+// the next unrelated toggle. That is fixed at the root —
+// `settings::store::merge_payload` merges the payload over the stored value,
+// keeps unknown keys, and names them in a trace event — so the coat is now an
+// ordinary setting and survives clearing site data.
+//
+// The mirror still exists for one reason: the anti-flash script in index.html
+// runs before any module loads and cannot await an IPC call, so first paint
+// needs a synchronous copy of the answer. `installCoat` repairs the mirror
+// from the backend on every boot, so it can be stale for at most one frame of
+// one launch — the launch immediately after site data is cleared.
 //
 // ── Cross-window ────────────────────────────────────────────────────────────
 // Every window is its own webview and its own JS context. A coat picked in
@@ -107,15 +114,51 @@ export function readCoat(): string {
   }
 }
 
-function writeCoat(id: string): void {
+/**
+ * Update the pre-paint mirror only.
+ *
+ * Absence means "the default", so the key is removed rather than written with
+ * the default's id — the inline script in index.html must not have to know
+ * what the default is called.
+ */
+function writeCoatMirror(id: string): void {
   try {
     if (typeof localStorage === 'undefined') return;
     if (id === DEFAULT_COAT_ID) localStorage.removeItem(STORAGE_KEY);
     else localStorage.setItem(STORAGE_KEY, id);
   } catch {
-    // Some webview configurations disable localStorage. Worst case the coat
-    // resets to `wild` on the next launch, which is a valid app.
+    // Some webview configurations disable localStorage. The coat still
+    // persists — it is in settings.json — the next window just paints `wild`
+    // for a frame before `installCoat` corrects it.
   }
+}
+
+/**
+ * Write the coat to the Rust settings store.
+ *
+ * A PARTIAL payload, deliberately. This module has no business knowing what
+ * the user's shortcut or VAD threshold currently are, and sending a stale copy
+ * of them is exactly how v2.1.2 corrupted settings.json. `set_settings` merges
+ * an incoming object over the stored one, so every field not mentioned here
+ * keeps its value — see `settings::store::merge_payload`.
+ *
+ * `null` rather than the default's id: the two mean the same thing to the
+ * backend, and `null` is the one that survives renaming the default coat.
+ */
+async function persistCoat(id: string): Promise<void> {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('set_settings', { settings: { coat: id === DEFAULT_COAT_ID ? null : id } });
+  } catch {
+    // Not running under Tauri (tests, `?preview=` in a plain browser), or the
+    // save failed. The mirror already has it, so the window is correct and the
+    // next launch is correct; only a site-data wipe would lose it.
+  }
+}
+
+function writeCoat(id: string): void {
+  writeCoatMirror(id);
+  void persistCoat(id);
 }
 
 let shiftTimer: ReturnType<typeof setTimeout> | undefined;
@@ -205,6 +248,50 @@ async function broadcast(id: string): Promise<void> {
 }
 
 /**
+ * Bring this window in line with the source of truth, after first paint.
+ *
+ * Three things happen here and the order matters:
+ *
+ *  1. The backend's coat wins over the mirror. This is what makes the choice
+ *     survive clearing site data: the mirror is empty, `settings.json` is not.
+ *  2. If the backend has no coat but the mirror does, the mirror is migrated
+ *     into the backend — once. That is every user who chose a coat while it
+ *     was a localStorage-only feature.
+ *  3. The licence is consulted LAST and only decides what is painted, never
+ *     what is stored. A lapsed licence must not destroy the choice; it must
+ *     find the same coat waiting when it comes back.
+ *
+ * All of it is deliberately after first paint. A window that blocked on
+ * `get_settings` or `cosmetics_unlocked` before painting would put a cosmetic
+ * on the critical path of showing the UI, and a hung check would be able to
+ * stop TTP from appearing at all.
+ */
+async function reconcile(mirrored: string): Promise<void> {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const [settings, unlocked] = await Promise.all([
+      invoke<{ coat?: string | null } | null>('get_settings'),
+      invoke<boolean>('cosmetics_unlocked'),
+    ]);
+
+    const persisted = settings?.coat ?? null;
+    const chosen = isKnownCoat(persisted) ? (persisted as string) : mirrored;
+
+    if (chosen !== mirrored) writeCoatMirror(chosen);
+    if (!isKnownCoat(persisted) && mirrored !== DEFAULT_COAT_ID) void persistCoat(mirrored);
+
+    const resolved = effectiveCoat(chosen, Boolean(unlocked));
+    if (resolved !== getCoatSnapshot()) {
+      applyCoat(resolved);
+      publish(resolved);
+    }
+  } catch {
+    // No backend to ask. Leave the mirrored coat painted rather than yanking
+    // the user's window back to `wild` because an IPC call failed.
+  }
+}
+
+/**
  * Bootstrap: paint the stored coat, then keep this window in step with the
  * others. Safe to call more than once; safe to call outside Tauri.
  *
@@ -219,24 +306,11 @@ export function installCoat(): void {
   if (installed) return;
   installed = true;
 
-  const stored = readCoat();
-  applyCoat(stored);
-  publish(stored);
+  const mirrored = readCoat();
+  applyCoat(mirrored);
+  publish(mirrored);
 
-  void (async () => {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const unlocked = await invoke<boolean>('cosmetics_unlocked');
-      const resolved = effectiveCoat(stored, Boolean(unlocked));
-      if (resolved !== stored) {
-        applyCoat(resolved);
-        publish(resolved);
-      }
-    } catch {
-      // No backend to ask. Leave the stored coat alone rather than yanking
-      // the user's window back to `wild` because an IPC call failed.
-    }
-  })();
+  void reconcile(mirrored);
 
   void (async () => {
     try {

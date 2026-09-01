@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { mockInvoke } from '../test/setup';
 import {
   COATS,
   COAT_EVENT,
@@ -17,6 +18,7 @@ import {
   applyCoat,
   effectiveCoat,
   getCoatSnapshot,
+  installCoat,
   isKnownCoat,
   readCoat,
   setCoat,
@@ -43,7 +45,13 @@ const shim: Storage = {
 };
 Object.defineProperty(globalThis, 'localStorage', { value: shim, configurable: true });
 
-beforeEach(() => {
+beforeEach(async () => {
+  // Drain anything the previous test left in flight. `persistCoat` reaches
+  // `invoke` through a dynamic import, so its call can land a macrotask after
+  // the test that caused it returned — and would then be counted against the
+  // next one.
+  await new Promise((r) => setTimeout(r, 0));
+  mockInvoke.mockReset();
   __resetCoatsForTest();
   localStorage.clear();
   document.documentElement.removeAttribute('data-ttp-theme');
@@ -146,6 +154,136 @@ describe('applying and persisting', () => {
     setCoat('roan', false); // locked -> resolves to the default
     stop();
     expect(seen).toEqual(['tortie', DEFAULT_COAT_ID]);
+  });
+});
+
+describe('persisting to the settings store', () => {
+  // Debt item 1 in docs/overhaul-status.md. The coat used to live in
+  // `localStorage` and nowhere else, because `set_settings` round-tripped a
+  // fixed serde shape and dropped anything it did not recognise. That is now
+  // fixed on the Rust side (`settings::store::merge_payload`), so the coat can
+  // be what it should always have been: a real setting, with `localStorage`
+  // demoted to the pre-paint mirror the anti-flash script in index.html reads.
+
+  it('sends the chosen coat to the settings store, not only to localStorage', async () => {
+    setCoat('merle', true);
+    await vi.waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('set_settings', { settings: { coat: 'merle' } }),
+    );
+  });
+
+  it('sends a partial payload and relies on the backend merge', async () => {
+    // The whole payload would need every other setting, which this module has
+    // no business knowing — and sending a stale copy of them is how v2.1.2
+    // corrupted settings.json. `merge_payload` on the Rust side keeps every
+    // field this object does not mention.
+    setCoat('roan', true);
+    await vi.waitFor(() => expect(mockInvoke).toHaveBeenCalled());
+    const [, args] = mockInvoke.mock.calls.at(-1)!;
+    expect(Object.keys((args as { settings: object }).settings)).toEqual(['coat']);
+  });
+
+  it('clears the stored coat rather than writing the default id', async () => {
+    // `null` and "wild" mean the same thing to the backend; `null` is the one
+    // that lets the default be renamed without migrating anybody's file.
+    setCoat(DEFAULT_COAT_ID, true);
+    await vi.waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('set_settings', { settings: { coat: null } }),
+    );
+  });
+
+  it('never persists a locked coat', async () => {
+    setCoat('merle', false);
+    await vi.waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('set_settings', { settings: { coat: null } }),
+    );
+  });
+});
+
+describe('booting a window', () => {
+  // `installCoat` runs in every window, before React. The invariants:
+  // paint immediately from the mirror, then let the backend correct it.
+
+  const called = (cmd: string) => mockInvoke.mock.calls.some((c) => c[0] === cmd);
+  const flush = () => vi.waitFor(() => expect(called('cosmetics_unlocked')).toBe(true));
+
+  const backend = (settings: unknown, unlocked: boolean) => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_settings') return Promise.resolve(settings);
+      if (cmd === 'cosmetics_unlocked') return Promise.resolve(unlocked);
+      return Promise.resolve(undefined);
+    });
+  };
+
+  it('restores a coat that localStorage has never heard of', async () => {
+    // The literal debt: the user cleared site data, or is on a fresh webview
+    // profile. Before this, their coat was simply gone.
+    backend({ coat: 'tortie' }, true);
+    installCoat();
+    expect(document.documentElement.getAttribute('data-ttp-theme')).toBe(DEFAULT_COAT_ID);
+    await flush();
+    await vi.waitFor(() => {
+      expect(document.documentElement.getAttribute('data-ttp-theme')).toBe('tortie');
+    });
+    // and the mirror is repaired, so the NEXT window opens without a flash
+    expect(localStorage.getItem('ttp-coat')).toBe('tortie');
+    expect(getCoatSnapshot()).toBe('tortie');
+  });
+
+  it('lets the backend overrule a stale mirror', async () => {
+    localStorage.setItem('ttp-coat', 'roan');
+    backend({ coat: 'merle' }, true);
+    installCoat();
+    await flush();
+    await vi.waitFor(() => {
+      expect(document.documentElement.getAttribute('data-ttp-theme')).toBe('merle');
+    });
+    expect(localStorage.getItem('ttp-coat')).toBe('merle');
+  });
+
+  it('migrates a localStorage-only choice into the settings store, once', async () => {
+    // Every user who picked a coat before it was a real setting. Their choice
+    // exists only in the mirror; the first launch after this change moves it.
+    localStorage.setItem('ttp-coat', 'piebald');
+    backend({ coat: null }, true);
+    installCoat();
+    await flush();
+    await vi.waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('set_settings', { settings: { coat: 'piebald' } });
+    });
+    expect(document.documentElement.getAttribute('data-ttp-theme')).toBe('piebald');
+  });
+
+  it('does not write anything back when there is nothing to migrate', async () => {
+    backend({ coat: null }, true);
+    installCoat();
+    await flush();
+    expect(mockInvoke).not.toHaveBeenCalledWith('set_settings', expect.anything());
+  });
+
+  it('paints the house coat when the stored one is not owned', async () => {
+    localStorage.setItem('ttp-coat', 'merle');
+    backend({ coat: 'merle' }, false);
+    installCoat();
+    await flush();
+    await vi.waitFor(() => {
+      expect(document.documentElement.getAttribute('data-ttp-theme')).toBe(DEFAULT_COAT_ID);
+    });
+    // The choice itself is NOT destroyed — a licence that lapses and comes
+    // back must find the same coat waiting, not a reset one.
+    expect(localStorage.getItem('ttp-coat')).toBe('merle');
+    expect(mockInvoke).not.toHaveBeenCalledWith('set_settings', expect.anything());
+  });
+
+  it('keeps the mirror-painted coat when the backend cannot be reached', async () => {
+    // A window that yanked itself back to `wild` because an IPC call failed
+    // would be a cosmetic taking the app down with it.
+    localStorage.setItem('ttp-coat', 'merle');
+    mockInvoke.mockRejectedValue(new Error('no backend'));
+    installCoat();
+    await vi.waitFor(() => expect(mockInvoke).toHaveBeenCalled());
+    expect(document.documentElement.getAttribute('data-ttp-theme')).toBe('merle');
+    expect(localStorage.getItem('ttp-coat')).toBe('merle');
   });
 });
 

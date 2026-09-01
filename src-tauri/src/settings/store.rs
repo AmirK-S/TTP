@@ -116,6 +116,38 @@ pub struct Settings {
     /// rather than clearing it.
     #[serde(default)]
     pub companion_face_enabled_at: Option<i64>,
+    /// Which coat the app wears — the Pro aesthetic's palette, type stack,
+    /// radius and motion character, all selected together. `None` means the
+    /// house coat (`wild`).
+    ///
+    /// Stored opaquely on purpose. The catalogue lives in
+    /// `src/lib/theme-coats.ts` next to `src/styles/coats.css`, which is the
+    /// only place that can actually implement a coat, and `effectiveCoat`
+    /// there falls back to `wild` for any id it does not recognise — the same
+    /// silent, total degradation `cosmetics::effective_sound_pack` gives
+    /// sounds. A second copy of the id list here would be a second thing to
+    /// forget to update, and it would let Rust reject a coat the frontend can
+    /// paint perfectly well.
+    ///
+    /// This used to live in `localStorage` alone, which meant it did not
+    /// survive clearing site data. `localStorage` is still written, but now as
+    /// a MIRROR — the anti-flash script in `index.html` runs before any of our
+    /// code and cannot await an IPC call, so it needs a synchronous copy. This
+    /// field is the source of truth; the mirror is repaired from it on boot.
+    #[serde(default)]
+    pub coat: Option<String>,
+    /// Every key in `settings.json` that this build has no field for.
+    ///
+    /// Not decoration — see the `payload_merge_tests` module for the failure
+    /// this closes. Without it, a settings file written by a newer binary
+    /// loses its new settings the first time an older binary saves, and a
+    /// caller that misspells a field is told nothing at all.
+    ///
+    /// `flatten` means these are spliced back in at the top level on write, so
+    /// they round-trip byte-for-byte in value rather than being parked under a
+    /// wrapper key that a newer build would then have to know about.
+    #[serde(flatten)]
+    pub unknown: serde_json::Map<String, serde_json::Value>,
 }
 
 fn default_vad_silence_secs() -> u32 {
@@ -165,6 +197,8 @@ impl Default for Settings {
             companion_face_enabled: false,
             companion_name: None,
             companion_face_enabled_at: None,
+            coat: None,
+            unknown: serde_json::Map::new(),
         }
     }
 }
@@ -521,8 +555,95 @@ pub(crate) fn write_settings_atomic(path: &std::path::Path, settings: &Settings)
     Ok(())
 }
 
+/// The field names this build's `Settings` struct actually has.
+///
+/// Derived by serialising a default rather than written out by hand: a literal
+/// list would go stale the moment somebody added a field, and the machinery
+/// that exists to report unknown fields would then report every new field as
+/// unknown. `unknown` is `flatten`ed and empty in a default, so it contributes
+/// no name of its own.
+fn known_field_names() -> std::collections::BTreeSet<String> {
+    match serde_json::to_value(Settings::default()) {
+        Ok(serde_json::Value::Object(map)) => map.keys().cloned().collect(),
+        _ => std::collections::BTreeSet::new(),
+    }
+}
+
+/// Merge an incoming settings payload over the stored settings.
+///
+/// Returns the merged value together with the names of the keys the caller
+/// sent that this build does not recognise. Those keys are NOT discarded —
+/// they ride in `Settings::unknown` and are written back out — but they are
+/// named so the caller's mistake, or the newer build's new setting, is
+/// visible instead of inferred.
+///
+/// Merge semantics, stated because they are the whole point:
+///   - a key the payload omits keeps its stored value,
+///   - a key the payload sets to `null` clears the field, so "unset this" is
+///     still expressible and is distinct from "I did not mention it",
+///   - a key of the wrong type is an error, not a shrug.
+fn merge_payload(
+    stored: &Settings,
+    incoming: &serde_json::Value,
+) -> Result<(Settings, Vec<String>), String> {
+    let incoming = incoming
+        .as_object()
+        .ok_or_else(|| "settings payload must be a JSON object".to_string())?;
+
+    let mut merged = match serde_json::to_value(stored) {
+        Ok(serde_json::Value::Object(map)) => map,
+        Ok(_) => return Err("stored settings did not serialise to an object".to_string()),
+        Err(e) => return Err(format!("Failed to read stored settings: {}", e)),
+    };
+
+    let known = known_field_names();
+    let mut unknown = Vec::new();
+    for (key, value) in incoming {
+        if !known.contains(key.as_str()) {
+            unknown.push(key.clone());
+        }
+        merged.insert(key.clone(), value.clone());
+    }
+
+    let settings: Settings = serde_json::from_value(serde_json::Value::Object(merged))
+        .map_err(|e| format!("Failed to apply settings payload: {}", e))?;
+    Ok((settings, unknown))
+}
+
+/// Say out loud that a field arrived that this build does not know.
+///
+/// Preserving it silently would be the same anti-pattern in a nicer coat: the
+/// data would survive, and a typo'd field name — `hide_pill_when_idle` for
+/// `hide_pill_when_inactive` — would still look like a save that worked. So it
+/// is both: preserved AND reported, with the field named, because a count
+/// tells you something is wrong and nothing about what.
+fn report_unknown_fields(unknown: &[String]) {
+    for field in unknown {
+        crate::trace::event(
+            "settings.unknown_field",
+            serde_json::json!({ "field": field, "preserved": true }),
+        );
+        crate::logging::log_warn(&format!(
+            "set_settings received a field this build does not know: `{}`. \
+             It has been preserved in settings.json, not applied. Either it \
+             comes from a newer build or it is a misspelt field name.",
+            field
+        ));
+    }
+}
+
+/// Persist a settings payload.
+///
+/// Takes raw JSON rather than a `Settings` on purpose. Deserialising the
+/// command argument straight into the struct — which is what this did until
+/// the P1 debt payoff — applied two silent edits to the caller's intent: an
+/// unrecognised key vanished, and a key the caller simply did not mention was
+/// reset to its default. The second is what kept the coat out of this store
+/// entirely (`src/lib/theme-coats.ts` names the reason), and the first is why
+/// `companion_face_enabled_at` needed hand-written carry-forward code that
+/// every future field would have needed too.
 #[tauri::command]
-pub fn set_settings(settings: Settings, app: AppHandle) -> Result<(), String> {
+pub fn set_settings(settings: serde_json::Value, app: AppHandle) -> Result<(), String> {
     let path = get_settings_path().ok_or("Could not determine config directory")?;
 
     // Read the outgoing value before it is overwritten. `get_settings()` is
@@ -530,11 +651,18 @@ pub fn set_settings(settings: Settings, app: AppHandle) -> Result<(), String> {
     // exactly what this call is about to replace.
     let previous = get_settings();
 
+    let (mut settings, unknown) = merge_payload(&previous, &settings)?;
+    report_unknown_fields(&unknown);
+
     // Own the timestamp here rather than in the UI. The frontend does not
     // know this field exists and every payload it sends omits it, so the
     // rules are: carry the stored value forward while the face stays on,
     // stamp on the transition to on, clear on the transition to off.
-    let mut settings = settings;
+    //
+    // The merge above already carries an omitted field forward, so
+    // `incoming` and `stored` are now the same value in the common case. The
+    // rule is kept because the transitions — stamp on enable, clear on
+    // disable — are not merge behaviour and still have to be applied.
     settings.companion_face_enabled_at = resolve_face_timestamp(
         settings.companion_face_enabled,
         settings.companion_face_enabled_at,
@@ -862,5 +990,260 @@ mod tests {
         store_cache(Settings::default());
         invalidate_cache();
         assert!(read_cached().is_none(), "after invalidate_cache, read returns None");
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The silent drop.
+//
+// `set_settings` used to take a `Settings` directly, which meant serde applied
+// two silent transformations to whatever the frontend sent:
+//
+//   1. A key the struct has never heard of was DISCARDED. That is the reason
+//      `src/lib/theme-coats.ts` refused to persist the coat here at all and
+//      routed around the settings store into `localStorage` instead — the
+//      comment at the top of that file says so in as many words.
+//   2. A key the struct DOES know but the payload omitted was reset to its
+//      `#[serde(default)]`. The frontend's `Settings` type does not carry
+//      `companion_face_enabled_at`, and it does not carry `coat`, so every
+//      unrelated toggle in the Settings window would have wiped both. The
+//      timestamp survived only because `set_settings` carried it forward by
+//      hand, one field at a time — a fix that has to be remembered again for
+//      every field added after it.
+//
+// Both are the polite-degradation shape `docs/engineering-standards.md` was
+// written about: the store quietly did something other than what it was asked,
+// returned `Ok(())`, and left no record.
+//
+// The replacement merges the incoming object over the stored one:
+//   - an omitted key keeps its stored value (no per-field carry-forward),
+//   - an explicit `null` still clears a nullable field, so "unset this" is
+//     expressible and is distinct from "I did not mention it",
+//   - an unknown key is preserved through `#[serde(flatten)]` AND named in a
+//     trace event, so a newer build's setting written by a newer binary is not
+//     destroyed by an older one, and nobody has to guess where it went.
+// ─────────────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+mod payload_merge_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn merged(stored: &Settings, incoming: serde_json::Value) -> (Settings, Vec<String>) {
+        merge_payload(stored, &incoming).expect("payload should merge")
+    }
+
+    /// What the Settings window actually sends: every field its TypeScript
+    /// `Settings` interface knows about, and nothing else.
+    fn frontend_payload() -> serde_json::Value {
+        json!({
+            "ai_polish_enabled": true,
+            "shortcut": "FnKey",
+            "fn_key_enabled": true,
+            "telemetry_enabled": false,
+            "hands_free_mode": false,
+            "hide_pill_when_inactive": false,
+            "autostart_enabled": false,
+            "history_enabled": true,
+            "use_beta_channel": false,
+            "vad_auto_stop_enabled": false,
+            "vad_silence_secs": 3,
+            "audio_device_name": null,
+            "transcription_language": null,
+            "diagnostics_enabled": false,
+            "sound_pack": "bowl",
+            "companion_face_enabled": true,
+            "companion_name": "Bip",
+            "language": "fr",
+            "theme": "dark"
+        })
+    }
+
+    #[test]
+    fn an_omitted_field_keeps_its_stored_value() {
+        // THE COAT BUG. The frontend's payload has no `coat` key, because its
+        // TypeScript interface has no such field. Under the old
+        // `settings: Settings` signature this deserialised to `None` and the
+        // user's coat was gone the next time they toggled anything at all.
+        let mut stored = Settings::default();
+        stored.coat = Some("merle".to_string());
+        stored.companion_face_enabled_at = Some(1_756_000_000);
+
+        let (out, unknown) = merged(&stored, frontend_payload());
+
+        assert_eq!(out.coat.as_deref(), Some("merle"));
+        assert_eq!(out.companion_face_enabled_at, Some(1_756_000_000));
+        assert!(unknown.is_empty(), "the frontend payload is all known fields");
+        // and the fields it did send are applied
+        assert_eq!(out.sound_pack.as_deref(), Some("bowl"));
+        assert_eq!(out.language.as_deref(), Some("fr"));
+    }
+
+    #[test]
+    fn an_explicit_null_still_clears_a_field() {
+        // "Leave it alone" and "unset it" must stay distinguishable, or the
+        // merge trades one silent failure for another: a user who picks the
+        // system default audio device again could never get back to `None`.
+        let mut stored = Settings::default();
+        stored.audio_device_name = Some("Yeti".to_string());
+        stored.coat = Some("roan".to_string());
+
+        let (out, _) = merged(&stored, json!({ "audio_device_name": null }));
+        assert_eq!(out.audio_device_name, None);
+        assert_eq!(out.coat.as_deref(), Some("roan"), "untouched by an unrelated clear");
+    }
+
+    #[test]
+    fn a_field_the_struct_does_not_know_survives_the_round_trip() {
+        // The scenario is ordinary here: an installed 3.1.7 build and a dev
+        // build share one settings.json (see docs/overhaul-status.md on the
+        // lost-newline defect — "an installed build alongside a dev build is
+        // the normal state"). The older binary must not eat the newer one's
+        // settings.
+        let stored = Settings::default();
+        let (out, unknown) = merged(&stored, json!({ "coat": "piebald", "gait": "ambling" }));
+
+        assert_eq!(unknown, vec!["gait".to_string()]);
+        let written = serde_json::to_value(&out).expect("serialises");
+        assert_eq!(
+            written.get("gait").and_then(|v| v.as_str()),
+            Some("ambling"),
+            "an unrecognised field was dropped on the way back out"
+        );
+        // It is spliced in at the top level, not parked under a wrapper key.
+        assert!(written.get("unknown").is_none());
+    }
+
+    #[test]
+    fn an_unknown_field_already_on_disk_is_carried_by_a_save_that_never_mentions_it() {
+        let mut stored = Settings::default();
+        stored.unknown.insert("gait".to_string(), json!("ambling"));
+
+        let (out, unknown) = merged(&stored, frontend_payload());
+        assert!(unknown.is_empty(), "it came from disk, not from this caller");
+        assert_eq!(out.unknown.get("gait"), Some(&json!("ambling")));
+    }
+
+    #[test]
+    fn every_unknown_field_is_named_so_the_trace_can_say_which() {
+        // A count would tell you something went wrong and nothing about what.
+        let stored = Settings::default();
+        let (_, unknown) = merged(
+            &stored,
+            json!({ "gait": 1, "withers": 2, "dentition": 3 }),
+        );
+        let mut sorted = unknown.clone();
+        sorted.sort();
+        assert_eq!(sorted, vec!["dentition", "gait", "withers"]);
+    }
+
+    #[test]
+    fn a_payload_that_is_not_an_object_is_refused_rather_than_ignored() {
+        let stored = Settings::default();
+        let err = merge_payload(&stored, &json!(["not", "an", "object"]))
+            .expect_err("an array is not a settings payload");
+        assert!(err.contains("object"), "the error names the problem: {}", err);
+    }
+
+    #[test]
+    fn a_payload_with_a_wrongly_typed_field_fails_loudly() {
+        // Previously this deserialised the whole command argument and Tauri
+        // rejected the call; the merge must not turn it into a shrug.
+        let stored = Settings::default();
+        assert!(merge_payload(&stored, &json!({ "vad_silence_secs": "three" })).is_err());
+    }
+
+    #[test]
+    fn the_known_field_list_is_derived_from_the_struct_and_not_hand_written() {
+        // If this were a literal list it would go stale the first time
+        // somebody added a field, and every new field would then be reported
+        // as unknown by the very machinery meant to catch unknown fields.
+        let names = known_field_names();
+        assert!(names.contains("coat"));
+        assert!(names.contains("companion_face_enabled_at"));
+        assert!(names.contains("ai_polish_enabled"));
+        assert!(!names.contains("unknown"), "the catch-all map is not itself a field");
+    }
+}
+
+#[cfg(test)]
+mod coat_persistence_tests {
+    use super::*;
+    use std::fs;
+
+    fn temp_path(label: &str) -> std::path::PathBuf {
+        let mut p = std::env::temp_dir();
+        p.push(format!(
+            "ttp_coat_test_{}_{}_{}",
+            label,
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        fs::create_dir_all(&p).expect("create tempdir");
+        p.join("settings.json")
+    }
+
+    #[test]
+    fn the_coat_survives_a_write_and_a_read() {
+        // The whole point of debt item 1: a coat in localStorage does not
+        // survive clearing site data. A coat in settings.json does.
+        let path = temp_path("roundtrip");
+        let mut s = Settings::default();
+        s.coat = Some("tortie".to_string());
+        write_settings_atomic(&path, &s).expect("write");
+
+        let back: Settings =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).expect("parse");
+        assert_eq!(back.coat.as_deref(), Some("tortie"));
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_settings_file_written_before_coats_existed_still_loads() {
+        // Every existing user's settings.json. If this failed, the upgrade
+        // would take everyone through `recover_from_backup` to defaults.
+        let json = r#"{
+            "ai_polish_enabled": true,
+            "shortcut": "FnKey",
+            "fn_key_enabled": true
+        }"#;
+        let s: Settings = serde_json::from_str(json).expect("an old file must still parse");
+        assert_eq!(s.coat, None);
+        assert!(s.unknown.is_empty());
+    }
+
+    #[test]
+    fn an_unknown_field_on_disk_is_not_erased_by_writing_the_file_back() {
+        let path = temp_path("preserve");
+        let json = r#"{
+            "ai_polish_enabled": true,
+            "shortcut": "FnKey",
+            "fn_key_enabled": true,
+            "gait": "ambling"
+        }"#;
+        let s: Settings = serde_json::from_str(json).expect("parse");
+        assert_eq!(s.unknown.get("gait"), Some(&serde_json::json!("ambling")));
+
+        write_settings_atomic(&path, &s).expect("write");
+        let raw = fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("\"gait\""), "written file lost the field: {}", raw);
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn the_coat_is_stored_opaquely_and_validated_where_the_catalogue_lives() {
+        // Rust does not keep a second copy of the coat catalogue. The ids live
+        // in `src/lib/theme-coats.ts` (COATS) next to the CSS that implements
+        // them, and `effectiveCoat` falls back to `wild` for anything it does
+        // not recognise, exactly as `cosmetics::effective_sound_pack` does for
+        // packs. Storing an id Rust cannot vet is therefore fine and must not
+        // become an error — a hand-edited file should wear the house coat, not
+        // fail to load.
+        let s: Settings = serde_json::from_str(r#"{
+            "ai_polish_enabled": true,
+            "shortcut": "FnKey",
+            "fn_key_enabled": true,
+            "coat": "gingham"
+        }"#).expect("an unknown coat id is data, not a parse error");
+        assert_eq!(s.coat.as_deref(), Some("gingham"));
     }
 }

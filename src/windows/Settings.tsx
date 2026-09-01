@@ -583,16 +583,45 @@ export function Settings() {
   // The Companion catalogue. Locked packs are listed on purpose — you should
   // be able to hear what you might buy, and a list that hides its contents
   // cannot tempt anyone.
-  const [soundPacks, setSoundPacks] = useState<SoundPack[]>([]);
-  const [cosmeticsUnlocked, setCosmeticsUnlocked] = useState(false);
+  //
+  // THREE STATES, NOT TWO. `null` means "the answer has not arrived"; a value
+  // means the backend answered; `companionError` means it could not be
+  // reached. These used to collapse into two: a failed `list_sound_packs`
+  // called `setSoundPacks([])` and a failed `cosmetics_unlocked` called
+  // `setCosmeticsUnlocked(false)`, so an IPC failure was indistinguishable
+  // from an honest empty catalogue and from not having bought anything. The
+  // panel then hid itself on `packs.length === 0`. A paying customer whose
+  // IPC call failed was shown, with no error anywhere, the exact UI that says
+  // "you do not own this" — the app accusing its own buyer of not paying.
+  const [soundPacks, setSoundPacks] = useState<SoundPack[] | null>(null);
+  const [cosmeticsUnlocked, setCosmeticsUnlocked] = useState<boolean | null>(null);
+  const [companionError, setCompanionError] = useState(false);
   const [nameDraft, setNameDraft] = useState(companionName);
 
   useEffect(() => { setNameDraft(companionName); }, [companionName]);
 
-  useEffect(() => {
-    invoke<SoundPack[]>('list_sound_packs').then(setSoundPacks).catch(() => setSoundPacks([]));
-    invoke<boolean>('cosmetics_unlocked').then(setCosmeticsUnlocked).catch(() => setCosmeticsUnlocked(false));
-  }, [isPro]);
+  const loadCompanion = useCallback(() => {
+    setCompanionError(false);
+    // Both calls must land before the panel can say anything true: the
+    // catalogue without the entitlement would paint every paid pack as
+    // locked. Either failing is one failure, reported once.
+    Promise.all([
+      invoke<SoundPack[]>('list_sound_packs'),
+      invoke<boolean>('cosmetics_unlocked'),
+    ])
+      .then(([packs, unlocked]) => {
+        setSoundPacks(packs);
+        setCosmeticsUnlocked(unlocked);
+      })
+      .catch((e) => {
+        console.error('companion:', e);
+        setSoundPacks(null);
+        setCosmeticsUnlocked(null);
+        setCompanionError(true);
+      });
+  }, []);
+
+  useEffect(() => { loadCompanion(); }, [isPro, loadCompanion]);
 
   const handleSelectPack = useCallback(async (id: string) => {
     try { await saveSettings({ sound_pack: id }); } catch (e) { console.error('sound_pack:', e); }
@@ -717,12 +746,15 @@ export function Settings() {
                 do. This is an appearance setting. The free coat is the default
                 and it is first. */}
             <SettingsSection title={t('settings.appearance.title')} description={t('settings.appearance.desc')}>
+              {/* `=== true`: while the entitlement is unknown, show the free
+                  coat rather than guessing in either direction. CoatPicker
+                  belongs to another workstream and keeps its boolean. */}
               <CoatPicker
                 value={coat}
-                unlocked={cosmeticsUnlocked}
+                unlocked={cosmeticsUnlocked === true}
                 disabled={loading}
                 onSelect={(id) => {
-                  setCoat(id, cosmeticsUnlocked, { animate: true });
+                  setCoat(id, cosmeticsUnlocked === true, { animate: true });
                   trackEvent('setting_changed', { setting_name: 'coat', new_value: id });
                 }}
               />
@@ -995,6 +1027,8 @@ export function Settings() {
                     t={t}
                     packs={soundPacks}
                     unlocked={cosmeticsUnlocked}
+                    error={companionError}
+                    onRetry={loadCompanion}
                     selected={soundPack}
                     onSelect={handleSelectPack}
                     faceEnabled={companionFaceEnabled}
@@ -1039,6 +1073,8 @@ export function Settings() {
                     t={t}
                     packs={soundPacks}
                     unlocked={cosmeticsUnlocked}
+                    error={companionError}
+                    onRetry={loadCompanion}
                     selected={soundPack}
                     onSelect={handleSelectPack}
                     faceEnabled={companionFaceEnabled}
@@ -1317,12 +1353,16 @@ interface SoundPack {
  * backend too, so this UI is a courtesy, not the enforcement.
  */
 function CompanionPanel({
-  t, packs, unlocked, selected, onSelect, faceEnabled, onFaceToggle,
+  t, packs, unlocked, error, onRetry, selected, onSelect, faceEnabled, onFaceToggle,
   nameDraft, setNameDraft, commitName, loading,
 }: {
   t: (k: string) => string;
-  packs: SoundPack[];
-  unlocked: boolean;
+  /** `null` = not loaded yet. `[]` = the backend really has no packs. */
+  packs: SoundPack[] | null;
+  /** `null` = entitlement unknown. Never render a lock on an unknown. */
+  unlocked: boolean | null;
+  error: boolean;
+  onRetry: () => void;
   selected: string;
   onSelect: (id: string) => void;
   faceEnabled: boolean;
@@ -1332,14 +1372,44 @@ function CompanionPanel({
   commitName: () => void;
   loading: boolean;
 }) {
-  if (packs.length === 0) return null;
+  // The failure is louder than the empty state on purpose, and it says what it
+  // is: a broken call, not a verdict on what the user owns.
+  if (error) {
+    return (
+      <div className="mb-5">
+        <p className="text-[12px] font-medium text-app-text mb-2">{t('settings.companion.soundsLabel')}</p>
+        <Banner
+          tone="warning"
+          title={t('error.companion_unreachable_title')}
+          action={
+            <button
+              type="button"
+              onClick={onRetry}
+              className="text-[12px] font-medium text-app-accent hover:underline"
+            >
+              {t('error.retry')}
+            </button>
+          }
+        >
+          {t('error.companion_unreachable')}
+        </Banner>
+      </div>
+    );
+  }
+
+  // Not loaded yet, or genuinely empty. Neither is worth a message.
+  if (packs === null || packs.length === 0) return null;
 
   return (
     <div className="mb-5">
       <p className="text-[12px] font-medium text-app-text mb-2">{t('settings.companion.soundsLabel')}</p>
       <div className="space-y-1.5 mb-4">
         {packs.map((pack) => {
-          const locked = !pack.free && !unlocked;
+          // `unlocked === true`, not `!unlocked`: an unknown entitlement must
+          // not be rendered as a lock. Unknown cannot reach here today (the
+          // error branch above catches it) and this keeps it that way if a
+          // future caller passes a partial load.
+          const locked = !pack.free && unlocked !== true;
           return (
             // The preview control is a SIBLING of the RadioOption, not its
             // `trailing`. RadioOption renders a <button>, so anything
@@ -1411,12 +1481,12 @@ function CompanionPanel({
           <Toggle
             enabled={faceEnabled}
             onChange={onFaceToggle}
-            disabled={!unlocked || loading}
+            disabled={unlocked !== true || loading}
           />
         }
       />
 
-      {faceEnabled && unlocked && (
+      {faceEnabled && unlocked === true && (
         <div className="mt-3">
           <p className="text-[12px] font-medium text-app-text mb-1.5">{t('settings.companion.nameLabel')}</p>
           <Input
