@@ -18,9 +18,13 @@ interface Props {
   /** Unique within the page — the sheen gradient needs its own id. */
   uid: string;
   class?: string;
+  /** Let the layout's shared driver animate this one. Faces that belong to a
+   *  sequence (the hero demo, the gallery) are mounted by their own section
+   *  instead, because something else has to decide when they react. */
+  auto?: boolean;
 }
 
-const { variety, size = 16, uid, class: className = '' } = Astro.props;
+const { variety, size = 16, uid, class: className = '', auto = false } = Astro.props;
 const v = FACE_VARIETIES[variety];
 const centres = eyeCentres(v);
 /* `shut` is drawn closed, because that is what it is when nothing is
@@ -30,7 +34,7 @@ const shape = v.closedAtIdle ? v.shut : v.open;
 const gradId = `sheen-${uid}`;
 ---
 
-<span class={`face inline-flex shrink-0 items-center ${className}`} data-face={variety} aria-hidden="true">
+<span class={`face inline-flex shrink-0 items-center ${className}`} data-face={variety} data-face-auto={auto ? "" : undefined} aria-hidden="true">
   <span class="breath">
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
       {v.gloss > 0 && (

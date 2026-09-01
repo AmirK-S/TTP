@@ -8,17 +8,18 @@ const lastUpdated = '2026-05-06';
 
 <Layout title="Politique de Confidentialité: TTP">
   <Navbar />
-  <main class="mx-auto max-w-3xl px-6 pb-16 pt-32 text-zinc-700 dark:text-slate-200">
-    <h1 class="mb-2 text-4xl font-bold text-zinc-900 dark:text-white">Politique de Confidentialité</h1>
-    <p class="mb-8 text-sm text-zinc-500 dark:text-slate-500">Dernière mise à jour : {lastUpdated}</p>
+  <main class="wrap-narrow pb-20 pt-16 text-muted">
+    <h1 class="display mb-2 text-[clamp(2rem,1.4rem+1.8vw,2.75rem)] text-text">Politique de Confidentialité</h1>
+    <p class="mono mb-10 text-xs text-faint">Dernière mise à jour : {lastUpdated}</p>
 
     <p class="mb-6">
-      TTP (Talk To Paste) est une application de bureau de transcription vocale qui s'exécute entièrement sur votre ordinateur.
-      Cette page décrit les données traitées par l'application et celles qui quittent votre machine.
+      TTP (Talk To Paste) est une application de bureau de transcription vocale. La transcription n'est pas locale :
+      chaque enregistrement est envoyé à Groq avec une clé API qui vous appartient. Cette page décrit
+      précisément ce qui reste sur votre ordinateur et ce qui en sort.
     </p>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">Ce qui reste sur votre ordinateur</h2>
-    <ul class="mb-6 list-disc space-y-2 pl-6">
+    <h2 class="display mb-3 mt-12 text-xl text-text">Ce qui reste sur votre ordinateur</h2>
+    <ul class="mb-6 list-disc space-y-2 pl-6 marker:text-faint">
       <li><strong>Enregistrements audio</strong>: conservés temporairement comme sauvegarde pendant la transcription, puis supprimés automatiquement.</li>
       <li><strong>Historique des transcriptions</strong>: stocké localement pour vous permettre de copier les résultats passés. Vous pouvez désactiver l'historique ou l'effacer dans les Paramètres à tout moment.</li>
       <li><strong>Entrées du dictionnaire</strong>: corrections que vous avez apprises à TTP. En local uniquement.</li>
@@ -27,15 +28,15 @@ const lastUpdated = '2026-05-06';
       <li><strong>Clé API Groq</strong>: stockée dans le Trousseau d'accès macOS ou le Gestionnaire d'identifiants Windows. Jamais écrite en clair sur le disque.</li>
     </ul>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">Ce qui est envoyé à des tiers</h2>
-    <ul class="mb-6 list-disc space-y-2 pl-6">
+    <h2 class="display mb-3 mt-12 text-xl text-text">Ce qui est envoyé à des tiers</h2>
+    <ul class="mb-6 list-disc space-y-2 pl-6 marker:text-faint">
       <li>
-        <strong>Groq</strong> (<a class="underline text-blue-600 hover:text-blue-700 dark:text-inherit dark:hover:text-white" href="https://groq.com/privacy-policy/" rel="noopener" target="_blank">politique de confidentialité</a>):
+        <strong>Groq</strong> (<a class="link" href="https://groq.com/privacy-policy/" rel="noopener" target="_blank">politique de confidentialité</a>):
         chaque enregistrement audio est envoyé à l'API Whisper de Groq pour transcription.
         Si AI Polish est activé, le texte brut est aussi envoyé à un LLM Groq pour nettoyage.
       </li>
       <li>
-        <strong>Lemon Squeezy</strong> (<a class="underline text-blue-600 hover:text-blue-700 dark:text-inherit dark:hover:text-white" href="https://www.lemonsqueezy.com/privacy" rel="noopener" target="_blank">politique de confidentialité</a>):
+        <strong>Lemon Squeezy</strong> (<a class="link" href="https://www.lemonsqueezy.com/privacy" rel="noopener" target="_blank">politique de confidentialité</a>):
         gère le paiement lors de l'achat de TTP Pro et valide votre clé de licence.
         Vos informations de facturation sont traitées par Lemon Squeezy, pas par TTP.
       </li>
@@ -48,31 +49,31 @@ const lastUpdated = '2026-05-06';
       </li>
     </ul>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">Ce que nous ne faisons pas</h2>
-    <ul class="mb-6 list-disc space-y-2 pl-6">
+    <h2 class="display mb-3 mt-12 text-xl text-text">Ce que nous ne faisons pas</h2>
+    <ul class="mb-6 list-disc space-y-2 pl-6 marker:text-faint">
       <li>Nous ne vendons ni ne partageons vos données avec qui que ce soit.</li>
       <li>Nous n'entraînons pas de modèles sur vos transcriptions. (La politique de Groq sur l'entraînement s'applique indépendamment: voir le lien ci-dessus.)</li>
       <li>Aucune analytique ou télémétrie n'est active par défaut. Les deux doivent être explicitement activées.</li>
       <li>Aucun pixel de suivi, aucun réseau publicitaire, aucun fingerprinting tiers.</li>
     </ul>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">Vos données, votre contrôle</h2>
+    <h2 class="display mb-3 mt-12 text-xl text-text">Vos données, votre contrôle</h2>
     <p class="mb-3">Toutes les données TTP sur votre ordinateur se trouvent dans :</p>
-    <ul class="mb-6 list-disc space-y-2 pl-6">
-      <li>macOS : <code class="rounded border border-black/[0.06] bg-zinc-100 px-1.5 py-0.5 font-mono text-[0.92em] dark:border-transparent dark:bg-white/5">~/Library/Application Support/com.ttp.desktop/</code> + <code class="rounded border border-black/[0.06] bg-zinc-100 px-1.5 py-0.5 font-mono text-[0.92em] dark:border-transparent dark:bg-white/5">~/.config/ttp/</code></li>
-      <li>Windows : <code class="rounded border border-black/[0.06] bg-zinc-100 px-1.5 py-0.5 font-mono text-[0.92em] dark:border-transparent dark:bg-white/5">%APPDATA%\com.ttp.desktop\</code></li>
+    <ul class="mb-6 list-disc space-y-2 pl-6 marker:text-faint">
+      <li>macOS : <code class="mono rounded border border-line bg-raised px-1.5 py-0.5">~/Library/Application Support/com.ttp.desktop/</code> + <code class="mono rounded border border-line bg-raised px-1.5 py-0.5">~/.config/ttp/</code></li>
+      <li>Windows : <code class="mono rounded border border-line bg-raised px-1.5 py-0.5">%APPDATA%\com.ttp.desktop\</code></li>
     </ul>
     <p class="mb-6">
       Supprimer ces dossiers + désinstaller TTP efface tout. Aucune donnée n'est conservée côté serveur en dehors des tiers listés ci-dessus.
     </p>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">Contact</h2>
+    <h2 class="display mb-3 mt-12 text-xl text-text">Contact</h2>
     <p class="mb-6">
       Questions, demandes de suppression, ou problèmes :
-      <a class="underline text-blue-600 hover:text-blue-700 dark:text-inherit dark:hover:text-white" href="mailto:amirksmain@gmail.com">amirksmain@gmail.com</a>.
+      <a class="link" href="mailto:amirksmain@gmail.com">amirksmain@gmail.com</a>.
     </p>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">Modifications de cette politique</h2>
+    <h2 class="display mb-3 mt-12 text-xl text-text">Modifications de cette politique</h2>
     <p class="mb-6">
       Les changements importants seront annoncés dans le changelog et une nouvelle date « Dernière mise à jour » apparaîtra en haut de cette page.
     </p>

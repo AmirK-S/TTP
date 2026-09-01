@@ -128,6 +128,18 @@ const here = `${SITE}${Astro.url.pathname}`;
       } else {
         items.forEach((el) => el.classList.add('in'));
       }
+
+      /* Faces that belong to no sequence — the wordmark, the footer — just
+         idle and blink. They are started here rather than in each component so
+         there is exactly one import of the driver on the page. */
+      const auto = document.querySelectorAll<HTMLElement>('[data-face-auto]');
+      if (auto.length) {
+        const { mountFace } = await import('@/lib/face');
+        auto.forEach((el) => {
+          const id = el.dataset.face;
+          if (id) mountFace(el, id as Parameters<typeof mountFace>[1]);
+        });
+      }
     </script>
   </body>
 </html>

@@ -20,33 +20,39 @@ const t = useTranslations(lang);
 const manualPath = lang === 'fr' ? '/fr/manuel' : '/manual';
 ---
 
-<section class="pb-14 pt-14 sm:pt-20">
-  <div class="wrap">
-    <p class="mono mb-5 text-xs uppercase tracking-[0.16em] text-faint">{t('hero.eyebrow')}</p>
+<section class="pb-12 pt-10 sm:pt-14">
+  {/* Two columns from `lg` up. Rendered at 1440x900 the single-column version
+      put the whole demonstration below the fold and left the right half of the
+      screen empty — the exact opposite of C3, which says lead with the output.
+      The two transcript panes stack inside the rail, so the comparison reads
+      top to bottom instead of left to right. */}
+  <div class="wrap grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.02fr)] lg:gap-14">
+    <div>
+      <p class="mono mb-5 text-xs uppercase tracking-[0.16em] text-faint">{t('hero.eyebrow')}</p>
 
-    <h1 class="display max-w-4xl text-[clamp(2.5rem,1.4rem+4vw,4.75rem)]">
-      {t('hero.headline')}<br />
-      <span class="text-accent">{t('hero.headlineAccent')}</span>
-    </h1>
+      <h1 class="display text-[clamp(2.5rem,1.6rem+2.8vw,4.25rem)]">
+        {t('hero.headline')}<br />
+        <span class="text-accent">{t('hero.headlineAccent')}</span>
+      </h1>
 
-    <p class="mt-6 max-w-2xl text-[1.0625rem] text-muted sm:text-lg">{t('hero.sub')}</p>
+      <p class="mt-6 max-w-xl text-[1.0625rem] text-muted">{t('hero.sub')}</p>
 
-    <div class="mt-8 flex flex-wrap items-center gap-3">
-      <a href={macUrl} class="btn btn-primary">{t('hero.ctaPrimary')}</a>
-      <a href={manualPath} class="btn btn-quiet">{t('hero.ctaSecondary')}</a>
+      <div class="mt-7 flex flex-wrap items-center gap-3">
+        <a href={macUrl} class="btn btn-primary">{t('hero.ctaPrimary')}</a>
+        <a href={manualPath} class="btn btn-quiet">{t('hero.ctaSecondary')}</a>
+      </div>
+      <p class="mt-3 text-sm text-faint">{t('hero.ctaSub')}</p>
+
+      {/* The cliff, named. Hiding it converts a download into a bounce at the
+          setup screen; owning it turns it into the reason the app is free. */}
+      <p class="mt-7 max-w-xl border-l-2 border-line pl-4 text-sm leading-relaxed text-muted">
+        {t('hero.keyLead')}{' '}
+        <a href={getLocalizedPath(lang, '#key')} class="link">{t('hero.keyLink')}</a>.
+      </p>
     </div>
-    <p class="mt-3 text-sm text-faint">{t('hero.ctaSub')}</p>
 
-    {/* The cliff, named. Hiding it converts a download into a bounce at the
-        setup screen; owning it turns it into the reason the app is free. */}
-    <p class="mt-7 max-w-2xl border-l-2 border-line pl-4 text-sm leading-relaxed text-muted">
-      {t('hero.keyLead')}{' '}
-      <a href={getLocalizedPath(lang, '#key')} class="link">{t('hero.keyLink')}</a>.
-    </p>
-  </div>
-
-  <!-- Plate I: the demonstration -->
-  <div class="wrap mt-12 sm:mt-16">
+    <!-- Plate I: the demonstration -->
+    <div>
     <figure class="panel overflow-hidden" data-demo>
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-6">
         <div class="flex items-center gap-3">
@@ -55,9 +61,9 @@ const manualPath = lang === 'fr' ? '/fr/manuel' : '/manual';
             <span class="bars quiet" data-demo-bars>
               {Array.from({ length: 14 }).map(() => <i></i>)}
             </span>
-            <span class="mono text-[0.6875rem] tabular-nums opacity-70" data-demo-timer>0:00</span>
+            <span class="mono text-[0.6875rem] tabular-nums opacity-70" data-demo-timer>0:03</span>
           </span>
-          <span class="mono text-xs text-faint" data-demo-status aria-live="polite">{t('hero.statusIdle')}</span>
+          <span class="mono text-xs text-faint" data-demo-status aria-live="polite">{t('hero.statusDone')}</span>
         </div>
 
         <button type="button" class="mono text-xs text-faint underline underline-offset-4 hover:text-text" data-demo-replay>
@@ -65,16 +71,16 @@ const manualPath = lang === 'fr' ? '/fr/manuel' : '/manual';
         </button>
       </div>
 
-      <div class="grid gap-px bg-line sm:grid-cols-2">
-        <div class="bg-surface px-4 py-5 sm:px-6 sm:py-7">
-          <p class="mono mb-3 text-[0.6875rem] uppercase tracking-[0.14em] text-faint">{t('hero.saidLabel')}</p>
-          <p class="min-h-[6.5rem] text-[0.9375rem] leading-relaxed text-muted sm:min-h-[7.5rem]" data-demo-raw>
-            <span data-demo-raw-text></span><span class="caret" data-demo-caret aria-hidden="true"></span>
+      <div class="grid gap-px bg-line">
+        <div class="bg-surface px-5 py-5 sm:px-6">
+          <p class="mono mb-2.5 text-[0.6875rem] uppercase tracking-[0.14em] text-faint">{t('hero.saidLabel')}</p>
+          <p class="min-h-[5.5rem] text-[0.9375rem] leading-relaxed text-muted">
+            <span data-demo-raw-text>{t('hero.raw')}</span><span class="caret" data-demo-caret aria-hidden="true"></span>
           </p>
         </div>
-        <div class="bg-surface px-4 py-5 sm:px-6 sm:py-7">
-          <p class="mono mb-3 text-[0.6875rem] uppercase tracking-[0.14em] text-faint">{t('hero.pastedLabel')}</p>
-          <p class="min-h-[6.5rem] text-[0.9375rem] leading-relaxed text-text opacity-0 transition-opacity duration-300 sm:min-h-[7.5rem]" data-demo-polished>
+        <div class="bg-surface px-5 py-5 sm:px-6">
+          <p class="mono mb-2.5 text-[0.6875rem] uppercase tracking-[0.14em] text-faint">{t('hero.pastedLabel')}</p>
+          <p class="min-h-[4.5rem] text-[0.9375rem] leading-relaxed text-text transition-opacity duration-300" data-demo-polished>
             {t('hero.polished')}
           </p>
         </div>
@@ -85,7 +91,8 @@ const manualPath = lang === 'fr' ? '/fr/manuel' : '/manual';
       </figcaption>
     </figure>
 
-    <p class="mt-4 max-w-2xl text-sm text-faint">{t('hero.demoNote')}</p>
+    <p class="mt-4 text-sm text-faint">{t('hero.demoNote')}</p>
+    </div>
   </div>
 
   <script
@@ -235,7 +242,7 @@ const manualPath = lang === 'fr' ? '/fr/manuel' : '/manual';
             play();
           }
         },
-        { threshold: 0.35 },
+        { threshold: 0.2 },
       );
       io.observe(demo);
     } else {

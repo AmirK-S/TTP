@@ -1,0 +1,54 @@
+---
+/**
+ * The maker, made legible (research C7).
+ *
+ * Every comparable does some version of this — MacWhisper's "Built by Jordi
+ * Bruin and friends at Good Snooze in the Netherlands", Bartender's "more than
+ * 10 years", CleanShot's named endorsers, Obsidian's "100% user-supported".
+ * For an app holding Accessibility and Input Monitoring it is not sentiment;
+ * it is part of the security posture, which is why the section opens with the
+ * permissions rather than the CV.
+ */
+import { useTranslations, type Lang } from '@/i18n/utils';
+import { Image } from 'astro:assets';
+import photo from '@/assets/amir-photo.png';
+import { REPO_URL } from '@/lib/coats';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+---
+
+<section id="who" class="band">
+  <div class="wrap">
+    <p class="plate-label">{t('who.plate')}</p>
+
+    <div class="grid items-start gap-10 md:grid-cols-[auto_minmax(0,1fr)] md:gap-12" data-reveal>
+      <figure class="w-40 shrink-0 sm:w-48">
+        <Image
+          src={photo}
+          alt={t('who.name')}
+          widths={[192, 384]}
+          sizes="(min-width: 640px) 192px, 160px"
+          class="w-full rounded-[var(--r-lg)] border border-line object-cover"
+          loading="lazy"
+        />
+        <figcaption class="caption mt-3">{t('who.role')}</figcaption>
+      </figure>
+
+      <div class="max-w-2xl">
+        <h2 class="display text-[clamp(1.75rem,1.2rem+2vw,2.5rem)]">{t('who.heading')}</h2>
+        <p class="mt-5 text-[1.0625rem] text-text">{t('who.p1')}</p>
+        <p class="mt-4 font-display text-lg">{t('who.name')}</p>
+        <p class="mt-2 text-muted">{t('who.p2')}</p>
+        <p class="mt-4 text-muted">{t('who.p3')}</p>
+
+        <div class="mt-6 flex flex-wrap gap-4 text-sm">
+          <a href={REPO_URL} target="_blank" rel="noopener" class="link">{t('who.github')}</a>
+          <a href="https://amirks.eu" target="_blank" rel="noopener" class="link">{t('who.site')}</a>
+          <a href={`${REPO_URL}/issues`} target="_blank" rel="noopener" class="link">{t('who.email')}</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

@@ -27,7 +27,11 @@ const t = useTranslations(lang);
     <span class="hidden sm:inline">{t('nav.coat')}</span>
   </summary>
 
-  <div class="panel absolute right-0 top-11 z-50 w-64 p-3">
+  {/* Anchored to the button on a wide screen; pinned to the viewport on a
+       narrow one, where the button sits close enough to the right edge that a
+       right-aligned 16rem panel hangs off the left of the screen. Measured at
+       390px. */}
+  <div class="panel absolute right-0 top-11 z-50 w-64 p-3 max-sm:fixed max-sm:inset-x-3 max-sm:top-16 max-sm:w-auto">
     <p class="mb-2 px-1 text-xs text-faint">{t('nav.coatHint')}</p>
     <ul class="grid gap-2">
       {COATS.map((c) => (

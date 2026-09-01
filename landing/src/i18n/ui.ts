@@ -324,7 +324,7 @@ export const ui = {
       'The source is on GitHub. If a sentence on this page does not match it, open an issue and I will change the sentence.',
     'who.github': 'GitHub',
     'who.site': 'amirks.eu',
-    'who.email': 'Email',
+    'who.email': 'Open an issue',
 
     // ── install ──────────────────────────────────────────────────────────
     'install.plate': 'Plate X — getting it onto the machine',
@@ -760,7 +760,7 @@ export const ui = {
       'Le code est sur GitHub. Si une phrase de cette page ne lui correspond pas, ouvrez une issue et je changerai la phrase.',
     'who.github': 'GitHub',
     'who.site': 'amirks.eu',
-    'who.email': 'E-mail',
+    'who.email': 'Ouvrir une issue',
 
     // ── installation ─────────────────────────────────────────────────────
     'install.plate': 'Planche X — le mettre sur la machine',

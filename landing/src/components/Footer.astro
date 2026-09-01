@@ -1,94 +1,74 @@
 ---
-import { getLangFromUrl, useTranslations, getLocalizedPath } from '@/i18n/utils';
+import { getLangFromUrl, getLocalizedPath, useTranslations } from '@/i18n/utils';
+import { BUY_URL, REPO_URL } from '@/lib/coats';
+import CompanionFace from '@/components/CompanionFace.astro';
 
 const lang = getLangFromUrl(Astro.url);
 const t = useTranslations(lang);
-const currentYear = new Date().getFullYear();
+const year = new Date().getFullYear();
+const manualPath = lang === 'fr' ? '/fr/manuel' : '/manual';
+
+const columns = [
+  {
+    title: t('footer.product'),
+    links: [
+      { label: t('footer.download'), href: getLocalizedPath(lang, '#install') },
+      { label: t('footer.changelog'), href: getLocalizedPath(lang, '#changelog') },
+      { label: t('footer.github'), href: REPO_URL, external: true },
+    ],
+  },
+  {
+    title: t('footer.about'),
+    links: [
+      { label: t('footer.manual'), href: manualPath },
+      { label: t('footer.companion'), href: BUY_URL, external: true },
+    ],
+  },
+  {
+    title: t('footer.legal'),
+    links: [
+      { label: t('footer.privacy'), href: getLocalizedPath(lang, 'privacy') },
+      { label: t('footer.terms'), href: getLocalizedPath(lang, 'terms') },
+    ],
+  },
+];
 ---
 
-<footer data-snap-section data-section-footer class="border-t border-black/[0.08] bg-zinc-50 px-6 py-12 dark:border-white/10 dark:bg-black">
-  <div class="mx-auto flex max-w-5xl flex-col items-center gap-8 md:flex-row md:justify-between">
-    <!-- Brand -->
-    <div class="text-center md:text-left">
-      <span class="text-lg font-bold tracking-tight text-zinc-900 dark:text-white">TTP</span>
-      <span class="ml-1.5 text-caption text-zinc-500 dark:text-slate-500">&mdash; {t('footer.tagline')}</span>
+<footer class="border-t border-line bg-surface">
+  <div class="wrap py-14">
+    <div class="grid gap-10 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))]">
+      <div>
+        <p class="flex items-center gap-2 text-lg font-semibold tracking-tight">
+          <span class="text-accent"><CompanionFace variety="bead" uid="footer" size={18} auto /></span>
+          TTP
+          <span class="text-sm font-normal text-faint">— {t('footer.tagline')}</span>
+        </p>
+        <p class="mt-3 max-w-xs text-sm leading-relaxed text-muted">{t('footer.blurb')}</p>
+      </div>
+
+      {columns.map((col) => (
+        <nav aria-label={col.title}>
+          <h2 class="mono mb-3 text-xs uppercase tracking-[0.14em] text-faint">{col.title}</h2>
+          <ul class="grid gap-2">
+            {col.links.map((l) => (
+              <li>
+                <a
+                  href={l.href}
+                  class="text-sm text-muted transition-colors hover:text-text"
+                  {...(l.external ? { target: '_blank', rel: 'noopener' } : {})}
+                >
+                  {l.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      ))}
     </div>
 
-    <!-- Navigation links -->
-    <nav class="flex items-center gap-6">
-      <a
-        href="https://github.com/AmirK-S/TTP"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white"
-      >
-        {t('footer.github')}
-      </a>
-      <a
-        href={getLocalizedPath(lang, '#install')}
-        class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white"
-      >
-        {t('footer.download')}
-      </a>
-      <a
-        href={getLocalizedPath(lang, '#changelog')}
-        class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white"
-      >
-        {t('footer.changelog')}
-      </a>
-      <a
-        href={getLocalizedPath(lang, 'privacy')}
-        class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white"
-      >
-        {t('footer.privacy')}
-      </a>
-      <a
-        href={getLocalizedPath(lang, 'terms')}
-        class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white"
-      >
-        {t('footer.terms')}
-      </a>
-    </nav>
-  </div>
-
-  <!-- Attribution -->
-  <div class="mx-auto mt-8 max-w-5xl border-t border-black/[0.06] pt-6 text-center dark:border-white/5">
-    <p class="text-caption text-zinc-500 dark:text-slate-600">
-      &copy; {currentYear}
-      <a
-        href="https://github.com/AmirK-S"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-500 dark:hover:text-slate-300"
-      >
-        AmirKS
-      </a>
-      &middot; {t('footer.madeWith')}
-    </p>
+    <div class="mt-12 flex flex-col gap-2 border-t border-line pt-6 text-xs text-faint sm:flex-row sm:items-center sm:justify-between">
+      <p>© {year} Amir Kellousi-Dhoum · {t('footer.made')}</p>
+      <p>{t('footer.colophon')}</p>
+    </div>
   </div>
 </footer>
-
-<script>
-  import gsap from "gsap";
-  import { ScrollTrigger } from "gsap/ScrollTrigger";
-  gsap.registerPlugin(ScrollTrigger);
-
-  const footer = document.querySelector("[data-section-footer]");
-  if (footer) {
-    const mm = gsap.matchMedia();
-
-    mm.add("(prefers-reduced-motion: no-preference)", () => {
-      // Clip-path wipe from center outward -- unique among all section entrances
-      gsap.from(footer, {
-        clipPath: "inset(0 50% 0 50%)",
-        duration: 1,
-        ease: "power3.inOut",
-        scrollTrigger: {
-          trigger: footer,
-          start: "top 90%",
-          toggleActions: "play none none none",
-        },
-      });
-    });
-  }
-</script>
