@@ -208,12 +208,21 @@ class TestEveryInvariantFires(unittest.TestCase):
     def test_severities_are_as_declared(self):
         """A check registered as ERROR must not quietly emit only WARNs.
 
-        Two invariants deliberately vary severity by evidence and are
-        exempted by name: capture-handoff-missing grades on how long the
-        capture was held, and dictation-start-missing downgrades inside the
-        rotation-truncated head session.
+        Several invariants deliberately vary severity by evidence and are
+        exempted by name. Each fixture still produces the declared severity
+        for the shape it names — the exemption is for the OTHER findings the
+        same check can emit from the same fixture.
         """
-        graded = {"capture-handoff-missing", "dictation-start-missing"}
+        graded = {
+            # Grades on how long the capture was held.
+            "capture-handoff-missing",
+            # Downgrades inside the rotation-truncated head session.
+            "dictation-start-missing",
+            # Grades on attribution: an ERROR is a read a dictation can be
+            # shown to have made and waited for. Everything else is a warning
+            # or information, which is the whole point of the fix.
+            "keychain-on-critical-path",
+        }
         for fn in REGISTRY:
             if fn.iid in graded:
                 continue
@@ -314,6 +323,199 @@ class TestSpecificShapes(unittest.TestCase):
         self.assertNotIn("keychain-not-single-flighted", fired(findings))
         self.assertIn("keychain-on-critical-path", fired(findings),
                       "a slow read is still a slow read")
+
+    def test_a_keychain_read_outside_every_dictation_is_not_a_block(self):
+        """The false positive this workstream exists to remove.
+
+        Fourteen of these were reported as ERRORs claiming they had "blocked
+        a dictation" for up to 397 seconds. All fourteen carried no dictation
+        id and no dictation in the corpus ran longer than 3.5 s. Nothing was
+        blocked; the records were near dictations in the file, and the check
+        read nearness as causation.
+        """
+        raw = (
+            '[2026-09-01 10:00:00.000] [········]          keychain.slow '
+            '{"account":"usage_hmac_secret","ms":397600,"op":"secret_read",'
+            '"lock_wait_ms":0}\n'
+            '[2026-09-01 10:00:01.000] [········]          hotkey.tap_armed '
+            '{}\n'
+        )
+        _, findings = _analyse_text(raw)
+        keychain = [f for f in findings
+                    if f.invariant == "keychain-on-critical-path"]
+        self.assertTrue(keychain, "a slow read is still worth reporting")
+        for f in keychain:
+            self.assertEqual(f.severity, INFO)
+            self.assertNotIn("blocked a", f.summary)
+
+    def test_a_keychain_read_inside_a_dictation_still_errors(self):
+        """The other half: a genuine block must still fire.
+
+        A check that has been taught not to cry wolf and now cannot bark at
+        all is worse than the one it replaced, so the fixture that proves the
+        real shape is asserted here at full severity.
+        """
+        _, findings = analyse("keychain-on-critical-path.log")
+        keychain = [f for f in findings
+                    if f.invariant == "keychain-on-critical-path"]
+        self.assertTrue(keychain)
+        self.assertTrue(any(f.severity == ERROR for f in keychain),
+                        "a read inside a dictation's own stages is a block")
+        self.assertTrue(any(f.dictation for f in keychain),
+                        "an attributed read names the dictation it blocked")
+
+    def test_a_read_spanning_a_short_dictation_is_two_writers(self):
+        """397 seconds cannot happen inside 3.5, and saying so is arithmetic.
+
+        Overlap is not attribution either. A synchronous call made by a
+        dictation's pipeline begins and ends inside that dictation; one that
+        straddles the window was made by something else, and that something
+        else is another writer on the same file.
+        """
+        _, findings = analyse("log-co-tenancy.log")
+        self.assertIn("log-co-tenancy", fired(findings))
+        spanning = [f for f in findings
+                    if f.invariant == "keychain-on-critical-path"]
+        self.assertTrue(spanning)
+        for f in spanning:
+            self.assertEqual(f.severity, WARN)
+            self.assertIn("Two writers", f.summary)
+
+    def test_unattributed_keychain_reads_are_aggregated(self):
+        """Fourteen rows saying "this blocked nothing" is still fourteen rows.
+
+        Downgrading the false ERRORs was half the job; a reader who has to
+        scroll a dozen non-events to reach a real finding has been failed in
+        the same way, one severity down. One row per day per account per op,
+        carrying the count and the worst time.
+        """
+        raw = "".join(
+            f'[2026-09-01 10:0{n}:00.000] [········]          keychain.slow '
+            f'{{"account":"usage_hmac_secret","ms":{1000 * (n + 1)},'
+            f'"op":"secret_read","lock_wait_ms":0}}\n'
+            for n in range(6)
+        ) + ('[2026-09-01 10:30:00.000] [········]          hotkey.tap_armed '
+             '{}\n')
+        _, findings = _analyse_text(raw)
+        keychain = [f for f in findings
+                    if f.invariant == "keychain-on-critical-path"]
+        self.assertEqual(len(keychain), 1, "six reads, one row")
+        self.assertEqual(keychain[0].severity, INFO)
+        self.assertEqual(keychain[0].detail["count"], 6)
+        self.assertEqual(keychain[0].detail["worst_ms"], 6000,
+                         "the worst time survives aggregation")
+
+    def test_a_paste_verdict_decides_when_the_writer_supplies_one(self):
+        """The vocabulary landing alongside this workstream.
+
+        `swallowed` is the ERROR. `unverified` means the target could not be
+        read, which is not evidence the text was lost — grading it as one
+        would be the same over-claim in a new field. `observed` is silent,
+        and a slug this file has not been taught about is not a violation.
+        """
+        def verify(verdict):
+            return (
+                '[2026-09-01 10:00:00.000] [0001-aaaa] +    0ms '
+                'dictation.start {"kind":"recording","verbose":false}\n'
+                '[2026-09-01 10:00:01.000] [0001-aaaa] + 1000ms '
+                'paste.verify {"ax_readable":true,"changed":false,'
+                '"before_chars":0,"after_chars":0,"delta_chars":0,'
+                '"expected_chars":12,"settled_ms":0,'
+                f'"verdict":"{verdict}"}}\n'
+                '[2026-09-01 10:00:02.000] [0001-aaaa] + 2000ms '
+                'dictation.finish {"chars":12,"ms":2000,"outcome":"pasted",'
+                '"words":2}\n'
+                '[2026-09-01 10:00:03.000] [········]          '
+                'hotkey.tap_armed {}\n'
+            )
+
+        def sev_of(verdict):
+            _, fs = _analyse_text(verify(verdict))
+            return [f.severity for f in fs if f.invariant == "paste-swallowed"]
+
+        self.assertEqual(sev_of("swallowed"), [ERROR])
+        self.assertEqual(sev_of("unverified"), [WARN],
+                         "unreadable is not the same as lost")
+        self.assertEqual(sev_of("observed"), [],
+                         "the writer says it landed; ax_readable/changed is "
+                         "the weaker instrument and must not override it")
+        self.assertEqual(sev_of("teleported"), [],
+                         "rule 1: unknown vocabulary is never a violation")
+
+    def test_an_unattributed_polish_failure_is_not_a_warning_about_the_app(self):
+        """The 429s that were reported as an incident and then retracted.
+
+        polish.attempt carries no trace id. The golden test suite exhausting
+        the API tier from a cargo test run produces exactly these records,
+        and they are indistinguishable from the app's own except by whether a
+        dictation was waiting on them.
+        """
+        raw = (
+            '[2026-09-02 00:20:08.988] [········]          polish.attempt '
+            '{"model":"openai/gpt-oss-120b","ms":52,"n":1,"status":429}\n'
+            '[2026-09-02 00:20:09.988] [········]          polish.attempt '
+            '{"model":"openai/gpt-oss-120b","ms":51,"n":1,"status":429}\n'
+            '[2026-09-02 00:20:11.988] [········]          hotkey.tap_armed '
+            '{}\n'
+        )
+        _, findings = _analyse_text(raw)
+        remote = [f for f in findings if f.invariant == "remote-call-failed"]
+        self.assertEqual(len(remote), 1, "aggregated, not one per record")
+        self.assertEqual(remote[0].severity, INFO)
+        self.assertIn("no dictation making the call", remote[0].summary)
+
+        # ... and the same status inside a dictation's polish window is.
+        _, attributed = analyse("remote-call-failed.log")
+        mine = [f for f in attributed
+                if f.invariant == "remote-call-failed"]
+        self.assertTrue(any(f.severity == WARN for f in mine))
+        self.assertTrue(any(f.dictation for f in mine))
+
+    def test_one_polish_failure_is_not_an_outage(self):
+        """'Repeatedly' is in the invariant's own title."""
+        raw = (
+            '[2026-09-02 00:20:29.157] [0087-9be8] +  100ms polish.outage '
+            '{"consecutive_failures":1,"model":"openai/gpt-oss-120b"}\n'
+            '[2026-09-02 00:20:31.157] [········]          hotkey.tap_armed '
+            '{}\n'
+        )
+        _, findings = _analyse_text(raw)
+        outage = [f for f in findings if f.invariant == "polish-outage"]
+        self.assertEqual(len(outage), 1)
+        self.assertEqual(outage[0].severity, WARN)
+        _, real = analyse("polish-outage.log")
+        self.assertTrue(any(f.invariant == "polish-outage"
+                            and f.severity == ERROR for f in real))
+
+    def test_reaching_the_rearm_escalation_once_is_not_the_defect(self):
+        """A streak of exactly 5 is the rebuild trigger firing as designed."""
+        raw = "".join(
+            f'[2026-09-01 10:00:0{n}.000] [········]          '
+            f'hotkey.tap_rearmed {{"reason":"watchdog","streak":{n}}}\n'
+            for n in range(1, 6)
+        ) + ('[2026-09-01 10:00:07.000] [········]          hotkey.tap_armed '
+             '{}\n')
+        _, findings = _analyse_text(raw)
+        streaks = [f for f in findings if f.invariant == "tap-rearm-streak"]
+        self.assertEqual(len(streaks), 1)
+        self.assertEqual(streaks[0].severity, WARN)
+
+    def test_only_check_still_sees_findings_other_checks_emit(self):
+        """--only filters findings, not the registry.
+
+        check_bookkeeping_stall emits `keychain-on-critical-path` and
+        `process-suspended` findings — that is docs/tracing.md's own
+        discrimination procedure — so filtering the registry by id silently
+        dropped the best-attributed keychain findings there are.
+        """
+        corpus = model.load([os.path.join(BROKEN,
+                                          "keychain-on-critical-path.log")])
+        only = run_all(corpus, {"keychain-on-critical-path"})
+        self.assertTrue(only)
+        self.assertEqual({f.invariant for f in only},
+                         {"keychain-on-critical-path"})
+        self.assertTrue(any("between" in f.summary for f in only),
+                        "the bookkeeping-derived finding is missing")
 
     def test_silent_audio_check_works_without_nonzero_ratio(self):
         """Older traces predate nonzero_ratio; avg_rms == 0 is equivalent."""

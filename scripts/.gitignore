@@ -1,0 +1,4 @@
+# Python bytecode from running the analyser and its fixture generator. These
+# appear in `git status` next to the fixtures, and the fixtures are the thing
+# a reader is checking for there — see tests/fixtures/.gitignore.
+__pycache__/

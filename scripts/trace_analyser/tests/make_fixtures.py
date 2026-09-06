@@ -90,7 +90,7 @@ def dictation(log: Log, tid: str, *, chars=64, secs=5.0, rms=0.02,
               outcome="pasted", reason=None, verbose=False,
               verify=None, skip=(), extra_after=(), device=None,
               nonzero_ratio=1.0, whisper_chars=None, quota_ok=True,
-              bookkeeping_gap_ms=0):
+              bookkeeping_gap_ms=0, extra_polish_attempts=()):
     """A whole healthy dictation, with knobs for each thing that can go wrong."""
     sha_a, sha_b = "aaaa1111", "bbbb2222"
     whisper_chars = chars if whisper_chars is None else whisper_chars
@@ -141,6 +141,11 @@ def dictation(log: Log, tid: str, *, chars=64, secs=5.0, rms=0.02,
     s("cleanup", {"changed": False, "from": {"chars": whisper_chars, "sha8": sha_a},
                   "to": {"chars": whisper_chars, "sha8": sha_a}}, 20)
     s("polish.decision", {"quota_ok": quota_ok, "setting_enabled": True}, 1)
+    # polish.attempt is a standalone record — no trace id — written between
+    # the decision and the polish stage. That containment is the only thing
+    # that can attribute it to this dictation.
+    for fields in extra_polish_attempts:
+        log.free("polish.attempt", fields, ms=100)
     s("polish", {"changed": True, "from": {"chars": whisper_chars, "sha8": sha_a},
                  "model": "openai/gpt-oss-120b",
                  "outcome": "applied" if quota_ok else "skipped",
@@ -473,6 +478,9 @@ def broken():
     out["text-chain-broken"] = log
 
     # -- remote ----------------------------------------------------------
+    # Three consecutive failures against one model: POLISH_OUTAGE_STREAK, the
+    # point at which "repeatedly" in the invariant's own title is satisfied.
+    # A peak of 1 is a network and is graded WARN.
     log = new()
     for n in range(1, 4):
         log.free("polish.attempt", {"model": "llama-3.3-70b-versatile",
@@ -481,6 +489,18 @@ def broken():
                                    "model": "llama-3.3-70b-versatile"})
     tail(log, from_state=None)
     out["polish-outage"] = log
+
+    # remote-call-failed needs its own fixture now that a non-200 is only a
+    # warning about the app when a dictation was making the call. The 404 is
+    # inside this dictation's polish window: between its polish.decision and
+    # its polish stage, which is the only attribution polish.attempt admits
+    # (the record carries no trace id).
+    log = new()
+    hotkey_cycle(log)
+    dictation(log, "0000-1111",
+              extra_polish_attempts=[{"model": "llama-3.3-70b-versatile",
+                                      "ms": 200, "n": 1, "status": 404}])
+    tail(log)
     out["remote-call-failed"] = log
 
     log = new()
@@ -491,9 +511,15 @@ def broken():
 
     # -- input layer -----------------------------------------------------
     log = new()
-    for n in range(1, 7):
+    # Past TAP_STREAK_ESCALATED, with the rebuilds that were supposed to fix
+    # it. Reaching TAP_STREAK_LIMIT alone is the escalation firing as
+    # designed and is graded WARN; this is the streak climbing THROUGH the
+    # rebuild, which is the dead-event-tap defect.
+    for n in range(1, 15):
         log.free("hotkey.tap_rearmed", {"reason": "watchdog", "streak": n},
                  ms=2000)
+        if n % 5 == 0:
+            log.free("hotkey.tap_rebuilt", {"attempt": n // 5}, ms=10)
     tail(log, from_state=None)
     out["tap-rearm-streak"] = log
 
@@ -503,9 +529,12 @@ def broken():
     out["tap-abandoned"] = log
 
     log = new()
+    # Spaced so the session runs well past TAP_FLAP_MINUTES. Under half an
+    # hour, "the tap is flapping and swallowing presses" and "nobody pressed
+    # anything" fit the same evidence, and the check grades accordingly.
     for n in range(25):
         log.free("hotkey.tap_rearmed",
-                 {"reason": "watchdog", "streak": (n % 5) + 1}, ms=2000)
+                 {"reason": "watchdog", "streak": (n % 5) + 1}, ms=120000)
     tail(log, from_state=None)
     out["tap-flapping-without-input"] = log
 
@@ -554,7 +583,14 @@ def broken():
     hotkey_cycle(log)
     dictation(log, "0000-1111", bookkeeping_gap_ms=6000,
               extra_after=[])
-    # A keychain.slow inside the gap re-attributes it.
+    # A keychain.slow inside the gap re-attributes it. This is a genuine
+    # blocking read and the check must still fire at ERROR on it: the record
+    # is inside the dictation's own stage sequence, and the 5,900 ms it
+    # reports began and ended within a dictation that was alive for longer —
+    # so the dictation could have made this call and waited for it. Contrast
+    # `log-co-tenancy.log`, where the same stage carries the same account and
+    # the same op, spills past the dictation it overlaps, and is graded a
+    # warning about two writers rather than an ERROR about a blocked user.
     lines = log.lines
     for i, line in enumerate(lines):
         if "usage.recorded" in line:
@@ -623,6 +659,24 @@ def broken():
     healthy(log, "0000-1111")
     tail(log, from_state=None)
     out["writer-newline-lost"] = log
+
+    # -- more than one writer, stated rather than resolved ---------------
+    #
+    # The shape that produced the analyser's first false alarm, kept as a
+    # fixture so the statement of ambiguity keeps being made. A keychain read
+    # reported as 60,000 ms lands just after a dictation that started, ran
+    # its whole pipeline including usage.recorded, and finished in about a
+    # second. The read therefore began long before that dictation existed and
+    # ended after it: one process with a lifetime cache and read_once cannot
+    # produce that, so two writers shared this file. Which records belong to
+    # which of them is not recoverable, and the report says so.
+    log = new()
+    healthy(log, "0000-1111")
+    log.free("keychain.slow", {"account": "usage_hmac_secret",
+                               "lock_wait_ms": 0, "ms": 60000,
+                               "op": "secret_read"}, ms=200)
+    tail(log, from_state=None)
+    out["log-co-tenancy"] = log
 
     for name, log in out.items():
         log.write(os.path.join("broken", f"{name}.log"))

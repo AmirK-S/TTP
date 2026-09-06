@@ -1,11 +1,35 @@
 [2026-09-01 10:00:00.010] [········]          app.launched {"arch":"aarch64","os":"macos","version":"3.1.6"}
-[2026-09-01 10:00:00.020] [········]          polish.attempt {"model":"llama-3.3-70b-versatile","ms":200,"n":1,"status":404}
-[2026-09-01 10:00:00.030] [········]          polish.outage {"consecutive_failures":1,"model":"llama-3.3-70b-versatile"}
-[2026-09-01 10:00:00.040] [········]          polish.attempt {"model":"llama-3.3-70b-versatile","ms":200,"n":1,"status":404}
-[2026-09-01 10:00:00.050] [········]          polish.outage {"consecutive_failures":2,"model":"llama-3.3-70b-versatile"}
-[2026-09-01 10:00:00.060] [········]          polish.attempt {"model":"llama-3.3-70b-versatile","ms":200,"n":1,"status":404}
-[2026-09-01 10:00:00.070] [········]          polish.outage {"consecutive_failures":3,"model":"llama-3.3-70b-versatile"}
-[2026-09-01 10:00:01.070] [········]          hotkey.tap_armed {}
-[2026-09-01 10:00:02.070] [········]          hotkey.tap_armed {}
-[2026-09-01 10:00:03.070] [········]          hotkey.tap_armed {}
-[2026-09-01 10:00:04.070] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:00.020] [········]          hotkey.press {"flags":"0x800000","held_ms":160}
+[2026-09-01 10:00:00.021] [········]          state.transition {"from":"Idle","to":"Recording"}
+[2026-09-01 10:00:00.061] [········]          capture.start {"channels":1,"device":"MacBook Air Microphone","format":"F32","is_os_default":true,"preferred":null,"rate":48000}
+[2026-09-01 10:00:05.061] [········]          hotkey.release {"flags":"0x0"}
+[2026-09-01 10:00:05.062] [········]          state.transition {"from":"Recording","to":"Processing"}
+[2026-09-01 10:00:05.462] [········]          capture.stop {"default_now":"MacBook Air Microphone","device":"MacBook Air Microphone","device_changed":false,"samples":240000}
+[2026-09-01 10:00:05.464] [0000-1111] +     0ms dictation.start {"kind":"recording","verbose":false}
+[2026-09-01 10:00:05.464] [0000-1111] +     0ms audio.duration {"secs":5.0,"wav_bytes":480000}
+[2026-09-01 10:00:05.467] [0000-1111] +     3ms audio.signal {"avg_rms":0.02,"floor":0.005,"nonzero_ratio":1.0,"peak":0.16,"samples":240000}
+[2026-09-01 10:00:05.473] [0000-1111] +     9ms audio.convert {"converted":true,"in_bytes":1,"out_bytes":1}
+[2026-09-01 10:00:05.476] [0000-1111] +    12ms whisper.request {"bytes":1,"input_mode":"push_to_talk","lang":"auto","prompt":false}
+[2026-09-01 10:00:05.876] [0000-1111] +   412ms whisper.response {"attempt":1,"chars":64,"ms":400,"sha8":"aaaa1111"}
+[2026-09-01 10:00:05.896] [0000-1111] +   432ms cleanup {"changed":false,"from":{"chars":64,"sha8":"aaaa1111"},"to":{"chars":64,"sha8":"aaaa1111"}}
+[2026-09-01 10:00:05.897] [0000-1111] +   433ms polish.decision {"quota_ok":true,"setting_enabled":true}
+[2026-09-01 10:00:05.997] [········]          polish.attempt {"model":"llama-3.3-70b-versatile","ms":200,"n":1,"status":404}
+[2026-09-01 10:00:06.597] [0000-1111] +  1033ms polish {"changed":true,"from":{"chars":64,"sha8":"aaaa1111"},"model":"openai/gpt-oss-120b","outcome":"applied","quota_ok":true,"to":{"chars":64,"sha8":"bbbb2222"}}
+[2026-09-01 10:00:06.598] [0000-1111] +  1034ms dictionary {"changed":false,"from":{"chars":64,"sha8":"bbbb2222"},"to":{"chars":64,"sha8":"bbbb2222"}}
+[2026-09-01 10:00:06.600] [0000-1111] +  1036ms paste.accessibility {"ax_probe_ok":true,"tcc_trusted":true}
+[2026-09-01 10:00:06.601] [0000-1111] +  1037ms paste.decision {"chars":64,"has_accessibility":true,"strategy":"type"}
+[2026-09-01 10:00:06.711] [0000-1111] +  1147ms paste.result {"ok":true}
+[2026-09-01 10:00:06.712] [0000-1111] +  1148ms clipboard.restore {"ok":true}
+[2026-09-01 10:00:06.713] [0000-1111] +  1149ms correction_window.started {}
+[2026-09-01 10:00:06.714] [0000-1111] +  1150ms history.saved {"ok":true}
+[2026-09-01 10:00:06.715] [0000-1111] +  1151ms ui.completed {"pasted":true}
+[2026-09-01 10:00:06.716] [0000-1111] +  1152ms usage.recorded {"ms":0}
+[2026-09-01 10:00:06.717] [0000-1111] +  1153ms files.cleaned {}
+[2026-09-01 10:00:06.719] [0000-1111] +  1155ms dictation.finish {"chars":64,"has_accessibility":true,"ms":1155,"outcome":"pasted","words":12}
+[2026-09-01 10:00:07.119] [0000-1111] +  1555ms paste.verify {"after_chars":64,"ax_readable":true,"before_chars":0,"changed":true,"delta_chars":64,"expected_chars":64,"first_change_ms":30,"settled_ms":48}
+[2026-09-01 10:00:07.124] [········]          state.transition {"from":"Processing","to":"Idle"}
+[2026-09-01 10:00:07.125] [········]          state.transition {"from":"Idle","to":"Idle"}
+[2026-09-01 10:00:08.125] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:09.125] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:10.125] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:11.125] [········]          hotkey.tap_armed {}

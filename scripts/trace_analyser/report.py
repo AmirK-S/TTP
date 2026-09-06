@@ -10,7 +10,7 @@ from __future__ import annotations
 import collections
 import json
 
-from . import stats
+from . import invariants, stats
 from .invariants import ERROR, INFO, KNOWN_STAGES, REGISTRY, WARN, Finding
 from .model import Corpus
 
@@ -45,6 +45,23 @@ def render(corpus: Corpus, findings: list[Finding], context: int = 0,
     if corpus.unparsed:
         out.append(f"  note     {len(corpus.unparsed)} lines could not be "
                    f"parsed at all")
+    # Printed in the header, next to the writer counts, for the same reason
+    # those are: a caveat that only appears at the bottom of a long report is
+    # a caveat nobody reads. The full statement is the `log-co-tenancy`
+    # finding; this is the line that stops a reader from taking an
+    # unattributed record for the app.
+    co = invariants._cotenancy_evidence(corpus)
+    witnesses = (len(co["impossible_spans"]) + co["unattributed_polish"]
+                 + co["merged_mixed"])
+    if witnesses:
+        out.append(f"  writers  more than one process appended to this log "
+                   f"({len(co['impossible_spans'])} impossible timed spans, "
+                   f"{co['unattributed_polish']} unattributed polish.attempt, "
+                   f"{co['merged_mixed']} mixed merged lines). The format "
+                   f"carries no process identity")
+        out.append("           — see log-co-tenancy. Records are graded on "
+                   "whether a dictation can be shown to have been waiting, "
+                   "never on a guess about who wrote them.")
 
     unknown = sorted(corpus.stages_seen() - KNOWN_STAGES)
     if unknown:
@@ -99,24 +116,35 @@ def render(corpus: Corpus, findings: list[Finding], context: int = 0,
                    f"{stats.percentile(vals, 99):8.0f} {max(vals):9.0f}")
 
     # ---- findings
-    by_inv: dict[str, list[Finding]] = collections.OrderedDict()
+    #
+    # Grouped by (severity, invariant), not by invariant. Several checks now
+    # grade individual findings on the evidence behind them — a keychain read
+    # attributable to a dictation is an ERROR and one that is not is
+    # information from the same check — and a block headed [ERROR] whose rows
+    # were mostly warnings would restate, in the layout, exactly the
+    # over-claim those checks were fixed to stop making.
+    by_inv: dict[tuple, list[Finding]] = collections.OrderedDict()
     for f in sorted(findings, key=lambda f: (SEV_ORDER.get(f.severity, 9),
                                              f.invariant, f.ts)):
-        by_inv.setdefault(f.invariant, []).append(f)
+        by_inv.setdefault((f.severity, f.invariant), []).append(f)
 
     counts = collections.Counter(f.severity for f in findings)
     out.append(_rule("Invariant results"))
     checked = {fn.iid for fn in REGISTRY}
-    fired = set(by_inv)
+    fired = {inv for _, inv in by_inv}
     out.append(f"  {len(checked)} invariants checked, {len(fired)} fired: "
                f"{counts.get(ERROR, 0)} error, {counts.get(WARN, 0)} warn, "
                f"{counts.get(INFO, 0)} info")
     quiet = sorted(checked - fired)
     if quiet:
         out.append("  silent: " + ", ".join(quiet))
+    split = sorted({inv for _, inv in by_inv
+                    if sum(1 for s, i in by_inv if i == inv) > 1})
+    if split:
+        out.append("  graded by evidence, so they appear more than once: "
+                   + ", ".join(split))
 
-    for inv, fs in by_inv.items():
-        sev = fs[0].severity
+    for (sev, inv), fs in by_inv.items():
         title = next((fn.title for fn in REGISTRY if fn.iid == inv), "")
         out.append("")
         out.append(f"  [{SEV_LABEL.get(sev, sev)}] {inv}  ({len(fs)})")
