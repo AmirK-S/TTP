@@ -186,6 +186,46 @@ mod mac {
     }
 }
 
+/// Modifier bits still held the last time we injected.
+///
+/// `settle_before_injection` used to write the `paste.modifiers` trace line
+/// itself, via `crate::trace::event` — which is the *standalone* writer, so
+/// the line came out as `[········]` with no dictation id and no elapsed
+/// column. `docs/tracing.md` told readers to "look for a `paste.modifiers`
+/// line immediately before" a suspect `paste.verify`, and `grep <trace-id>`
+/// — the one command the doc leads with — could never show it. The single
+/// most important dictation in the corpus, the only one of 540 with the
+/// Globe key held at injection time, had to be matched to its modifier line
+/// by timestamp by hand.
+///
+/// So the bits are parked here and the caller that owns a dictation writes
+/// the line against that dictation. A caller with no dictation to attach to
+/// (history replay) still gets the WARN and the Sentry breadcrumb below; it
+/// no longer gets an orphan trace line that nothing could join to.
+static LAST_INJECTION_MODIFIERS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+/// Modifier bits held when the most recent injection went out — zero when the
+/// coast was clear. Read immediately after `simulate_typing` / `simulate_paste`
+/// returns; one injection runs at a time (the state machine is in Processing
+/// for the whole of it), so there is no interleaving to guard against.
+pub fn last_injection_modifiers() -> u64 {
+    LAST_INJECTION_MODIFIERS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Human-readable modifier list for a bit set from `last_injection_modifiers`.
+pub fn describe_held_modifiers(bits: u64) -> String {
+    #[cfg(target_os = "macos")]
+    {
+        mac::describe_modifiers(bits)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = bits;
+        "none".to_string()
+    }
+}
+
 /// Pause before injecting: let the target app settle into the foreground, then
 /// give any physically-held modifier a brief chance to come up.
 ///
@@ -220,16 +260,6 @@ fn settle_before_injection() -> u64 {
                 level: sentry::Level::Warning,
                 ..Default::default()
             });
-            // Also into the dictation trace, so it sits chronologically next
-            // to the `paste.verify` line that will show whether this dictation
-            // actually landed.
-            crate::trace::event(
-                "paste.modifiers",
-                serde_json::json!({
-                    "held": mac::describe_modifiers(stuck),
-                    "bits": format!("0x{:06X}", stuck),
-                }),
-            );
         }
         stuck
     };
@@ -237,6 +267,7 @@ fn settle_before_injection() -> u64 {
     #[cfg(not(target_os = "macos"))]
     let stuck: u64 = 0;
 
+    LAST_INJECTION_MODIFIERS.store(stuck, std::sync::atomic::Ordering::Relaxed);
     stuck
 }
 

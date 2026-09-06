@@ -33,7 +33,7 @@ spot it was written to remove.
 [2026-08-26 08:48:57.412] [0007-3f2a] +    0ms dictation.start  {"kind":"recording","verbose":false,"dur_ms":0}
 [2026-08-26 08:48:57.418] [0007-3f2a] +    6ms audio.duration   {"secs":7.52,"wav_bytes":481324,"dur_ms":6}
 [2026-08-26 08:48:58.902] [0007-3f2a] + 1490ms whisper.response {"chars":87,"sha8":"9f2c1ab0","attempt":1,"ms":1484,"dur_ms":1484}
-[2026-08-26 08:48:59.118] [0007-3f2a] + 1706ms paste.verify     {"ax_readable":true,"changed":true,"delta_chars":87,"expected_chars":87,"settled_ms":48}
+[2026-08-26 08:48:59.118] [0007-3f2a] + 1706ms paste.verify     {"verdict":"observed","evidence":"text","ax_before":"value","ax_after":"value","delta_chars":87,"expected_chars":87,"settled_ms":48}
 [2026-08-26 08:48:59.121] [0007-3f2a] + 1709ms dictation.finish {"outcome":"pasted","ms":1709,"chars":87,"words":16,"dur_ms":3}
 ```
 
@@ -104,7 +104,7 @@ its own line would be lost by the same failure.
 | `cleanup`, `polish`, `dictionary` | Each text transformation, with `changed` and before/after character counts. A `to.chars` of 0 names the stage that emptied the transcription. `polish.outcome` is `applied` / `failed` / `guard_rejected` / `skipped` — what actually happened, not whether it was allowed to try. |
 | `polish.outage` | Polish has failed `consecutive_failures` times in a row against `model`. Emitted on every failure; the user is notified once per session at three. |
 | `paste.accessibility` | `tcc_trusted` vs `ax_probe_ok`. Trusted-but-not-working is the stale-TCC state left behind by in-place app updates. |
-| `paste.decision` | `type` (direct keystrokes) or `clipboard` (Cmd+V), and how many characters. |
+| `paste.decision` | `type` (direct keystrokes) or `clipboard` (Cmd+V), how many characters, and `app` — the bundle id of the frontmost application, i.e. where the text was aimed. Bundle id only; a window title is user content. Without it, a blind `paste.verify` names no suspect. |
 | `paste.skipped` | Injection was not attempted at all. `reason:"no_accessibility"` — the text went to the clipboard and System Settings was opened for the user. Distinct from `paste.result {"ok":false}`, which means we tried and failed. |
 | `paste.modifiers` | A modifier key was still held at injection time. Only emitted when one was. |
 | `paste.result` | Whether the events were posted. |
@@ -130,7 +130,7 @@ its own line would be lost by the same failure.
 | `permission.tcc_reset_result` | What `tccutil` said. `ok:true`, or `ok:false` with `stderr` / `error`. The grant is gone either way; this separates "reset and re-prompted" from "asked to reset and was refused". |
 | `permission.notify` / `permission.notify_failed` | The UI was told a permission is missing. Both fire during Tauri `setup()`, when the webview may not have mounted, so the banner can be emitted to nobody. `notify` with `emitted:true` is not proof a window received it — that limit is real, which is why the line carries the `event` name rather than only an outcome. |
 | `degraded` | Any place a failure was swallowed and a polite default returned. See below. |
-| `dictation.finish` | `outcome` plus `reason` when nothing was produced. |
+| `dictation.finish` | `outcome` plus `reason` when nothing was produced, and `verification` — see below. `outcome:"pasted"` now means **observed**, not merely posted. |
 
 ## `paste.verify` is the important one
 
@@ -140,27 +140,100 @@ is dropped. `paste.verify` reads the focused text field back and compares it to
 a snapshot taken before injection.
 
 ```json
-{"ax_readable":true,"changed":true,"before_chars":0,"after_chars":87,
- "delta_chars":87,"expected_chars":87,"settled_ms":48}
+{"verdict":"observed","evidence":"text","reason":"",
+ "ax_before":"value","ax_after":"value","ax_before_err":0,"ax_after_err":0,
+ "ax_readable":true,"before_chars":0,"after_chars":87,
+ "delta_chars":87,"expected_chars":87,
+ "first_change_ms":24,"settled_ms":48,"reads":3,"retries":0}
 ```
 
-- `changed:true` — the text actually landed. `settled_ms` is how long the
-  target took to consume the events; `delta_chars` next to `expected_chars`
-  tells you whether all of them arrived.
-- `ax_readable:false` — the target's text can't be read (most Electron apps,
-  and every non-macOS build). `changed` is meaningless here; it is **not**
-  evidence of failure.
-- `ax_readable:true` with `changed:false` — **the keystrokes were swallowed.**
-  Look for a `paste.modifiers` line immediately before it — it names the
-  modifier that was held (`Fn/Globe`, `Command`, …) when we injected.
+`verdict` is the answer. There are three, and the third one is the point:
+
+| `verdict` | Meaning |
+| --- | --- |
+| `observed` | The field was read on both sides and it changed. The characters landed. This is the **only** verdict that licenses `outcome:"pasted"`. |
+| `swallowed` | The field was readable and did not change. The keystrokes went nowhere. Look for a `paste.modifiers` line in the same dictation — it names the modifier that was held (`Fn/Globe`, `Command`, …) when we injected. |
+| `unverified` | We could not tell. **Not evidence of failure, and not evidence of success.** `reason` says why. |
+
+`reason`, when the verdict is `unverified`:
+
+| `reason` | Meaning |
+| --- | --- |
+| `no_baseline` | The read taken *before* injection failed, so there was nothing to compare against. This is the whole of the historical blind spot: all 219 blind verifications in the 26 Aug – 5 Sep corpus have this shape and not one is a lost read-back. |
+| `read_back_failed` | The baseline was readable and the read after injection was not, even after retries. |
+| `length_unchanged` | Neither side gave text, and the character count did not move. Consistent with a swallow *and* with typing over a selection of the same length. Not enough to accuse. |
+| `shape_changed` | One side answered with text and the other with a bare length. Which strategy answers is a property of the element, so this means focus moved between the two reads and the numbers describe different fields. |
+
+`evidence` is what the verdict rests on: `text` (contents compared), `length`
+(only the character count was available), `none`. A `length` comparison can
+promote to `observed` but never to `swallowed`, because typing over an
+equal-length selection leaves the count identical.
+
+`ax_before` / `ax_after` name the read strategy that answered, on each side.
+This replaces the old single `ax_readable` boolean, which collapsed four
+different failures with four different fixes into one word:
+
+| Value | Meaning |
+| --- | --- |
+| `value` | `AXValue` — a native text field. |
+| `range` | `AXStringForRange` — Chrome and other web contenteditable. |
+| `length_only` | The element reported `AXNumberOfCharacters` and refused its contents. Coarser, and still a real observation. |
+| `no_focus` | `AXFocusedUIElement` succeeded and returned nothing: nothing has keyboard focus. |
+| `focus_error` | `AXFocusedUIElement` itself failed; `ax_before_err` / `ax_after_err` carry the raw `AXError` (`-25204` `kAXErrorCannotComplete` — the app does not serve AX at all). |
+| `unreadable` | An element was found and exposes neither text nor a length. |
+| `unsupported` | Not macOS. There is no equivalent read on Windows. |
+
+`ax_readable` is kept, with exactly the meaning it always had (the read-back
+produced something), so a year of corpus stays greppable. `changed` is **gone**:
+it was computed by comparing two `Option<String>`s, so an unreadable *before*
+plus a readable *after* rendered as `changed:true` — a self-report wearing an
+observation's clothes. Use `verdict` instead.
+
+`reads` and `retries` are what the observation cost: total Accessibility
+round-trips, and how many of those were made against a target that had just
+declined to answer. A high `retries` against one `paste.decision.app` names an
+application worth a further read strategy.
 
 The check re-reads for up to 600 ms rather than once, because the events sit
 in the HID queue and the target consumes them on its own run loop. It runs in
-a spawned task, so the `paste.verify` line can appear slightly after
-`dictation.finish` — it still carries the dictation's id.
+a spawned task and **nothing waits for it** — measured over the corpus, it
+lands a median of 44 ms after `dictation.finish` and later than it in 78% of
+dictations. It still carries the dictation's id, so the join is one grep.
 
-`changed` rather than "grew": typing over a selection replaces it, so a
-successful paste can leave the field shorter than it started.
+When the baseline was unreadable it does no AX round-trips at all and settles
+immediately: with no *before*, no amount of patience produces a comparison.
+
+## `verification`: what the finish line is allowed to claim
+
+`ui.completed` and `dictation.finish` both carry `verification`, which is the
+verifier's answer *at the instant that line was written* — not a promise about
+the final one. Because verification runs off the critical path, the usual value
+on `dictation.finish` is `pending`, and the settled answer arrives moments
+later on the `paste.verify` line with the same trace id.
+
+| `verification` | Meaning |
+| --- | --- |
+| `observed` | Someone read the target and it changed. |
+| `swallowed` | Someone read the target and it did not. |
+| `ax_unreadable` | There was no baseline, so no evidence was ever going to arrive. |
+| `pending` | The verifier has not concluded yet. Grep the trace id for `paste.verify`. |
+| `inconclusive` | The verifier looked at both sides and still could not tell. |
+| `not_pasted` | The injection failed or was skipped. Nothing to verify. |
+
+`dictation.finish` maps those onto `outcome`:
+
+| `outcome` | Meaning |
+| --- | --- |
+| `pasted` | **Observed.** Changed meaning in Polaris: it used to mean only that the events were posted, which is what let 219 blind pastes across the corpus — including `0112-bf80`, the one dictation where `Fn/Globe` was demonstrably held at injection — report themselves as successes. |
+| `pasted_unverified` | Posted, nobody saw it land. `verification` says whether the evidence is still in flight (`pending`) or was never coming (`ax_unreadable`). Not a failure: the text very probably went in. |
+| `paste_swallowed` | Observed *not* to have landed. |
+| `clipboard_fallback` | The injection did not happen. The text is on the clipboard. |
+| `aborted` | No text was produced at all. See below. |
+
+`pasted_unverified` and `paste_swallowed` also write a WARN into `ttp.log`,
+which is the file a user attaches to a bug report — except when `verification`
+is `pending`, because a warning that fires on the majority of dictations is
+wallpaper, and the answer is one grep away under the same id.
 
 ## Aborted dictations
 
@@ -235,7 +308,16 @@ cd ~/Library/Application\ Support/com.ttp.desktop
 grep '"outcome":"aborted"' ttp-trace.log
 
 # Every dictation whose keystrokes were verifiably swallowed
-grep 'paste.verify' ttp-trace.log | grep '"ax_readable":true' | grep '"changed":false'
+grep 'paste.verify' ttp-trace.log | grep '"verdict":"swallowed"'
+
+# Every dictation we could not verify at all, and why
+grep 'paste.verify' ttp-trace.log | grep '"verdict":"unverified"'
+
+# Which applications the unverifiable pastes were aimed at
+grep -B4 '"verdict":"unverified"' ttp-trace.log | grep paste.decision
+
+# Pastes claimed as landed without anybody seeing them land
+grep '"outcome":"pasted_unverified"' ttp-trace.log
 
 # The input layer breaking and recovering
 grep -E 'hotkey\.(tap_rearmed|stale_fn_cleared|tap_create_failed)' ttp-trace.log
@@ -485,9 +567,13 @@ used to be on this list have moved off it — `vad.*`, `settings.snapshot`,
   itself is untraced by design — it is a real-time audio thread and a channel
   push is not free enough to put in it. A stream that delivers buffers late
   rather than not at all is still invisible.
-- **Whether the paste landed, on Windows and in Electron apps.**
+- **Whether the paste landed, on Windows and in apps that do not serve AX.**
   `paste.verify` needs Accessibility to read the target back; where it cannot,
-  `ax_readable:false` is an honest "unknown", not evidence.
+  `verdict:"unverified"` is an honest "unknown", not evidence, and
+  `dictation.finish` says `pasted_unverified` rather than claiming a success it
+  did not witness. `ax_before` names which read failed and `paste.decision.app`
+  names the application, so the residual blind spot is now attributable even
+  though it is not yet closed.
 - **Cause, everywhere.** The trace records what the app decided and how long it
   took. It does not record why macOS disabled the tap, why the keychain took
   seven seconds, or why the Bluetooth headset sent silence. It narrows those

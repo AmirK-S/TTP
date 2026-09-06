@@ -8,7 +8,10 @@ use crate::credentials::get_groq_api_key_internal;
 use crate::dictionary::detection::start_correction_window;
 use crate::dictionary::apply_dictionary;
 use crate::history::add_history_entry;
-use crate::paste::{check_accessibility, simulate_paste, simulate_typing, ClipboardGuard};
+use crate::paste::{
+    check_accessibility, describe_verification, finish_outcome, read_verdict, simulate_paste,
+    simulate_typing, ClipboardGuard, FocusSnapshot, PasteVerdictSlot,
+};
 #[cfg(target_os = "macos")]
 use crate::paste::{probe_accessibility, reset_accessibility_tcc};
 // Pill stays visible - no hide needed
@@ -75,7 +78,22 @@ const PASTE_VERIFY_TIMEOUT_MS: u64 = 600;
 
 /// Gap between verification reads. Each read is an Accessibility round-trip,
 /// so this trades resolution against the cost of hammering the target app.
+///
+/// Measured over the 540-dictation corpus: of the 329 verifications that could
+/// read the target, `first_change_ms` had a median of 30 ms and a 90th
+/// percentile of 60 ms, so this resolution is well inside what it needs to
+/// resolve.
 const PASTE_VERIFY_POLL_MS: u64 = 25;
+
+/// Gap between verification reads on the *retry* path — when the baseline was
+/// readable and the read-back was not.
+///
+/// Coarser than `PASTE_VERIFY_POLL_MS` on purpose. This path exists to catch a
+/// target whose focus is momentarily unresolvable right after injection, not to
+/// watch a field fill up, and each attempt is an Accessibility round-trip
+/// against an app that has just told us it is not answering. Twenty-four such
+/// probes in a 600 ms window would be hammering; six is a retry.
+const PASTE_VERIFY_RETRY_MS: u64 = 100;
 
 /// How long to wait after Cmd+V before restoring the user's pre-record
 /// clipboard, when we have to use the clipboard path (text > DIRECT_TYPING_MAX_CHARS).
@@ -2016,12 +2034,19 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // actually read the pasteboard after Cmd+V.
     let use_direct_typing = final_text.chars().count() <= DIRECT_TYPING_MAX_CHARS;
 
+    // `app` is the bundle identifier of the frontmost application — where the
+    // text is about to go. Nothing on this path ever recorded it, which is why
+    // 211 unverifiable pastes across the corpus could not be attributed to a
+    // single application. Bundle id only: a window title is user content.
+    let target_app = crate::paste::frontmost_bundle_id();
+
     trace.stage(
         "paste.decision",
         serde_json::json!({
             "strategy": if use_direct_typing { "type" } else { "clipboard" },
             "chars": final_text.chars().count(),
             "has_accessibility": has_accessibility,
+            "app": target_app,
         }),
     );
 
@@ -2032,7 +2057,15 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // happens when a stuck modifier reroutes the characters into the Globe
     // shortcut layer. Returns None on targets whose text we cannot read
     // (most Electron apps) and on non-macOS; the trace records which case.
-    let focused_before = crate::paste::read_focused_text();
+    let focused_before = crate::paste::probe_focused_text();
+
+    // Whether this paste is verifiable *at all* is decided here, before we
+    // inject, and it is decided by whether we have a baseline to compare
+    // against. That matters for honesty rather than for the verifier: it means
+    // `dictation.finish` can say `pasted_unverified` for the 39% of dictations
+    // whose target cannot be read, instead of claiming an observation that was
+    // never going to arrive.
+    let verifiable = focused_before.observable();
 
     // Use spawn_blocking to run sync paste code safely in async context.
     // We deliberately use tauri::async_runtime::spawn_blocking instead of the
@@ -2041,27 +2074,58 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // "there is no reactor running" on macOS when the call site is somehow
     // detached from the active runtime (see sounds.rs / audio_monitor.rs
     // for the same fix pattern).
+    // The verdict the verification task will reach, readable from here without
+    // blocking. See `spawn_paste_verification`.
+    let verdict_slot: PasteVerdictSlot = std::sync::Arc::new(std::sync::Mutex::new(None));
+
+    // No `catch_unwind` around the injection.
+    //
+    // `[profile.release]` sets `panic = "abort"`, so there is no unwinding in
+    // any shipped binary and `catch_unwind` can never return `Err`. The arm
+    // that used to sit below it — logging "Paste simulation panicked" and
+    // writing `paste.result {"ok":false,"kind":"panic"}` — was unreachable in
+    // the product and live only under `cargo test`, where `[profile.dev]`
+    // still unwinds. A test written against it would have passed while proving
+    // nothing about what users run. Aborting on a panic inside CGEvent
+    // injection is the right call: the process state is suspect at that point.
+    //
+    // What replaces the handler is a documented log shape rather than code: a
+    // dictation with a `paste.decision` and no `paste.result` after it, in the
+    // session before an `app.launched`, *is* a mid-injection abort. See
+    // "Aborted dictations" in `docs/tracing.md`.
     let paste_span = crate::trace::Span::start();
     let paste_success = if has_accessibility {
         let paste_result = if use_direct_typing {
             let text_for_typing = final_text.clone();
-            tauri::async_runtime::spawn_blocking(move || {
-                std::panic::catch_unwind(|| simulate_typing(&text_for_typing))
-            })
-            .await
+            tauri::async_runtime::spawn_blocking(move || simulate_typing(&text_for_typing)).await
         } else {
-            tauri::async_runtime::spawn_blocking(|| {
-                std::panic::catch_unwind(|| simulate_paste())
-            })
-            .await
+            tauri::async_runtime::spawn_blocking(simulate_paste).await
         };
 
         match paste_result {
-            Ok(Ok(Ok(()))) => {
+            Ok(Ok(())) => {
                 // Direct typing walks the string one synthetic keystroke at a
                 // time, so this scales with the transcription. `paste.decision`
                 // records the strategy; this records what the strategy cost.
                 trace.timed("paste.result", &paste_span, serde_json::json!({ "ok": true }));
+
+                // Modifier bits still held when the events went out. This used
+                // to be written by the injection itself through the standalone
+                // trace writer, so it appeared as `[········]` with no
+                // dictation id — invisible to `grep <trace-id>`, which is the
+                // first command `docs/tracing.md` teaches. It is the single
+                // most useful line next to a suspect `paste.verify`, so it now
+                // belongs to the dictation.
+                let held = crate::paste::last_injection_modifiers();
+                if held != 0 {
+                    trace.stage(
+                        "paste.modifiers",
+                        serde_json::json!({
+                            "held": crate::paste::describe_held_modifiers(held),
+                            "bits": format!("0x{:06X}", held),
+                        }),
+                    );
+                }
                 if use_direct_typing {
                     // Direct typing already delivered every character to the
                     // focused app — no async pasteboard read in flight, so we
@@ -2087,6 +2151,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                     trace.clone(),
                     focused_before.clone(),
                     final_text.chars().count(),
+                    verdict_slot.clone(),
                 );
 
                 // Restore original clipboard content
@@ -2123,21 +2188,12 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
                 true
             }
-            Ok(Ok(Err(e))) => {
+            Ok(Err(e)) => {
                 crate::logging::log_error(&format!("[Pipeline] Paste simulation failed: {}", e));
                 trace.timed(
                     "paste.result",
                     &paste_span,
                     serde_json::json!({ "ok": false, "error": e, "kind": "simulate_failed" }),
-                );
-                false
-            }
-            Ok(Err(_)) => {
-                crate::logging::log_error("[Pipeline] Paste simulation panicked");
-                trace.timed(
-                    "paste.result",
-                    &paste_span,
-                    serde_json::json!({ "ok": false, "kind": "panic" }),
                 );
                 false
             }
@@ -2213,11 +2269,30 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         }
     }
 
-    // Record the successful transcription in the local daily-stats bucket
-    // so the in-app Analytics section can show "this week / this month".
-    // Local-only — no network. Capped at u32 to keep the on-disk payload
-    // bounded; even a power user shouldn't dent that ceiling per day.
-    trace.stage("ui.completed", serde_json::json!({ "pasted": paste_success }));
+    // What the verifier knows *right now*, without waiting for it.
+    //
+    // The blind case is decided before injection (`verifiable`), so it is
+    // always in hand here. The observed case usually is not: measured over the
+    // 548-verification corpus, `paste.verify` lands a median of 44 ms after
+    // `dictation.finish`, a 90th percentile of 616 ms, and later than it in
+    // 78% of dictations. Waiting for it is not an option — `set_state(Idle)`
+    // is below this and the state machine stays in Processing until it runs,
+    // so every millisecond spent here is a millisecond of dead hotkey.
+    //
+    // So the honest report is a *third* state rather than a delayed second
+    // one: `pending` means the evidence is coming and carries the same trace
+    // id, `ax_unreadable` means it is never coming.
+    let settled = read_verdict(&verdict_slot);
+    let verification = describe_verification(paste_success, verifiable, settled);
+
+    // `pasted` is kept for readers that only ever wanted the boolean, and it
+    // still means exactly what it always meant: we posted the events and
+    // nothing errored. `verification` is what says whether anybody saw them
+    // land.
+    trace.stage(
+        "ui.completed",
+        serde_json::json!({ "pasted": paste_success, "verification": verification }),
+    );
 
     let word_count = final_text.split_whitespace().count();
     let char_count = final_text.chars().count();
@@ -2238,6 +2313,10 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // stays in Processing until this function returns, so for those 7.6 seconds
     // every hotkey press was a silent no-op: "TTP stopped responding", in
     // miniature, caused by bookkeeping.
+    // Record the successful transcription in the local daily-stats bucket
+    // so the in-app Analytics section can show "this week / this month".
+    // Local-only — no network. Capped at u32 to keep the on-disk payload
+    // bounded; even a power user shouldn't dent that ceiling per day.
     let stats_trace = trace.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let started = std::time::Instant::now();
@@ -2263,96 +2342,206 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     }
     trace.stage("files.cleaned", serde_json::Value::Null);
 
-    trace.finish(
-        if paste_success { "pasted" } else { "clipboard_fallback" },
-        serde_json::json!({
-            "chars": char_count,
-            "words": word_count,
-            "has_accessibility": has_accessibility,
-        }),
-    );
+    // Re-read: the verifier may have concluded during the bookkeeping above.
+    let settled = read_verdict(&verdict_slot);
+    let verification = describe_verification(paste_success, verifiable, settled);
+    let outcome = finish_outcome(paste_success, verification);
+
+    let detail = serde_json::json!({
+        "chars": char_count,
+        "words": word_count,
+        "has_accessibility": has_accessibility,
+        "verification": verification,
+        "app": target_app,
+    });
+
+    if outcome == "pasted_unverified" || outcome == "paste_swallowed" {
+        // Emitted here rather than through `Trace::finish`, whose WARN line
+        // reads "the text was never inserted into the focused app, only left
+        // on the clipboard". That sentence is true for `clipboard_fallback`
+        // and false for both of these states — for `pasted_unverified` the
+        // text very probably did land and we just did not see it, and for
+        // `paste_swallowed` the clipboard has already been restored to the
+        // user's own contents, so the transcription is not sitting there
+        // either. Repeating it would swap one confident wrong claim for
+        // another. `Trace::finish` should learn the third state; `trace.rs` is
+        // outside this workstream's blast radius.
+        let mut fields = serde_json::json!({
+            "outcome": outcome,
+            "ms": trace.elapsed_ms(),
+        });
+        if let (Some(f), Some(d)) = (fields.as_object_mut(), detail.as_object()) {
+            for (k, v) in d {
+                f.insert(k.clone(), v.clone());
+            }
+        }
+        trace.stage("dictation.finish", fields);
+
+        // `pending` gets the trace line and no WARN.
+        //
+        // It is the honest terminal state — at the instant this line is
+        // written nobody has confirmed anything — but it is also the *usual*
+        // one: measured over the corpus, `paste.verify` lands a median of
+        // 44 ms after `dictation.finish` and later than it in 78% of
+        // dictations, so warning on it would put a WARN in `ttp.log` for most
+        // successful dictations. A warning that fires on the majority of runs
+        // is not a warning, it is wallpaper, and the evidence is one grep away
+        // under the same trace id. The two states that do warn are the ones
+        // where the answer is never coming, or has come and is bad.
+        if verification != "pending" {
+            crate::logging::log_warn(&format!(
+                "[Dictation {}] finished as {} ({}) — the keystrokes were posted and \
+                 nothing confirmed they landed in the focused app. See ttp-trace.log",
+                trace.id(),
+                outcome,
+                verification
+            ));
+        }
+    } else {
+        trace.finish(outcome, detail);
+    }
 
     set_state(app, RecordingState::Idle);
     Ok(final_text)
 }
 
 /// Watch the focused element until it reflects an injection, then record the
-/// verdict on `trace`.
+/// verdict — on `trace`, and in `slot` for the finish path to read.
 ///
 /// Spawned rather than awaited. Verification is diagnostics, not product
 /// behaviour: making the user wait up to `PASTE_VERIFY_TIMEOUT_MS` for the
-/// completion pill so we can write a log line would be a bad trade.
+/// completion pill so we can write a log line would be a bad trade, and the
+/// state machine stays in `Processing` for exactly as long as this function's
+/// caller runs. Nothing here is on the dictation's critical path and nothing
+/// here may ever become so.
 ///
-/// Bails immediately when Accessibility cannot read the target at all (most
-/// Electron apps, and every non-macOS build). There is nothing to observe
-/// there, and polling for 600 ms to learn nothing would just cost AX
-/// round-trips. The emitted line says `ax_readable: false` so a reader never
+/// Bails without a single Accessibility round-trip when the *baseline* was
+/// unreadable. That is not an optimisation, it is the honest answer: with no
+/// `before` there is nothing a later read could be compared against, so
+/// polling for 600 ms would buy an `after` that proves nothing. This is the
+/// whole of the corpus blind spot — all 219 blind verifications across 548
+/// have a null baseline, and none of them is a lost read-back — and the line
+/// it emits says `verdict:"unverified" reason:"no_baseline"` so no reader ever
 /// mistakes "we could not check" for "it did not land".
 fn spawn_paste_verification(
     trace: crate::trace::Trace,
-    focused_before: Option<String>,
+    focused_before: FocusSnapshot,
     expected_chars: usize,
+    slot: crate::paste::PasteVerdictSlot,
 ) {
     tauri::async_runtime::spawn(async move {
         let started = std::time::Instant::now();
         let timeout = Duration::from_millis(PASTE_VERIFY_TIMEOUT_MS);
 
-        // `changed` rather than `grew`: typing over a selection replaces it,
-        // so a successful paste can leave the field shorter than it was.
-        let changed = |after: &Option<String>| -> bool {
-            match (&focused_before, after) {
-                (before, Some(after_text)) => before.as_deref() != Some(after_text.as_str()),
-                _ => false,
-            }
-        };
-
-        let before_chars = focused_before.as_ref().map(|t| t.chars().count());
-        let delta_of = |after: &Option<String>| -> Option<i64> {
-            match (before_chars, after.as_ref().map(|t| t.chars().count())) {
+        let delta_of = |after: &FocusSnapshot| -> Option<i64> {
+            match (focused_before.chars, after.chars) {
                 (Some(b), Some(a)) => Some(a as i64 - b as i64),
                 _ => None,
             }
         };
 
-        let mut focused_after = crate::paste::read_focused_text();
+        // `None` means we never looked, which is a different fact from "we
+        // looked and saw nothing" and is rendered as a null `ax_after`.
+        let mut after: Option<FocusSnapshot> = None;
         let mut first_change_ms: Option<u64> = None;
         let mut settled_ms: u64 = 0;
+        let mut reads: u32 = 0;
+        let mut retries: u32 = 0;
 
-        // Poll until the target has consumed everything we sent, not until it
-        // first reacts. We inject in chunks, so the first read after the first
-        // chunk lands shows a delta of exactly one chunk — stopping there
-        // reported "16 characters arrived" for a 500-character paste, which
-        // reads as a truncation bug that is not happening. Keep watching
-        // until the delta covers what we sent, or the window closes.
-        if focused_after.is_some() {
+        if focused_before.observable() {
+            let mut snapshot = crate::paste::probe_focused_text();
+            reads += 1;
+
+            // Poll until the target has consumed everything we sent, not until
+            // it first reacts. We inject in chunks, so the first read after the
+            // first chunk lands shows a delta of exactly one chunk — stopping
+            // there reported "16 characters arrived" for a 500-character paste,
+            // which reads as a truncation bug that is not happening. Keep
+            // watching until the delta covers what we sent, or the window
+            // closes.
             while started.elapsed() < timeout {
-                if delta_of(&focused_after).is_some_and(|d| d >= expected_chars as i64) {
+                if snapshot.observable()
+                    && delta_of(&snapshot).is_some_and(|d| d >= expected_chars as i64)
+                {
                     break;
                 }
-                sleep(Duration::from_millis(PASTE_VERIFY_POLL_MS)).await;
-                let next = crate::paste::read_focused_text();
-                if next != focused_after {
+
+                // The second means of verification, and the reason this loop no
+                // longer gives up on the first blind read the way the previous
+                // implementation did (`if focused_after.is_some()`, once, and
+                // out). A target whose focus is momentarily unresolvable right
+                // after injection — the window server is mid-transition, the
+                // app is rebuilding its AX tree — used to turn a perfectly
+                // readable baseline into `ax_readable:false`. Retry at a
+                // coarser cadence, because each attempt is an AX round-trip
+                // against an app that has just declined to answer.
+                let gap = if snapshot.observable() {
+                    PASTE_VERIFY_POLL_MS
+                } else {
+                    retries += 1;
+                    PASTE_VERIFY_RETRY_MS
+                };
+                sleep(Duration::from_millis(gap)).await;
+
+                let next = crate::paste::probe_focused_text();
+                reads += 1;
+                if next != snapshot {
                     settled_ms = started.elapsed().as_millis() as u64;
                     first_change_ms.get_or_insert(settled_ms);
-                    focused_after = next;
+                    snapshot = next;
                 }
             }
+            after = Some(snapshot);
         }
+
+        // With no baseline the second argument is irrelevant — `classify`
+        // returns `no_baseline` before it looks at it — so passing the
+        // baseline itself is honest rather than clever: it says "there was
+        // never a pair here".
+        let verification = crate::paste::classify(
+            &focused_before,
+            after.as_ref().unwrap_or(&focused_before),
+        );
+        crate::paste::record_verdict(&slot, verification);
 
         trace.stage(
             "paste.verify",
             serde_json::json!({
-                "ax_readable": focused_after.is_some(),
-                "changed": changed(&focused_after),
-                "before_chars": before_chars,
-                "after_chars": focused_after.as_ref().map(|t| t.chars().count()),
-                "delta_chars": delta_of(&focused_after),
+                // The verdict, and the kind of evidence it rests on. There is
+                // deliberately no `changed` boolean any more: it was computed
+                // by comparing `Option<String>`s, so an unreadable before plus
+                // a readable after rendered as `changed:true` — a self-report
+                // wearing an observation's clothes.
+                "verdict": verification.verdict.as_str(),
+                "evidence": verification.evidence,
+                "reason": verification.reason,
+                // Which read strategy answered, on each side. One boolean used
+                // to collapse four different failures — no focused element, an
+                // app that does not serve AX at all, an element with no
+                // readable attribute, and not-macOS — into `ax_readable:false`,
+                // and they need four different fixes.
+                "ax_before": focused_before.source.as_str(),
+                "ax_before_err": focused_before.ax_err,
+                "ax_after": after.as_ref().map(|a| a.source.as_str()),
+                "ax_after_err": after.as_ref().map(|a| a.ax_err),
+                // Kept: same meaning it always had, so a year of corpus stays
+                // comparable.
+                "ax_readable": after.as_ref().is_some_and(|a| a.observable()),
+                "before_chars": focused_before.chars,
+                "after_chars": after.as_ref().and_then(|a| a.chars),
+                "delta_chars": after.as_ref().and_then(delta_of),
                 "expected_chars": expected_chars,
                 // How fast the target reacted at all, vs when it stopped
                 // changing. A large gap between them means a slow consumer;
                 // first_change absent means it never reacted.
                 "first_change_ms": first_change_ms,
                 "settled_ms": settled_ms,
+                // What the observation cost, and how much of it was spent on a
+                // target that was not answering. `reads:1` with a decided
+                // verdict is the cheap happy path; a high `retries` names the
+                // apps worth a third read strategy.
+                "reads": reads,
+                "retries": retries,
             }),
         );
     });
