@@ -9,7 +9,7 @@
 // "ignore previous instructions") is treated as content to preserve, not as
 // an instruction to execute. See POLISH_SYSTEM_PROMPT below.
 
-use crate::http_client::shared as shared_http;
+use crate::http_client::{retry_guidance, shared as shared_http};
 use crate::logging::log_error;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
@@ -225,6 +225,151 @@ fn compute_max_tokens(raw_text: &str) -> u32 {
     (input_tokens as f32 * 1.3) as u32 + 50 + REASONING_TOKEN_HEADROOM
 }
 
+/// Total time polish may spend waiting on rate limits within one dictation,
+/// in milliseconds. A budget for the whole call, not a per-sleep cap: two
+/// waits of 1.5s are as unacceptable to the person watching as one of 3s.
+///
+/// Measured 2026-09-05 over the harvest corpus — 541 dictations in
+/// `ttp-trace.log`/`.log.1`, and the 55 rate-limit replies in `ttp.log`:
+///
+///   * End to end (`dictation.finish` → `paste.result`): p50 1279ms,
+///     p90 2127ms, p99 3450ms. That p99 is the slowest experience users
+///     already have and accept; it is the ceiling this budget is drawn to.
+///   * The polish call itself: p50 659ms, p95 1415ms, max 3372ms over 471
+///     successful attempts — roughly half of a median dictation.
+///   * A 429 comes back fast: 52–64ms across all 54 in the burst. The
+///     rejected call is not what costs the user anything; the wait is.
+///
+/// So a dictation that hits one rate limit and retries costs: the non-polish
+/// work (1279 − 659 ≈ 620ms) + the rejected call (~60ms) + the wait + a
+/// second polish call (659ms at p50). At 2000ms of wait that totals ~3.34s,
+/// just inside the 3450ms p99 users already see. At 2500ms it lands outside
+/// it, and at 1000ms it buys almost nothing: only 11 of the 55 observed Groq
+/// delays are under 1.5s, versus 14 under 2s.
+///
+/// The other 41 delays — median 4.08s, up to 8.34s — are refused outright.
+/// The transcription has already succeeded at that point and the unpolished
+/// text is in hand (`pipeline.rs` pastes it on any polish error), so making
+/// someone wait four seconds for nicer punctuation is a worse product than
+/// pasting now. Refusing also stops the hammering: the 2026-09-02 burst was
+/// 54 calls in ~20s, every retry sent before the window it was waiting for
+/// had reopened.
+///
+/// Re-measure when the model or the tier changes — the free-tier TPM limit
+/// (8000) is what sets the delays Groq asks for.
+const RETRY_BUDGET_MS: u64 = 2000;
+
+/// What to do after a failed polish attempt. Pure decision, no clock, no
+/// network — `plan_retry` is the whole policy and is unit-tested as such.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RetryPlan {
+    /// Sleep exactly this long because the server said so. Not jittered: the
+    /// server named a time, and smearing it ±25% either wakes us early into
+    /// the same limit or wastes the user's time.
+    Wait { ms: u64 },
+    /// Local backoff for a failure the server gave no guidance about
+    /// (5xx, network). Caller jitters this to avoid a retry stampede.
+    Backoff { base_ms: u64 },
+    /// Stop and let the pipeline paste the unpolished text. `reason` is a
+    /// trace slug, never user-facing prose.
+    GiveUp { reason: &'static str },
+}
+
+/// Decide what happens after a failed polish attempt.
+///
+/// `status` is `None` for a transport failure (timeout, DNS, connection
+/// reset). `attempts_left` is how many attempts remain after this one.
+/// `guidance_ms` is what the server asked for, if it said anything.
+/// `waited_ms` is what this polish call has already slept.
+fn plan_retry(
+    status: Option<u16>,
+    attempts_left: u32,
+    guidance_ms: Option<u64>,
+    waited_ms: u64,
+) -> RetryPlan {
+    // A 4xx that is not a rate limit is terminal: 401/403 is the key, 404 is
+    // a decommissioned model. Retrying those is pure latency.
+    if let Some(code) = status {
+        if (400..500).contains(&code) && code != 429 {
+            return RetryPlan::GiveUp {
+                reason: "client_error",
+            };
+        }
+    }
+
+    // Rate limits are decided on the server's own guidance, before the
+    // attempt count, so the trace names the real cause: "the wait was longer
+    // than a dictation can afford" is a different finding from "we ran out of
+    // tries", and only the first says the tier is the problem.
+    if status == Some(429) {
+        let Some(delay_ms) = guidance_ms else {
+            // Every one of the 55 rate-limit replies on file named its own
+            // delay. A 429 that names none is a server we have no measurement
+            // for, and guessing a number is the defect this replaces.
+            return RetryPlan::GiveUp {
+                reason: "no_guidance",
+            };
+        };
+        if waited_ms.saturating_add(delay_ms) > RETRY_BUDGET_MS {
+            return RetryPlan::GiveUp {
+                reason: "over_budget",
+            };
+        }
+        if attempts_left == 0 {
+            return RetryPlan::GiveUp {
+                reason: "attempts_exhausted",
+            };
+        }
+        return RetryPlan::Wait { ms: delay_ms };
+    }
+
+    if attempts_left == 0 {
+        return RetryPlan::GiveUp {
+            reason: "attempts_exhausted",
+        };
+    }
+
+    // 5xx and transport failures: nothing told us when to come back, so the
+    // old local schedule stands (~500ms, ~1000ms). It costs at most 1.5s and
+    // the corpus has zero of these in 525 attempts, so there is nothing to
+    // measure it against — unlike the 429 path, which had 55 measurements
+    // sitting in the log the whole time.
+    let attempt_index = MAX_RETRIES.saturating_sub(attempts_left);
+    RetryPlan::Backoff {
+        base_ms: 500 * attempt_index as u64,
+    }
+}
+
+/// Put the retry decision on a `polish.attempt` event.
+///
+/// Before this, fifty-four consecutive rate-limited attempts wrote the same
+/// four fields fifty-four times. These three answer the question the repeat
+/// could not: what did the server ask for, where did it say so, and did we
+/// honour it or stop. All values are slugs or numbers — the app is bilingual
+/// and prose belongs in the i18n catalogue, not in a trace field.
+fn annotate_attempt(
+    fields: &mut serde_json::Value,
+    plan: &RetryPlan,
+    guidance: Option<&crate::http_client::RetryGuidance>,
+) {
+    let Some(obj) = fields.as_object_mut() else {
+        return;
+    };
+    if let Some(g) = guidance {
+        obj.insert("retry_after_ms".to_string(), g.delay_ms.into());
+        obj.insert("retry_source".to_string(), g.source.into());
+    }
+    match plan {
+        RetryPlan::GiveUp { reason } => {
+            obj.insert("decision".to_string(), "give_up".into());
+            obj.insert("reason".to_string(), (*reason).into());
+        }
+        RetryPlan::Wait { .. } | RetryPlan::Backoff { .. } => {
+            obj.insert("decision".to_string(), "retry".into());
+        }
+    }
+}
+
 /// Parse a string into an Intent enum, falling back to NaturalText on
 /// unknown/missing values. Defensive against LLM emitting a category not in
 /// the whitelist.
@@ -271,11 +416,15 @@ pub async fn polish_text(api_key: &str, raw_text: &str) -> Result<PolishResult, 
     };
 
     let mut last_error = String::new();
+    // `waited_total_ms` is what this polish call has already slept, and is
+    // what `RETRY_BUDGET_MS` is spent against. `waited_before_attempt_ms` is
+    // the sleep that preceded the attempt now in flight: it goes on the trace
+    // so an attempt that honoured the server's own delay is distinguishable
+    // from one that fired blind, which the old `polish.attempt` was not.
+    let mut waited_total_ms: u64 = 0;
+    let mut waited_before_attempt_ms: u64 = 0;
     for attempt in 0..MAX_RETRIES {
-        if attempt > 0 {
-            let delay_ms = jittered_backoff_ms(500 * (attempt as u64));
-            sleep(Duration::from_millis(delay_ms)).await;
-        }
+        let attempts_left = MAX_RETRIES - attempt - 1;
 
         // Per-attempt timing. The aggregate `polish` stage cannot distinguish
         // one slow call from a failure plus a retry, and those need opposite
@@ -334,6 +483,9 @@ pub async fn polish_text(api_key: &str, raw_text: &str) -> Result<PolishResult, 
                             "status": 200,
                             "ms": attempt_ms(),
                             "model": MODEL,
+                            // Non-zero here is the success that an honoured
+                            // rate-limit wait bought.
+                            "waited_ms": waited_before_attempt_ms,
                         }),
                     );
                     return Ok(PolishResult {
@@ -341,41 +493,86 @@ pub async fn polish_text(api_key: &str, raw_text: &str) -> Result<PolishResult, 
                         polished: polished_text,
                     });
                 } else {
+                    // Headers before the body: `text()` consumes the response,
+                    // and `retry-after` lives in the headers.
+                    let headers = response.headers().clone();
                     let error_body = response.text().await.unwrap_or_default();
                     let status_code = status.as_u16();
+                    // Keep the status code verbatim in the message —
+                    // `pipeline::classify_polish_error` reads it to tell
+                    // `rate_limited` from `invalid_api_key`.
                     last_error = format!("Polish API error: {} - {}", status, error_body);
                     log_error(&last_error);
-                    crate::trace::event(
-                        "polish.attempt",
-                        serde_json::json!({
-                            "n": attempt + 1,
-                            "status": status_code,
-                            "ms": attempt_ms(),
-                            "model": MODEL,
-                        }),
+
+                    let guidance = retry_guidance(&headers, &error_body);
+                    let plan = plan_retry(
+                        Some(status_code),
+                        attempts_left,
+                        guidance.as_ref().map(|g| g.delay_ms),
+                        waited_total_ms,
                     );
 
-                    if status.is_client_error() && status_code != 429 {
-                        return Err(last_error);
+                    let mut fields = serde_json::json!({
+                        "n": attempt + 1,
+                        "status": status_code,
+                        "ms": attempt_ms(),
+                        "model": MODEL,
+                        "waited_ms": waited_before_attempt_ms,
+                    });
+                    annotate_attempt(&mut fields, &plan, guidance.as_ref());
+                    crate::trace::event("polish.attempt", fields);
+
+                    match plan {
+                        RetryPlan::GiveUp { .. } => return Err(last_error),
+                        RetryPlan::Wait { ms } => {
+                            waited_before_attempt_ms = ms;
+                            waited_total_ms += ms;
+                            sleep(Duration::from_millis(ms)).await;
+                        }
+                        RetryPlan::Backoff { base_ms } => {
+                            let ms = jittered_backoff_ms(base_ms);
+                            waited_before_attempt_ms = ms;
+                            waited_total_ms += ms;
+                            sleep(Duration::from_millis(ms)).await;
+                        }
                     }
                 }
             }
             Err(e) => {
                 last_error = format!("Polish request failed: {}", e);
                 log_error(&last_error);
-                crate::trace::event(
-                    "polish.attempt",
-                    serde_json::json!({
-                        "n": attempt + 1,
-                        // A timeout lands here after REQUEST_TIMEOUT_SECS, so
-                        // `ms` near 30000 is the signature of a hung call
-                        // rather than a slow one.
-                        "error": e.to_string(),
-                        "timed_out": e.is_timeout(),
-                        "ms": attempt_ms(),
-                        "model": MODEL,
-                    }),
-                );
+
+                // No status, so no server guidance: local backoff or nothing.
+                let plan = plan_retry(None, attempts_left, None, waited_total_ms);
+
+                let mut fields = serde_json::json!({
+                    "n": attempt + 1,
+                    // A timeout lands here after REQUEST_TIMEOUT_SECS, so
+                    // `ms` near 30000 is the signature of a hung call
+                    // rather than a slow one.
+                    "error": e.to_string(),
+                    "timed_out": e.is_timeout(),
+                    "ms": attempt_ms(),
+                    "model": MODEL,
+                    "waited_ms": waited_before_attempt_ms,
+                });
+                annotate_attempt(&mut fields, &plan, None);
+                crate::trace::event("polish.attempt", fields);
+
+                match plan {
+                    RetryPlan::GiveUp { .. } => return Err(last_error),
+                    RetryPlan::Wait { ms } => {
+                        waited_before_attempt_ms = ms;
+                        waited_total_ms += ms;
+                        sleep(Duration::from_millis(ms)).await;
+                    }
+                    RetryPlan::Backoff { base_ms } => {
+                        let ms = jittered_backoff_ms(base_ms);
+                        waited_before_attempt_ms = ms;
+                        waited_total_ms += ms;
+                        sleep(Duration::from_millis(ms)).await;
+                    }
+                }
             }
         }
     }
@@ -502,6 +699,208 @@ pub fn guard_polish(raw: &str, polished: &str) -> GuardVerdict {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ---- retry policy -------------------------------------------------
+    //
+    // The whole 429 policy is `plan_retry`, and it is a pure function: no
+    // clock, no network, no Groq call. The burst that produced this
+    // workstream cost ~54 live calls and exhausted the tier.
+
+    /// The delays Groq actually asked for, in seconds, across the 55
+    /// rate-limit replies in `ttp.log` on 2026-09-02. Sorted.
+    const OBSERVED_DELAYS_S: &[f64] = &[
+        0.21, 0.46, 0.58, 0.64, 0.66, 0.66, 0.67, 0.70, 0.93, 1.18, 1.19,
+        1.59, 1.62, 1.91, 2.15, 2.18, 2.29, 2.44, 2.45, 2.53, 2.54, 2.66,
+        3.05, 3.32, 3.83, 3.88, 4.00, 4.08, 4.12, 4.34, 4.52, 4.64, 4.82,
+        4.93, 5.14, 5.35, 5.39, 5.48, 5.68, 5.78, 5.87, 5.96, 6.09, 6.20,
+        6.35, 6.57, 7.05, 7.19, 7.33, 7.51, 7.55, 7.55, 7.56, 7.70, 8.34,
+    ];
+
+    #[test]
+    fn a_rate_limit_waits_exactly_what_the_server_asked_for() {
+        // The finding: Groq said 6.57s and the code slept 500ms. Anything
+        // inside the budget is now honoured to the millisecond — no jitter,
+        // no invented multiple of 500.
+        assert_eq!(
+            plan_retry(Some(429), 2, Some(1912), 0),
+            RetryPlan::Wait { ms: 1912 }
+        );
+        assert_eq!(
+            plan_retry(Some(429), 2, Some(578), 0),
+            RetryPlan::Wait { ms: 578 }
+        );
+    }
+
+    #[test]
+    fn a_rate_limit_longer_than_the_budget_gives_up_immediately() {
+        // 6.57s is the delay from the finding. The user gets unpolished text
+        // now instead of a frozen dictation, and Groq gets one call, not four.
+        assert_eq!(
+            plan_retry(Some(429), 2, Some(6570), 0),
+            RetryPlan::GiveUp { reason: "over_budget" }
+        );
+    }
+
+    #[test]
+    fn the_budget_is_spent_across_the_whole_call_not_per_sleep() {
+        // Two 1.5s waits are as bad as one 3s wait to the person watching.
+        assert_eq!(
+            plan_retry(Some(429), 1, Some(1500), 1500),
+            RetryPlan::GiveUp { reason: "over_budget" }
+        );
+        // Exactly on the budget still runs: the cap is a ceiling, not a fence.
+        assert_eq!(
+            plan_retry(Some(429), 1, Some(1000), 1000),
+            RetryPlan::Wait { ms: 1000 }
+        );
+    }
+
+    #[test]
+    fn the_observed_delays_split_the_way_the_budget_says() {
+        // 14 of the 55 measured delays fit in RETRY_BUDGET_MS; the rest are
+        // refused. If someone retunes the budget this test says what it costs.
+        let (fits, refused): (Vec<_>, Vec<_>) = OBSERVED_DELAYS_S
+            .iter()
+            .map(|s| (s * 1000.0).round() as u64)
+            .partition(|ms| matches!(plan_retry(Some(429), 2, Some(*ms), 0), RetryPlan::Wait { .. }));
+        assert_eq!(fits.len(), 14, "delays honoured within the budget");
+        assert_eq!(refused.len(), 41, "delays refused as too long to wait");
+        assert!(fits.iter().all(|ms| *ms <= RETRY_BUDGET_MS));
+        // The old backoff spent ~1.5s across all three attempts and would
+        // have covered only 11 of them even if it had spent it all at once.
+        assert_eq!(OBSERVED_DELAYS_S.iter().filter(|s| **s <= 1.5).count(), 11);
+    }
+
+    #[test]
+    fn a_rate_limit_with_no_guidance_does_not_guess() {
+        // Retrying blind on a 429 is the defect, not the fix.
+        assert_eq!(
+            plan_retry(Some(429), 2, None, 0),
+            RetryPlan::GiveUp { reason: "no_guidance" }
+        );
+    }
+
+    #[test]
+    fn a_rate_limit_on_the_last_attempt_says_so() {
+        assert_eq!(
+            plan_retry(Some(429), 0, Some(500), 0),
+            RetryPlan::GiveUp { reason: "attempts_exhausted" }
+        );
+    }
+
+    #[test]
+    fn over_budget_outranks_attempts_exhausted() {
+        // Both are true on the last attempt; only one names the tier as the
+        // cause, and that is the one worth reading in the trace.
+        assert_eq!(
+            plan_retry(Some(429), 0, Some(7000), 0),
+            RetryPlan::GiveUp { reason: "over_budget" }
+        );
+    }
+
+    #[test]
+    fn non_rate_limit_client_errors_are_terminal() {
+        // 401/403 is the key, 404 is a decommissioned model — the eight-day
+        // outage. Retrying any of them only adds latency.
+        for code in [400, 401, 403, 404, 422] {
+            assert_eq!(
+                plan_retry(Some(code), 2, None, 0),
+                RetryPlan::GiveUp { reason: "client_error" },
+                "status {}",
+                code
+            );
+        }
+    }
+
+    #[test]
+    fn server_errors_and_transport_failures_keep_the_local_backoff() {
+        // Nothing told us when to come back, so the old schedule stands:
+        // ~500ms after the first failure, ~1000ms after the second.
+        assert_eq!(plan_retry(Some(500), 2, None, 0), RetryPlan::Backoff { base_ms: 500 });
+        assert_eq!(plan_retry(Some(503), 1, None, 0), RetryPlan::Backoff { base_ms: 1000 });
+        assert_eq!(plan_retry(None, 2, None, 0), RetryPlan::Backoff { base_ms: 500 });
+        assert_eq!(
+            plan_retry(None, 0, None, 0),
+            RetryPlan::GiveUp { reason: "attempts_exhausted" }
+        );
+    }
+
+    #[test]
+    fn no_plan_ever_sleeps_longer_than_the_budget() {
+        // Belt and braces against a hostile or broken Retry-After: a server
+        // asking for an hour must never freeze a dictation.
+        for guidance in [0u64, 1, 999, 2_000, 2_001, 60_000, 3_600_000, u64::MAX] {
+            for waited in [0u64, 500, 2_000] {
+                if let RetryPlan::Wait { ms } = plan_retry(Some(429), 2, Some(guidance), waited) {
+                    assert!(
+                        waited + ms <= RETRY_BUDGET_MS,
+                        "guidance {} after {}ms waited slept {}ms",
+                        guidance,
+                        waited,
+                        ms
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_trace_tells_the_three_cases_apart() {
+        // A 429 retried on the server's delay, a 429 that gave up, and a
+        // transport failure used to be indistinguishable in `polish.attempt`.
+        let guidance = crate::http_client::RetryGuidance {
+            delay_ms: 1912,
+            source: crate::http_client::SOURCE_BODY,
+        };
+
+        let mut retried = serde_json::json!({ "status": 429 });
+        annotate_attempt(&mut retried, &RetryPlan::Wait { ms: 1912 }, Some(&guidance));
+        assert_eq!(retried["decision"], "retry");
+        assert_eq!(retried["retry_after_ms"], 1912);
+        assert_eq!(retried["retry_source"], "body");
+        assert!(retried.get("reason").is_none());
+
+        let long = crate::http_client::RetryGuidance {
+            delay_ms: 6570,
+            source: crate::http_client::SOURCE_HEADER,
+        };
+        let mut gave_up = serde_json::json!({ "status": 429 });
+        annotate_attempt(
+            &mut gave_up,
+            &RetryPlan::GiveUp { reason: "over_budget" },
+            Some(&long),
+        );
+        assert_eq!(gave_up["decision"], "give_up");
+        assert_eq!(gave_up["reason"], "over_budget");
+        assert_eq!(gave_up["retry_after_ms"], 6570);
+        assert_eq!(gave_up["retry_source"], "retry_after");
+
+        let mut outage = serde_json::json!({ "timed_out": true });
+        annotate_attempt(&mut outage, &RetryPlan::Backoff { base_ms: 500 }, None);
+        assert_eq!(outage["decision"], "retry");
+        assert!(outage.get("retry_after_ms").is_none());
+    }
+
+    #[test]
+    fn trace_fields_are_slugs_and_numbers_never_prose() {
+        // The app is bilingual; `npm run i18n:check` polices the UI strings
+        // and nothing polices Rust, so this does.
+        for plan in [
+            RetryPlan::GiveUp { reason: "over_budget" },
+            RetryPlan::GiveUp { reason: "no_guidance" },
+            RetryPlan::GiveUp { reason: "attempts_exhausted" },
+            RetryPlan::GiveUp { reason: "client_error" },
+        ] {
+            let mut fields = serde_json::json!({});
+            annotate_attempt(&mut fields, &plan, None);
+            let reason = fields["reason"].as_str().unwrap();
+            assert!(
+                reason.chars().all(|c| c.is_ascii_lowercase() || c == '_') && !reason.contains(' '),
+                "{:?} is not a slug",
+                reason
+            );
+        }
+    }
 
     #[test]
     fn sanitize_escapes_closing_tag() {
