@@ -38,7 +38,7 @@
     "polish_unavailable": "Polish unavailable. Pasting raw text.",
     "clipboard_write_failed": "Failed to write to clipboard",
     "enable_accessibility": "Enable Accessibility to auto-paste",
-    "paste_failed": "Paste failed. Use Cmd+V.",
+    "paste_failed": "Couldn't paste. The text is on your clipboard — Cmd+V.",
     "rate_limit_exceeded": "Slow down a sec, then try again.",
     "api_timeout": "Groq didn't answer in time. Wi-Fi flaky?",
     "api_network": "Network error: {{error}}",
@@ -535,7 +535,16 @@
     "errorFallback": "Something broke",
     "statusTranscribing": "Transcribing…",
     "handsFreeIndicatorLabel": "Hands-free recording, single tap to stop",
-    "deadInput": "No sound — check your mic"
+    "deadInput": "No sound — check your mic",
+    "outcome": {
+      "unverified": "Sent — not confirmed",
+      "unverifiedAnnouncement": "The text was sent. Nothing confirmed it arrived.",
+      "arrivedAnnouncement": "The text arrived.",
+      "swallowed": "Nothing arrived — it's in Settings → History",
+      "swallowedAnnouncement": "The text did not arrive in the app. It is saved in Settings → History.",
+      "clipboard": "Not inserted — the text is on your clipboard",
+      "clipboardAnnouncement": "The text was not inserted. It is on your clipboard — press Cmd+V to paste it."
+    }
   },
   "permissionBanner": {
     "titleOne": "{{item}} permission missing",

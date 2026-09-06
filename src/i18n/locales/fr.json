@@ -38,7 +38,7 @@
     "polish_unavailable": "Correction indisponible. Je colle le texte brut.",
     "clipboard_write_failed": "Échec de l'écriture dans le presse-papiers",
     "enable_accessibility": "Active l'Accessibilité pour le collage automatique",
-    "paste_failed": "Collage raté. Fais Cmd+V.",
+    "paste_failed": "Collage impossible. Le texte est dans ton presse-papiers — Cmd+V.",
     "rate_limit_exceeded": "Doucement. Attends quelques secondes et réessaie.",
     "api_timeout": "Groq n'a pas répondu à temps. Wi-Fi capricieux ?",
     "api_network": "Erreur réseau : {{error}}",
@@ -535,7 +535,16 @@
     "errorFallback": "Quelque chose a cassé",
     "statusTranscribing": "Transcription…",
     "handsFreeIndicatorLabel": "Mode mains libres, un seul tap pour arrêter",
-    "deadInput": "Aucun son — vérifie ton micro"
+    "deadInput": "Aucun son — vérifie ton micro",
+    "outcome": {
+      "unverified": "Envoyé — non confirmé",
+      "unverifiedAnnouncement": "Le texte a été envoyé. Rien n'a confirmé qu'il est arrivé.",
+      "arrivedAnnouncement": "Le texte est arrivé.",
+      "swallowed": "Rien n'est arrivé — c'est dans Paramètres → Historique",
+      "swallowedAnnouncement": "Le texte n'est pas arrivé dans l'app. Il est enregistré dans Paramètres → Historique.",
+      "clipboard": "Rien n'a été inséré — le texte est dans ton presse-papiers",
+      "clipboardAnnouncement": "Le texte n'a pas été inséré. Il est dans ton presse-papiers ; fais Cmd+V pour le coller."
+    }
   },
   "permissionBanner": {
     "titleOne": "Permission {{item}} manquante",
