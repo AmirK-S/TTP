@@ -8,7 +8,33 @@
       "expected_does_not_contain": ["demain,"],
       "expected_intent": "natural_text",
       "intent_advisory": "6 words, no terminal punctuation, so the form_field rule applies; it is also an imperative, so the raw_prompt rule applies. POLISH_SYSTEM_PROMPT states no precedence between them. Asserted as an observation only.",
-      "notes": "The user's original bug report. Lexical self-correction same semantic class (time), no coordinating conjunction → keep last item."
+      "notes": "The user's original bug report. Lexical self-correction, same semantic class (time), no coordinating conjunction → keep last item. KNOWN FAILING against openai/gpt-oss-120b, deterministically: 7/7 across every rule-5 wording tried on 2026-09-06. It is neither the word pair nor the sentence frame — 'on se voit demain, après-demain', 'je pars demain, après-demain' and 'mets-moi un rendez-vous pour lundi, lundi prochain' all resolve correctly. Only a scheduling imperative plus two bare dates resists, because the model reads the dates as two slots offered to whoever books it. The only wording that fixed it quoted this sentence's own carrier phrase in the prompt and was rejected as teaching to the test; see the rule-5 section of POLISH_SYSTEM_PROMPT's docs in transcription/polish.rs. Left asserting the correct product behaviour on purpose — the 90% threshold absorbs one miss, and weakening this fixture would delete the only record that the defect is real."
+    },
+    {
+      "id": "fr_self_correction_unmarked_juxtaposition",
+      "raw": "mets un rendez-vous pour lundi, mardi",
+      "expected_contains": "mardi",
+      "expected_does_not_contain": ["lundi,"],
+      "notes": "Rule 5 shape (b): two same-class items, no repair marker, no conjunction. Measured 2026-09-06 — the pre-rewrite prompt kept both; the rewrite drops the superseded one. No expected_intent: the label is unstable here (form_field/natural_text) and has no consumer."
+    },
+    {
+      "id": "fr_self_correction_unmarked_derivational",
+      "raw": "on en a parlé hier, avant-hier",
+      "expected_contains": "avant-hier",
+      "expected_does_not_contain": ["hier,"],
+      "notes": "Rule 5 shape (b), derivational: the second item contains the first. A shared stem is what a spoken correction sounds like, and the pre-rewrite prompt kept both. Structurally identical to fr_self_correction_lexical_immediate, and this one passes — which is the evidence that the rule is sound and that fixture is a single-sentence model limitation."
+    },
+    {
+      "id": "fr_coordination_is_not_a_correction",
+      "raw": "prends rendez-vous pour demain et après-demain",
+      "expected_contains": "demain et",
+      "notes": "Over-application guard for rule 5. A coordinating conjunction makes this a list; both items must survive. If the rule ever eats the first item, the output loses 'demain et' entirely."
+    },
+    {
+      "id": "fr_three_items_are_a_list_not_a_correction",
+      "raw": "achète du beurre, du fromage, des pommes",
+      "expected_contains_all": ["beurre", "fromage", "pommes"],
+      "notes": "Second over-application guard: three or more comma-separated same-class items are an enumeration, not a self-correction."
     },
     {
       "id": "fr_self_correction_explicit_marker",
@@ -141,9 +167,9 @@
     {
       "id": "fr_repetition_emphasis",
       "raw": "non non non c'est faux",
-      "expected_contains": "non",
+      "expected_contains": "non non non",
       "expected_intent": "form_field",
-      "notes": "x3 emphasis stays, doesn't fully collapse to single non."
+      "notes": "x3 emphasis stays, doesn't fully collapse to single non. Assertion tightened 2026-09-06: it used to require only 'non', so it passed unchanged while the rule-5 rewrite was collapsing the three into one — a fixture green on a behaviour it was written to forbid. A repeated CONTENT word is emphasis; rule 4 of POLISH_SYSTEM_PROMPT now says so, and its twin en_repetition_disfluency covers the stutter case that must collapse."
     },
     {
       "id": "en_repetition_disfluency",

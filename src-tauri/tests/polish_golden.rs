@@ -66,25 +66,77 @@
 // `intent_advisory` naming the collision. `fixture_intents_agree_with_the_prompt`
 // makes that bookkeeping mandatory and self-maintaining, offline.
 //
-// Two things are deliberately NOT fixed here because they live in
-// `transcription/polish.rs`, which this workstream does not own:
-//   * The precedence gap in `POLISH_SYSTEM_PROMPT` described above.
-//   * `fr_self_correction_lexical_immediate` — "mets-moi un rendez-vous pour
-//     demain, après-demain" is labelled the user's original bug report, rule 5
-//     of the prompt names this exact string, and the model does not apply it.
-//     That is a real product defect and the one genuine golden failure.
+// ── Rule 5 and the one fixture that still fails, settled 2026-09-06 ──────
+//
+// `fr_self_correction_lexical_immediate` was the one genuine golden failure.
+// It was chased with 56 live calls against `openai/gpt-oss-120b` and the
+// answer split in two.
+//
+// The rule WAS broken, and is now fixed — but not on that fixture. Rule 5 has
+// two shapes, and only one of them worked. MARKED corrections (`enfin`, `non
+// en fait`, `pardon`, `je veux dire`, `I mean`) already resolved correctly,
+// including delayed and clause-spanning ones. UNMARKED corrections — two
+// same-class items juxtaposed with nothing but a comma — failed on every case
+// tried: "lundi, mardi", "hier, avant-hier", "six personnes, huit personnes".
+// Rule 5 now gives that shape its own branch and the four fixtures added above
+// pin the behaviour, two of them as over-application guards (a coordinating
+// conjunction and a three-item list must both survive intact).
+//
+// A third over-application showed up in the confirmation run and is worth
+// naming, because the suite did not catch it: the new rule started collapsing
+// "non non non c'est faux" to "Non c'est faux", and `fr_repetition_emphasis`
+// stayed GREEN because it only asserted that "non" appeared somewhere. Rule 4
+// now separates a repeated function word (stutter, collapse) from a repeated
+// content word (emphasis, keep every copy), and that fixture's assertion has
+// been tightened to the thing its own note always claimed.
+//
+// That same rule-4 clause fixed a SECOND genuine golden failure that predates
+// this work: `en_repetition_disfluency` ("the the file is broken") returned
+// "The the file is broken" verbatim on the pre-rewrite prompt too, so the
+// header's old claim that the self-correction fixture was the only real
+// `polished` failure was one short.
+//
+// The fixture itself still fails, 7/7, deterministically. It is not the word
+// pair and not the sentence frame — "on se voit demain, après-demain" and
+// "mets-moi un rendez-vous pour lundi, lundi prochain" both resolve. Only a
+// scheduling imperative plus two bare dates resists. It is kept failing rather
+// than weakened; see its `notes` and the rule-5 section of
+// `POLISH_SYSTEM_PROMPT`'s docs. The 90% threshold below absorbs it.
+//
+// The PRECEDENCE GAP is not what was blocking rule 5, and is left open. It was
+// tested directly: the fixture failed identically when the model labelled it
+// `raw_prompt` and when it labelled it `form_field`, while other fixtures
+// labelled `form_field` had their corrections applied. The label is not in the
+// causal path. What WAS in the causal path is a different collision in the same
+// block — `raw_prompt` used to say "Minimal cleanup: only punctuation and
+// capitalization", which forbids rules 4-7 outright on exactly the imperative
+// dictations that need them most. That is fixed: intent now selects formatting
+// only. The twelve advisories below stand, and
+// `the_prompts_intent_rules_still_overlap_on_twelve_fixtures` still guards them.
 //
 // PACING. Groq's on-demand tier caps this account at 8000 tokens per minute for
-// `openai/gpt-oss-120b`, and one fixture costs ~1100-1240 tokens of that budget
+// `openai/gpt-oss-120b`, and one fixture cost ~1100-1240 tokens of that budget
 // (measured 2026-09-02 from the 429 bodies, which report `Used` and `Requested`
-// per call). That is ~6.5 fixtures per minute. Fired back to back, the suite
+// per call). That was ~6.5 fixtures per minute. Fired back to back, the suite
 // exhausts the budget at fixture 6 and every call after it 429s. Before this
 // pacing existed the run reported "Pass rate 18.5%" and 17 of the 22 failures
 // were rate limits, not golden misses — the file was blaming the model for the
-// harness. FIXTURE_SPACING_MS is 60_000 / 6.5 rounded up, and rate-limit
-// failures are now counted and reported separately from assertion failures so
-// the two can never be confused again.
-const FIXTURE_SPACING_MS: u64 = 9_500;
+// harness. Rate-limit failures are now counted and reported separately from
+// assertion failures so the two can never be confused again.
+//
+// RE-PACED 2026-09-06. The system prompt is the bulk of every request, and the
+// rule-4 and rule-5 rewrites grew it from 3,606 to 6,417 characters — roughly
+// +700 tokens on EVERY call, taking a fixture to ~1800-1940 tokens and the tier
+// to ~4.1 fixtures per minute. Leaving the spacing at 9_500 would have
+// reinstated the exact 429 burst this constant exists to prevent, on the first
+// run after the prompt change and with nothing pointing at the cause.
+// 60_000 / 4.1 rounds up to 15_000, and no 429 was seen at 14_000-15_000 across
+// the 68 calls that produced these changes. This number is a function of the
+// prompt's length: if the prompt changes again, re-derive it.
+//
+// It also sets the price of the suite. 31 fixtures at 15s is ~7.75 minutes and
+// 31 live calls, which is why the two opt-in gates above exist.
+const FIXTURE_SPACING_MS: u64 = 15_000;
 
 use serde::Deserialize;
 use std::fs;
