@@ -30,16 +30,20 @@ spot it was written to remove.
 ## Line format
 
 ```
-[2026-08-26 08:48:57.412] [0007-3f2a] +    0ms dictation.start  {"kind":"recording","verbose":false,"dur_ms":0}
-[2026-08-26 08:48:57.418] [0007-3f2a] +    6ms audio.duration   {"secs":7.52,"wav_bytes":481324,"dur_ms":6}
-[2026-08-26 08:48:58.902] [0007-3f2a] + 1490ms whisper.response {"chars":87,"sha8":"9f2c1ab0","empty_body_retry":false,"ms":1484,"dur_ms":1484}
-[2026-08-26 08:48:59.118] [0007-3f2a] + 1706ms paste.verify     {"verdict":"observed","evidence":"text","ax_before":"value","ax_after":"value","delta_chars":87,"expected_chars":87,"settled_ms":48}
-[2026-08-26 08:48:59.121] [0007-3f2a] + 1709ms dictation.finish {"outcome":"pasted","ms":1709,"chars":87,"words":16,"dur_ms":3}
+[2026-08-26 08:48:57.412] [0007-3f2a] +    0ms dictation.start  {"proc":"a3f9","kind":"recording","verbose":false,"dur_ms":0}
+[2026-08-26 08:48:57.418] [0007-3f2a] +    6ms audio.duration   {"proc":"a3f9","secs":7.52,"wav_bytes":481324,"dur_ms":6}
+[2026-08-26 08:48:58.902] [0007-3f2a] + 1490ms whisper.response {"proc":"a3f9","chars":87,"sha8":"9f2c1ab0","empty_body_retry":false,"ms":1484,"dur_ms":1484}
+[2026-08-26 08:48:59.118] [0007-3f2a] + 1706ms paste.verify     {"proc":"a3f9","verdict":"observed","evidence":"text","ax_before":"value","ax_after":"value","delta_chars":87,"expected_chars":87,"settled_ms":48}
+[2026-08-26 08:48:59.121] [0007-3f2a] + 1709ms dictation.finish {"proc":"a3f9","outcome":"pasted","ms":1709,"chars":87,"words":16,"dur_ms":3}
 ```
 
 - `[0007-3f2a]` — the trace id. `grep 0007-3f2a ttp-trace.log` gives you that
   one dictation and nothing else. The `0007` is a per-session sequence number,
   so ids sort in the order the dictations happened.
+- `proc` — **which process wrote this line.** Always first in the payload, on
+  every record. Four hex digits, minted once per process at startup and
+  stable for that process's lifetime. See "Who wrote this line" below; it is
+  the difference between reading this file and guessing at it.
 - `+1490ms` — elapsed since the dictation began, so slow stages are obvious.
 - `dur_ms` — on **every** stage of a dictation: milliseconds since the previous
   stage. The elapsed column tells you when a stage ended; `dur_ms` tells you
@@ -51,10 +55,11 @@ spot it was written to remove.
 
 ### Fields that can appear on any line
 
-Three fields are not part of any one stage. They are attached to whatever
-record happens to be passing when there is something to report, because the
-thing they report is the trace itself being damaged, and a report that needs
-its own line would be lost by the same failure.
+Three fields are not part of any one stage — `proc` above is a fourth, but it
+is on *every* line rather than on whichever one happens to be passing. These
+three are attached to whatever record is passing when there is something to
+report, because the thing they report is the trace itself being damaged, and a
+report that needs its own line would be lost by the same failure.
 
 - `trace_dropped_lines` — the writer's bounded queue overflowed and this many
   records were never handed to it. Carried by the next record that fits.
@@ -71,11 +76,77 @@ its own line would be lost by the same failure.
   (no line at all) or waiting, and never N callers each paying the full
   securityd cost. See "When a dictation takes minutes".
 
+## Who wrote this line
+
+One log directory is shared by everything on this machine that links this
+crate: the installed app, a `tauri dev` build, and every `cargo test` run.
+They all append to the same `ttp-trace.log`, so their records interleave.
+
+That has already cost real credibility, twice in this programme:
+
+- Fourteen `keychain` errors claiming reads had blocked dictations for up to
+  **397 seconds** — reported to the maintainer, then retracted. They carried
+  no dictation id, and no dictation in the corpus lasts more than 3.5 s. They
+  were a test binary.
+- Fifty-four rate-limit warnings read as a live production incident — also
+  retracted. They were the golden test suite exhausting the API tier.
+
+Neither could be told apart from the app by reading the file. A "session" was
+the span between two `app.launched` lines, `app.launched` was the only
+process-scoped record in the format, and a test binary writes none — so a
+co-tenant's lines folded silently into whatever session was open around them.
+
+`proc` closes that. It is four hex digits, minted once per process and put on
+every record, and it says exactly one thing: **these lines came from the same
+process.** To read a file that may hold more than one:
+
+```sh
+# Which processes wrote this file, and how much each of them wrote
+grep -o '"proc":"[0-9a-f]*"' ttp-trace.log | sort | uniq -c | sort -rn
+
+# Everything one process wrote
+grep '"proc":"a3f9"' ttp-trace.log
+
+# Which of them was the app: the launch line names its binary
+grep app.launched ttp-trace.log
+```
+
+The discriminator is the last one. **A process that emitted an `app.launched`
+is the real app; a process that never did is a test binary or a dev build.**
+`app.launched` also carries `build` — `"3.1.7+9dbb2ff"`, the version and the
+7-character commit `build.rs` embedded — so a log can say not merely that the
+app was running but *which* app was. A build that reads `unknown` after the
+`+` was compiled outside a git checkout.
+
+Three things `proc` deliberately is not:
+
+- **Not the pid.** A pid is a weak cross-log correlator, and it leaks launch
+  ordering, in a file users are invited to send to the maintainer. `proc` is
+  16 random bits from the OS CSPRNG and carries no identity at all — not a
+  pid, not a username, not a path.
+- **Not unique forever.** 16 bits collide. The question it has to answer is
+  only whether the handful of processes writing to one retained window are
+  distinguishable, and at four co-tenants the chance of any pair colliding is
+  about 0.009%.
+- **Not a session id.** A process that is restarted gets a new one, which is
+  the point; a process that runs for a week keeps one. Sessions are still the
+  spans between `app.launched` lines — `proc` is what tells you those spans
+  belong to the same process.
+
+Two limits worth knowing before leaning on it. Every line written before
+September 2026 has no `proc` at all, and an absent `proc` means "written
+before the field existed", never "written by the app". And rotation can age
+out an `app.launched` while later lines from the same process survive, which
+makes a genuine app process look like a co-tenant; check whether the group's
+earliest line sits near the top of the oldest retained file before concluding
+anything from a missing launch line.
+
 ## The stages
 
 | Stage | What it tells you |
 |---|---|
-| `app.launched` | Session boundary, with version and platform. Everything below it belongs to one run of the app. |
+| `app.launched` | Session boundary, with version and platform. Everything below it belongs to one run of the app. Also carries `build` — version plus the 7-character commit — and it is **the only stage that does**, because it is the only one whose answer is fixed for the process. Its `proc` is therefore the id of a process that really is the app; see "Who wrote this line". |
+| `app.panic` | **The process died of a panic**, and this is the last thing it managed to say. `msg` (capped at 300 characters, with the truncation announced), `location`, and the `thread` that died — the paste injection runs on a `spawn_blocking` worker, the Fn timer on the macOS main thread, and which one it was is half the diagnosis. Written straight to the file by the panic hook rather than through the writer thread, because a queued line does not survive `panic = "abort"`. |
 | `hotkey.press` / `hotkey.release` | The Fn/Globe key was seen. **No line here means the input layer never fired** — the recording never started. |
 | `hotkey.double_tap` / `hotkey.hands_free_stop` | The two hands-free edges: the double tap that latched recording on, and the press that ended it. |
 | `hotkey.tap_armed` / `hotkey.tap_create_failed` / `hotkey.tap_abandoned` | The tap's lifecycle at its ends. `tap_abandoned` is terminal: after three rebuilds the Fn key does nothing until relaunch. |
@@ -100,7 +171,7 @@ its own line would be lost by the same failure.
 | `whisper.retry` | The first call came back with nothing and we are asking once more before surfacing `no_speech`. Carries `reason:"empty_body"`. |
 | `whisper.attempt` | **One HTTP attempt**, written by `whisper.rs` itself — `n`, `status`, `ms`, and `waited_ms` (what we slept before firing it). A failure adds `error`, `timed_out` and `timeout_ms`, the per-request timeout that attempt ran under; the timeout scales with payload size, so `ms` near `timeout_ms` is a hung upload rather than a refused one. On a retry decision it also carries `decision`, `reason`, `delay_ms`, `source` and `blind`. `whisper.request`/`whisper.response` are written by the caller and cannot tell one slow call from a failure plus a retry; these lines can. |
 | `polish.decision` | Whether polish was going to be attempted at all, and why: `setting_enabled`, `quota_ok`. Emitted before the attempt, so a dictation with no `polish.attempt` says here whether it was skipped or never eligible. |
-| `polish.attempt` | One call to the polish model, with its `model`, `status` and `ms`. A non-200 here is the shape `remote-call-failed` keys off — 403, 429 and 404 look identical to the user and are three different bugs. |
+| `polish.attempt` | One call to the polish model, with its `model`, `status` and `ms`. A non-200 here is the shape `polish-call-failed` keys off — 403, 429 and 404 look identical to the user and are three different bugs. |
 | `polish` | Now also carries `ms`, and the *reason*: `guard_reason` when the guard rejected the model's answer, `error_category` (`rate_limited` / `invalid_api_key` / `polish_failed`) when the call failed. Both used to exist only as a Sentry breadcrumb, which is off by default and is not in the file a user attaches to a bug report. |
 | `cleanup`, `polish`, `dictionary` | Each text transformation, with `changed` and before/after character counts. A `to.chars` of 0 names the stage that emptied the transcription. `polish.outcome` is `applied` / `failed` / `guard_rejected` / `skipped` — what actually happened, not whether it was allowed to try. |
 | `polish.outage` | Polish has failed `consecutive_failures` times in a row against `model`. Emitted on every failure; the user is notified once per session at three. |
@@ -331,6 +402,13 @@ grep '0007-3f2a' ttp-trace.log
 
 # Slowest stage of each dictation
 grep 'dictation.finish' ttp-trace.log
+
+# Which processes wrote this file, and which of them was the app
+grep -o '"proc":"[0-9a-f]*"' ttp-trace.log | sort | uniq -c | sort -rn
+grep app.launched ttp-trace.log
+
+# The app dying of a panic, with the thread that took it down
+grep app.panic ttp-trace.log
 ```
 
 ## When a dictation takes minutes
@@ -387,11 +465,14 @@ removes the multiplier, not the securityd cost. That is what `warm_caches`
 and `keychain.warmed` are for — paying it at launch, on a thread nobody is
 waiting on.
 
-One caveat when counting: sessions in the log are the spans between
-`app.launched` lines, and a dev or test binary appending to the same
-`ttp-trace.log` contributes reads to whichever span it lands in without a
-launch line of its own. Check the timestamps against what was running before
-attributing a burst to the app.
+One caveat when counting, and it is the one that produced the retracted
+397-second report: sessions in the log are the spans between `app.launched`
+lines, and a dev or test binary appending to the same `ttp-trace.log`
+contributes reads to whichever span it lands in without a launch line of its
+own. Filter by `proc` before counting anything — see "Who wrote this line" —
+and only compare reads that came from the process that also wrote an
+`app.launched`. On lines old enough to predate `proc`, the timestamps against
+what was actually running are all there is.
 
 ## When the microphone was left on
 
@@ -523,6 +604,24 @@ puts it near **6.6 KB**, and nearer 7 KB with VAD armed. At that cost the
 floor holds ~1,140 dictations: **about 15–16 days at 73 a day, and 8 or 9 at
 the observed peak rate.**
 
+`proc` costs `"proc":"a3f9",` — **14 bytes on every line**, which is the price
+of the field being on every line rather than on some of them. Re-measured on
+2026-09-06 against the two trace files then on disk (600 dictations, 22,081
+lines, 2.97 MB): the real rate is **36.8 lines per dictation**, so `proc` adds
+**~0.50 KB** at the verbosity that actually produced those files, taking
+4.95 KB to **5.45 KB**. Against the current build's projected ~45 lines it
+adds **~0.62 KB**, taking the 6.6 KB projection to **~7.2 KB**. The floor then
+holds ~1,015 dictations rather than ~1,140: **about 14 days at 73 a day**,
+down from 15–16. That is a real day and a half of history, spent on being able
+to say which process wrote a line — which is what two retracted incident
+reports cost more than a day and a half of.
+
+The lever if that becomes tight is still `KEEP_TRACE_ROTATIONS`: a fourth
+retained file buys back 2.5 MB, roughly 345 dictations at the new rate, for
+2.5 MB of disk. It is a better trade than shortening `proc` (three hex digits
+would save 47 bytes a dictation and start colliding at a handful of
+co-tenants) and a much better one than dropping stages.
+
 So: the three-week window is **projected to fail** the moment the current
 build is installed, and to fail hardest in exactly the weeks a heavy user
 generates the most evidence. It has not failed yet, and the number above is
@@ -534,16 +633,33 @@ than trust either figure. If it needs fixing, the cheap lever is
 The standalone stream costs on top of that: the event-tap heartbeat is the
 only periodic writer, at five-minute intervals and ~90 bytes, so ~26 KB a day.
 
-If you add a stage that fires per dictation, add ~150 bytes — the observed
-average line length in the real log, not the ~100 this section used to
-assume — and redo this arithmetic. Losing history to verbosity would defeat
-the point.
+If you add a stage that fires per dictation, add ~165 bytes — the observed
+average line length in the real log (148 bytes measured on 2026-09-06, plus
+`proc`), not the ~100 this section used to assume — and redo this arithmetic.
+Losing history to verbosity would defeat the point.
 
 ## What is not covered
 
 Honest limits, so nobody reads silence as proof of health. Several items that
 used to be on this list have moved off it — `vad.*`, `settings.snapshot`,
-`hotkey.tap_health` and the `degraded` family exist now. What remains:
+`hotkey.tap_health` and the `degraded` family exist now.
+
+**Two more have moved off it, and it is worth saying what replaced them.**
+
+- *"You cannot tell which process wrote a line."* You can now. Every record
+  carries `proc`, and a `proc` group containing an `app.launched` is the app
+  while one that does not is a test binary or a dev build. See "Who wrote this
+  line" for how to run the check and for the two cases where it still cannot
+  answer: lines written before September 2026, which carry no `proc` at all,
+  and a group whose `app.launched` has been rotated away.
+- *"A process death is not reported at all."* A **panic** is, on `app.panic`,
+  written straight to the file by the hook rather than queued. The hook is
+  installed before `tauri::Builder`, so it covers a panic during Tauri
+  `setup()` too. What is still unreported is a death that runs no Rust code
+  on the way out: SIGKILL, a segfault, an OOM kill, the window server tearing
+  the process down.
+
+What remains:
 
 - **The frontend.** The JS side drives `stop_recording` → `process_audio`. An
   exception in that handoff leaves `capture.stop` with no `dictation.start`
@@ -554,15 +670,20 @@ used to be on this list have moved off it — `vad.*`, `settings.snapshot`,
   configuration each dictation ran under, so two dictations can be compared —
   but the trace still does not record the moment a user flipped a switch. The
   `companion.*` events are the exception, and only for the fields they cover.
-- **Anything before `app.launched`.** A crash during Tauri setup leaves
-  nothing.
+- **Anything before the panic hook is installed.** That is now the boundary,
+  not `app.launched`: the hook goes in ahead of `tauri::Builder`, so a panic
+  during Tauri `setup()` leaves an `app.panic` line even though no
+  `app.launched` was ever written. Anything that fails before Sentry init and
+  the hook — dynamic linking, a missing framework — still leaves nothing.
 - **Anything after the last line.** The writer is a background thread with a
   bounded queue. A hard kill (`panic = "abort"`, SIGKILL) can lose whatever was
   queued and not yet written — at most a few lines, and precisely the last few,
   which is the worst place to lose them. A queue overflow is reported as
   `trace_dropped_lines` on the next line through, and a rejected write as
-  `trace_write_failures`; a process death is not reported at all, because
-  there is nobody left to report it.
+  `trace_write_failures`. A panic reports itself on `app.panic`, synchronously
+  and ahead of the stderr print and the Sentry flush; every other kind of
+  process death is still unreported, because there is nobody left to report
+  it.
 - **The audio callback.** `capture.start` and `capture.stop` bracket the
   recording and `audio.signal` measures the result, but the cpal callback
   itself is untraced by design — it is a real-time audio thread and a channel

@@ -53,8 +53,25 @@
 //    previous stage of the same dictation, injected automatically. The
 //    keychain-on-the-critical-path defect was a latency bug, and latency
 //    bugs are invisible in an event log with no clock.
+//
+// 4. **Every line names the process that wrote it.** `proc` is a short id
+//    minted once per process. One log directory is shared by everything on
+//    this machine that links this crate — the installed app, a `tauri dev`
+//    build, and `cargo test` — so records from several processes interleave
+//    in one file. Twice in this programme that produced an incident report
+//    that had to be retracted: fourteen keychain "errors" claiming reads
+//    blocked dictations for up to 397 seconds, and fifty-four rate-limit
+//    warnings read as a live outage. Both were test binaries. Neither could
+//    be told apart from the app, because a session was only ever the span
+//    between two `app.launched` lines and a co-tenant writes none.
+//
+//    `proc` closes that. Group the lines by it and each group is exactly one
+//    process; a group that contains an `app.launched` is the real app, and a
+//    group that does not is a test binary or a dev build. `app.launched`
+//    itself carries `build` — version and commit — so a log can also say
+//    *which* binary produced it.
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{Arc, OnceLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -67,6 +84,108 @@ use sha2::{Digest, Sha256};
 /// Monotonic per-process counter, so trace ids sort in the order the
 /// dictations happened.
 static TRACE_SEQ: AtomicU64 = AtomicU64::new(0);
+
+// ── Who wrote this line ─────────────────────────────────────────────────
+//
+// One value per process, on every record, so a reader can partition a shared
+// log file by its writers. See requirement 4 in the module header for why.
+//
+// Three properties it has to have, and they decide the representation:
+//
+//   * **It must cost almost nothing.** This is a field on every line, and
+//     lines are ~37 per dictation. `"proc":"a3f9",` is 14 bytes; the same
+//     information as a pid would be 12-17 and would not be free of the
+//     problems below. See `docs/tracing.md`, "Retention", for the bill.
+//
+//   * **It must carry no identity.** Not the pid, not a username, not a
+//     path. A pid is a weak cross-log correlator and it leaks process
+//     ordering and launch sequence for a file users are invited to send to
+//     the maintainer. The id's only job is to say "these lines came from the
+//     same process", and 16 random bits say exactly that and nothing else.
+//     4 hex digits also matches the vocabulary of the trace id's own suffix
+//     (`0007-3f2a`), so it reads as one family and greps like one.
+//
+//   * **It must be available inside a panic hook.** `logging::log_trace_line`
+//     is called directly from the hook because a channel push does not
+//     survive an abort, and the hook renders its record with `format_line`.
+//     So minting sits behind a relaxed atomic and a `compare_exchange` — no
+//     lock the panicking thread could be holding, no channel, no allocation.
+//     In practice it is already minted long before any panic: the app's
+//     first record is `app.launched`.
+//
+// 16 bits is not a collision-free namespace and does not need to be. The
+// question is only ever whether two processes writing to the *same retained
+// window* are distinguishable, which is a handful of processes at a time; at
+// four co-tenants the chance of any pair colliding is about 0.009%.
+
+/// This process's id, as 16 bits. `0` means "not minted yet" and is
+/// therefore never a live value.
+static PROC: AtomicU32 = AtomicU32::new(0);
+
+/// Draw 16 bits of process identity.
+///
+/// Deliberately silent about its own failure: this runs on the path a panic
+/// hook takes, and `degraded()` would re-enter `format_line`, which is what
+/// called us. The clock fallback carries no identity either — sub-millisecond
+/// bits of the launch instant, below the resolution the timestamp column
+/// already publishes.
+fn mint_proc_bits() -> u32 {
+    let mut bytes = [0u8; 2];
+    let raw = if getrandom::fill(&mut bytes).is_ok() {
+        u16::from_ne_bytes(bytes) as u32
+    } else {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos();
+        (nanos ^ (nanos >> 16)) & 0xFFFF
+    };
+    // Keep the sentinel out of the value space, so `PROC == 0` can only ever
+    // mean "not minted".
+    if raw == 0 {
+        1
+    } else {
+        raw
+    }
+}
+
+/// This process's id, minted on first use and stable for its lifetime.
+///
+/// Lock-free by construction: a race mints twice and the loser adopts the
+/// winner's value, so every thread — including one inside a panic hook —
+/// reads the same id without ever waiting on another.
+fn proc_bits() -> u32 {
+    let cached = PROC.load(Ordering::Relaxed);
+    if cached != 0 {
+        return cached;
+    }
+    let minted = mint_proc_bits();
+    match PROC.compare_exchange(0, minted, Ordering::Relaxed, Ordering::Relaxed) {
+        Ok(_) => minted,
+        Err(won) => won,
+    }
+}
+
+/// This process's id as it appears on disk: 4 lowercase hex digits.
+pub fn proc_id() -> String {
+    format!("{:04x}", proc_bits())
+}
+
+/// The stage that opens a session, named here because `event` has to
+/// recognise it. See [`BUILD`].
+const APP_LAUNCHED: &str = "app.launched";
+
+/// Version and commit of the binary that is running, e.g. `3.1.7+9dbb2ff`.
+///
+/// Attached to `app.launched` and to nothing else — it is fixed for the
+/// process, and a field that never varies has no business on 37 lines per
+/// dictation. `app.launched` is where a reader already goes to find the
+/// session boundary, and "which binary wrote this session" is the same
+/// question. The commit comes from `build.rs`, which resolves
+/// `GIT_COMMIT_SHA` (CI) then `git rev-parse` (local dev) then `unknown`; a
+/// build that says `unknown` is one built outside a checkout, which is
+/// itself worth seeing.
+const BUILD: &str = concat!(env!("CARGO_PKG_VERSION"), "+", env!("TTP_BUILD_SHA"));
 
 /// Id column used by standalone events — a hotkey press, a tap recovery —
 /// that do not belong to a dictation. Kept the same width as a real id so
@@ -140,15 +259,48 @@ pub struct TraceEvent {
     pub fields: Value,
 }
 
+/// Render the payload, stamping this process's `proc` as its first field.
+///
+/// The stamp is applied *here*, in the one function that defines the on-disk
+/// format, rather than at the call sites that build records. That is the
+/// whole point: no caller can forget it, including the ones that do not go
+/// through `emit` at all. `lib.rs`'s panic hook builds a `TraceEvent` by hand
+/// and hands it straight to `format_line` because a channel push does not
+/// survive an abort — and it gets `proc` without knowing the field exists.
+///
+/// A record that already carries a `proc` keeps it. That is the re-render
+/// case: a line read back off disk by `trace_api::parse_line` and formatted
+/// again must still name the process that *wrote* it, not the one reading it.
+/// It is also what keeps `parse_line` and `format_line` exact inverses.
+///
+/// Textual splice rather than a `serde_json::Map` insert, for two reasons:
+/// it clones no map, and it puts `proc` first. The map is a `BTreeMap` here
+/// (`serde_json` without `preserve_order`), so an inserted key would sort
+/// into the middle of the payload and land in a different column on every
+/// line. `proc` is a stamp, not a payload field, and it reads like one at
+/// the front.
+fn render_fields(fields: &Value) -> String {
+    let body = match fields {
+        Value::Null => "{}".to_string(),
+        other => other.to_string(),
+    };
+    if !body.starts_with('{') || fields.get("proc").is_some() {
+        return body;
+    }
+    let inner = &body[1..];
+    if inner == "}" {
+        format!("{{\"proc\":\"{:04x}\"}}", proc_bits())
+    } else {
+        format!("{{\"proc\":\"{:04x}\",{}", proc_bits(), inner)
+    }
+}
+
 /// Render a record to the on-disk line format.
 ///
 /// Kept as a pure function so the format has exactly one definition, shared
 /// by the writer and by the parser's round-trip test.
 pub fn format_line(ev: &TraceEvent) -> String {
-    let rendered = match &ev.fields {
-        Value::Null => "{}".to_string(),
-        other => other.to_string(),
-    };
+    let rendered = render_fields(&ev.fields);
     match (&ev.id, ev.elapsed_ms) {
         (Some(id), Some(ms)) => format!(
             "[{}] [{}] +{:>5}ms {} {}",
@@ -310,12 +462,23 @@ fn now_ts() -> String {
 /// rather than a trace id, which keeps `grep <id>` clean while still letting
 /// `grep hotkey\.` pull the whole input timeline.
 pub fn event(name: &str, fields: Value) {
+    let mut payload = normalise(fields);
+    // `build` is attached here rather than at the call site for the same
+    // reason `proc` is attached in `format_line`: which binary opened a
+    // session is a property of the process, not of whoever happened to write
+    // the line, and a call site that has to remember it is a call site that
+    // can forget it. `proc` says two groups of lines came from different
+    // processes; `build` is what lets a reader say *what* the one that
+    // launched actually was.
+    if name == APP_LAUNCHED {
+        merge(&mut payload, json!({ "build": BUILD }));
+    }
     emit(TraceEvent {
         ts: now_ts(),
         id: None,
         elapsed_ms: None,
         stage: name.to_string(),
-        fields: normalise(fields),
+        fields: payload,
     });
 }
 
@@ -635,8 +798,237 @@ mod tests {
         });
         assert_eq!(
             line,
-            "[2026-08-26 08:48:57.412] [0007-3f2a] +    6ms audio.duration {\"secs\":7.52}"
+            format!(
+                "[2026-08-26 08:48:57.412] [0007-3f2a] +    6ms audio.duration \
+                 {{\"proc\":\"{}\",\"secs\":7.52}}",
+                proc_id()
+            )
         );
+    }
+
+    // ── Who wrote this line ─────────────────────────────────────────────
+
+    #[test]
+    fn every_rendered_record_names_its_process() {
+        // The whole workstream in one assertion: there is no record shape
+        // that reaches disk without a `proc`. Includes the empty payload,
+        // which is the shape most standalone events have, and the hand-built
+        // shape `lib.rs`'s panic hook uses.
+        for fields in [
+            Value::Null,
+            json!({}),
+            json!({ "secs": 7.52, "dur_ms": 3 }),
+            json!({ "msg": "x", "location": "src/lib.rs:1:1", "thread": "main" }),
+        ] {
+            let line = format_line(&TraceEvent {
+                ts: "2026-08-26 08:48:57.412".into(),
+                id: None,
+                elapsed_ms: None,
+                stage: "some.stage".into(),
+                fields,
+            });
+            let parsed = crate::trace_api::parse_line(&line).expect("parses");
+            assert_eq!(
+                parsed.fields["proc"], proc_id(),
+                "a record reached the line format with no proc: {}",
+                line
+            );
+        }
+    }
+
+    #[test]
+    fn the_process_id_is_stable_for_the_life_of_the_process() {
+        // If this drifted, grouping a file by `proc` would split one process
+        // into several and re-create the ambiguity it exists to remove.
+        let first = proc_id();
+        for _ in 0..1000 {
+            assert_eq!(proc_id(), first);
+        }
+        // Including from another thread: it is a process id, not a thread id.
+        let expected = first.clone();
+        let seen = std::thread::spawn(move || proc_id()).join().unwrap();
+        assert_eq!(seen, expected);
+    }
+
+    #[test]
+    fn the_process_id_is_four_lowercase_hex_digits() {
+        let id = proc_id();
+        assert_eq!(id.len(), 4, "proc is a field on every line; keep it short");
+        assert!(
+            id.chars().all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)),
+            "proc must stay greppable ASCII: {}",
+            id
+        );
+    }
+
+    #[test]
+    fn the_process_id_carries_no_identity() {
+        // Requirement 5. A pid would be the obvious implementation and is
+        // the one thing this may not be: it is a cross-log correlator and it
+        // leaks launch ordering, in a file users are invited to send us.
+        let pid = std::process::id();
+        assert_ne!(
+            proc_bits(),
+            pid & 0xFFFF,
+            "proc is the low bits of the pid — that is the implementation this forbids"
+        );
+    }
+
+    #[test]
+    fn minting_is_high_entropy() {
+        // `proc_id` is minted once, so the distinctness of two *processes*
+        // rests entirely on the distinctness of two draws from this function.
+        // `distinct_processes_get_distinct_process_ids` observes the real
+        // property across real processes; this one says why it holds, and
+        // fails loudly if the source is ever swapped for something coarse
+        // (a second-resolution clock, a counter, a constant).
+        let draws: std::collections::HashSet<u32> =
+            (0..512).map(|_| mint_proc_bits()).collect();
+        assert!(
+            draws.len() > 480,
+            "only {} distinct values in 512 draws — the id source is not random",
+            draws.len()
+        );
+        assert!(!draws.contains(&0), "0 is the not-minted sentinel");
+    }
+
+    /// Two real processes, not two calls in one.
+    ///
+    /// The claim is about co-tenancy — an installed app and a `cargo test`
+    /// run appending to one file — so the test spawns actual processes and
+    /// compares what they mint. Re-executes this test binary with
+    /// `TTP_PROC_ID_CHILD` set, which makes the child take the early branch,
+    /// print its id and exit; costs a few milliseconds and needs no fixture.
+    #[test]
+    fn distinct_processes_get_distinct_process_ids() {
+        const CHILD: &str = "TTP_PROC_ID_CHILD";
+        if std::env::var(CHILD).is_ok() {
+            println!("PROC={}", proc_id());
+            return;
+        }
+
+        let exe = std::env::current_exe().expect("test binary path");
+        let mut ids = vec![proc_id()];
+        for _ in 0..2 {
+            let out = std::process::Command::new(&exe)
+                .args([
+                    "--exact",
+                    "--nocapture",
+                    "trace::tests::distinct_processes_get_distinct_process_ids",
+                ])
+                .env(CHILD, "1")
+                .output()
+                .expect("re-exec the test binary");
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let id = stdout
+                .lines()
+                .find_map(|l| l.strip_prefix("PROC="))
+                .unwrap_or_else(|| panic!("child printed no id:\n{}", stdout))
+                .to_string();
+            ids.push(id);
+        }
+
+        let distinct: std::collections::HashSet<&String> = ids.iter().collect();
+        assert_eq!(
+            distinct.len(),
+            ids.len(),
+            "two processes shared a proc id: {:?} — co-tenants would still be indistinguishable",
+            ids
+        );
+    }
+
+    #[test]
+    fn a_record_that_already_names_a_process_is_not_re_attributed() {
+        // A line read off disk and rendered again — which is what the viewer
+        // and the analyser do — must keep the id of the process that wrote
+        // it. Without this, reading a shared log would stamp every record in
+        // it with the reader's own id and erase the very distinction.
+        let line = format_line(&TraceEvent {
+            ts: "2026-08-26 08:48:57.412".into(),
+            id: None,
+            elapsed_ms: None,
+            stage: "app.launched".into(),
+            fields: json!({ "proc": "beef", "version": "3.1.7" }),
+        });
+        assert!(line.contains("\"proc\":\"beef\""), "{}", line);
+        assert!(!line.contains(&proc_id()), "the reader re-attributed the record");
+    }
+
+    #[test]
+    fn a_launch_line_names_the_binary_and_a_test_binary_writes_none() {
+        // The discriminator the analyser keys on. `app.launched` is the only
+        // process-scoped stage, and `event` is what puts `build` on it — so
+        // a process that emitted one is the app, and a process whose lines
+        // carry no such record is a test binary or a dev build.
+        let mut launched = normalise(json!({ "version": "3.1.7", "os": "macos" }));
+        merge(&mut launched, json!({ "build": BUILD }));
+        assert_eq!(launched["build"], BUILD);
+        assert!(
+            BUILD.starts_with(env!("CARGO_PKG_VERSION")),
+            "build must lead with the version: {}",
+            BUILD
+        );
+        assert!(
+            BUILD.contains('+') && BUILD.split('+').nth(1).is_some_and(|s| !s.is_empty()),
+            "build must name a commit: {}",
+            BUILD
+        );
+
+        // And nothing else gets it: it is fixed for the process, so paying
+        // for it on 37 lines a dictation would be pure retention cost.
+        let mut ordinary = normalise(json!({ "to": "Idle" }));
+        if "state.transition" == APP_LAUNCHED {
+            merge(&mut ordinary, json!({ "build": BUILD }));
+        }
+        assert!(ordinary.get("build").is_none());
+    }
+
+    #[test]
+    fn a_record_can_be_rendered_from_inside_a_panic_hook() {
+        // Requirement 2. `logging::log_trace_line` is called *directly* from
+        // the panic hook because a push onto the trace channel does not
+        // survive an abort, and the hook renders its record with
+        // `format_line`. So `proc` has to be reachable there: no channel, no
+        // lock the panicking thread might hold, no unbounded allocation.
+        // This test proves the render happens and produces a well-formed,
+        // parseable record carrying `proc`; `tests/abort_observability.rs`
+        // is what proves such a record survives a real abort.
+        //
+        // Deliberately writes nothing to disk. The only trace file this
+        // process could reach is the user's live `ttp-trace.log`, and there
+        // is a harvest running in it.
+        static CAPTURED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+        static SERIALISE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+        let _guard = SERIALISE.lock().unwrap_or_else(|e| e.into_inner());
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|info| {
+            let line = format_line(&TraceEvent {
+                ts: "2026-08-26 08:48:57.412".into(),
+                id: None,
+                elapsed_ms: None,
+                stage: "app.panic".into(),
+                fields: json!({
+                    "msg": "deliberate",
+                    "location": info.location().map(|l| l.file()).unwrap_or("<unknown>"),
+                    "thread": "test",
+                }),
+            });
+            *CAPTURED.lock().unwrap_or_else(|e| e.into_inner()) = Some(line);
+        }));
+        let outcome = std::panic::catch_unwind(|| panic!("deliberate"));
+        std::panic::set_hook(previous);
+        assert!(outcome.is_err(), "the test panic did not happen");
+
+        let line = CAPTURED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+            .expect("the hook rendered no record");
+        let parsed = crate::trace_api::parse_line(&line).expect("the panic record must parse");
+        assert_eq!(parsed.stage, "app.panic");
+        assert_eq!(parsed.fields["proc"], proc_id());
+        assert_eq!(parsed.fields["msg"], "deliberate");
     }
 
     #[test]
@@ -802,6 +1194,6 @@ mod tests {
             fields: json!({}),
         });
         assert!(line.contains(&format!("[{}]", STANDALONE_ID)));
-        assert!(line.ends_with("hotkey.press {}"));
+        assert!(line.ends_with(&format!("hotkey.press {{\"proc\":\"{}\"}}", proc_id())));
     }
 }

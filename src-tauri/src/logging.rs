@@ -43,8 +43,19 @@ const KEEP_ROTATIONS: usize = 2;
 /// have cut the retained window by a third; at 2.5 MB it is back where it
 /// was. The guaranteed floor is the three ROTATED files — the live one can
 /// be nearly empty right after a rotation — so the number that matters is
-/// 3 x 2.5 MB = 7.5 MB, about 1470 dictations, three weeks at the observed
-/// rate of ~68 a day. See `docs/tracing.md`, "Retention".
+/// 3 x 2.5 MB = 7.5 MB.
+///
+/// That floor is thinner than it was. `proc` (`crate::trace`) puts 14 bytes
+/// on every line so a shared log can be partitioned by its writers, and at
+/// the 36.8 lines per dictation measured over the 600-dictation corpus on
+/// 2026-09-06 that is ~0.5 KB a dictation. Against the current build's
+/// projected ~7.2 KB the floor holds ~1,015 dictations, about two weeks at
+/// the observed ~73 a day rather than the three the 2 MB era claimed.
+///
+/// If that becomes tight, the lever is `KEEP_TRACE_ROTATIONS`, not deleting
+/// stages: a fourth retained file buys ~345 more dictations for 2.5 MB of
+/// disk. See `docs/tracing.md`, "Retention", for the full arithmetic and for
+/// why it is arithmetic rather than a measurement of the current build.
 const MAX_TRACE_SIZE: u64 = 2_500_000;
 
 /// Historical trace files retained (`ttp-trace.log.1` .. `.3`).
@@ -221,6 +232,11 @@ pub fn restore_write_failures(n: u64) {
 /// app. Framing the record atomically closes all of those at once, because
 /// `write(2)` on a file opened `O_APPEND` positions and writes under the
 /// inode lock — no other writer's bytes can land inside it.
+///
+/// Atomic framing keeps co-tenants from corrupting each other's records; it
+/// does not tell them apart afterwards. That is `proc` — see
+/// `crate::trace`, "Who wrote this line" — which is the field that makes a
+/// second process's lines identifiable rather than merely intact.
 fn frame_record(line: &str) -> Vec<u8> {
     let mut buf = Vec::with_capacity(line.len() + 1);
     buf.extend_from_slice(line.as_bytes());

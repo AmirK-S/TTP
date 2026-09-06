@@ -372,13 +372,27 @@ mod tests {
         // The load-bearing test of this module. The file on disk is the only
         // store; if the writer and the parser ever disagree the viewer shows
         // something the log does not say.
+        //
+        // Every record here carries a `proc`, because every record on disk
+        // does: `format_line` stamps this process's id onto any payload that
+        // lacks one. A record that already has it is passed through
+        // unchanged, which is what makes the two functions exact inverses
+        // over the set of lines that can actually exist in a file.
+        let p = crate::trace::proc_id();
         for original in [
             ev(Some("0007-3f2a"), Some(1709), "dictation.finish",
-               json!({ "outcome": "pasted", "ms": 1709, "chars": 87, "dur_ms": 12 })),
-            ev(None, None, "hotkey.press", json!({ "held_ms": 152 })),
+               json!({ "proc": p, "outcome": "pasted", "ms": 1709, "chars": 87, "dur_ms": 12 })),
+            ev(None, None, "hotkey.press", json!({ "proc": p, "held_ms": 152 })),
             ev(Some("0000-0000"), Some(0), "dictation.start",
-               json!({ "kind": "recording", "verbose": false, "dur_ms": 0 })),
-            ev(None, None, "app.launched", json!({})),
+               json!({ "proc": p, "kind": "recording", "verbose": false, "dur_ms": 0 })),
+            ev(None, None, "app.launched", json!({ "proc": p, "build": "3.1.7+9dbb2ff" })),
+            // A record written by some *other* process, which is the whole
+            // point of the field. The reader must not re-attribute it.
+            ev(None, None, "app.launched", json!({ "proc": "beef" })),
+            // And an id-less record, the shape every line in the 584-dictation
+            // corpus has. It is not an inverse in the strict sense — the
+            // stamp is added — so it is asserted separately, in
+            // `a_corpus_line_without_proc_still_parses`.
         ] {
             let parsed = parse_line(&format_line(&original)).expect("parses");
             assert_eq!(parsed, original, "round trip changed the record");
@@ -386,15 +400,99 @@ mod tests {
     }
 
     #[test]
+    fn a_corpus_line_without_proc_still_parses() {
+        // Backward compatibility, stated as the maintainer's corpus states
+        // it: every one of the 584 dictations on disk was written before
+        // `proc` existed. A reader that needed the field would lose all of
+        // them, which is the opposite of the point.
+        //
+        // These are real lines, copied from `ttp-trace.log` on 2026-09-06.
+        let old = [
+            "[2026-09-06 06:56:43.238] [0216-7178] + 1011ms dictation.finish {\"chars\":103,\"has_accessibility\":true,\"ms\":1011,\"outcome\":\"pasted\",\"words\":17}",
+            "[2026-09-06 06:56:43.238] [········]          state.transition {\"from\":\"Idle\",\"to\":\"Idle\"}",
+            "[2026-09-06 06:56:43.238] [0216-7178] + 1011ms files.cleaned {}",
+        ];
+        for line in old {
+            let parsed = parse_line(line).expect("a pre-proc line must still parse");
+            assert!(
+                parsed.fields.get("proc").is_none(),
+                "a line that never carried a proc must not acquire one on the way in"
+            );
+            assert!(!parsed.stage.is_empty());
+        }
+
+        // An unattributed record is not the same as one attributed to the
+        // reader. `None` here is what lets an analyser say "this file
+        // predates the field" instead of silently folding a corpus into
+        // whichever process happens to be reading it.
+        let parsed = parse_line(old[0]).expect("parses");
+        assert_eq!(parsed.fields["outcome"], "pasted");
+        assert_eq!(parsed.id.as_deref(), Some("0216-7178"));
+    }
+
+    #[test]
+    fn a_new_line_carries_its_writers_process_id() {
+        // The other half: a line written today names the process that wrote
+        // it, and the id survives the trip through the file format intact.
+        let line = format_line(&ev(Some("0007-3f2a"), Some(6), "audio.duration",
+                                   json!({ "secs": 7.52 })));
+        let parsed = parse_line(&line).expect("parses");
+        assert_eq!(parsed.fields["proc"], crate::trace::proc_id());
+        assert_eq!(parsed.fields["secs"], 7.52);
+    }
+
+    #[test]
+    fn co_tenants_are_separable_by_process_id() {
+        // What the field is *for*. Two processes' records interleaved in one
+        // file — the shape that produced two retracted incident reports —
+        // partition cleanly, and the group carrying `app.launched` is the
+        // one that is the app. A test binary writes no launch line, and that
+        // is the discriminator, not a heuristic on the content.
+        let file = [
+            format_line(&ev(None, None, "app.launched",
+                            json!({ "proc": "a3f9", "build": "3.1.7+9dbb2ff" }))),
+            format_line(&ev(Some("0007-3f2a"), Some(0), "dictation.start",
+                            json!({ "proc": "a3f9", "kind": "recording" }))),
+            // The co-tenant: a golden-suite run exhausting the API tier.
+            format_line(&ev(None, None, "degraded",
+                            json!({ "proc": "beef", "site": "whisper", "status": 429 }))),
+            format_line(&ev(Some("0007-3f2a"), Some(1011), "dictation.finish",
+                            json!({ "proc": "a3f9", "outcome": "pasted" }))),
+        ];
+
+        let mut by_proc: HashMap<String, Vec<TraceEvent>> = HashMap::new();
+        for line in &file {
+            let e = parse_line(line).expect("parses");
+            let p = e.fields["proc"].as_str().expect("every line names a process").to_string();
+            by_proc.entry(p).or_default().push(e);
+        }
+        assert_eq!(by_proc.len(), 2, "two processes did not separate");
+
+        let launched = |p: &str| {
+            by_proc[p].iter().any(|e| e.stage == "app.launched")
+        };
+        assert!(launched("a3f9"), "the app's records lost their launch line");
+        assert!(
+            !launched("beef"),
+            "the co-tenant looks like the app — the discriminator does not discriminate"
+        );
+        // And the rate-limit line is attributable to the co-tenant rather
+        // than to whatever session it happened to land inside.
+        assert_eq!(by_proc["beef"].len(), 1);
+        assert_eq!(by_proc["beef"][0].fields["status"], 429);
+    }
+
+    #[test]
     fn parses_a_line_from_the_published_documentation() {
         // Copied out of docs/tracing.md. If this stops parsing, either the
         // format moved or the documentation is now wrong; both are bugs.
-        let line = "[2026-08-26 08:48:57.412] [0007-3f2a] +    0ms dictation.start {\"kind\":\"recording\",\"verbose\":false}";
+        let line = "[2026-08-26 08:48:57.412] [0007-3f2a] +    0ms dictation.start {\"proc\":\"a3f9\",\"kind\":\"recording\",\"verbose\":false,\"dur_ms\":0}";
         let ev = parse_line(line).expect("parses");
         assert_eq!(ev.id.as_deref(), Some("0007-3f2a"));
         assert_eq!(ev.elapsed_ms, Some(0));
         assert_eq!(ev.stage, "dictation.start");
         assert_eq!(ev.fields["kind"], "recording");
+        assert_eq!(ev.fields["proc"], "a3f9");
     }
 
     #[test]
