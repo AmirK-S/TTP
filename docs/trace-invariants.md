@@ -24,9 +24,19 @@ python3 scripts/check_trace.py --context 4      # with surrounding events
 python3 scripts/check_trace.py --list           # what each invariant means
 python3 scripts/check_trace.py --json           # machine-readable
 python3 scripts/check_trace.py --only dead-capture --context 6
+python3 scripts/check_trace.py --only whisper-call-failed --only polish-call-failed
 python3 scripts/check_trace.py path/to/a.log path/to/b.log   # explicit files
 python3 scripts/check_trace.py --fail-on-error  # exit 1 if any ERROR fired
 ```
+
+The second `--only` line is what `--only remote-call-failed` used to be. That
+id no longer exists: it was two checks with two evidence standards sharing one
+name, and the split gives each its own. Nothing else takes the old name, so a
+script still passing it gets an empty result rather than a wrong one.
+
+`--fail-on-error` fails on an ERROR **the app emitted**. A finding whose
+records carry a `proc` that never wrote an `app.launched` came from a test
+binary; it is reported, in its own block, and never sets the exit code.
 
 With no arguments it reads **the whole rotated set** — `ttp-trace.log.3`
 through `ttp-trace.log`, oldest first. That matters: at the time of writing,
@@ -37,11 +47,16 @@ Python 3.10+, standard library only.
 
 ## What it prints
 
-1. **Corpus summary** — files, events, sessions, dictations, time span, and a
-   `writer` line giving the merged-record and blank-line counts. Those two are
-   printed whether or not they are zero: the parser repairs both silently, and
-   a number that only appears when something is wrong cannot be read as
-   evidence that nothing is.
+1. **Corpus summary** — files, events, sessions, dictations, time span, a
+   `writer` line giving the merged-record and blank-line counts, and a `procs`
+   line. The first two are printed whether or not they are zero: the parser
+   repairs both silently, and a number that only appears when something is
+   wrong cannot be read as evidence that nothing is. The `procs` line says how
+   many processes wrote this corpus, how many of them are the app (with their
+   builds) and how many are a harness — or, on a corpus written before the
+   `proc` field existed, that no record names its writer at all. It is printed
+   in both cases for the same reason: "no harness was found" and "no harness
+   could be distinguished" are different facts and must not look alike.
 2. **Stages it has not been taught about** — informational, never a
    violation. See "Adding an invariant" below.
 3. **Outcome distribution** — every dictation by outcome and abort reason.
@@ -49,8 +64,16 @@ Python 3.10+, standard library only.
    adjacent stages, plus the remote calls. The keychain defect was a *latency*
    bug; latency bugs hide in event logs nobody aggregates, and a p95 is where
    the next one shows up first.
-5. **Findings**, grouped by invariant, each with its dictation id and
-   timestamp so `grep <id> ttp-trace.log*` is the next step.
+5. **Findings**, grouped by (severity, invariant), each with its dictation id
+   and timestamp so `grep <id> ttp-trace.log*` is the next step.
+6. **Findings emitted by a harness, not by the app** — a separate block at the
+   end, present only when some record's `proc` names a process that never
+   wrote an `app.launched`. These are not findings about the product: they are
+   not counted in the totals on the "invariants checked" line, and they cannot
+   set the `--fail-on-error` exit code. They are still printed, because a test
+   run that exhausts the API tier is worth knowing about — and because the 46
+   records this block exists for were once reported to the maintainer as a
+   production incident.
 
 ## Severity
 
@@ -73,8 +96,8 @@ never contains a row that is only a warning.
 Twelve checks grade individual findings on their evidence:
 `bookkeeping-stall`, `capture-handoff-missing`, `capture-stop-missing`,
 `dictation-start-missing`, `keychain-not-single-flighted`,
-`keychain-on-critical-path`, `paste-swallowed`, `polish-outage`,
-`remote-call-failed`, `state-parked-processing`,
+`keychain-on-critical-path`, `paste-swallowed`, `polish-call-failed`,
+`polish-outage`, `state-parked-processing`,
 `tap-flapping-without-input`, `tap-rearm-streak`. The report names the ones
 that actually split on the corpus in front of you, under
 "graded by evidence, so they appear more than once" — so you never have to
@@ -99,28 +122,78 @@ confident findings that were neither.
   than **3,455 ms**. A 397-second block inside a 3.5-second dictation is
   arithmetically impossible. They came from `cargo test` runs appending to the
   same log directory between 22:21 and 22:41 on 2026-08-31.
-- `remote-call-failed` reported **54 warnings** about a 429 quota wall on
-  2026-09-02, and `polish-outage` an ERROR alongside them. Forty-six of the
-  429s were the golden test suite in `src-tauri/tests` exhausting the API
-  tier. That was reported to the maintainer as a live production incident and
-  had to be retracted.
+- `remote-call-failed` (now split; see `polish-call-failed`) reported **54
+  warnings** about a 429 quota wall on 2026-09-02, and `polish-outage` an
+  ERROR alongside them. Forty-six of the 429s were the golden test suite in
+  `src-tauri/tests` exhausting the API tier. That was reported to the
+  maintainer as a live production incident and had to be retracted.
 
 Both checks had inferred causation from **time proximity**: the records sat
 near dictations in the file, so the checks called them related. Proximity is
 not attribution, and a false positive reported confidently costs the tool the
 credibility that makes it worth running.
 
-**Can the analyser tell an app-emitted record from a harness-emitted one?
-No — and it should stop pretending the question is answerable.** The record
-format carries no process identity: no pid, no build id, no instance token
-(`docs/trace-api.md` § `TraceEvent`). `app.launched` is the only process-scoped
-line there is, and a test binary writes none. So no record can ever be
-*assigned* to the app or to a harness, and any check that needs to know which
-one wrote a line cannot be made sound.
+### Process identity: `proc`
 
-What *can* be established is the negative, and it is the half that decides
-severity: **whether a record is attributable to a dictation the app actually
-served.** A standalone record belongs to a dictation when
+**This section used to say the question was unanswerable.** It said: "Can the
+analyser tell an app-emitted record from a harness-emitted one? No — and it
+should stop pretending the question is answerable… The fix belongs in the
+writer, not the reader — one field, a process or instance id on every record,
+would turn every inference in this section into a lookup."
+
+The writer shipped the field — `docs/tracing.md` § "Who wrote this line" is
+the writer's side of it, and this is the reader's. The contract:
+
+- **every record carries `proc`**, four hex digits minted once per process,
+  spliced to the **front** of the record's JSON payload — not a new header
+  column, because the header is positional and adding to it would break
+  `trace_api::parse_line`'s round trip, and first rather than in sort order so
+  it lands in the same column on every line;
+- **`app.launched` additionally carries `build`** — `"3.1.7+9dbb2ff"`, the
+  version and the 7-character commit — and it is the only stage that does,
+  because it is the only one whose answer is fixed for the process.
+
+`proc` is not a pid, not unique forever, and not a session id; the analyser
+uses it for one thing only, which is the one thing 16 random bits support:
+these lines came from the same process.
+
+That is enough, because of one asymmetry: **`app.launched` is written once at
+startup by the real application and by nothing else.** A `cargo test` binary
+links the same crate and writes trace records, but it never starts the app, so
+it never writes that line. Therefore:
+
+> a process that emitted an `app.launched` is the app; a process that never
+> did is a test binary or a dev build.
+
+The analyser groups records by `proc`, attributes each to its emitting
+process, and **reports harness-emitted findings in their own block** at the
+end of the report — not counted in the app's error/warn/info totals, and never
+able to fail `--fail-on-error`. The corpus summary gains a `procs` line giving
+the process count, the builds, and how many records each writer contributed.
+
+**Absence of `proc` is not evidence of anything.** Every line of the harvested
+corpus — all 22,081 of them, eleven days of it — predates the field. On such a
+corpus the analyser degrades to exactly the behaviour described below, prints
+`no record in this corpus names the process that wrote it (pre-\`proc\`
+trace); harness and app cannot be told apart`, and grades everything by window
+containment as before. A partly-migrated corpus, which every machine passes
+through, gets both: process identity for the records that carry it, window
+containment for the records that do not, and a line saying how many are in
+each camp. A consumer of `--json` reads `origin` on each finding — `"app"`,
+`"harness"` or `"unknown"` — and must not read `"unknown"` as `"app"`.
+
+One failure mode the field does **not** remove: rotation cuts the head off the
+oldest file, taking any `app.launched` up there with it. A real app process
+whose records begin at the very top of the window has exactly a harness's
+shape. Those are reported as **undecidable** and neither claim is made about
+them.
+
+Everything below this line is what the analyser does with a record that does
+**not** name its writer. It is still most of them.
+
+What *can* be established without `proc` is the negative, and it is the half
+that decides severity: **whether a record is attributable to a dictation the
+app actually served.** A standalone record belongs to a dictation when
 
 1. the dictation's own id is on it — the strongest attribution there is; or
 2. the *timed call it describes* began and ended inside that dictation's own
@@ -162,24 +235,28 @@ by counting what a standalone (no-`[tid]`) record can be in this corpus:
 | `capture.*`, `hotkey.*`, `state.transition`, `app.launched` | 8,300+ | **In principle, but not observably here.** In both known contamination windows the counts of `capture.start`, `capture.stop`, `hotkey.press` and `hotkey.release` match the dictation count exactly; the only excess records are `polish.attempt` (105 against 13 dictations) and `keychain.slow`. |
 
 So the contaminated surface in this corpus is exactly two stages, and both are
-now attributed rather than assumed. The input-layer and capture checks are not
-being contaminated — but they *could* be, because `app.launched` is the only
-process-scoped line there is and a test binary writes none, so a co-tenant's
-records fold silently into whatever session was open. That is stated in each
-affected check rather than resolved, because it cannot be resolved from the
-log as it exists.
+attributed rather than assumed. The input-layer and capture checks were not
+being contaminated in it — but they *could* be, because on a pre-`proc` trace
+`app.launched` is the only process-scoped line there is and a test binary
+writes none, so a co-tenant's records fold silently into whatever session was
+open. On such a corpus that is stated in each affected check rather than
+resolved, because it cannot be resolved from the log as it exists.
 
-**The honest answer to "can harness contamination be detected at all" is: not
-positively, and no amount of cleverness in this tool changes that.** The fix
-belongs in the writer, not the reader — one field, a process or instance id on
-every record, would turn every inference in this section into a lookup. Until
-then the analyser establishes only the negative: whether a dictation can be
-*shown* to have been waiting. Nothing is ever assigned to "a test run".
+**This paragraph used to end: "the honest answer to 'can harness contamination
+be detected at all' is: not positively, and no amount of cleverness in this
+tool changes that. The fix belongs in the writer, not the reader."** It did.
+`proc` is that field, and every row of this table is a lookup on a corpus that
+carries it — including the last row, whose "in principle, but not observably
+here" becomes an observation either way. The table stands as written for the
+harvested corpus, which has no `proc` on any line; read it as the description
+of the degraded mode, and "Process identity: `proc`" above as the description
+of the other one.
 
 ## The invariants
 
-Thirty-eight checks. `--list` prints the full reasoning for each; this is the
-map.
+Thirty-nine checks — the split of `remote-call-failed` into
+`whisper-call-failed` and `polish-call-failed` took the count from
+thirty-eight. `--list` prints the full reasoning for each; this is the map.
 
 Each row carries its **evidence standard**: what has to be true for the check
 to fire, and what grade that evidence supports. Where a check emits more than
@@ -213,7 +290,7 @@ rather than a historical scar. They are marked **(regression)** below.
 |---|---|---|
 | `abort-reason-missing` | Every `outcome:"aborted"` carries a reason slug. | The record either has the field or does not; nothing is inferred. ERROR — a silent drop wearing a label is the failure mode this whole programme exists to remove. |
 | `abort-reason-undocumented` | The slug appears in `tracing.md` or `trace-api.md`. | INFO by construction. The vocabulary is *meant* to grow; a hit is a prompt to add a table row, and grading it higher would punish the app for improving. |
-| `outcome-undocumented` | The outcome appears in the docs. | INFO, same reasoning. This is how the sibling workstream's new non-`pasted` outcome state will reach a reader without being reported as a defect. |
+| `outcome-undocumented` | The outcome appears in the docs. | INFO, same reasoning. This is how the sibling workstream's new non-`pasted` outcome states reached a reader without being reported as defects — and they have now landed, so `pasted_unverified` and `paste_swallowed` are in the documented set alongside `pasted`, `aborted` and `clipboard_fallback`. Since "`pasted` now means observed", those two are the names for what `pasted` used to cover silently. |
 
 ### The microphone — the AirPods defect
 
@@ -238,7 +315,8 @@ rather than a historical scar. They are marked **(regression)** below.
 | id | Asserts | Evidence standard, and what it grades |
 |---|---|---|
 | `polish-outage` | Polish does not fail **repeatedly** against one model. | Graded on `consecutive_failures`, which is the word "repeatedly" made numeric. A peak of 3 or more against one model id is a model that has stopped answering — ERROR, and the decommissioned-model defect reached 17. A peak of 1 or 2 is a network, and one failed call the next call recovered from looks identical — WARN. Reporting those two in one breath is how the check buried its own real finding. |
-| `remote-call-failed` | Non-200 `polish.attempt`, or a `whisper_error` abort. | **Two evidence standards under one id, and this is the check's real weakness.** A `whisper_error` abort carries a dictation id — WARN, exactly attributed. A `polish.attempt` carries none, and is attributed only by containment in a dictation's polish window (`polish.decision` → `polish`): attributed failures are WARN, unattributed ones are aggregated to one INFO per status per model per day. That INFO says "no dictation this analyser can see was waiting on these" and never "a test run", because the log cannot support the second sentence. |
+| `whisper-call-failed` | A dictation aborted with `whisper_error`. | The evidence is `dictation.finish` carrying the dictation's own id, its `status_code` and its `error_category` — the app's own statement that this dictation produced nothing. No window arithmetic, no co-tenant reading: a test binary does not abort a dictation of the user's, because it never started one. **ERROR**, and the grade is what the evidence supports: the user pressed, spoke, and got nothing back. 403 (bad key), 429 (quota) and 404 (decommissioned model) look identical to the user and are three different bugs, so the code is always quoted; where a schema generation recorded neither, the summary says so rather than printing `None (None)` as if it were a reading. |
+| `polish-call-failed` | A `polish.attempt` with a non-200 status. | **WARN at most, never ERROR, for three stacked reasons.** The record carries no trace id, so it can be attributed only by containment in a dictation's polish window (`polish.decision` → `polish`). Polish has a working fallback — the pipeline pastes the unpolished text and the dictation still lands — so a failed call costs the user their polish, not their words. And this is the one stage in the vocabulary the project's own test suite provably emits in bulk. Graded by attribution, three ways: (1) the record's `proc` names a process that never emitted `app.launched` → **INFO**, aggregated, and stated positively as a test binary or dev build; (2) it falls inside a dictation's polish window → **WARN**, that dictation was waiting and got unpolished text; (3) it falls outside every window and names no process → **INFO**, aggregated per status per model per day, saying only that no dictation this analyser can see was waiting — never "a test run", because without `proc` the log cannot support that sentence. |
 | `polish-quota-exhausted` | Polish is not skipped for lack of quota. | `quota_ok:false` on the dictation's own `polish.decision`. WARN: the output was silently downgraded and nothing told the user, which is worth knowing and is not a defect in the code. |
 
 ### The input layer — the dead event tap
@@ -268,7 +346,7 @@ rather than a historical scar. They are marked **(regression)** below.
 | `writer-newline-lost` | **(regression)** Every record occupies its own line. | Counted unconditionally in the corpus summary, so a recurrence is visible before any check runs. ERROR, and the grade is *earned by evidence*: 34 of the 38 merged lines carry two records of the **same** dictation, which only two threads inside one process can produce. That is the app racing itself, not a co-tenanting build. |
 | `bookkeeping-stall` | No gap over 1 s between two adjacent post-`paste.result` stages. | `tracing.md`: none of that region "can take seconds, let alone minutes". Graded on plausibility. Under **60 s**, a slow synchronous step is a coherent explanation — ERROR. At or above it, no synchronous bookkeeping step can take a minute, so it is a process that stopped running: a slept machine, a descheduled process, or a moved clock, of which the trace can witness only the second — WARN, naming what it cannot distinguish. Both branches now say when the keychain discriminator was **blind** (no `keychain.*` record anywhere in that file), because "no `keychain.slow` inside it" is only evidence of absence where the family exists. |
 | `process-suspended` | No `hotkey.timer_stall` overlapping a dictation in flight. | An explicit `hotkey.timer_stall` with a measured `gap_ms` covering the window — the app witnessing its own descheduling. WARN: the process was suspended, the step was not slow, and a suspended laptop is not a defect. |
-| `log-co-tenancy` | *(not a defect in the app)* The analyser states what it cannot attribute. | INFO, printed whenever any of the three co-tenancy witnesses is present, and echoed in the corpus summary's `writers` line so the caveat is not buried at the bottom of a long report. It never says which records belong to which writer, because nothing in the format supports that. Read it before reading any unattributed finding. |
+| `log-co-tenancy` | *(not a defect in the app)* The analyser states who wrote this corpus, or what it cannot attribute. | INFO, two regimes. **With `proc`**: it names the processes, says which emitted an `app.launched` (the app, with its `build`) and which did not (a test binary or a dev build, with its record count), and marks as undecidable any whose records begin at the rotation boundary. **Without it** — the whole harvested corpus — it falls back to the three co-tenancy witnesses and states the ambiguity rather than resolving it. Either way it is echoed in the corpus summary's `procs` and `writers` lines so the caveat is not buried at the bottom of a long report. Read it before reading any unattributed finding. |
 
 `keychain-on-critical-path`, `process-suspended` and `bookkeeping-stall` are
 one mechanism seen three ways, and the check follows `tracing.md`'s own
@@ -369,6 +447,22 @@ already spans two schema generations (`audio.rms` before `audio.signal`,
 `polish {applied}` before `polish {outcome}`) and a check that fired on the
 older one would be wrong 52 times.
 
+`KNOWN_STAGES` is **reconciled against the emitting source**, not extended one
+name at a time when somebody notices a gap — which is how `whisper.attempt`
+came to sit in the "not taught about" list for a whole wave. The reconciliation
+is a scan of every stage-name literal passed to `trace::event`,
+`Trace::stage`/`text_stage`/`timed`/`transform`/`decision`, and the panic
+hook's hand-built record, across `src-tauri/src`. Two things that scan turns up
+which are *not* stages: `trace::degraded`'s **sites** (`capture.reclaim`,
+`keychain.secret`, `keychain.csprng`, `keychain.migration_flag`,
+`settings.fsync`, `audio.size`, `backup.audio`, `history.save`, `input_mode`)
+all land on the single stage `degraded` with the site in a `site` field —
+listing them would invent nine stages the writer never emits — and the abort
+**reasons** passed to `Trace::abort` belong to `DOCUMENTED_ABORT_REASONS`, not
+here. One entry deliberately has no emitter left: `audio.rms`, the
+pre-`audio.signal` schema generation, kept because 52 dictations of the corpus
+are in it.
+
 **It does not print dictated speech.** `diagnostics_enabled` is on, so the log
 contains full transcriptions. `text` fields are replaced with a character count
 at parse time, before any check or report can see them. No fixture in this
@@ -445,8 +539,17 @@ belongs here, as a check, before the fix ships.
    - **What attributes this record to a dictation the app served?** A trace
      id, containment in a dictation's stage sequence, or a timed call that
      fits inside one dictation's life. Time proximity is none of those.
-   - **Could a co-tenanting dev or test process produce this shape?** If yes
-     and nothing distinguishes them, the finding is a WARN that says so.
+   - **Could a co-tenanting dev or test process produce this shape?** Where
+     the records carry `proc`, look: a process that never emitted an
+     `app.launched` is a harness, and the finding belongs in the harness block
+     rather than the app's. Where they do not, and nothing else
+     distinguishes them, the finding is a WARN that says so.
+   - **Are these two evidence standards, or one?** If the answer to the two
+     questions above differs between the shapes your check fires on, it is two
+     checks. `remote-call-failed` was one id over a dictation-scoped abort and
+     an unattributable standalone record, and the merge cost a real
+     invalid-key finding its visibility for weeks. An id is a claim about the
+     kind of evidence behind a finding; do not make it carry two.
    - **What else explains this evidence?** A slept laptop, a process exiting,
      a schema generation without the field. If an innocent explanation fits
      the same evidence, the grade belongs to the ambiguity, not to the worst
@@ -475,8 +578,20 @@ apology. This has now happened three times in this programme:
    exhausting the API tier as a live production incident, and it was reported
    to the maintainer and retracted. Records with **no dictation id are
    frequently not the app serving a user**.
+4. `remote-call-failed` was not one check. It was two, sharing an id, a
+   severity and a `--only` name: a `whisper_error` abort (dictation-scoped,
+   exactly attributed, the user lost their words) and a non-200
+   `polish.attempt` (no trace id, attributable only by window containment, a
+   working fallback, frequently our own harness). Merging them is what let 46
+   test-suite 429s sit in the same block as a real 403 invalid-key abort, at
+   the same grade, sorted only by timestamp — a reader scanning that block had
+   no way to see that one of the twelve rows was a user losing a dictation.
+   They are now `whisper-call-failed` (ERROR) and `polish-call-failed` (WARN),
+   and each fixture leaves the other silent. **An id is a claim about what
+   kind of evidence produced the finding**; two evidence standards cannot
+   share one.
 
-All three are the same error: concluding from what was *near* the evidence
+The first three are the same error: concluding from what was *near* the evidence
 rather than from the evidence. A false positive reported confidently is more
 expensive than a missed finding, because it costs the tool the credibility
 that makes it worth running. When something fires, go read the surrounding
@@ -492,7 +607,8 @@ scripts/trace_analyser/stats.py                 percentiles, distributions
 scripts/trace_analyser/report.py                text and JSON rendering
 scripts/trace_analyser/tests/make_fixtures.py   regenerates the fixtures
 scripts/trace_analyser/tests/test_invariants.py the suite
-scripts/trace_analyser/tests/fixtures/          clean.log, and one per invariant
+scripts/trace_analyser/tests/fixtures/          clean.log, proc_identity.log,
+                                                and one per invariant
 scripts/trace_analyser/tests/fixtures/.gitignore  re-includes them (see below)
 scripts/.gitignore                              __pycache__/, so it does not
                                                 sit in git status next to the
@@ -504,18 +620,23 @@ has `*.log` on line 3, which swallowed every file in `fixtures/` — so the
 sentence above about fixtures being committed rather than generated was true
 of the intent and false of the tree, and on a fresh clone
 `test_every_invariant_has_a_fixture_that_violates_it` would have failed for
-all thirty-eight checks. A nested `fixtures/.gitignore` containing `!*.log`
-re-includes them; the directory itself was never excluded, so the negation
-works. They are synthetic logs, not runtime output, and they belong in git.
+every check. A nested `fixtures/.gitignore` containing `!*.log` re-includes
+them; the directory itself was never excluded, so the negation works. They are
+synthetic logs, not runtime output, and they belong in git.
 
 To verify rather than assume — the mistake was believing the intent over the
 tree, so the fix comes with a way to check it:
 
 ```sh
-git ls-files scripts/trace_analyser/tests/fixtures | wc -l   # 42
-find  scripts/trace_analyser/tests/fixtures -name '*.log' | wc -l   # 42
-git check-ignore -v scripts/trace_analyser/tests/fixtures/broken/clean.log
+git ls-files scripts/trace_analyser/tests/fixtures | grep -c '\.log$'   # 44
+find  scripts/trace_analyser/tests/fixtures -name '*.log' | wc -l       # 44
+git check-ignore -v --no-index scripts/trace_analyser/tests/fixtures/clean.log
 ```
 
-The first two numbers must match, and the third must report the negation in
-`fixtures/.gitignore` rather than the root rule.
+The first two numbers must match — 39 in `broken/`, one per invariant, plus
+`clean.log`, `two_sessions.log`, `schema_drift.log`, `merged_lines.log` and
+`proc_identity.log` — and the third must report
+`fixtures/.gitignore:7:!*.log` rather than the root rule. (`--no-index` is
+required: `check-ignore` skips tracked paths by default, and every one of
+these is tracked, which is the thing being verified. The `grep` matters too —
+a bare `git ls-files` on that directory also counts `.gitignore` itself.)

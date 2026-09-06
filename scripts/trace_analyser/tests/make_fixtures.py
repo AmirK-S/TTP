@@ -25,27 +25,62 @@ T0 = datetime(2026, 9, 1, 10, 0, 0)
 
 
 class Log:
-    def __init__(self, launched: bool = True):
+    """A synthetic trace file.
+
+    `proc` is opt-in. Almost every fixture leaves it off, because almost every
+    line in the real corpus lacks it and the checks have to keep working on
+    those — a fixture set that all carried process identity would test the
+    analyser only in the regime it will be in a month from now, and none of
+    the eleven days of harvested log it has to read today.
+    """
+
+    def __init__(self, launched: bool = True, proc: str | None = None,
+                 build: str | None = None):
         self.lines: list[str] = []
         self.t = T0
+        # Stamped onto every record this Log writes, exactly as the writer
+        # does: one id, minted once per process, on every line.
+        self.proc = proc
         if launched:
-            self.free("app.launched",
-                      {"arch": "aarch64", "os": "macos", "version": "3.1.6"})
+            fields = {"arch": "aarch64", "os": "macos", "version": "3.1.6"}
+            if build:
+                # `app.launched` carries the build on top of `proc`. Version
+                # and commit: the pair that says which binary this was.
+                fields["build"] = build
+                fields["version"] = build.split("+")[0]
+            self.free("app.launched", fields)
 
     def _ts(self, ms: int) -> str:
         self.t += timedelta(milliseconds=ms)
         return self.t.strftime("%Y-%m-%d %H:%M:%S.") + f"{self.t.microsecond // 1000:03d}"
 
+    def _body(self, fields: dict | None) -> str:
+        """Render a payload the way `trace::render_fields` does.
+
+        `proc` goes FIRST, not in sort order. The writer splices it onto the
+        front of the rendered object precisely so it lands in the same column
+        on every line — the payload map is a BTreeMap, so an inserted key
+        would sort into the middle. The parser does not care where it is; this
+        fixture is also the reference for the on-disk shape, so it matches.
+        """
+        body = _json(fields or {})
+        if self.proc is None:
+            return body
+        inner = body[1:]
+        if inner == "}":
+            return f'{{"proc":"{self.proc}"}}'
+        return f'{{"proc":"{self.proc}",{inner}'
+
     def free(self, stage: str, fields: dict | None = None, ms: int = 10):
         """A standalone event — no trace id, no elapsed column."""
-        body = _json(fields or {})
+        body = self._body(fields)
         self.lines.append(
             f"[{self._ts(ms)}] [{'·' * 8}]          {stage} {body}")
         return self
 
     def stage(self, tid: str, elapsed: int, stage: str,
               fields: dict | None = None, ms: int = 10):
-        body = _json(fields or {})
+        body = self._body(fields)
         self.lines.append(
             f"[{self._ts(ms)}] [{tid}] +{elapsed:>6}ms {stage} {body}")
         return self
@@ -90,7 +125,8 @@ def dictation(log: Log, tid: str, *, chars=64, secs=5.0, rms=0.02,
               outcome="pasted", reason=None, verbose=False,
               verify=None, skip=(), extra_after=(), device=None,
               nonzero_ratio=1.0, whisper_chars=None, quota_ok=True,
-              bookkeeping_gap_ms=0, extra_polish_attempts=()):
+              bookkeeping_gap_ms=0, extra_polish_attempts=(),
+              halluc_rule="repetition_loop", halluc_corroborated=True):
     """A whole healthy dictation, with knobs for each thing that can go wrong."""
     sha_a, sha_b = "aaaa1111", "bbbb2222"
     whisper_chars = chars if whisper_chars is None else whisper_chars
@@ -128,15 +164,27 @@ def dictation(log: Log, tid: str, *, chars=64, secs=5.0, rms=0.02,
             s("audio.convert", {"converted": True, "in_bytes": 1, "out_bytes": 1}, 3)
             s("whisper.request", {"bytes": 1, "input_mode": "push_to_talk",
                                   "lang": "auto", "prompt": False}, 2)
-            s("whisper.response", {"attempt": 1, "chars": whisper_chars,
+            s("whisper.response", {"empty_body_retry": False,
+                                   "chars": whisper_chars,
                                    "ms": 300, "sha8": sha_a}, 300)
+            # The filter's own record, with the vocabulary the corroboration
+            # work added: `rule` names the predicate that matched, and for a
+            # repetition loop `corroborated` says whether the known-phrase
+            # list vouched for it. Quoted by the finding, never tested by it.
+            f = {"chars": whisper_chars, "matched": True,
+                 "rule": halluc_rule}
+            if halluc_rule == "repetition_loop":
+                f["repetition_loop"] = True
+                f["corroborated"] = halluc_corroborated
+            s("filter.hallucination", f, 1)
         s("dictation.finish", fin, 2)
         return
 
     s("audio.convert", {"converted": True, "in_bytes": 1, "out_bytes": 1}, 6)
     s("whisper.request", {"bytes": 1, "input_mode": "push_to_talk",
                           "lang": "auto", "prompt": False}, 3)
-    s("whisper.response", {"attempt": 1, "chars": whisper_chars, "ms": 400,
+    s("whisper.response", {"empty_body_retry": False,
+                           "chars": whisper_chars, "ms": 400,
                            "sha8": sha_a}, 400)
     s("cleanup", {"changed": False, "from": {"chars": whisper_chars, "sha8": sha_a},
                   "to": {"chars": whisper_chars, "sha8": sha_a}}, 20)
@@ -228,6 +276,48 @@ def two_sessions():
     log.write("two_sessions.log")
 
 
+def proc_identity():
+    """Two processes sharing one log, each naming itself.
+
+    The contract the trace writer now keeps: every record carries `proc`, a
+    short id minted once per process, and `app.launched` additionally carries
+    `build` — version and commit. That is what makes harness contamination
+    detectable *positively* for the first time: `app.launched` is written by
+    the real application at startup and by nothing else, so a process that
+    emitted one is the app and a process that never did is a test binary or a
+    dev build.
+
+    This file is the shape of the 2026-09-02 incident with the field in place:
+    one app process serving a dictation, and one harness process hammering
+    polish until the API tier gives 429s. Before `proc`, those 429s were
+    indistinguishable from the app's own and were reported to the maintainer
+    as a live production incident. Here they are attributable by lookup, and
+    the report keeps them out of the app's blocks entirely.
+
+    Committed rather than inline because it is also the reference for the
+    field's on-disk shape: `proc` is a payload key, like every other field,
+    not a new header column — the header is positional and adding to it would
+    break `trace_api::parse_line`'s round trip.
+    """
+    app = Log(proc="a1b2", build="3.1.7+ab12cd3")
+    healthy(app, "0000-1111")
+    tail(app, from_state=None)
+
+    harness = Log(launched=False, proc="ff01")
+    # A test binary: it links the crate and writes trace records, but it never
+    # starts the app, so there is no app.launched anywhere in its output.
+    harness.t = T0 + timedelta(seconds=3)
+    for _ in range(4):
+        harness.free("polish.attempt", {"model": "openai/gpt-oss-120b",
+                                        "ms": 52, "n": 1, "status": 429},
+                     ms=200)
+
+    merged = sorted(app.lines + harness.lines)
+    path = os.path.join(OUT, "proc_identity.log")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(merged) + "\n")
+
+
 def schema_drift():
     """An old-schema session plus stages the analyser has never heard of.
 
@@ -250,7 +340,8 @@ def schema_drift():
               {"bytes": 1, "input_mode": "push_to_talk", "lang": "auto",
                "prompt": False})
     log.stage("0000-1111", 400, "whisper.response",
-              {"attempt": 1, "chars": 30, "ms": 380, "sha8": "aaaa1111"}, 389)
+              {"empty_body_retry": False, "chars": 30, "ms": 380,
+               "sha8": "aaaa1111"}, 389)
     log.stage("0000-1111", 420, "cleanup",
               {"changed": False, "from": {"chars": 30, "sha8": "aaaa1111"},
                "to": {"chars": 30, "sha8": "aaaa1111"}}, 20)
@@ -490,18 +581,35 @@ def broken():
     tail(log, from_state=None)
     out["polish-outage"] = log
 
-    # remote-call-failed needs its own fixture now that a non-200 is only a
-    # warning about the app when a dictation was making the call. The 404 is
-    # inside this dictation's polish window: between its polish.decision and
-    # its polish stage, which is the only attribution polish.attempt admits
-    # (the record carries no trace id).
+    # THE SPLIT. `remote-call-failed` had one fixture for two checks with two
+    # evidence standards, which is how it came to have one severity for them
+    # as well. Each half now has its own, and each half's fixture must leave
+    # the other silent — that is the property the merge destroyed.
+    #
+    # polish-call-failed: the 404 is inside this dictation's polish window,
+    # between its polish.decision and its polish stage, which is the only
+    # attribution polish.attempt admits (the record carries no trace id). One
+    # dictation was waiting on it, so it is a WARN about the app; the
+    # dictation still pastes, because the pipeline falls back to unpolished
+    # text, which is why it is not more than a WARN.
     log = new()
     hotkey_cycle(log)
     dictation(log, "0000-1111",
               extra_polish_attempts=[{"model": "llama-3.3-70b-versatile",
                                       "ms": 200, "n": 1, "status": 404}])
     tail(log)
-    out["remote-call-failed"] = log
+    out["polish-call-failed"] = log
+
+    # whisper-call-failed: a dictation aborted with `whisper_error`. The
+    # evidence is `dictation.finish` carrying this dictation's own id, its
+    # status code and its error category — the app's own statement that this
+    # dictation produced nothing. No window arithmetic, no co-tenant reading,
+    # and the user lost the words they spoke. ERROR.
+    log = new()
+    hotkey_cycle(log)
+    dictation(log, "0000-1111", outcome="aborted", reason="whisper_error")
+    tail(log)
+    out["whisper-call-failed"] = log
 
     log = new()
     hotkey_cycle(log)
@@ -706,7 +814,8 @@ if __name__ == "__main__":
     two_sessions()
     schema_drift()
     merged_lines()
+    proc_identity()
     names = broken()
     print(f"wrote clean.log, two_sessions.log, schema_drift.log, "
-          f"merged_lines.log and "
+          f"merged_lines.log, proc_identity.log and "
           f"{len(names)} broken fixtures into {OUT}")

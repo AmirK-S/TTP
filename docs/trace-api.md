@@ -39,9 +39,19 @@ One line of the log.
   "id": "0007-3f2a",
   "elapsed_ms": 1490,
   "stage": "whisper.response",
-  "fields": { "chars": 87, "sha8": "9f2c1ab0", "attempt": 1, "ms": 1484, "dur_ms": 1484 }
+  "fields": { "chars": 87, "sha8": "9f2c1ab0", "empty_body_retry": false, "ms": 1484, "dur_ms": 1484 }
 }
 ```
+
+This example used to show `"attempt": 1`. That field was **hardcoded** — it
+read `1` on all 550 `whisper.response` records in the corpus, including the
+dictation whose internal loop burned three attempts before failing
+(`0185-a9c0`), so a reader who trusted it concluded the retry path had never
+run. It is gone. `empty_body_retry` is the honest version of what this line
+can say: which of the (at most two) `whisper.response` records a dictation
+emits this one is — the first call, or the resubmit after Whisper returned
+200 with an empty body. The real per-request attempt count and timing live on
+`whisper.attempt`, one record per request, written by `whisper.rs`.
 
 | Field | Type | Notes |
 |---|---|---|

@@ -12,7 +12,7 @@ import json
 
 from . import invariants, stats
 from .invariants import ERROR, INFO, KNOWN_STAGES, REGISTRY, WARN, Finding
-from .model import Corpus
+from .model import ORIGIN_HARNESS, Corpus
 
 SEV_ORDER = {ERROR: 0, WARN: 1, INFO: 2}
 SEV_LABEL = {ERROR: "ERROR", WARN: "WARN ", INFO: "INFO "}
@@ -51,17 +51,40 @@ def render(corpus: Corpus, findings: list[Finding], context: int = 0,
     # finding; this is the line that stops a reader from taking an
     # unattributed record for the app.
     co = invariants._cotenancy_evidence(corpus)
+    # Process identity, where the writer supplies it. Printed above the
+    # inference line, because it answers the question that line exists to say
+    # is unanswerable — and printed as "none of these records says" when it is
+    # absent, so a reader is never left to assume one or the other.
+    if corpus.has_proc:
+        app = corpus.app_processes()
+        harness = corpus.harness_processes()
+        undecided = [p for p in corpus.processes if p.head_truncated]
+        builds = ", ".join(co["builds"]) if co["builds"] else "build unstated"
+        out.append(f"  procs    {len(corpus.processes)} process(es): "
+                   f"{len(app)} app ({builds}), {len(harness)} harness "
+                   f"({co['harness_records']} records), "
+                   f"{len(undecided)} undecidable")
+        if corpus.records_without_proc:
+            out.append(f"           {corpus.records_without_proc} record(s) "
+                       f"carry no proc and fall back to window containment")
+    else:
+        out.append("  procs    no record in this corpus names the process "
+                   "that wrote it (pre-`proc` trace); harness and app cannot "
+                   "be told apart")
     witnesses = (len(co["impossible_spans"]) + co["unattributed_polish"]
                  + co["merged_mixed"])
     if witnesses:
+        tail = ("Every record here names its writer"
+                if corpus.fully_procced else
+                "The format carries no process identity")
         out.append(f"  writers  more than one process appended to this log "
                    f"({len(co['impossible_spans'])} impossible timed spans, "
                    f"{co['unattributed_polish']} unattributed polish.attempt, "
-                   f"{co['merged_mixed']} mixed merged lines). The format "
-                   f"carries no process identity")
-        out.append("           — see log-co-tenancy. Records are graded on "
-                   "whether a dictation can be shown to have been waiting, "
-                   "never on a guess about who wrote them.")
+                   f"{co['merged_mixed']} mixed merged lines). {tail}")
+        out.append("           — see log-co-tenancy. Records that name no "
+                   "writer are graded on whether a dictation can be shown to "
+                   "have been waiting, never on a guess about who wrote "
+                   "them.")
 
     unknown = sorted(corpus.stages_seen() - KNOWN_STAGES)
     if unknown:
@@ -123,19 +146,53 @@ def render(corpus: Corpus, findings: list[Finding], context: int = 0,
     # information from the same check — and a block headed [ERROR] whose rows
     # were mostly warnings would restate, in the layout, exactly the
     # over-claim those checks were fixed to stop making.
-    by_inv: dict[tuple, list[Finding]] = collections.OrderedDict()
-    for f in sorted(findings, key=lambda f: (SEV_ORDER.get(f.severity, 9),
-                                             f.invariant, f.ts)):
-        by_inv.setdefault((f.severity, f.invariant), []).append(f)
+    #
+    # Split first by ORIGIN. A finding whose evidence was written by a process
+    # that never emitted `app.launched` is a finding about a test binary, and
+    # printing it in the same block as the app's own is the merge that let 46
+    # harness 429s sit beside a real invalid-key abort. The harness block is
+    # printed last, under its own heading, and its counts are stated
+    # separately in the summary line rather than folded into it.
+    mine = [f for f in findings if f.origin != ORIGIN_HARNESS]
+    theirs = [f for f in findings if f.origin == ORIGIN_HARNESS]
 
-    counts = collections.Counter(f.severity for f in findings)
+    def grouped(fs: list[Finding]) -> dict:
+        g: dict[tuple, list[Finding]] = collections.OrderedDict()
+        for f in sorted(fs, key=lambda f: (SEV_ORDER.get(f.severity, 9),
+                                           f.invariant, f.ts)):
+            g.setdefault((f.severity, f.invariant), []).append(f)
+        return g
+
+    def emit(g: dict) -> None:
+        for (sev, inv), fs in g.items():
+            title = next((fn.title for fn in REGISTRY if fn.iid == inv), "")
+            out.append("")
+            out.append(f"  [{SEV_LABEL.get(sev, sev)}] {inv}  ({len(fs)})")
+            out.append(f"          {title}")
+            for f in fs[:max_per_invariant]:
+                loc = f" {f.dictation}" if f.dictation else ""
+                out.append(f"      - {f.ts}{loc}")
+                out.append(f"        {f.summary}")
+                if context and f.index >= 0:
+                    for e in corpus.context(f.index, context, context):
+                        mark = ">>" if e.index == f.index else "  "
+                        out.append(f"          {mark} {e.line()}")
+            if len(fs) > max_per_invariant:
+                out.append(f"      ... {len(fs) - max_per_invariant} more")
+
+    by_inv = grouped(mine)
+    counts = collections.Counter(f.severity for f in mine)
     out.append(_rule("Invariant results"))
     checked = {fn.iid for fn in REGISTRY}
     fired = {inv for _, inv in by_inv}
     out.append(f"  {len(checked)} invariants checked, {len(fired)} fired: "
                f"{counts.get(ERROR, 0)} error, {counts.get(WARN, 0)} warn, "
                f"{counts.get(INFO, 0)} info")
-    quiet = sorted(checked - fired)
+    if theirs:
+        out.append(f"  plus {len(theirs)} finding(s) whose evidence was "
+                   f"written by a process that never launched the app — "
+                   f"listed separately at the end, and NOT counted above")
+    quiet = sorted(checked - fired - {f.invariant for f in theirs})
     if quiet:
         out.append("  silent: " + ", ".join(quiet))
     split = sorted({inv for _, inv in by_inv
@@ -144,21 +201,24 @@ def render(corpus: Corpus, findings: list[Finding], context: int = 0,
         out.append("  graded by evidence, so they appear more than once: "
                    + ", ".join(split))
 
-    for (sev, inv), fs in by_inv.items():
-        title = next((fn.title for fn in REGISTRY if fn.iid == inv), "")
-        out.append("")
-        out.append(f"  [{SEV_LABEL.get(sev, sev)}] {inv}  ({len(fs)})")
-        out.append(f"          {title}")
-        for f in fs[:max_per_invariant]:
-            loc = f" {f.dictation}" if f.dictation else ""
-            out.append(f"      - {f.ts}{loc}")
-            out.append(f"        {f.summary}")
-            if context and f.index >= 0:
-                for e in corpus.context(f.index, context, context):
-                    mark = ">>" if e.index == f.index else "  "
-                    out.append(f"          {mark} {e.line()}")
-        if len(fs) > max_per_invariant:
-            out.append(f"      ... {len(fs) - max_per_invariant} more")
+    emit(by_inv)
+
+    if theirs:
+        hcounts = collections.Counter(f.severity for f in theirs)
+        out.append(_rule("Emitted by a harness, not by the app"))
+        out.append("  These rest on records whose `proc` names a process that "
+                   "wrote no")
+        out.append("  app.launched: a test binary or a dev build sharing the "
+                   "log directory.")
+        out.append("  They are not findings about the product. Kept because a "
+                   "harness that")
+        out.append("  exhausts the API tier is still worth knowing about — "
+                   "and because the")
+        out.append("  46 records this section exists for were once reported "
+                   "as an incident.")
+        out.append(f"  {hcounts.get(ERROR, 0)} error, {hcounts.get(WARN, 0)} "
+                   f"warn, {hcounts.get(INFO, 0)} info")
+        emit(grouped(theirs))
 
     out.append("")
     return "\n".join(out)
@@ -175,6 +235,18 @@ def render_json(corpus: Corpus, findings: list[Finding]) -> str:
             "merged_records": corpus.merged_records,
             "blank_lines": corpus.blank_lines,
             "unknown_stages": sorted(corpus.stages_seen() - KNOWN_STAGES),
+            "processes": [
+                {
+                    "proc": p.proc,
+                    "origin": p.origin,
+                    "records": len(p.events),
+                    "build": p.build,
+                    "first_ts": p.first_ts,
+                    "last_ts": p.last_ts,
+                }
+                for p in corpus.processes
+            ],
+            "records_without_proc": corpus.records_without_proc,
             "outcomes": [
                 {"outcome": k, "count": n, "pct": round(p, 2)}
                 for k, n, p in stats.outcome_distribution(corpus)
@@ -197,6 +269,10 @@ def render_json(corpus: Corpus, findings: list[Finding]) -> str:
                     "dictation": f.dictation,
                     "summary": f.summary,
                     "detail": f.detail,
+                    # "app", "harness", or "unknown" — a consumer that treats
+                    # "unknown" as "app" is reading a pre-`proc` corpus as if
+                    # the field had been there.
+                    "origin": f.origin,
                 }
                 for f in findings
             ],

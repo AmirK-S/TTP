@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 
 from trace_analyser import model  # noqa: E402
 from trace_analyser.invariants import (  # noqa: E402
-    ERROR, INFO, REGISTRY, WARN, run_all,
+    DOCUMENTED_OUTCOMES, ERROR, INFO, KNOWN_STAGES, REGISTRY, WARN, run_all,
 )
 from trace_analyser.report import render, render_json  # noqa: E402
 
@@ -184,6 +184,41 @@ class TestCleanCorpusIsSilent(unittest.TestCase):
         self.assertEqual(
             fired(findings), set(),
             f"schema drift produced {[f.summary for f in findings]}")
+
+    def test_the_vocabulary_matches_what_the_app_emits(self):
+        """Reconciled against the source, not extended one name at a time.
+
+        `whisper.attempt` sat in the "not taught about" list for a whole wave
+        because the list was only ever appended to when someone noticed a
+        name. These three are the ones the scan of src-tauri/src turned up:
+        the per-attempt whisper record, the panic hook (the only thing a
+        `panic = "abort"` crash leaves behind), and the settings store's
+        unknown-field line.
+
+        `audio.rms` has no emitter left and stays anyway: it is the
+        pre-`audio.signal` schema generation, and 52 dictations of the
+        harvested corpus are in it.
+        """
+        for stage in ("whisper.attempt", "app.panic",
+                      "settings.unknown_field"):
+            self.assertIn(stage, KNOWN_STAGES)
+        self.assertIn("audio.rms", KNOWN_STAGES)
+        # `trace::degraded` routes every site onto the one stage `degraded`.
+        # Listing the sites as stages would invent nine the writer never
+        # emits, and hide a real new stage among them.
+        self.assertIn("degraded", KNOWN_STAGES)
+        for site in ("capture.reclaim", "settings.fsync", "audio.size",
+                     "backup.audio", "history.save", "keychain.secret"):
+            self.assertNotIn(site, KNOWN_STAGES,
+                             f"{site} is a degraded() site, not a stage")
+
+    def test_the_outcome_vocabulary_covers_the_verified_paste_states(self):
+        """`pasted` now means observed, so its two former halves need names."""
+        for outcome in ("pasted_unverified", "paste_swallowed"):
+            self.assertIn(outcome, DOCUMENTED_OUTCOMES)
+        _, findings = analyse("outcome-undocumented.log")
+        self.assertIn("outcome-undocumented", fired(findings),
+                      "an outcome the docs do not have must still be INFO")
 
 
 class TestEveryInvariantFires(unittest.TestCase):
@@ -447,8 +482,8 @@ class TestSpecificShapes(unittest.TestCase):
 
         polish.attempt carries no trace id. The golden test suite exhausting
         the API tier from a cargo test run produces exactly these records,
-        and they are indistinguishable from the app's own except by whether a
-        dictation was waiting on them.
+        and on a pre-`proc` trace they are indistinguishable from the app's
+        own except by whether a dictation was waiting on them.
         """
         raw = (
             '[2026-09-02 00:20:08.988] [········]          polish.attempt '
@@ -459,17 +494,181 @@ class TestSpecificShapes(unittest.TestCase):
             '{}\n'
         )
         _, findings = _analyse_text(raw)
-        remote = [f for f in findings if f.invariant == "remote-call-failed"]
+        remote = [f for f in findings if f.invariant == "polish-call-failed"]
         self.assertEqual(len(remote), 1, "aggregated, not one per record")
         self.assertEqual(remote[0].severity, INFO)
         self.assertIn("no dictation making the call", remote[0].summary)
+        self.assertIn("not say which process wrote them",
+                      remote[0].summary,
+                      "without proc the report must say so, not imply a "
+                      "harness")
 
         # ... and the same status inside a dictation's polish window is.
-        _, attributed = analyse("remote-call-failed.log")
+        _, attributed = analyse("polish-call-failed.log")
         mine = [f for f in attributed
-                if f.invariant == "remote-call-failed"]
+                if f.invariant == "polish-call-failed"]
         self.assertTrue(any(f.severity == WARN for f in mine))
         self.assertTrue(any(f.dictation for f in mine))
+
+    def test_the_two_halves_of_the_old_remote_check_are_independent(self):
+        """The split, asserted in the only way that matters.
+
+        `remote-call-failed` merged a `whisper_error` abort — dictation-scoped,
+        exactly attributed, the user lost their words — with a non-200
+        `polish.attempt`, which carries no trace id, has a working fallback,
+        and is frequently our own test harness. Each half must now fire on its
+        own fixture and stay SILENT on the other's; a shared id could not
+        express that, which is how 46 harness 429s came to sit in the same
+        block as a real 403 invalid-key abort.
+        """
+        _, polish = analyse("polish-call-failed.log")
+        _, whisper = analyse("whisper-call-failed.log")
+
+        self.assertIn("polish-call-failed", fired(polish))
+        self.assertNotIn("whisper-call-failed", fired(polish))
+        self.assertIn("whisper-call-failed", fired(whisper))
+        self.assertNotIn("polish-call-failed", fired(whisper))
+
+        self.assertNotIn("remote-call-failed",
+                         {fn.iid for fn in REGISTRY},
+                         "the merged id must be gone, not aliased")
+
+        w = [f for f in whisper if f.invariant == "whisper-call-failed"]
+        self.assertTrue(all(f.severity == ERROR for f in w),
+                        "a whisper_error abort is a user losing their words")
+        self.assertTrue(all(f.dictation for f in w),
+                        "exact attribution: the finding names the dictation")
+
+        p = [f for f in polish if f.invariant == "polish-call-failed"]
+        self.assertTrue(p)
+        self.assertTrue(all(f.severity in (WARN, INFO) for f in p),
+                        "polish has a fallback; it is never an ERROR")
+
+    def test_a_harness_polish_failure_is_named_as_one(self):
+        """What `proc` buys: the positive answer, not just the negative.
+
+        The previous audit concluded harness contamination "cannot be detected
+        positively, and no amount of cleverness in this tool changes that".
+        The writer changed it. These two 429s sit inside nothing, and their
+        process never emitted an `app.launched` — so it is a test binary or a
+        dev build, and the analyser may finally say so.
+        """
+        raw = (
+            '[2026-09-02 00:20:00.000] [········]          app.launched '
+            '{"build":"3.1.7+ab12cd3","proc":"a1b2","version":"3.1.7"}\n'
+            '[2026-09-02 00:20:08.988] [········]          polish.attempt '
+            '{"model":"openai/gpt-oss-120b","ms":52,"n":1,"proc":"ff01",'
+            '"status":429}\n'
+            '[2026-09-02 00:20:09.988] [········]          polish.attempt '
+            '{"model":"openai/gpt-oss-120b","ms":51,"n":1,"proc":"ff01",'
+            '"status":429}\n'
+            '[2026-09-02 00:20:11.988] [········]          hotkey.tap_armed '
+            '{"proc":"a1b2"}\n'
+        )
+        corpus, findings = _analyse_text(raw)
+        self.assertEqual(corpus.records_without_proc, 0)
+        self.assertEqual([p.proc for p in corpus.app_processes()], ["a1b2"])
+        self.assertEqual([p.proc for p in corpus.harness_processes()],
+                         ["ff01"])
+        self.assertEqual(corpus.process("a1b2").build, "3.1.7+ab12cd3")
+
+        pf = [f for f in findings if f.invariant == "polish-call-failed"]
+        self.assertEqual(len(pf), 1, "aggregated per process, per status")
+        self.assertEqual(pf[0].severity, INFO)
+        self.assertEqual(pf[0].origin, "harness")
+        self.assertIn("no app.launched", pf[0].summary)
+
+        # ... and the report keeps it out of the app's own blocks.
+        text = render(corpus, findings)
+        self.assertIn("Emitted by a harness, not by the app", text)
+        head, tail = text.split("Emitted by a harness, not by the app", 1)
+        self.assertIn("polish-call-failed", tail)
+        self.assertNotIn("polish-call-failed", head,
+                         "a harness finding must not appear in the app's "
+                         "block as well")
+
+    def test_the_committed_proc_fixture_separates_the_two_writers(self):
+        """The 2026-09-02 incident, replayed with process identity in place.
+
+        One app process serving a dictation and one test binary hammering
+        polish, in one file, exactly as it happened. The harness's 429s must
+        not appear in the app's blocks, must not be counted in the app's
+        totals, and must be described as what they are rather than hedged.
+        """
+        corpus, findings = analyse("proc_identity.log")
+        self.assertEqual(corpus.records_without_proc, 0)
+        self.assertTrue(corpus.fully_procced)
+        self.assertEqual([p.proc for p in corpus.app_processes()], ["a1b2"])
+        self.assertEqual([p.proc for p in corpus.harness_processes()],
+                         ["ff01"])
+
+        harness = [f for f in findings if f.origin == "harness"]
+        self.assertTrue(harness)
+        self.assertTrue(all(f.severity == INFO for f in harness),
+                        "a test binary's API quota is never a product ERROR")
+        self.assertTrue(all(f.dictation is None for f in harness),
+                        "no dictation of the user's was waiting on these")
+
+        text = render(corpus, findings)
+        self.assertIn("1 app (3.1.7+ab12cd3), 1 harness", text)
+        head, _ = text.split("Emitted by a harness, not by the app", 1)
+        self.assertNotIn("polish-call-failed", head)
+        # And the exit code: a harness ERROR must never fail a build.
+        self.assertEqual(
+            [f for f in findings if f.severity == ERROR
+             and f.origin == "harness"], [])
+
+    def test_a_corpus_without_proc_degrades_and_says_so(self):
+        """Every line of the harvested corpus lacks `proc`.
+
+        The analyser must keep working on them unchanged — window containment,
+        same grades, same findings — and must say which method it used, so a
+        reader never mistakes "no harness was found" for "no harness could be
+        distinguished".
+        """
+        corpus, findings = analyse("clean.log")
+        self.assertFalse(corpus.has_proc)
+        self.assertEqual(corpus.records_without_proc, len(corpus.events))
+        self.assertEqual(corpus.origin_at(0), "unknown")
+        self.assertTrue(all(f.origin == "unknown" for f in findings))
+        self.assertIn("no record in this corpus names the process",
+                      render(corpus, findings))
+
+        # And the pre-proc grading is untouched: the polish fixture still
+        # produces exactly what it did before the field existed.
+        corpus, findings = analyse("polish-call-failed.log")
+        self.assertFalse(corpus.has_proc)
+        self.assertTrue(any(f.invariant == "polish-call-failed"
+                            and f.severity == WARN for f in findings))
+
+    def test_a_process_whose_launch_was_rotated_away_is_not_called_a_harness(self):
+        """The one failure mode `proc` does not remove.
+
+        Rotation cuts the head off the oldest file, taking any `app.launched`
+        with it. A real app process that starts at the top of the window then
+        has exactly a harness's shape, and calling it one would be the same
+        confident-and-wrong reading this analyser exists not to produce.
+        """
+        raw = (
+            '[2026-09-02 00:20:08.988] [········]          hotkey.tap_armed '
+            '{"proc":"c0de"}\n'
+            '[2026-09-02 00:20:09.988] [········]          polish.attempt '
+            '{"model":"openai/gpt-oss-120b","ms":51,"n":1,"proc":"c0de",'
+            '"status":429}\n'
+            '[2026-09-02 00:20:11.988] [········]          hotkey.tap_armed '
+            '{"proc":"c0de"}\n'
+        )
+        corpus, findings = _analyse_text(raw)
+        p = corpus.process("c0de")
+        self.assertTrue(p.head_truncated)
+        self.assertEqual(p.origin, "unknown", "neither claim is supported")
+        self.assertEqual(corpus.harness_processes(), [])
+        pf = [f for f in findings if f.invariant == "polish-call-failed"]
+        self.assertEqual(len(pf), 1)
+        self.assertEqual(pf[0].severity, INFO)
+        self.assertIn("neither is claimed", pf[0].summary,
+                      "an undecidable proc must be named as undecidable, not "
+                      "reported as a harness")
 
     def test_one_polish_failure_is_not_an_outage(self):
         """'Repeatedly' is in the invariant's own title."""

@@ -7,7 +7,7 @@ import sys
 
 from . import report
 from .invariants import ERROR, run_all
-from .model import default_log_paths, load
+from .model import ORIGIN_HARNESS, default_log_paths, load
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -28,7 +28,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="describe every invariant and exit")
     p.add_argument("--max-per-invariant", type=int, default=8, metavar="N")
     p.add_argument("--fail-on-error", action="store_true",
-                   help="exit 1 if any ERROR-severity invariant fired")
+                   help="exit 1 if any ERROR-severity invariant fired on a "
+                        "record the app wrote (harness-emitted findings are "
+                        "reported but never fail)")
     a = p.parse_args(argv)
 
     if a.list:
@@ -49,7 +51,13 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(report.render(corpus, findings, a.context,
                                        a.max_per_invariant) + "\n")
 
-    if a.fail_on_error and any(f.severity == ERROR for f in findings):
+    # A harness-emitted ERROR is not a defect in the product: the records it
+    # rests on carry a `proc` that never wrote an `app.launched`, so they came
+    # from a test binary or a dev build sharing the log directory. Failing a
+    # build on one would be the retracted 2026-09-02 incident with an exit
+    # code attached.
+    if a.fail_on_error and any(f.severity == ERROR and f.origin != ORIGIN_HARNESS
+                               for f in findings):
         return 1
     return 0
 

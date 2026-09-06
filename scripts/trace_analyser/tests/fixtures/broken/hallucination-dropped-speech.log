@@ -10,11 +10,12 @@
 [2026-09-01 10:00:05.467] [0000-1111] +     3ms audio.signal {"avg_rms":0.0098,"floor":0.005,"nonzero_ratio":1.0,"peak":0.0784,"samples":768000}
 [2026-09-01 10:00:05.470] [0000-1111] +     6ms audio.convert {"converted":true,"in_bytes":1,"out_bytes":1}
 [2026-09-01 10:00:05.472] [0000-1111] +     8ms whisper.request {"bytes":1,"input_mode":"push_to_talk","lang":"auto","prompt":false}
-[2026-09-01 10:00:05.772] [0000-1111] +   308ms whisper.response {"attempt":1,"chars":299,"ms":300,"sha8":"aaaa1111"}
-[2026-09-01 10:00:05.774] [0000-1111] +   310ms dictation.finish {"chars":299,"ms":5,"outcome":"aborted","reason":"hallucination"}
-[2026-09-01 10:00:05.779] [········]          state.transition {"from":"Processing","to":"Idle"}
-[2026-09-01 10:00:05.780] [········]          state.transition {"from":"Idle","to":"Idle"}
-[2026-09-01 10:00:06.780] [········]          hotkey.tap_armed {}
-[2026-09-01 10:00:07.780] [········]          hotkey.tap_armed {}
-[2026-09-01 10:00:08.780] [········]          hotkey.tap_armed {}
-[2026-09-01 10:00:09.780] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:05.772] [0000-1111] +   308ms whisper.response {"chars":299,"empty_body_retry":false,"ms":300,"sha8":"aaaa1111"}
+[2026-09-01 10:00:05.773] [0000-1111] +   309ms filter.hallucination {"chars":299,"corroborated":true,"matched":true,"repetition_loop":true,"rule":"repetition_loop"}
+[2026-09-01 10:00:05.775] [0000-1111] +   311ms dictation.finish {"chars":299,"ms":5,"outcome":"aborted","reason":"hallucination"}
+[2026-09-01 10:00:05.780] [········]          state.transition {"from":"Processing","to":"Idle"}
+[2026-09-01 10:00:05.781] [········]          state.transition {"from":"Idle","to":"Idle"}
+[2026-09-01 10:00:06.781] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:07.781] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:08.781] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:09.781] [········]          hotkey.tap_armed {}

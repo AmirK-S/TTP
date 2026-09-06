@@ -12,7 +12,7 @@
 [2026-09-01 10:00:05.504] [0000-1111] +     2ms audio.rms {"avg_rms":0.02,"floor":0.005}
 [2026-09-01 10:00:05.514] [0000-1111] +     8ms audio.convert {"converted":true,"in_bytes":1,"out_bytes":1}
 [2026-09-01 10:00:05.524] [0000-1111] +    11ms whisper.request {"bytes":1,"input_mode":"push_to_talk","lang":"auto","prompt":false}
-[2026-09-01 10:00:05.913] [0000-1111] +   400ms whisper.response {"attempt":1,"chars":30,"ms":380,"sha8":"aaaa1111"}
+[2026-09-01 10:00:05.913] [0000-1111] +   400ms whisper.response {"chars":30,"empty_body_retry":false,"ms":380,"sha8":"aaaa1111"}
 [2026-09-01 10:00:05.933] [0000-1111] +   420ms cleanup {"changed":false,"from":{"chars":30,"sha8":"aaaa1111"},"to":{"chars":30,"sha8":"aaaa1111"}}
 [2026-09-01 10:00:05.934] [0000-1111] +   421ms polish.decision {"quota_ok":true,"setting_enabled":true}
 [2026-09-01 10:00:05.973] [0000-1111] +   460ms polish {"applied":true,"changed":false,"from":{"chars":30,"sha8":"aaaa1111"},"to":{"chars":30,"sha8":"aaaa1111"}}

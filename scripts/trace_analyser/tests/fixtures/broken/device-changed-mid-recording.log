@@ -12,7 +12,7 @@
 [2026-09-01 10:00:10.477] [0000-1111] +     3ms audio.signal {"avg_rms":0.02,"floor":0.005,"nonzero_ratio":1.0,"peak":0.16,"samples":240000}
 [2026-09-01 10:00:10.483] [0000-1111] +     9ms audio.convert {"converted":true,"in_bytes":1,"out_bytes":1}
 [2026-09-01 10:00:10.486] [0000-1111] +    12ms whisper.request {"bytes":1,"input_mode":"push_to_talk","lang":"auto","prompt":false}
-[2026-09-01 10:00:10.886] [0000-1111] +   412ms whisper.response {"attempt":1,"chars":64,"ms":400,"sha8":"aaaa1111"}
+[2026-09-01 10:00:10.886] [0000-1111] +   412ms whisper.response {"chars":64,"empty_body_retry":false,"ms":400,"sha8":"aaaa1111"}
 [2026-09-01 10:00:10.906] [0000-1111] +   432ms cleanup {"changed":false,"from":{"chars":64,"sha8":"aaaa1111"},"to":{"chars":64,"sha8":"aaaa1111"}}
 [2026-09-01 10:00:10.907] [0000-1111] +   433ms polish.decision {"quota_ok":true,"setting_enabled":true}
 [2026-09-01 10:00:11.507] [0000-1111] +  1033ms polish {"changed":true,"from":{"chars":64,"sha8":"aaaa1111"},"model":"openai/gpt-oss-120b","outcome":"applied","quota_ok":true,"to":{"chars":64,"sha8":"bbbb2222"}}

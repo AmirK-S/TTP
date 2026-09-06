@@ -19,7 +19,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .model import Corpus, Dictation, Event
+from .model import (
+    ORIGIN_APP, ORIGIN_HARNESS, ORIGIN_UNKNOWN, Corpus, Dictation, Event,
+)
 
 ERROR = "error"
 WARN = "warn"
@@ -45,7 +47,14 @@ DOCUMENTED_ABORT_REASONS = {
     "audio_file_missing",
 }
 
-DOCUMENTED_OUTCOMES = {"pasted", "aborted", "clipboard_fallback"}
+# docs/tracing.md § "Aborted dictations" and § outcomes. `pasted_unverified`
+# and `paste_swallowed` landed with the paste-verification workstream: since
+# "pasted now means observed", the two states that used to be reported as
+# `pasted` need names of their own, and both are documented.
+DOCUMENTED_OUTCOMES = {
+    "pasted", "aborted", "clipboard_fallback",
+    "pasted_unverified", "paste_swallowed",
+}
 
 # The `PasteVerdict` vocabulary being added to `paste.verify` alongside this
 # workstream (docs/tracing.md). Named here rather than inlined so that when a
@@ -56,6 +65,26 @@ DOCUMENTED_OUTCOMES = {"pasted", "aborted", "clipboard_fallback"}
 PASTE_VERDICT_OBSERVED = "observed"      # the text was seen to land
 PASTE_VERDICT_SWALLOWED = "swallowed"    # it was readable, and it did not
 PASTE_VERDICT_UNVERIFIED = "unverified"  # the target could not be read at all
+
+# `paste.verify`'s other two new fields, named for the same reason. `verdict`
+# is the answer, `evidence` is what it was read off ("text" or "length") and
+# `reason` is why an `unverified` verdict could not do better. The checks read
+# `verdict` and quote the other two; nothing keys off their values, so a new
+# slug in either is not a violation.
+PASTE_EVIDENCE_KEY = "evidence"
+PASTE_REASON_KEY = "reason"
+
+# The hallucination filter's field vocabulary (`filter.hallucination`), added
+# when the filter stopped deleting every repeated 3-gram. `rule` says which
+# predicate matched — "empty", "exact", "substring", "repetition_loop" — and
+# for a loop, `corroborated` says whether one of the known hallucination
+# phrases backed it up. An UNcorroborated loop is now KEPT, which is the
+# safeguard: the filter only deletes a loop the known list vouches for. These
+# are quoted in `hallucination-dropped-speech`'s finding rather than gating
+# it, so a trace generation without them still gets the same verdict.
+HALLUCINATION_RULE_KEY = "rule"
+HALLUCINATION_LOOP_KEY = "repetition_loop"
+HALLUCINATION_CORROBORATED_KEY = "corroborated"
 
 # Stages named in docs/tracing.md's stage table, plus the ones the corpus
 # shows. Informational only — see rule 1 above.
@@ -91,6 +120,34 @@ KNOWN_STAGES = {
     "capture.dead_input_detected",
     "permission.tcc_reset", "permission.tcc_reset_result",
     "permission.notify", "permission.notify_failed",
+    # Reconciled against the emitting source rather than added one at a time,
+    # which is how `whisper.attempt` sat in the unknown list for a wave. The
+    # scan is every stage-name literal passed to `trace::event`, `Trace::
+    # stage`/`text_stage`/`timed`/`transform`/`decision`, and the panic hook's
+    # hand-built record, across src-tauri/src. Three names were missing:
+    #
+    #   whisper.attempt        transcription/whisper.rs — the per-attempt
+    #                          record carrying the retry decision, added when
+    #                          `attempt` stopped being hardcoded on
+    #                          whisper.response;
+    #   app.panic              lib.rs — the panic hook. `panic = "abort"` in
+    #                          release means catch_unwind never runs, so this
+    #                          record is the only thing a crash leaves behind
+    #                          and it carries no dictation id by design;
+    #   settings.unknown_field settings/store.rs — a field the settings store
+    #                          did not recognise, which used to be eaten.
+    #
+    # `degraded` sites are NOT stages: trace::degraded routes every one of
+    # them (capture.reclaim, keychain.secret, keychain.csprng,
+    # keychain.migration_flag, settings.fsync, audio.size, backup.audio,
+    # history.save, input_mode) onto the single stage `degraded` with the site
+    # in `site`, which is already listed above. Adding them here would invent
+    # nine stages the writer never emits.
+    "whisper.attempt", "app.panic", "settings.unknown_field",
+    # `audio.rms` below has no emitter left in the source and is kept on
+    # purpose: it is the pre-`audio.signal` schema generation, 52 dictations
+    # of it are in the corpus, and dropping it would list a stage the app once
+    # wrote as one the analyser has never heard of.
 }
 
 # The four ways a live capture is closed. `capture.stop` is the healthy one;
@@ -196,6 +253,13 @@ class Finding:
     dictation: str | None = None
     index: int = -1  # anchor into corpus.events for context
     detail: dict = field(default_factory=dict)
+    # Who wrote the records this finding rests on: "app", "harness", or
+    # "unknown" for a record that does not say. Stamped by `run_all` from the
+    # anchor record's `proc` unless a check sets it explicitly, and used by the
+    # report to keep harness-emitted findings out of the app's blocks. A
+    # finding about a test binary is not a finding about the product, and
+    # printing them together is the merge this workstream exists to undo.
+    origin: str = ORIGIN_UNKNOWN
 
 
 REGISTRY: list = []
@@ -451,8 +515,18 @@ def _owning_dictation(corpus: Corpus, e: Event):
 def _cotenancy_evidence(corpus: Corpus) -> dict:
     """What the corpus can and cannot say about how many processes wrote it.
 
-    The record format carries no process identity — no pid, no build id, no
-    instance token (docs/trace-api.md § TraceEvent). So a record can never be
+    Two regimes, and which one applies is a property of the corpus in front of
+    you, not a setting.
+
+    **With `proc`.** Every record names the process that wrote it and
+    `app.launched` names the build. A process that emitted an `app.launched`
+    is the app; one that never did is a test binary or a dev build. Then "how
+    many writers" is a count, "which records are whose" is a lookup, and the
+    inferences below become corroboration rather than the only evidence there
+    is.
+
+    **Without it** — every record harvested before the field shipped — the
+    format carries no process identity at all, so a record can never be
     *assigned* to the app or to a test binary. What can be established is the
     negative, and it is the half that matters for grading: whether a record is
     attributable to a dictation the app actually served.
@@ -466,10 +540,24 @@ def _cotenancy_evidence(corpus: Corpus) -> dict:
     3. merged physical lines whose two records belong to *different*
        dictations (within one dictation two threads of one process explain it
        just as well — and in this corpus 34 of 38 are that).
+
+    Both regimes are computed every time. A partly-migrated corpus — the state
+    every machine passes through on the way from one to the other — has some
+    records that name their writer and some that do not, and it gets both
+    answers, each about the records that support it.
     """
     ev = {"impossible_spans": [], "unattributed_polish": 0,
           "polish_days": {}, "merged_same_dictation": 0,
-          "merged_mixed": 0, "long_sessions_without_launch": 0}
+          "merged_mixed": 0, "long_sessions_without_launch": 0,
+          # Process identity, where the writer supplies it.
+          "procs": len(corpus.processes),
+          "app_procs": [p.proc for p in corpus.app_processes()],
+          "harness_procs": [p.proc for p in corpus.harness_processes()],
+          "harness_records": sum(len(p.events)
+                                 for p in corpus.harness_processes()),
+          "records_without_proc": corpus.records_without_proc,
+          "builds": sorted({str(p.build) for p in corpus.app_processes()
+                            if p.build is not None})}
     for e in corpus.events:
         if e.stage == "keychain.slow" and e.tid is None:
             verdict, d, over = _attribute_timed(corpus, e, e.get("ms"))
@@ -1090,13 +1178,30 @@ def check_hallucination(corpus: Corpus):
             continue
         if (secs >= HALLUCINATION_MIN_SECS and rms > floor
                 and chars >= HALLUCINATION_MIN_CHARS):
+            # Which predicate deleted it, where the trace says. Quoted, never
+            # tested: the verdict above is decided by the three measurements,
+            # and a generation of the trace without these fields must produce
+            # the same finding as one with them.
+            f = d.stage("filter.hallucination")
+            rule = f.get(HALLUCINATION_RULE_KEY) if f else None
+            corroborated = (f.get(HALLUCINATION_CORROBORATED_KEY)
+                            if f else None)
+            why = f" by rule '{rule}'" if rule else ""
+            if rule == HALLUCINATION_LOOP_KEY and corroborated is False:
+                # The filter is documented not to delete these any more, so a
+                # dictation aborted on one is worth saying out loud.
+                why += " on an UNCORROBORATED repetition loop"
+            elif corroborated is True:
+                why += " (loop corroborated by the known-phrase list)"
             yield Finding(
                 "hallucination-dropped-speech", ERROR,
                 f"{d.key}: {chars} chars from {secs:.1f}s at avg_rms "
-                f"{rms:.4f} (floor {floor:.4f}) dropped as hallucination",
+                f"{rms:.4f} (floor {floor:.4f}) dropped as hallucination"
+                f"{why}",
                 ts=str(d.finish.ts), dictation=d.key, index=_anchor(d),
                 detail={"chars": chars, "secs": secs, "avg_rms": rms,
-                        "floor": floor, "peak": sig.get("peak")},
+                        "floor": floor, "peak": sig.get("peak"),
+                        "rule": rule, "corroborated": corroborated},
             )
 
 
@@ -1169,71 +1274,183 @@ def check_polish_outage(corpus: Corpus):
         )
 
 
+# THE SPLIT. `remote-call-failed` used to be both of the two checks below,
+# under one id, at one severity.
+#
+# They are not one check. They share only the word "remote":
+#
+#                        whisper_error abort        non-200 polish.attempt
+#   attribution          the dictation's own id     no trace id at all;
+#                        on dictation.finish        window containment only
+#   scope                one named dictation        a standalone record
+#   consequence          the user lost their        the pipeline pastes the
+#                        words; nothing pasted      unpolished text
+#   who else emits it    nothing — a test binary    the golden test suite,
+#                        writes no dictation of     46 times on 2026-09-02
+#                        the user's
+#
+# Merging them is what let 46 test-harness 429s sit in the same block as a
+# real 403 invalid-key abort, at the same grade, sorted only by timestamp. A
+# reader scanning that block had no way to see that one of the twelve rows was
+# a user losing a dictation. Two ids, two severities, two evidence standards.
+# The `--only` surface changes accordingly: `remote-call-failed` no longer
+# exists, and `--only whisper-call-failed --only polish-call-failed` is the
+# old behaviour spelled out.
+
+
 @invariant(
-    "remote-call-failed", WARN,
-    "Remote calls return success",
-    "Covers both remote hops: a polish.attempt with a non-200 status, and a "
-    "dictation aborted with whisper_error. Reported with the status code and "
-    "error category, because 403 (bad key), 429 (quota) and 404 "
-    "(decommissioned model) are three different bugs that look identical to "
-    "the user. WHAT THIS USED TO CLAIM: every non-200 polish.attempt was a "
-    "warning about the app. polish.attempt carries no trace id, so on the "
-    "2026-09-02 corpus that produced 54 warnings about a 429 quota wall — of "
-    "which the overwhelming majority were the golden test suite in "
+    "whisper-call-failed", ERROR,
+    "Transcription does not fail against the remote model",
+    "A dictation aborted with reason `whisper_error`: the user pressed, "
+    "spoke, and got nothing, because the transcription call failed. Reported "
+    "with the status code and error category, because 403 (bad key), 429 "
+    "(quota) and 404 (decommissioned model) are three different bugs that "
+    "look identical to the user. ERROR, and the evidence supports it without "
+    "qualification: the record is `dictation.finish`, it carries the "
+    "dictation's own id, and its `outcome` is the app's own statement that "
+    "this dictation produced nothing. There is no window arithmetic here and "
+    "no co-tenant reading — a test binary does not abort a dictation of the "
+    "user's, because it never started one. WHY THIS IS ITS OWN CHECK: it used "
+    "to be half of `remote-call-failed`, sharing an id and a WARN with "
+    "non-200 polish.attempt records. On the 2026-09-02 corpus that put one "
+    "real 403 invalid-key abort in the same block as ten quota warnings, 46 "
+    "of whose siblings were a cargo test run. The two halves have different "
+    "attribution, different blast radius and different readers; the only "
+    "thing they had in common was the word 'remote'.",
+)
+def check_whisper_failed(corpus: Corpus):
+    for d in corpus.dictations:
+        if d.reason != "whisper_error" or d.finish is None:
+            continue
+        status = d.finish.get("status_code")
+        category = d.finish.get("error_category")
+        # Rule 2: a schema generation that recorded neither still gets a
+        # finding — the abort itself is the evidence — but the summary says
+        # so rather than printing "None (None)" as if it were a reading.
+        if status is None and category is None:
+            detail_txt = "no status_code or error_category recorded"
+        elif status is None:
+            detail_txt = f"{category} (no status code recorded)"
+        else:
+            detail_txt = f"{status} ({category or 'no category recorded'})"
+        yield Finding(
+            "whisper-call-failed", ERROR,
+            f"{d.key}: transcription failed and the dictation was aborted — "
+            f"{detail_txt}",
+            ts=str(d.finish.ts), dictation=d.key, index=_anchor(d),
+            detail={"status_code": status, "error_category": category,
+                    "whisper_ms": d.finish.get("whisper_ms"),
+                    "attribution": "trace_id"},
+        )
+
+
+@invariant(
+    "polish-call-failed", WARN,
+    "Polish calls return success",
+    "A `polish.attempt` with a non-200 status. WARN at most, never ERROR, "
+    "and the reasons are stacked: the record carries NO trace id, so it can "
+    "only be attributed by containment in a dictation's polish window "
+    "(`polish.decision` -> `polish`); polish has a working fallback, so a "
+    "failed call costs the user their polish and not their words — the "
+    "pipeline pastes the unpolished text and the dictation still lands; and "
+    "this is the one stage in the whole vocabulary that the project's own "
+    "test suite provably emits in bulk, 46 times in one 2026-09-02 window. "
+    "Graded by attribution, three ways. (1) The record names a process that "
+    "never emitted `app.launched` — a test binary or a dev build — INFO, "
+    "aggregated, and now stated positively rather than hedged. (2) It falls "
+    "inside a dictation's polish window: that dictation was waiting on this "
+    "call and got unpolished text, WARN. (3) It falls outside every window "
+    "and does not say who wrote it: INFO, aggregated per status per model per "
+    "day, saying only that no dictation this analyser can see was waiting — "
+    "never 'a test run', because without `proc` the log cannot support that "
+    "sentence. WHAT THIS USED TO CLAIM: as half of `remote-call-failed` it "
+    "reported every non-200 as a warning about the app, which on 2026-09-02 "
+    "produced 54 warnings about a quota wall, 46 of them the golden suite in "
     "src-tauri/tests exhausting the API tier from a cargo test run sharing "
     "this log directory. That was reported to the maintainer as a live "
-    "incident and had to be retracted. An attempt is now attributed by "
-    "containment in a dictation's own polish window — from its "
-    "polish.decision to its polish stage — and only an attributed failure is "
-    "a warning about the app. Unattributed failures are still reported, once "
-    "per status per model per day, as information, with the ambiguity stated "
-    "rather than resolved: the log format carries no process identity, so "
-    "the analyser cannot say a record came from a test binary. It can only "
-    "say that no dictation it can see was making that call.",
+    "incident and had to be retracted.",
 )
-def check_remote_failures(corpus: Corpus):
+def check_polish_failed(corpus: Corpus):
+    # (status, model, day) -> events, for the two unattributed aggregations.
     stray: dict[tuple, list[Event]] = {}
+    harness: dict[tuple, list[Event]] = {}
     for e in corpus.events:
-        if e.stage == "polish.attempt":
-            st = e.get("status")
-            if st is None or st == 200:
-                continue
-            owner = _owning_dictation(corpus, e)
-            if owner is None:
-                stray.setdefault(
-                    (str(e.ts.date()), st, e.get("model")), []).append(e)
-                continue
-            yield Finding(
-                "remote-call-failed", WARN,
-                f"{owner.key}: polish.attempt returned {st} from "
-                f"{e.get('model')}",
-                ts=str(e.ts), dictation=owner.key, index=e.index,
-                detail=dict(e.payload, attributed_to=owner.key),
-            )
-    for (day, st, model), evs in sorted(stray.items()):
+        if e.stage != "polish.attempt":
+            continue
+        st = e.get("status")
+        if st is None or st == 200:
+            continue
+        # Process identity first, where the writer supplies it: it is a
+        # lookup, and containment is an inference. A record whose process
+        # never launched the app was not serving a user, whatever window it
+        # happens to sit inside.
+        if corpus.origin_of(e.proc) == ORIGIN_HARNESS:
+            harness.setdefault(
+                (str(e.ts.date()), st, e.get("model"), e.proc), []).append(e)
+            continue
+        owner = _owning_dictation(corpus, e)
+        if owner is None:
+            stray.setdefault(
+                (str(e.ts.date()), st, e.get("model")), []).append(e)
+            continue
         yield Finding(
-            "remote-call-failed", INFO,
+            "polish-call-failed", WARN,
+            f"{owner.key}: polish.attempt returned {st} from "
+            f"{e.get('model')} — the dictation was waiting on this call and "
+            f"pasted unpolished text",
+            ts=str(e.ts), dictation=owner.key, index=e.index,
+            detail=dict(e.payload, attributed_to=owner.key,
+                        attribution="polish_window"),
+            origin=corpus.origin_of(e.proc),
+        )
+    for (day, st, model, proc), evs in sorted(
+            harness.items(), key=lambda kv: str(kv[0])):
+        yield Finding(
+            "polish-call-failed", INFO,
             f"{len(evs)} polish.attempt record(s) returned {st} from {model} "
-            f"on {day} with no dictation making the call — outside every "
-            f"traced dictation's polish window. The log carries no process "
-            f"identity, so this cannot be proved to be a test run; what it "
-            f"does establish is that no dictation this analyser can see was "
-            f"waiting on these",
+            f"on {day}, written by process '{proc}', which emitted no "
+            f"app.launched — a test binary or a dev build, not the app "
+            f"serving a user. Not a finding about the product",
             ts=str(evs[0].ts), index=evs[0].index,
             detail={"status": st, "model": model, "day": day,
-                    "count": len(evs), "attribution": "unattributed"},
+                    "count": len(evs), "proc": proc,
+                    "attribution": "process_identity"},
+            origin=ORIGIN_HARNESS,
         )
-    for d in corpus.dictations:
-        if d.reason == "whisper_error":
-            yield Finding(
-                "remote-call-failed", WARN,
-                f"{d.key}: whisper failed with "
-                f"{d.finish.get('status_code')} "
-                f"({d.finish.get('error_category')})",
-                ts=str(d.finish.ts), dictation=d.key, index=_anchor(d),
-                detail={"status_code": d.finish.get("status_code"),
-                        "error_category": d.finish.get("error_category")},
-            )
+    for (day, st, model), evs in sorted(stray.items()):
+        # Three different sentences, because the corpus supports three
+        # different claims about the same shape.
+        procs = sorted({e.proc for e in evs if e.proc})
+        app_procs = [p for p in procs
+                     if corpus.origin_of(p) == ORIGIN_APP]
+        undecided = [p for p in procs if p not in app_procs]
+        if app_procs and not undecided:
+            tail = (f"written by app process(es) {', '.join(app_procs)}, "
+                    f"which did emit an app.launched, so this is the app "
+                    f"polishing outside any dictation this analyser can see "
+                    f"— not a harness")
+        elif procs:
+            # A proc whose app.launched would have been rotated away. It is
+            # named, and neither claim is made about it.
+            tail = (f"written by process(es) {', '.join(procs)}, whose "
+                    f"records begin at the top of this corpus, so a "
+                    f"rotated-away app.launched and a test binary are the "
+                    f"same shape here and neither is claimed")
+        else:
+            tail = ("These records do not say which process wrote them "
+                    "(pre-`proc` trace), so this cannot be shown to be a test "
+                    "run; what it does establish is that no dictation this "
+                    "analyser can see was waiting on them")
+        yield Finding(
+            "polish-call-failed", INFO,
+            f"{len(evs)} polish.attempt record(s) returned {st} from {model} "
+            f"on {day} with no dictation making the call — outside every "
+            f"traced dictation's polish window. {tail}",
+            ts=str(evs[0].ts), index=evs[0].index,
+            detail={"status": st, "model": model, "day": day,
+                    "count": len(evs), "attribution": "unattributed",
+                    "procs": sorted(procs)},
+        )
 
 
 @invariant(
@@ -2002,11 +2219,28 @@ def check_writer_newline(corpus: Corpus):
     "whole dictation that finished in less time than the call took; "
     "polish.attempt records outside every dictation's polish window; and "
     "merged physical lines carrying records of two different dictations. "
-    "Read this block before reading any unattributed finding below it.",
+    "Read this block before reading any unattributed finding below it. "
+    "WHAT CHANGED: the writer now mints a `proc` id once per process and puts "
+    "it on every record, and `app.launched` carries a `build`. Where a record "
+    "has one, the paragraph above stops applying to it: a process that "
+    "emitted an app.launched is the app, one that never did is a test binary "
+    "or a dev build, and this finding says which processes wrote the corpus "
+    "and how many records each contributed instead of stating an ambiguity. "
+    "Where a record has none — every line written before the field shipped, "
+    "which is the whole harvest corpus — nothing changes and the three "
+    "inferences above are still the only evidence there is. One caveat the "
+    "field does not remove: a process whose app.launched was rotated out of "
+    "the window has the same shape as a harness, so a proc whose first record "
+    "is at the very start of the corpus is reported as undecidable rather "
+    "than as a harness.",
 )
 def check_cotenancy(corpus: Corpus):
     ev = _cotenancy_evidence(corpus)
     reasons = []
+    # Process identity first, where it exists: it is the answer the three
+    # inferences below were standing in for.
+    if corpus.has_proc:
+        yield from _proc_identity_finding(corpus, ev)
     if ev["impossible_spans"]:
         e, d = ev["impossible_spans"][0]
         reasons.append(
@@ -2026,20 +2260,88 @@ def check_cotenancy(corpus: Corpus):
             f"two different dictations")
     if not reasons:
         return
+    # The inference-only sentence is about records that do not name a writer.
+    # On a corpus where every record does, saying "which records belong to
+    # which writer cannot be determined" would be false — the three shapes are
+    # then corroboration of something already known by lookup.
+    if corpus.fully_procced:
+        closing = (". Every record here names its writer, so these are "
+                   "corroboration rather than the evidence of last resort — "
+                   "see the process list above for who wrote what")
+    elif corpus.has_proc:
+        closing = (f". {corpus.records_without_proc} of these records do not "
+                   f"name their writer, and for those the question stays "
+                   f"open: they are graded on whether a dictation can be "
+                   f"shown to have been waiting, never on a guess about who "
+                   f"wrote them")
+    else:
+        closing = (". The format carries no process identity, so which "
+                   "records belong to which writer cannot be determined — "
+                   "findings below are graded on whether a record is "
+                   "attributable to a dictation, never on a guess about who "
+                   "wrote it")
     yield Finding(
         "log-co-tenancy", INFO,
         "more than one writer appended to this log. "
-        + "; ".join(reasons)
-        + ". The format carries no process identity, so which records belong "
-          "to which writer cannot be determined — findings below are graded "
-          "on whether a record is attributable to a dictation, never on a "
-          "guess about who wrote it",
+        + "; ".join(reasons) + closing,
         ts=str(corpus.events[0].ts) if corpus.events else "",
         index=corpus.events[0].index if corpus.events else -1,
         detail={"unattributed_polish_attempts": ev["unattributed_polish"],
                 "impossible_spans": len(ev["impossible_spans"]),
                 "merged_same_dictation": ev["merged_same_dictation"],
-                "merged_mixed": ev["merged_mixed"]},
+                "merged_mixed": ev["merged_mixed"],
+                "records_without_proc": ev["records_without_proc"]},
+    )
+
+
+def _proc_identity_finding(corpus: Corpus, ev: dict):
+    """State who wrote this corpus, from the records' own `proc` ids.
+
+    This is the finding the previous audit said could not exist: "harness
+    contamination cannot be detected positively, and no amount of cleverness
+    in this tool changes that — the fix belongs in the writer". The writer
+    fixed it. `app.launched` is emitted once per real app process and by
+    nothing else, so it partitions the processes into the app and everything
+    else, and every record inherits its process's answer.
+    """
+    app = corpus.app_processes()
+    harness = corpus.harness_processes()
+    # Neither: their records start at the rotation boundary, so an
+    # `app.launched` they did write would have been cut off. Model.Process
+    # marks these `head_truncated` and reports origin "unknown" for them, and
+    # so does this line.
+    undecidable = [p for p in corpus.processes if p.head_truncated]
+    bits = [f"{len(corpus.processes)} process(es) wrote this corpus"]
+    if app:
+        builds = ", ".join(ev["builds"]) if ev["builds"] else "build unstated"
+        bits.append(f"{len(app)} emitted app.launched and "
+                    f"{'is' if len(app) == 1 else 'are'} the app "
+                    f"({', '.join(p.proc for p in app)}; {builds})")
+    if harness:
+        n = sum(len(p.events) for p in harness)
+        bits.append(f"{len(harness)} never emitted app.launched and wrote "
+                    f"{n} record(s) — a test binary or a dev build, not the "
+                    f"app serving a user ({', '.join(p.proc for p in harness)})")
+    if undecidable:
+        bits.append(f"{len(undecidable)} began at the corpus's first record "
+                    f"({', '.join(p.proc for p in undecidable)}), so a "
+                    f"rotated-away app.launched and a harness are the same "
+                    f"shape and neither is claimed")
+    if corpus.records_without_proc:
+        bits.append(f"{corpus.records_without_proc} record(s) name no process "
+                    f"at all and fall back to window containment")
+    yield Finding(
+        "log-co-tenancy", INFO,
+        "; ".join(bits),
+        ts=str(corpus.events[0].ts) if corpus.events else "",
+        index=corpus.events[0].index if corpus.events else -1,
+        detail={"processes": ev["procs"], "app": ev["app_procs"],
+                "harness": ev["harness_procs"],
+                "harness_records": ev["harness_records"],
+                "undecidable": [p.proc for p in undecidable],
+                "builds": ev["builds"],
+                "records_without_proc": ev["records_without_proc"]},
+        origin=ORIGIN_APP,
     )
 
 
@@ -2057,7 +2359,33 @@ def run_all(corpus: Corpus, only: set[str] | None = None) -> list[Finding]:
     out: list[Finding] = []
     for fn in REGISTRY:
         out.extend(fn(corpus))
+    for f in out:
+        _stamp_origin(corpus, f)
     if only:
         out = [f for f in out if f.invariant in only]
     out.sort(key=lambda f: (f.ts, f.invariant))
     return out
+
+
+def _stamp_origin(corpus: Corpus, f: Finding) -> None:
+    """Attribute a finding to the process that wrote its evidence.
+
+    Checks that already know better set `origin` themselves — the harness
+    aggregation in `check_polish_failed` is one record per process by
+    construction. For everything else the anchor is the evidence: a
+    dictation-scoped finding takes the dictation's process, and a standalone
+    one takes its own record's.
+
+    Degrades to `unknown` for every corpus written before `proc` existed,
+    which leaves the report exactly where it was: one undifferentiated block,
+    graded by window containment, saying so.
+    """
+    if f.origin != ORIGIN_UNKNOWN:
+        return
+    if f.dictation:
+        d = corpus.by_key(f.dictation)
+        if d is not None:
+            f.origin = corpus.origin_of(d.proc)
+            if f.origin != ORIGIN_UNKNOWN:
+                return
+    f.origin = corpus.origin_at(f.index)
