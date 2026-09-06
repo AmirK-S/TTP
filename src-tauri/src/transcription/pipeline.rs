@@ -107,10 +107,17 @@ const CLIPBOARD_PASTE_RESTORE_DELAY_MS: u64 = 1500;
 
 /// Common Whisper hallucinations on silent/empty audio.
 ///
-/// Each entry MUST be lowercase, NFKD-normalized (accents stripped), with
-/// straight quotes and no trailing punctuation. The matcher applies the
-/// same normalization to the candidate before comparing, so adding a new
-/// entry = just write it in canonical form here.
+/// Write each entry the way Whisper emits it. The matcher canonicalizes
+/// BOTH sides — see `canonical_exact` — so an entry does not have to be a
+/// fixed point of `normalize_for_hallucination_match`, and must not be
+/// hand-canonicalized into something unreadable.
+///
+/// This comment used to say the opposite: "each entry MUST be lowercase,
+/// NFKD-normalized". Ten of the 105 entries did not obey it, six of those
+/// could never match anything, and nobody could see it — because the
+/// canonical form of a Korean or Japanese entry renders identically to the
+/// form you would type. A contract you cannot proofread is not a contract.
+/// `every_exact_entry_actually_fires` is, and it fails the build.
 ///
 /// IMPORTANT: do NOT add single common particles like "thank you", "you",
 /// "so", "okay", "bye" without thinking — users genuinely dictate these.
@@ -432,6 +439,94 @@ fn normalize_for_hallucination_match(s: &str) -> String {
     trimmed.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// The two lists above, canonicalized once, in the same representation the
+/// matcher compares against.
+///
+/// Measured 2026-09-06: ten of the 105 entries are not fixed points of
+/// `normalize_for_hallucination_match`, so an entry written correctly by a
+/// human could not equal (or be contained in) a candidate that had been
+/// through the normalizer. Six of them could never fire at all — the two
+/// Japanese entries (NFKD splits the dakuten off ご/が/ざ and the combining
+/// mark is then stripped), the two Korean entries (NFKD splits precomposed
+/// Hangul syllables into conjoining jamo, which are NOT combining marks and
+/// so survive, leaving entry and candidate in different representations), the
+/// Russian `подписывайтесь на мой канал` (й is и + U+0306), and
+/// `transcribed by https://otter.ai` (the normalizer rewrites `:` to a
+/// space). The other four — `.` `..` `...` `…` — canonicalize to the empty
+/// string and are answered by the `empty` arm before the exact list is
+/// consulted, so they are redundant rather than dead.
+///
+/// Canonicalizing here rather than in the literals is deliberate. The lists
+/// are read and extended by humans, and no one can review NFKD Hangul jamo or
+/// a bare combining breve: the canonical form of the Korean entry renders
+/// identically to the precomposed one and differs only in code points. A
+/// source list you cannot proofread is a worse defect than the one being
+/// fixed. So the entries stay written the way Whisper emits them, the matcher
+/// does the normalizing, and `every_exact_entry_actually_fires` /
+/// `every_substring_entry_actually_fires_inside_surrounding_text` fail the
+/// build if a future entry cannot be reached.
+///
+/// WHAT SWITCHING THE SIX ON ACTUALLY DELETES, measured 2026-09-06 over the
+/// harvest corpus (600 dictations, 564 with text on file). Replayed
+/// old-matcher against new-matcher, every text, verdict for verdict.
+/// (The `0016`/`0017` below appear twice with different suffixes: the number
+/// is a per-session sequence, so only the full id identifies a dictation.)
+///
+///   * TWO dictations change verdict, both `clean` → `exact`, and both are
+///     the Japanese entry: `0024-6328` (2.40 s of audio, 15:58:20) and
+///     `0028-ac50` (3.21 s, 15:59:00). Neither is speech. Two different
+///     recordings, forty seconds apart, produced the SAME 14 characters —
+///     `sha8:0b60f62b` on both — which is the signature of a degenerate
+///     Whisper output rather than a transcription. Their neighbours settle
+///     it: that run was the sound-pack session, and the maintainer was
+///     recording the app's own notification beeps. `0016-3200`,
+///     `0017-e9a8`, `0018-72b8` came back "Beeping"; `0019-fb60` and
+///     `0023-0a18` "Beep."; `0020-d540`…`0022-db70` "Oh"; `0026-4ed8` and
+///     `0027-2b10` "Bye."; `0029-6ff8` "Thank you." Both Japanese takes sit
+///     inside that block. The revived rule deletes non-speech, which is what
+///     it was written for.
+///   * The other five revived rules delete NOTHING: 0 hits each across all
+///     564 texts. The corpus is French and English, as expected.
+///   * Three non-Latin dictations are NOT touched, and that is the near-miss
+///     worth naming: `0016-a2b8` ("감사합니다."), `0017-6ab8`
+///     ("ありがとうございます") and `0037-fa80` ("오케이.") all stay `Clean`.
+///     The revived Korean entry is `시청해주셔서 감사합니다` and the exact arm
+///     compares whole strings, so it cannot swallow the bare thanks — pinned
+///     by `revived_entries_do_not_swallow_the_bare_thanks`.
+///
+/// So the expected answer was zero and the measured answer is two, and the
+/// two are the rule working. It is still the measurement that mattered: the
+/// same replay is what would have caught it going the other way.
+fn canonical_exact() -> &'static [String] {
+    static CANONICAL: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    CANONICAL.get_or_init(|| {
+        HALLUCINATIONS
+            .iter()
+            .map(|h| normalize_for_hallucination_match(h))
+            .collect()
+    })
+}
+
+/// As `canonical_exact`, minus anything that canonicalizes to nothing.
+///
+/// The filter is `normalized.contains(entry)`, and `contains("")` is true for
+/// every string alive. One punctuation-only entry added to
+/// `HALLUCINATION_SUBSTRINGS` would therefore delete every dictation the user
+/// ever makes, silently, with the audio backup. Today nothing is dropped here
+/// and `no_substring_entry_normalizes_to_nothing` asserts it stays that way;
+/// the filter is the belt to that test's braces, because the cost of being
+/// wrong is asymmetric enough to want both.
+fn canonical_substrings() -> &'static [String] {
+    static CANONICAL: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    CANONICAL.get_or_init(|| {
+        HALLUCINATION_SUBSTRINGS
+            .iter()
+            .map(|h| normalize_for_hallucination_match(h))
+            .filter(|c| !c.is_empty())
+            .collect()
+    })
+}
+
 /// Detect a 3-gram repetition loop (Whisper large-v3-turbo classic failure
 /// mode: "thanks for watching thanks for watching thanks for watching").
 ///
@@ -598,6 +693,26 @@ fn tight_repeated_trigrams<'a>(words: &[&'a str]) -> Vec<[&'a str; 3]> {
 ///     in any known phrase. Only 1 of the 20,641 3-grams in the whole corpus
 ///     is corroborated at all ("thank you for"), and it never formed a chain.
 ///
+/// RE-MEASURED 2026-09-06, after the ten non-canonical entries were made
+/// matchable. Changing the entries changes the corroboration set, so the
+/// numbers above had to be re-taken rather than assumed:
+///
+///   * The set is in fact IDENTICAL. This function already canonicalized the
+///     entries it compared against — it was the only place that did — so
+///     reading `canonical_exact`/`canonical_substrings` instead of
+///     re-normalizing the literals per call is a speed change and nothing
+///     else. The four entries that canonicalize to "" tokenize to nothing
+///     and lose to the `needle.len() >= 3` floor exactly as before.
+///   * Empirically, over the now-564-text corpus: 141/141 loop/repeat-count
+///     combinations still chained and 141/141 still corroborated (exact
+///     0/141, substring 0/141) — `every_looped_known_phrase_is_still_caught
+///     _and_corroborated` holds it. With the diversity gate disabled the
+///     chain rule fires on 7 texts, not 6: the corpus gained 14 texts since
+///     2026-09-02 and one of them (`0057-2e90`) loops. 0 of the 7 are
+///     corroborated, so all seven are still spared, `0004-ad78` among them.
+///     1 of 21,766 3-grams is corroborated at all, still "thank you for",
+///     still in one text (`0152-1d88`) and still never in a chain.
+///
 /// So safety stops depending on a 0.5 threshold fitted to one dictation and
 /// on `MIN_CHAIN`'s one-occurrence margin, and starts depending on whether
 /// the loop is a phrase we have on file.
@@ -623,18 +738,23 @@ fn gram_is_corroborated(gram: &[&str; 3]) -> bool {
         return false;
     }
 
-    // The entries are re-normalized rather than read raw. Ten of them are not
+    // The canonical lists, not the raw literals. Ten of the entries are not
     // fixed points of `normalize_for_hallucination_match` — the Japanese
     // dakuten, the Korean jamo and the Russian "й" all decompose under NFKD —
     // and the needle comes from text that has already been through it. Raw
     // comparison would silently fail to corroborate a looped Russian or
     // Japanese outro.
-    HALLUCINATIONS
+    //
+    // This used to normalize the literals on every call, which was 120
+    // normalizations per 3-gram and, worse, a second implementation of the
+    // canonical form. While only this function canonicalized, it was the
+    // exact and substring arms that were left broken. One cache, three
+    // readers.
+    canonical_exact()
         .iter()
-        .chain(HALLUCINATION_SUBSTRINGS.iter())
-        .any(|entry| {
-            let canonical = normalize_for_hallucination_match(entry);
-            let hay = tokens(&canonical);
+        .chain(canonical_substrings().iter())
+        .any(|canonical| {
+            let hay = tokens(canonical);
             hay.len() >= needle.len()
                 && hay.windows(needle.len()).any(|w| w == needle.as_slice())
         })
@@ -685,7 +805,7 @@ fn classify_hallucination(text: &str) -> HallucinationVerdict {
     // We keep the diagnostic signal (which arm fired, how long) without the
     // content.
     let char_count = text.chars().count();
-    if HALLUCINATIONS.iter().any(|h| *h == normalized) {
+    if canonical_exact().iter().any(|h| *h == normalized) {
         crate::logging::log_info(&format!(
             "[Pipeline] filtered exact hallucination chars={}",
             char_count
@@ -693,9 +813,9 @@ fn classify_hallucination(text: &str) -> HallucinationVerdict {
         return HallucinationVerdict::Filtered { rule: "exact" };
     }
 
-    if HALLUCINATION_SUBSTRINGS
+    if canonical_substrings()
         .iter()
-        .any(|sub| normalized.contains(*sub))
+        .any(|sub| normalized.contains(sub.as_str()))
     {
         crate::logging::log_info(&format!(
             "[Pipeline] filtered substring hallucination chars={}",
@@ -1004,12 +1124,12 @@ mod hallucination_tests {
                 let looped = vec![**phrase; reps].join(" ");
                 let normalized = normalize_for_hallucination_match(&looped);
 
-                if HALLUCINATIONS.iter().any(|h| *h == normalized) {
+                if canonical_exact().iter().any(|h| *h == normalized) {
                     exact += 1;
                 }
-                if HALLUCINATION_SUBSTRINGS
+                if canonical_substrings()
                     .iter()
-                    .any(|sub| normalized.contains(*sub))
+                    .any(|sub| normalized.contains(sub.as_str()))
                 {
                     substring += 1;
                 }
@@ -1140,6 +1260,136 @@ mod hallucination_tests {
         // needle that matches half the list.
         assert!(!gram_is_corroborated(&["%", "?", "et"]));
         assert!(!gram_is_corroborated(&["tu", "las", "bien"]));
+    }
+
+    // ── Every entry must be able to fire, measured 2026-09-06 ──────────
+    //
+    // These are the guard, and they are worth more than the ten entries they
+    // caught today. A list that is compared against normalized text but is
+    // not itself normalized rots silently: the entry is right there in the
+    // source, reviewed and readable, and matches nothing. Ten of the 120
+    // entries were in that state, and six of them could never fire at all.
+    //
+    // Nothing here asserts a canonical *spelling*. The invariant is weaker
+    // and more useful: feed the entry to the filter and the filter must drop
+    // it. That holds however the entry is written, in whatever script, and it
+    // fails the moment someone adds one the matcher cannot reach.
+
+    #[test]
+    fn every_exact_entry_actually_fires() {
+        for entry in HALLUCINATIONS {
+            assert!(
+                is_hallucination(entry),
+                "HALLUCINATIONS entry cannot match anything: {:?}",
+                entry
+            );
+        }
+    }
+
+    #[test]
+    fn every_substring_entry_actually_fires_inside_surrounding_text() {
+        // The substring list exists for signatures Whisper bleeds INTO valid
+        // text, so the fixture has to have text around it.
+        for sub in HALLUCINATION_SUBSTRINGS {
+            let bled = format!("bonjour voici le message {} et voila", sub);
+            assert!(
+                is_hallucination(&bled),
+                "HALLUCINATION_SUBSTRINGS entry cannot match anything: {:?}",
+                sub
+            );
+        }
+    }
+
+    #[test]
+    fn the_six_scripts_that_could_never_fire() {
+        // The six dead rules, named. Each is written here exactly as Whisper
+        // emits it — precomposed, which is what any editor and any input
+        // method produce — and each was compared against text that had been
+        // NFKD-decomposed by the matcher, so equality was impossible.
+        //
+        // Japanese: the dakuten/handakuten are combining marks after NFKD, so
+        // ご→こ, が→か, ざ→さ. Korean: NFKD decomposes precomposed Hangul
+        // syllables into conjoining jamo (U+C2DC → U+1109 U+1175), which are
+        // not combining marks and therefore survive the strip — the entry and
+        // the candidate end up in different representations. Russian: й is
+        // и + U+0306 combining breve. And `:` is rewritten to a space, so no
+        // entry containing a URL scheme could survive its own normalizer.
+        assert!(is_hallucination("ご視聴ありがとうございました"));
+        assert!(is_hallucination("見てくれてありがとう"));
+        assert!(is_hallucination("подписывайтесь на мой канал"));
+        assert!(is_hallucination("시청해주셔서 감사합니다"));
+        assert!(is_hallucination("구독 부탁드립니다"));
+        assert!(is_hallucination(
+            "voila le compte rendu Transcribed by https://otter.ai"
+        ));
+
+        // And the half of the fix the assertions above cannot see. Those
+        // compare an entry with itself, so they fail only if the matcher
+        // stops canonicalizing at all — true of the bug being fixed, but not
+        // a proof that BOTH sides are canonicalized. These are the same three
+        // phrases written decomposed (NFD), which is a form Whisper can
+        // legitimately return and which no editor distinguishes from the
+        // precomposed literals in the list: identical on screen, different
+        // code points. They match only because the candidate is normalized
+        // too.
+        assert!(is_hallucination("\u{3053}\u{3099}\u{8996}\u{8074}\u{3042}\u{308A}\u{304B}\u{3099}\u{3068}\u{3046}\u{3053}\u{3099}\u{3055}\u{3099}\u{3044}\u{307E}\u{3057}\u{305F}"));
+        assert!(is_hallucination("\u{1109}\u{1175}\u{110E}\u{1165}\u{11BC}\u{1112}\u{1162}\u{110C}\u{116E}\u{1109}\u{1167}\u{1109}\u{1165} \u{1100}\u{1161}\u{11B7}\u{1109}\u{1161}\u{1112}\u{1161}\u{11B8}\u{1102}\u{1175}\u{1103}\u{1161}"));
+        assert!(is_hallucination("\u{043F}\u{043E}\u{0434}\u{043F}\u{0438}\u{0441}\u{044B}\u{0432}\u{0430}\u{0438}\u{0306}\u{0442}\u{0435}\u{0441}\u{044C} \u{043D}\u{0430} \u{043C}\u{043E}\u{0438}\u{0306} \u{043A}\u{0430}\u{043D}\u{0430}\u{043B}"));
+    }
+
+    #[test]
+    fn revived_entries_do_not_swallow_the_bare_thanks() {
+        // The measured near miss. Turning the CJK entries on was checked
+        // against 564 real dictations and moved exactly two verdicts, both
+        // non-speech (see `canonical_exact`). Three other non-Latin
+        // dictations were in range and had to stay untouched — `0016-a2b8`,
+        // `0017-6ab8`, `0037-fa80` — because the bare thanks is something a
+        // person says and the outro is not.
+        //
+        // The exact arm compares WHOLE strings, which is what keeps them
+        // apart: `시청해주셔서 감사합니다` is on the list, `감사합니다` is not.
+        // A future maintainer moving any of these into
+        // `HALLUCINATION_SUBSTRINGS` would delete all three, and this is the
+        // test that says so.
+        assert!(!is_hallucination("감사합니다."));
+        assert!(!is_hallucination("오케이."));
+        assert!(!is_hallucination("ありがとうございます"));
+        assert!(!is_hallucination("спасибо"));
+    }
+
+    #[test]
+    fn the_punctuation_entries_are_caught_by_the_empty_arm_not_the_exact_one() {
+        // The other four non-fixed-points. These are NOT dead: `.` normalizes
+        // to the empty string, and so does every all-punctuation candidate,
+        // so `classify_hallucination` returns at its `empty` arm before the
+        // exact list is ever consulted. They are redundant rather than
+        // broken, and this test says which — so nobody "fixes" them by
+        // canonicalising them into four empty strings.
+        let mut via_empty: Vec<&str> = Vec::new();
+        for entry in HALLUCINATIONS {
+            match classify_hallucination(entry) {
+                HallucinationVerdict::Filtered { rule: "exact" } => {}
+                HallucinationVerdict::Filtered { rule: "empty" } => via_empty.push(entry),
+                other => panic!("entry {:?} is not filtered at all: {:?}", entry, other),
+            }
+        }
+        assert_eq!(via_empty, vec![".", "..", "...", "\u{2026}"]);
+    }
+
+    #[test]
+    fn no_substring_entry_normalizes_to_nothing() {
+        // A substring entry that canonicalizes to "" would make
+        // `normalized.contains(entry)` true for EVERY dictation — the whole
+        // corpus deleted by one bad list edit. `canonical_substrings` drops
+        // empties for that reason; this test is what stops the drop from
+        // being silent.
+        assert_eq!(
+            canonical_substrings().len(),
+            HALLUCINATION_SUBSTRINGS.len(),
+            "an entry canonicalized to nothing and was dropped from the \
+             matcher; it would otherwise match every dictation ever made"
+        );
+        assert!(canonical_substrings().iter().all(|s| !s.trim().is_empty()));
     }
 
     // ── TIGHT_GAP / MIN_CHAIN, measured 2026-09-02 ─────────────────────
@@ -3044,3 +3294,4 @@ pub async fn process_audio(app: AppHandle, audio_path: String) -> Result<String,
     };
     process_recording(&app, audio_path_str).await
 }
+
