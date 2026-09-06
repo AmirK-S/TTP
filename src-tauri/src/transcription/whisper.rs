@@ -34,8 +34,66 @@ const GROQ_TRANSCRIPTION_URL: &str = "https://api.groq.com/openai/v1/audio/trans
 /// Maximum number of retry attempts
 const MAX_RETRIES: u32 = 3;
 
-/// Base request timeout in seconds (scales up with file size)
+/// Base request timeout in seconds (scales up with file size).
 const BASE_TIMEOUT_SECS: u64 = 30;
+
+/// Upload headroom added on top of [`BASE_TIMEOUT_SECS`], in milliseconds of
+/// timeout per MiB of payload. Applied per byte — see [`request_timeout`].
+///
+/// Measured 2026-09-06 over the harvest corpus: 552 `whisper.request` lines
+/// in `ttp-trace.log`/`.log.1` joined to their responses.
+///
+///   * Payload sizes: p50 311 KB, p90 0.86 MiB, p99 1.93 MiB, max 3.46 MiB
+///     (the pipeline refuses anything over `MAX_AUDIO_SIZE` = 25 MB, i.e.
+///     23.84 MiB, so that is the ceiling this has to cover).
+///   * Call duration: p50 465 ms, p95 1027 ms, p99 1573 ms, max 2018 ms.
+///   * Least squares over all 552 pairs: `ms = 345 + 450 * MiB`. So the
+///     marginal cost of a megabyte on this uplink is ~450 ms, and the fit's
+///     worst residual is 1351 ms.
+///
+/// 2000 ms/MiB is therefore ~4.4x the measured marginal cost, and the 30 s
+/// base is ~15x the slowest call ever observed. Both are kept as they were:
+/// the rate was never the bug, and re-fitting a load-bearing timeout to a
+/// corpus gathered on one home connection would be trading measured slack for
+/// none. What changed is that the headroom is now computed from the byte
+/// count instead of from `bytes / (1024*1024)` in integer arithmetic.
+///
+/// That division is the bug. It floors, so every payload below 1 MiB got
+/// `file_mb = 0` and therefore exactly `BASE_TIMEOUT_SECS` with zero
+/// size-based headroom — 516 of the 552 requests in the corpus, including a
+/// 1,008,000-byte upload (0.96 MiB, 31.5 s of speech, trace `0185-a9c0`)
+/// which got the same allowance as a one-byte file while a 1,048,576-byte
+/// one got two extra seconds. A step function on a size-derived timeout is
+/// indefensible whichever side of the step you are on.
+///
+/// What this fix does NOT claim: that it would have saved `0185-a9c0`. The
+/// three failures on that dictation are in `ttp.log` at 20:28:54, 20:29:04
+/// and 20:29:06 — 17.2 s, 9.5 s and 1.0 s after their attempts began. None of
+/// them reached 30 s, so none of them was this timeout firing; the network
+/// was down for the whole 29 s, as `plan_retry` already says. The trace is
+/// how the flooring was found, not evidence that the flooring caused the
+/// loss. It is fixed because a 0.96 MiB upload drawing less headroom than a
+/// 1.00 MiB one is wrong on its own, and because `timed_out` on
+/// `whisper.attempt` is new — the corpus cannot yet tell us how often the
+/// timeout does fire.
+///
+/// The per-byte form is deliberately the same line, not a new one: it agrees
+/// with the old formula exactly at every whole-MiB boundary, is monotone in
+/// payload size, and is never smaller than the old value — at most 1999 ms
+/// larger. This is not a new timing regime, it is the old one without the
+/// staircase.
+const TIMEOUT_HEADROOM_MS_PER_MIB: u64 = 2000;
+
+/// Per-request timeout for a payload of `bytes`.
+///
+/// Pure, so the shape can be tested without a network: monotone, no step at
+/// zero, and equal to the old `BASE + 2s * floor(MiB)` at every whole MiB.
+fn request_timeout(bytes: u64) -> Duration {
+    // 25 MB * 2000 cannot overflow u64; saturating anyway so a nonsense size
+    // yields a huge timeout rather than a wrapped tiny one.
+    let headroom_ms = bytes.saturating_mul(TIMEOUT_HEADROOM_MS_PER_MIB) / (1024 * 1024);
+    Duration::from_millis(BASE_TIMEOUT_SECS * 1000 + headroom_ms)
+}
 
 /// Total time transcription may spend *waiting* on rate limits within one
 /// dictation, in milliseconds. A budget for the whole call, not a per-sleep
@@ -310,11 +368,12 @@ async fn transcribe_with_provider(
 
     let mime_type = "audio/wav";
 
-    // Scale timeout based on file size: base + 2s per MB.
-    // Applied per-request below so the shared client (which has no global
-    // timeout) can be reused across calls of different sizes.
-    let file_mb = audio_bytes.len() as u64 / (1024 * 1024);
-    let timeout_secs = BASE_TIMEOUT_SECS + file_mb * 2;
+    // Scale timeout with payload size. Applied per-request below so the
+    // shared client (which has no global timeout) can be reused across calls
+    // of different sizes. See `TIMEOUT_HEADROOM_MS_PER_MIB` for why this is
+    // computed per byte and not per floored megabyte.
+    let timeout = request_timeout(audio_bytes.len() as u64);
+    let timeout_ms = timeout.as_millis() as u64;
 
     // Reuse the process-wide HTTP client so we keep TCP/TLS connections warm
     // across whisper -> polish -> next-recording calls.
@@ -367,7 +426,7 @@ async fn transcribe_with_provider(
         // keep their own timeouts.
         match client
             .post(transcription_url)
-            .timeout(Duration::from_secs(timeout_secs))
+            .timeout(timeout)
             .header("Authorization", format!("Bearer {}", api_key))
             .multipart(form)
             .send()
@@ -449,12 +508,12 @@ async fn transcribe_with_provider(
 
                 let mut fields = serde_json::json!({
                     "n": attempt + 1,
-                    // A timeout lands here after `timeout_secs`, so `ms` near
+                    // A timeout lands here after `timeout_ms`, so `ms` near
                     // that value is a hung upload rather than a refused one.
                     "error": e.to_string(),
                     "timed_out": e.is_timeout(),
                     "ms": attempt_ms(),
-                    "timeout_secs": timeout_secs,
+                    "timeout_ms": timeout_ms,
                     "waited_ms": waited_before_attempt_ms,
                 });
                 annotate_attempt(&mut fields, &plan, None);
@@ -497,6 +556,131 @@ mod tests {
     // no network, no Groq call. An earlier agent proved this loop by calling
     // the live API; it cost ~54 calls, exhausted the tier and contaminated
     // the maintainer's own trace log. Everything below runs offline.
+
+    // ---- per-request timeout ------------------------------------------
+    //
+    // Measured 2026-09-06 over the same 552 requests. The old
+    // `bytes / (1024*1024)` floored, so 516 of them — every payload under a
+    // megabyte — got `BASE_TIMEOUT_SECS` and nothing else.
+
+    /// The upload that exposed the flooring: trace `0185-a9c0`, 2026-09-05
+    /// 20:28, 31.5 seconds of speech converted to 1,008,000 bytes. The
+    /// dictation was lost, but to a dead network rather than to this timeout
+    /// — see `TIMEOUT_HEADROOM_MS_PER_MIB`. The size is what matters here.
+    const LOST_DICTATION_BYTES: u64 = 1_008_000;
+
+    /// `pipeline.rs::MAX_AUDIO_SIZE`. Nothing larger reaches this module.
+    const MAX_UPLOAD_BYTES: u64 = 25_000_000;
+
+    #[test]
+    fn sub_megabyte_uploads_get_headroom() {
+        // 0.96 MiB used to floor to 0 MB and draw exactly the base timeout —
+        // less allowance than a 1,048,576-byte upload, for 4% less data.
+        let t = request_timeout(LOST_DICTATION_BYTES);
+        assert!(
+            t > Duration::from_secs(BASE_TIMEOUT_SECS),
+            "a 0.96 MiB upload must get more than the bare base timeout, got {:?}",
+            t
+        );
+        // 1_008_000 * 2000 / 1048576 = 1922 ms.
+        assert_eq!(t, Duration::from_millis(31_922));
+    }
+
+    #[test]
+    fn timeout_has_no_step_at_the_megabyte_boundary() {
+        // The old formula jumped 2 s between 1_048_575 and 1_048_576 bytes.
+        let below = request_timeout(1_048_575);
+        let at = request_timeout(1_048_576);
+        assert!(at > below);
+        assert!(
+            at - below < Duration::from_millis(2),
+            "one more byte must not buy two more seconds; {:?} -> {:?}",
+            below,
+            at
+        );
+    }
+
+    #[test]
+    fn timeout_agrees_with_the_old_formula_at_whole_megabytes() {
+        // The point of the per-byte form: same line, no staircase. If these
+        // diverge, the change stopped being "the old rate without the floor"
+        // and became a new timing regime.
+        for mib in 0..=24u64 {
+            let bytes = mib * 1024 * 1024;
+            assert_eq!(
+                request_timeout(bytes),
+                Duration::from_secs(BASE_TIMEOUT_SECS + mib * 2),
+                "at {} MiB",
+                mib
+            );
+        }
+    }
+
+    #[test]
+    fn timeout_is_monotone_and_never_shrinks() {
+        // Never smaller than the old value, and never more than one MiB's
+        // worth of headroom larger — so the worst case this can add to a
+        // three-attempt dictation is under 6 s.
+        let mut previous = Duration::from_secs(0);
+        let mut step = 1u64;
+        let mut bytes = 0u64;
+        while bytes <= MAX_UPLOAD_BYTES {
+            let t = request_timeout(bytes);
+            assert!(t >= previous, "timeout must not shrink at {} bytes", bytes);
+            let old_secs = BASE_TIMEOUT_SECS + (bytes / (1024 * 1024)) * 2;
+            assert!(t >= Duration::from_secs(old_secs), "at {} bytes", bytes);
+            assert!(
+                t < Duration::from_secs(old_secs)
+                    + Duration::from_millis(TIMEOUT_HEADROOM_MS_PER_MIB),
+                "at {} bytes",
+                bytes
+            );
+            previous = t;
+            bytes += step;
+            step = (step * 3).min(65_536);
+        }
+        // And the ceiling stays bounded: the largest upload the pipeline will
+        // hand over is 25 MB.
+        assert_eq!(request_timeout(MAX_UPLOAD_BYTES), Duration::from_millis(77_683));
+    }
+
+    #[test]
+    fn base_timeout_still_dwarfs_every_observed_call() {
+        // Slowest successful Whisper call in the corpus: 2018 ms on a
+        // 3,632,512-byte payload. The base is not what was ever tight, which
+        // is why this change touches the ramp and not the base.
+        const SLOWEST_OBSERVED_MS: u64 = 2018;
+        const SLOWEST_OBSERVED_BYTES: u64 = 3_632_512;
+        assert!(
+            request_timeout(SLOWEST_OBSERVED_BYTES)
+                > Duration::from_millis(SLOWEST_OBSERVED_MS * 10)
+        );
+    }
+
+    #[test]
+    fn worst_case_still_composes_with_the_retry_budget() {
+        // The two limits answer different questions and must not be summed
+        // carelessly. RETRY_BUDGET_MS bounds time spent SLEEPING on a rate
+        // limit; the timeout bounds time spent HANGING on a socket. Within
+        // MAX_RETRIES attempts they cannot both be maximal: a 429 answers in
+        // milliseconds, so a dictation that spends the full budget waiting has
+        // spent almost none of it timing out.
+        //
+        // Worst case is therefore MAX_RETRIES timeouts plus local backoff
+        // (~500 ms then ~1000 ms, jittered +-25%, never charged to the rate
+        // limit budget), not MAX_RETRIES timeouts plus the budget.
+        let t = request_timeout(311_169); // p50 payload
+        let all_attempts_hang = t * MAX_RETRIES + Duration::from_millis(1875);
+        let full_rate_limit_wait =
+            Duration::from_millis(RETRY_BUDGET_MS) + t + Duration::from_millis(100);
+        assert!(
+            all_attempts_hang > full_rate_limit_wait,
+            "the hanging path is the binding worst case, not the waiting one"
+        );
+        // Under two minutes on the median dictation, and the change adds
+        // 1.8 s of that.
+        assert!(all_attempts_hang < Duration::from_secs(120));
+    }
 
     /// The delays Groq actually asked this account for, in seconds, across
     /// the 55 rate-limit replies in `ttp.log` on 2026-09-02. Sorted.

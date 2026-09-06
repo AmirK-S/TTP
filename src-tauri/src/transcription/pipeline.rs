@@ -442,10 +442,22 @@ fn normalize_for_hallucination_match(s: &str) -> String {
 /// only when at least `MIN_CHAIN` occurrences of the same 3-gram form a chain
 /// where each consecutive pair is within `TIGHT_GAP` words — preserving real
 /// long-monologue transcriptions while still catching Whisper loops.
-fn has_repetition_loop(normalized: &str) -> bool {
+///
+/// Returns the offending 3-grams rather than a bare `true`, because the caller
+/// does not act on a loop until `gram_is_corroborated` says the loop is a
+/// phrase we already know Whisper hallucinates. A detector that only answers
+/// "yes" cannot be second-guessed; one that names its evidence can.
+///
+/// ALL chaining 3-grams, not the first one found. A phrase looped verbatim
+/// chains on every rotation of itself — "sous-titrage société radio-canada"
+/// produces three — and only the rotation that starts where the phrase starts
+/// is a contiguous run inside the list entry. Returning one arbitrary member
+/// of that set made corroboration depend on `HashMap` iteration order, i.e.
+/// on nothing.
+fn repetition_loop_grams(normalized: &str) -> Vec<[&str; 3]> {
     let words: Vec<&str> = normalized.split_whitespace().collect();
     if words.len() < 9 {
-        return false;
+        return Vec::new();
     }
 
     // Lexical diversity gate, checked before anything else.
@@ -469,11 +481,32 @@ fn has_repetition_loop(normalized: &str) -> bool {
     const MIN_UNIQUE_WORD_RATIO: f32 = 0.5;
     let unique_words: std::collections::HashSet<&&str> = words.iter().collect();
     if unique_words.len() as f32 / words.len() as f32 > MIN_UNIQUE_WORD_RATIO {
-        return false;
+        return Vec::new();
     }
 
+    tight_repeated_trigrams(&words)
+}
+
+/// The chain scan on its own: no length floor, no diversity gate, just
+/// "does some 3-gram repeat `MIN_CHAIN` times with every consecutive pair
+/// within `TIGHT_GAP` words". Returns every 3-gram that does.
+///
+/// Split out of `repetition_loop_grams` so the corroboration tests can run it
+/// with `MIN_UNIQUE_WORD_RATIO` out of the picture. That is the point of the
+/// split and not an implementation detail: the gate is a 0.5 threshold fitted
+/// to a single dictation, and the safety of this filter is not supposed to
+/// rest on it any more.
+///
+/// Sorted before returning: the scan walks a `HashMap`, and a filter whose
+/// output order changes run to run is a filter whose tests are a coin toss.
+fn tight_repeated_trigrams<'a>(words: &[&'a str]) -> Vec<[&'a str; 3]> {
     // Measured 2026-09-02 against 442 real dictations from the harvest window
     // and the 50 multi-word entries of `HALLUCINATIONS` looped verbatim.
+    // (The corroboration measurement dated 2026-09-06, in
+    // `gram_is_corroborated`, says 47 rather than 50. The list has moved
+    // since: as of 2026-09-06 it holds 53 entries of two words or more and 47
+    // of three or more, and only the latter is a set a 3-gram rule can see.
+    // Neither count is wrong, they are four days and one question apart.)
     //
     // TIGHT_GAP bounds the PERIOD of a loop, not the distance between unrelated
     // words: a 3-gram inside a repeated phrase recurs exactly one phrase-length
@@ -519,7 +552,8 @@ fn has_repetition_loop(normalized: &str) -> bool {
         positions.entry((w[0], w[1], w[2])).or_default().push(i);
     }
 
-    for occurrences in positions.values() {
+    let mut found: Vec<[&'a str; 3]> = Vec::new();
+    for (gram, occurrences) in positions.iter() {
         if occurrences.len() < MIN_CHAIN {
             continue;
         }
@@ -528,14 +562,103 @@ fn has_repetition_loop(normalized: &str) -> bool {
             if pair[1] - pair[0] <= TIGHT_GAP {
                 chain += 1;
                 if chain >= MIN_CHAIN {
-                    return true;
+                    found.push([gram.0, gram.1, gram.2]);
+                    break;
                 }
             } else {
                 chain = 1;
             }
         }
     }
-    false
+    found.sort_unstable();
+    found
+}
+
+/// Does this 3-gram appear inside one of the phrases we already know Whisper
+/// hallucinates?
+///
+/// This is the corroboration gate, and it is what makes the chain detector
+/// safe to keep. Measured 2026-09-06 over the harvest corpus (586 dictations,
+/// 550 with text on file) and the 47 multi-word `HALLUCINATIONS` entries
+/// looped 3, 4 and 6 times:
+///
+///   * The chain detector is the ONLY rule that catches a looped known
+///     phrase. Exact match catches 0 of 47 (a repeated string is not equal to
+///     the entry); the substring list catches 0 of 47 (it holds signature
+///     stems like `amara.org`, not the outros). The chain detector catches
+///     47 of 47, and all 141 loop/repeat-count combinations are corroborated
+///     here — the gate costs the filter nothing it was actually catching.
+///   * On real speech the chain detector has ZERO true positives. Two of the
+///     586 dictations aborted as `hallucination`, and only ONE of them was
+///     this rule: `0004-ad78`, 299 characters of genuine French destroyed.
+///     The other (`0125-c648`, "Uh...", 5 characters) was the exact-match
+///     list — one word, so the nine-word floor here was never crossed.
+///   * With `MIN_UNIQUE_WORD_RATIO` DISABLED the chain rule fires on 6 of the
+///     550 texts. This gate spares all six: not one of their 3-grams occurs
+///     in any known phrase. Only 1 of the 20,641 3-grams in the whole corpus
+///     is corroborated at all ("thank you for"), and it never formed a chain.
+///
+/// So safety stops depending on a 0.5 threshold fitted to one dictation and
+/// on `MIN_CHAIN`'s one-occurrence margin, and starts depending on whether
+/// the loop is a phrase we have on file.
+///
+/// Matching is on alphanumeric tokens, not on the whitespace words, because
+/// Whisper writes the credits hyphenated ("sous-titrage société
+/// radio-canada") while the list stores them spaced. Comparing words would
+/// drop exactly the broadcaster credits this rule exists to catch. Requiring
+/// at least three tokens is what stops a punctuation-only 3-gram (`% ? et`)
+/// from collapsing to a two-letter needle that matches half the list.
+fn gram_is_corroborated(gram: &[&str; 3]) -> bool {
+    fn tokens(s: &str) -> Vec<&str> {
+        s.split(|c: char| !c.is_alphanumeric())
+            .filter(|t| !t.is_empty())
+            .collect()
+    }
+
+    let mut needle: Vec<&str> = Vec::with_capacity(3);
+    for word in gram {
+        needle.extend(tokens(word));
+    }
+    if needle.len() < 3 {
+        return false;
+    }
+
+    // The entries are re-normalized rather than read raw. Ten of them are not
+    // fixed points of `normalize_for_hallucination_match` — the Japanese
+    // dakuten, the Korean jamo and the Russian "й" all decompose under NFKD —
+    // and the needle comes from text that has already been through it. Raw
+    // comparison would silently fail to corroborate a looped Russian or
+    // Japanese outro.
+    HALLUCINATIONS
+        .iter()
+        .chain(HALLUCINATION_SUBSTRINGS.iter())
+        .any(|entry| {
+            let canonical = normalize_for_hallucination_match(entry);
+            let hay = tokens(&canonical);
+            hay.len() >= needle.len()
+                && hay.windows(needle.len()).any(|w| w == needle.as_slice())
+        })
+}
+
+/// What the hallucination filter decided, and on what grounds.
+///
+/// The third variant is the whole reason this is not a `bool`. A repetition
+/// loop that no known phrase corroborates is a NEAR MISS, not a match: the
+/// text is kept and pasted, and the near miss is recorded so the next reader
+/// can see the detector considered it. The asymmetry is why. Filtering costs
+/// the user the dictation *and* the audio backup (`remove_backup`) and tells
+/// them no speech was detected — irreversible. Not filtering costs them a
+/// line of visible junk and one keystroke.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HallucinationVerdict {
+    /// Nothing matched. Paste it.
+    Clean,
+    /// Drop the text. `rule` is the arm that fired, as a slug for the trace:
+    /// `"empty"`, `"exact"`, `"substring"`, `"repetition_loop"`.
+    Filtered { rule: &'static str },
+    /// A tight 3-gram loop that appears in none of the known phrases.
+    /// Non-destructive: keep `raw_text`, fall through to `cleanup`, paste.
+    UncorroboratedLoop,
 }
 
 /// Filter out common Whisper hallucinations on silent / non-speech audio.
@@ -546,12 +669,13 @@ fn has_repetition_loop(normalized: &str) -> bool {
 ///   2. Exact match against `HALLUCINATIONS` (canonical-form whole string)
 ///   3. Substring match against `HALLUCINATION_SUBSTRINGS` (signatures
 ///      that bleed into otherwise-valid text)
-///   4. Detect 3-gram repetition loops
-fn is_hallucination(text: &str) -> bool {
+///   4. Detect 3-gram repetition loops — and delete only when the looping
+///      3-gram is corroborated by one of the phrases in 2 or 3
+fn classify_hallucination(text: &str) -> HallucinationVerdict {
     let normalized = normalize_for_hallucination_match(text);
 
     if normalized.is_empty() {
-        return true;
+        return HallucinationVerdict::Filtered { rule: "empty" };
     }
 
     // PRIVACY: we never log the literal `text` or `normalized` payload — both
@@ -566,7 +690,7 @@ fn is_hallucination(text: &str) -> bool {
             "[Pipeline] filtered exact hallucination chars={}",
             char_count
         ));
-        return true;
+        return HallucinationVerdict::Filtered { rule: "exact" };
     }
 
     if HALLUCINATION_SUBSTRINGS
@@ -577,18 +701,44 @@ fn is_hallucination(text: &str) -> bool {
             "[Pipeline] filtered substring hallucination chars={}",
             char_count
         ));
-        return true;
+        return HallucinationVerdict::Filtered { rule: "substring" };
     }
 
-    if has_repetition_loop(&normalized) {
+    let loop_grams = repetition_loop_grams(&normalized);
+    if !loop_grams.is_empty() {
+        // PRIVACY: a gram is three of the user's own words when it is
+        // uncorroborated — which is the only case where it is interesting.
+        // It is never logged, and never put on the trace.
+        if loop_grams.iter().any(gram_is_corroborated) {
+            crate::logging::log_info(&format!(
+                "[Pipeline] filtered 3-gram repetition loop chars={}",
+                char_count
+            ));
+            return HallucinationVerdict::Filtered {
+                rule: "repetition_loop",
+            };
+        }
         crate::logging::log_info(&format!(
-            "[Pipeline] filtered 3-gram repetition loop chars={}",
+            "[Pipeline] uncorroborated repetition loop kept chars={}",
             char_count
         ));
-        return true;
+        return HallucinationVerdict::UncorroboratedLoop;
     }
 
-    false
+    HallucinationVerdict::Clean
+}
+
+/// Thin `bool` view of [`classify_hallucination`]: true only when the text is
+/// actually dropped. An `UncorroboratedLoop` is deliberately `false` here.
+///
+/// Test-only. The pipeline reads the verdict itself, because `matched:false`
+/// and "a loop we chose not to act on" are different lines in the trace.
+#[cfg(test)]
+fn is_hallucination(text: &str) -> bool {
+    matches!(
+        classify_hallucination(text),
+        HallucinationVerdict::Filtered { .. }
+    )
 }
 
 /// Map a transcription API error message into an analytics category +
@@ -733,6 +883,11 @@ mod pipeline_transcription_classifier_tests {
 mod hallucination_tests {
     use super::*;
 
+    /// `MIN_UNIQUE_WORD_RATIO` is a function-local constant in
+    /// `repetition_loop_grams`. Mirrored here so the false-positive test can
+    /// state where 0004-ad78 sits relative to it; keep the two in step.
+    const MIN_UNIQUE_WORD_RATIO_FOR_TESTS: f32 = 0.5;
+
     // ── Repetition loop vs. human rhetoric ──────────────────────────────
 
     #[test]
@@ -770,9 +925,34 @@ mod hallucination_tests {
     }
 
     #[test]
-    fn two_word_loop_is_still_caught() {
+    fn uncorroborated_single_word_loop_is_now_kept() {
+        // This used to assert `is_hallucination`, and the change is deliberate.
+        //
+        // Eleven "merci" in a row is a loop, and the chain detector still sees
+        // it — but the 3-gram ("merci","merci","merci") occurs in no entry of
+        // `HALLUCINATIONS` or `HALLUCINATION_SUBSTRINGS`, so it is not a
+        // phrase we know Whisper hallucinates. It is exactly the shape the
+        // corroboration gate refuses to act on, and the trade is the one the
+        // gate exists to make: this pastes eleven visible words the user
+        // deletes with one keystroke, where a wrong deletion takes the
+        // dictation, the audio backup and any chance of recovering either.
+        //
+        // The loop is still DETECTED; only the deletion is withheld. The
+        // trace says so: `matched:false, repetition_loop:true,
+        // corroborated:false`.
         let text = "merci merci merci merci merci merci merci merci merci merci merci";
-        assert!(is_hallucination(text));
+        let normalized = normalize_for_hallucination_match(text);
+        let grams = repetition_loop_grams(&normalized);
+        assert_eq!(grams, vec![["merci", "merci", "merci"]], "still a loop");
+        assert!(
+            !grams.iter().any(gram_is_corroborated),
+            "no entry contains it"
+        );
+        assert_eq!(
+            classify_hallucination(text),
+            HallucinationVerdict::UncorroboratedLoop
+        );
+        assert!(!is_hallucination(text));
     }
 
     #[test]
@@ -792,10 +972,180 @@ mod hallucination_tests {
         assert!(ratio(loopy) < 0.3, "loop ratio was {}", ratio(loopy));
     }
 
+    // ── The corroboration gate, measured 2026-09-06 ────────────────────
+    //
+    // Over 586 dictations (550 with text on file) the chain detector fired
+    // exactly once, and it was wrong: 299 characters of real French deleted
+    // (`0004-ad78`). The corpus's only other `hallucination` abort was the
+    // exact-match list on a one-word take.
+    // True positives on real speech: zero. Removing it is still not an
+    // option — it is the only rule that catches a looped YouTube outro — so
+    // it now has to name its evidence and have it corroborated.
+
+    #[test]
+    fn every_looped_known_phrase_is_still_caught_and_corroborated() {
+        // The reason the chain detector cannot simply be deleted. Loop each
+        // multi-word entry of `HALLUCINATIONS` verbatim and ask each rule
+        // what it sees.
+        let multi_word: Vec<&&str> = HALLUCINATIONS
+            .iter()
+            .filter(|h| normalize_for_hallucination_match(h).split_whitespace().count() >= 3)
+            .collect();
+        assert_eq!(
+            multi_word.len(),
+            47,
+            "the corroboration measurement was taken over 47 multi-word \
+             entries; if the list changed, re-take it"
+        );
+
+        let (mut exact, mut substring, mut chained, mut corroborated) = (0, 0, 0, 0);
+        for phrase in &multi_word {
+            for reps in [3usize, 4, 6] {
+                let looped = vec![**phrase; reps].join(" ");
+                let normalized = normalize_for_hallucination_match(&looped);
+
+                if HALLUCINATIONS.iter().any(|h| *h == normalized) {
+                    exact += 1;
+                }
+                if HALLUCINATION_SUBSTRINGS
+                    .iter()
+                    .any(|sub| normalized.contains(*sub))
+                {
+                    substring += 1;
+                }
+                let grams = repetition_loop_grams(&normalized);
+                if !grams.is_empty() {
+                    chained += 1;
+                }
+                if grams.iter().any(gram_is_corroborated) {
+                    corroborated += 1;
+                }
+
+                assert!(
+                    is_hallucination(&looped),
+                    "a known phrase looped {} times must still be dropped: {:?}",
+                    reps,
+                    phrase
+                );
+            }
+        }
+
+        // Exact match fails on a repeated string; the substring list holds
+        // signature stems (`amara.org`), not the outros. 0 of 141.
+        assert_eq!(exact, 0, "exact match is not what catches looped phrases");
+        assert_eq!(substring, 0, "the substring list is not either");
+        // The chain detector is. 141 of 141 — and every one of them is
+        // corroborated, so the gate costs it nothing it was catching.
+        assert_eq!(chained, 141, "the chain detector is the only rule that sees these");
+        assert_eq!(corroborated, 141, "and the corroboration gate keeps all of them");
+    }
+
+    #[test]
+    fn the_false_positive_is_spared_with_the_diversity_gate_disabled() {
+        // Trace 0004-ad78, 2026-08-27 22:02:55 — 299 characters of genuine
+        // French dictation deleted in full, the audio backup deleted with it,
+        // and the user told no speech had been detected.
+        //
+        // Its words stay out of the repository. Its arithmetic does not:
+        //   56 words, 45 unique (ratio 0.804), and one 3-gram — "tu l'as
+        //   bien", normalized to "tu las bien" — at word positions 11, 15 and
+        //   19. Three occurrences, four words apart: a chain of exactly
+        //   MIN_CHAIN at well inside TIGHT_GAP. That is a loop by every
+        //   structural test the detector applies.
+        //
+        // Today MIN_UNIQUE_WORD_RATIO is the only thing in front of it, and
+        // 0.5 is a threshold fitted to this one dictation. So take the gate
+        // away — call the chain scan directly — and check what is left.
+        let mut words: Vec<String> = (0..56).map(|i| format!("w{}", i)).collect();
+        for start in [11usize, 15, 19] {
+            words[start] = "tu".to_string();
+            words[start + 1] = "las".to_string();
+            words[start + 2] = "bien".to_string();
+        }
+        // Five more repeats of ordinary filler, far apart, to land on the
+        // trace's real 45/56. They are two occurrences at a gap of 30, so
+        // they add no chain of their own.
+        for i in 0..5 {
+            words[30 + i] = format!("w{}", i);
+        }
+        let refs: Vec<&str> = words.iter().map(|w| w.as_str()).collect();
+        let unique: std::collections::HashSet<&&str> = refs.iter().collect();
+        assert_eq!(refs.len(), 56, "0004-ad78 was 56 words");
+        assert_eq!(unique.len(), 45, "45 of them unique");
+        assert!(
+            unique.len() as f32 / refs.len() as f32 > MIN_UNIQUE_WORD_RATIO_FOR_TESTS,
+            "and its ratio is on the safe side of the gate — which is exactly \
+             why the gate must not be the thing we rely on"
+        );
+
+        // MIN_UNIQUE_WORD_RATIO neutered: the chain rule on its own.
+        let grams = tight_repeated_trigrams(&refs);
+        assert_eq!(
+            grams,
+            vec![["tu", "las", "bien"]],
+            "with the diversity gate out of the picture the chain rule DOES \
+             fire on this dictation"
+        );
+
+        // And this is what now stands between it and deletion. The looping
+        // 3-gram appears in no entry of either list — measured over the whole
+        // corpus, only 1 of 20,641 3-grams in 550 real dictations is
+        // corroborated at all, and it never formed a chain.
+        assert!(
+            !grams.iter().any(gram_is_corroborated),
+            "nothing on file contains this 3-gram, so the loop is not evidence \
+             of a hallucination"
+        );
+
+        // Both gates together, through the real entry point.
+        let joined = refs.join(" ");
+        assert!(repetition_loop_grams(&joined).is_empty());
+        assert!(!is_hallucination(&joined));
+    }
+
+    #[test]
+    fn an_uncorroborated_loop_is_kept_not_deleted() {
+        // The behaviour change stated as a verdict: a loop the lists do not
+        // recognise is a NEAR MISS. `raw_text` survives, the pipeline falls
+        // through to `cleanup`, and the paste happens. The trace records
+        // `matched:false` with `repetition_loop:true, corroborated:false` so
+        // the near miss is still legible to the next reader.
+        let text = "zorbat plimful quenda zorbat plimful quenda zorbat plimful \
+                    quenda zorbat plimful quenda";
+        let normalized = normalize_for_hallucination_match(text);
+        assert!(
+            !repetition_loop_grams(&normalized).is_empty(),
+            "fixture must actually be a loop"
+        );
+        assert_eq!(
+            classify_hallucination(text),
+            HallucinationVerdict::UncorroboratedLoop
+        );
+        assert!(!is_hallucination(text), "and it is NOT deleted");
+    }
+
+    #[test]
+    fn corroboration_matches_hyphenated_credits() {
+        // Whisper writes the broadcaster credits hyphenated; the list stores
+        // them spaced. Comparing whitespace words would fail to corroborate
+        // exactly the loops this rule exists to catch, so corroboration
+        // compares alphanumeric tokens.
+        assert!(gram_is_corroborated(&[
+            "sous-titrage",
+            "societe",
+            "radio-canada"
+        ]));
+        assert!(gram_is_corroborated(&["thanks", "for", "watching"]));
+        // And a punctuation-heavy 3-gram must not collapse into a two-letter
+        // needle that matches half the list.
+        assert!(!gram_is_corroborated(&["%", "?", "et"]));
+        assert!(!gram_is_corroborated(&["tu", "las", "bien"]));
+    }
+
     // ── TIGHT_GAP / MIN_CHAIN, measured 2026-09-02 ─────────────────────
     //
     // These two constants shipped bare for months. The measurement behind them
-    // is in `has_repetition_loop`; these are the tests that hold it.
+    // is in `repetition_loop_grams`; these are the tests that hold it.
 
     #[test]
     fn tight_gap_spans_the_longest_loop_phrase_we_have_seen() {
@@ -809,15 +1159,16 @@ mod hallucination_tests {
             "merci d'avoir regardé cette vidéo n'hésitez pas à vous abonner ";
         let looped = ten_words.repeat(4);
         assert!(
-            has_repetition_loop(&normalize_for_hallucination_match(&looped)),
+            !repetition_loop_grams(&normalize_for_hallucination_match(&looped)).is_empty(),
             "a ten-word phrase looped four times must be caught; TIGHT_GAP is \
              too small to span its period"
         );
 
         let eight_words = "n'oubliez pas de liker et de vous abonner ";
-        assert!(has_repetition_loop(&normalize_for_hallucination_match(
+        assert!(!repetition_loop_grams(&normalize_for_hallucination_match(
             &eight_words.repeat(4)
-        )));
+        ))
+        .is_empty());
     }
 
     #[test]
@@ -842,13 +1193,13 @@ mod hallucination_tests {
             unique.len() as f32 / words.len() as f32
         );
         assert!(
-            !has_repetition_loop(&normalized),
+            repetition_loop_grams(&normalized).is_empty(),
             "two tight occurrences of a 3-gram is a person repeating themselves"
         );
 
         let three = "je ne sais pas trop ".repeat(3);
         assert!(
-            has_repetition_loop(&normalize_for_hallucination_match(&three)),
+            !repetition_loop_grams(&normalize_for_hallucination_match(&three)).is_empty(),
             "three tight occurrences is a loop"
         );
     }
@@ -1539,10 +1890,20 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         }
     };
 
+    // This line used to carry `attempt: 1`, hardcoded, and it read `1` on all
+    // 550 responses in the corpus — including the dictation whose internal
+    // loop burned three attempts before failing (`0185-a9c0`). The real count
+    // lives on `whisper.attempt`, emitted per attempt by `whisper.rs`. What
+    // this line can honestly say is which of the two `whisper.response` lines
+    // a dictation may emit this one is: the first call, or the resubmit after
+    // an empty body.
     trace.text_stage(
         "whisper.response",
         &raw_text,
-        serde_json::json!({ "attempt": 1, "ms": whisper_start.elapsed().as_millis() as u64 }),
+        serde_json::json!({
+            "empty_body_retry": false,
+            "ms": whisper_start.elapsed().as_millis() as u64,
+        }),
     );
 
     // Groq whisper-large-v3 occasionally returns 200 OK with an empty body on
@@ -1560,7 +1921,13 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         trace.text_stage(
             "whisper.response",
             &retried,
-            serde_json::json!({ "attempt": 2, "ms": whisper_start.elapsed().as_millis() as u64 }),
+            serde_json::json!({
+                "empty_body_retry": true,
+                // Measured from `whisper_start`, so this is both calls: the
+                // empty first one plus this one. `whisper.attempt` has the
+                // per-request timings.
+                "ms": whisper_start.elapsed().as_millis() as u64,
+            }),
         );
         retried
     } else {
@@ -1698,12 +2065,29 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // an absence. `matched:false` is the line that makes the absence legible:
     // with it, "no hallucination line" means the pipeline never got here, and
     // an empty target app after a `matched:false` is somebody else's fault.
-    let hallucinated = is_hallucination(&raw_text);
-    trace.decision(
-        "filter.hallucination",
-        hallucinated,
-        serde_json::json!({ "chars": raw_text.chars().count() }),
-    );
+    //
+    // A repetition loop no known phrase corroborates does NOT get here as a
+    // match. It is recorded as `matched:false` with `repetition_loop:true,
+    // corroborated:false` and falls through to `cleanup` like any other
+    // transcription — see `HallucinationVerdict`.
+    let verdict = classify_hallucination(&raw_text);
+    let hallucinated = matches!(verdict, HallucinationVerdict::Filtered { .. });
+    let mut hallucination_fields = serde_json::json!({ "chars": raw_text.chars().count() });
+    match verdict {
+        HallucinationVerdict::Filtered { rule } => {
+            hallucination_fields["rule"] = rule.into();
+            if rule == "repetition_loop" {
+                hallucination_fields["repetition_loop"] = true.into();
+                hallucination_fields["corroborated"] = true.into();
+            }
+        }
+        HallucinationVerdict::UncorroboratedLoop => {
+            hallucination_fields["repetition_loop"] = true.into();
+            hallucination_fields["corroborated"] = false.into();
+        }
+        HallucinationVerdict::Clean => {}
+    }
+    trace.decision("filter.hallucination", hallucinated, hallucination_fields);
     if hallucinated {
         let _ = std::fs::remove_file(&audio_path);
         if use_converted { let _ = std::fs::remove_file(&converted_path); }
@@ -2148,6 +2532,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 // bookkeeping. The task carries a clone of the trace, so its
                 // line lands under the same dictation id.
                 spawn_paste_verification(
+                    app.clone(),
                     trace.clone(),
                     focused_before.clone(),
                     final_text.chars().count(),
@@ -2255,20 +2640,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         );
     }
 
-    // Complete with appropriate message
-    if paste_success {
-        emit_progress(app, "complete", "", None);
-    } else {
-        // Clipboard fallback - show error in pill + system notification
-        if !has_accessibility {
-            emit_progress(app, "error", "error.enable_accessibility", None);
-            notify(app, &crate::i18n::tr("notification.addToAccessibility"));
-        } else {
-            emit_progress(app, "error", "error.paste_failed", None);
-            notify(app, &crate::i18n::tr("notification.textCopied"));
-        }
-    }
-
     // What the verifier knows *right now*, without waiting for it.
     //
     // The blind case is decided before injection (`verifiable`), so it is
@@ -2284,6 +2655,35 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // id, `ax_unreadable` means it is never coming.
     let settled = read_verdict(&verdict_slot);
     let verification = describe_verification(paste_success, verifiable, settled);
+
+    // Complete with appropriate message.
+    //
+    // Deliberately *below* the verdict read. The pill has to know which of the
+    // four outcomes this was, and `verification` is only in hand here; emitting
+    // above would have sent `pending` on nearly everything, which is a new lie
+    // pointing the other way. The frontend treats a missing `outcome` as "say
+    // nothing", so this payload is the only thing that makes the honest states
+    // visible.
+    if paste_success {
+        emit_progress(
+            app,
+            "complete",
+            "",
+            Some(serde_json::json!({
+                "outcome": finish_outcome(paste_success, verification),
+                "verification": verification,
+            })),
+        );
+    } else {
+        // Clipboard fallback - show error in pill + system notification
+        if !has_accessibility {
+            emit_progress(app, "error", "error.enable_accessibility", None);
+            notify(app, &crate::i18n::tr("notification.addToAccessibility"));
+        } else {
+            emit_progress(app, "error", "error.paste_failed", None);
+            notify(app, &crate::i18n::tr("notification.textCopied"));
+        }
+    }
 
     // `pasted` is kept for readers that only ever wanted the boolean, and it
     // still means exactly what it always meant: we posted the events and
@@ -2424,6 +2824,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 /// it emits says `verdict:"unverified" reason:"no_baseline"` so no reader ever
 /// mistakes "we could not check" for "it did not land".
 fn spawn_paste_verification(
+    app: AppHandle,
     trace: crate::trace::Trace,
     focused_before: FocusSnapshot,
     expected_chars: usize,
@@ -2503,6 +2904,20 @@ fn spawn_paste_verification(
             after.as_ref().unwrap_or(&focused_before),
         );
         crate::paste::record_verdict(&slot, verification);
+
+        // The verdict lands a median 44 ms after `dictation.finish`, so the
+        // completion frame above almost always said `pending`. This is the
+        // event that upgrades it. Without it the pill would have to either
+        // wait (dead hotkey) or call every paste unverified (the same
+        // concealment, inverted).
+        app.emit(
+            "paste-verified",
+            serde_json::json!({
+                "outcome": crate::paste::finish_outcome(true, verification.verdict.as_str()),
+                "verification": verification.verdict.as_str(),
+            }),
+        )
+        .ok();
 
         trace.stage(
             "paste.verify",

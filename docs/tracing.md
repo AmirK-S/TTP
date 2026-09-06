@@ -32,7 +32,7 @@ spot it was written to remove.
 ```
 [2026-08-26 08:48:57.412] [0007-3f2a] +    0ms dictation.start  {"kind":"recording","verbose":false,"dur_ms":0}
 [2026-08-26 08:48:57.418] [0007-3f2a] +    6ms audio.duration   {"secs":7.52,"wav_bytes":481324,"dur_ms":6}
-[2026-08-26 08:48:58.902] [0007-3f2a] + 1490ms whisper.response {"chars":87,"sha8":"9f2c1ab0","attempt":1,"ms":1484,"dur_ms":1484}
+[2026-08-26 08:48:58.902] [0007-3f2a] + 1490ms whisper.response {"chars":87,"sha8":"9f2c1ab0","empty_body_retry":false,"ms":1484,"dur_ms":1484}
 [2026-08-26 08:48:59.118] [0007-3f2a] + 1706ms paste.verify     {"verdict":"observed","evidence":"text","ax_before":"value","ax_after":"value","delta_chars":87,"expected_chars":87,"settled_ms":48}
 [2026-08-26 08:48:59.121] [0007-3f2a] + 1709ms dictation.finish {"outcome":"pasted","ms":1709,"chars":87,"words":16,"dur_ms":3}
 ```
@@ -96,8 +96,9 @@ its own line would be lost by the same failure.
 | `capture.dead_input_detected` | The microphone has delivered nothing but zeros for `ms` past the grace period, **while the user is still talking**. Emitted once per capture. This is `dead_capture` said at second two instead of at the end: told early, the user loses one sentence and goes to fix their headphones. |
 | `audio.duration` / `audio.signal` | How much audio, how loud. `avg_rms` below `floor` means the silence gate will drop it; `peak` and `nonzero_ratio` distinguish a quiet room from a dead device. |
 | `audio.convert` | Stereo 48 kHz → mono 16 kHz, and the size change. |
-| `whisper.request` / `whisper.response` | Bytes sent, language pinned, latency, and how many characters came back. `attempt:2` means the first call returned an empty body. |
+| `whisper.request` / `whisper.response` | Bytes sent, language pinned, latency, and how many characters came back. `empty_body_retry:true` marks the second of the two `whisper.response` lines a dictation can emit — the resubmit after a 200-with-empty-body. This field replaces `attempt`, which was hardcoded to `1` (and `2` on that resubmit) and therefore read `1` on all 552 responses in the corpus, including the dictation whose internal loop burned three attempts. The real per-attempt count is on `whisper.attempt`. |
 | `whisper.retry` | The first call came back with nothing and we are asking once more before surfacing `no_speech`. Carries `reason:"empty_body"`. |
+| `whisper.attempt` | **One HTTP attempt**, written by `whisper.rs` itself — `n`, `status`, `ms`, and `waited_ms` (what we slept before firing it). A failure adds `error`, `timed_out` and `timeout_ms`, the per-request timeout that attempt ran under; the timeout scales with payload size, so `ms` near `timeout_ms` is a hung upload rather than a refused one. On a retry decision it also carries `decision`, `reason`, `delay_ms`, `source` and `blind`. `whisper.request`/`whisper.response` are written by the caller and cannot tell one slow call from a failure plus a retry; these lines can. |
 | `polish.decision` | Whether polish was going to be attempted at all, and why: `setting_enabled`, `quota_ok`. Emitted before the attempt, so a dictation with no `polish.attempt` says here whether it was skipped or never eligible. |
 | `polish.attempt` | One call to the polish model, with its `model`, `status` and `ms`. A non-200 here is the shape `remote-call-failed` keys off — 403, 429 and 404 look identical to the user and are three different bugs. |
 | `polish` | Now also carries `ms`, and the *reason*: `guard_reason` when the guard rejected the model's answer, `error_category` (`rate_limited` / `invalid_api_key` / `polish_failed`) when the call failed. Both used to exist only as a Sentry breadcrumb, which is off by default and is not in the file a user attaches to a bug report. |
@@ -117,7 +118,7 @@ its own line would be lost by the same failure.
 | `keychain.api_key` | The Groq key read, **timed**. It is a keychain round-trip sitting between the user's last word and the Whisper call, and it is unbounded — see "When a dictation takes minutes". |
 | `keychain.warmed` | The startup pre-warm, per account, with its cost. A large number here is *good news*: the bill was paid on a thread nobody was waiting on. Three accounts warm at launch; `account:"groq_api_key"` is the one that matters, because it is the only one whose read sits between the user's last word and the Whisper call. It also carries `found` — whether a key exists, never the key and never its length. |
 | `keychain.slow` | Any keychain call that took more than 50 ms. Emitted only when it did, because a warm read is sub-millisecond and a line per usage record would be noise. |
-| `filter.hallucination` | `matched` — **including `false`**. Whisper returned real characters and the filter let them through. |
+| `filter.hallucination` | `matched` — **including `false`**. Whisper returned real characters and the filter let them through. `rule` names the arm that fired when `matched:true` (`empty`, `exact`, `substring`, `repetition_loop`). The pair `repetition_loop:true, corroborated:false` on a `matched:false` line is the **near miss**: a tight 3-gram loop was detected, no known hallucination contains that 3-gram, so the text was kept and pasted. The detector's own words never appear here — an uncorroborated loop is three of the user's. |
 | `filter.glossary_ghost` | `matched`, plus `considered`: whether the filter was eligible at all (a dictionary exists, the take is short). |
 | `filter.prompt_introducer` | Same shape. `considered:false` means the recording was too long or too wordy for the filter to apply. |
 | `clipboard.write` | The transcription going onto the clipboard, timed. `ok:false` is followed by an abort — the text is gone from everywhere. |
