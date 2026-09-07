@@ -35,6 +35,7 @@
     "transcription_too_long": "Recording too long. Try a shorter one.",
     "transcription_generic": "Transcription failed: {{error}}",
     "no_speech": "Didn't catch anything. Mic muted?",
+    "filtered_not_speech": "What came back was filler, not speech. Nothing pasted — the audio is kept for a day.",
     "polish_unavailable": "Polish unavailable. Pasting raw text.",
     "clipboard_write_failed": "Failed to write to clipboard",
     "enable_accessibility": "Enable Accessibility to auto-paste",

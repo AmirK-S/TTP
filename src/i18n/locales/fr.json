@@ -35,6 +35,7 @@
     "transcription_too_long": "Enregistrement trop long. Fais-en un plus court.",
     "transcription_generic": "Échec de la transcription : {{error}}",
     "no_speech": "Je n'ai rien capté. Micro coupé ?",
+    "filtered_not_speech": "Ce qui est revenu était une phrase parasite, pas de la parole. Rien collé — l'audio est gardé un jour.",
     "polish_unavailable": "Correction indisponible. Je colle le texte brut.",
     "clipboard_write_failed": "Échec de l'écriture dans le presse-papiers",
     "enable_accessibility": "Active l'Accessibilité pour le collage automatique",

@@ -390,53 +390,121 @@ fn set_state(app: &AppHandle, state: RecordingState) {
 /// CJK / Arabic / Cyrillic characters pass through unchanged — NFKD on
 /// those scripts is a no-op for matching purposes.
 fn normalize_for_hallucination_match(s: &str) -> String {
-    use unicode_normalization::char::is_combining_mark;
-    use unicode_normalization::UnicodeNormalization;
+    normalize_traced(s).iter().map(|c| c.ch).collect()
+}
 
-    let lower = s.to_lowercase();
+/// One character of the canonical form, tagged with the byte range of the
+/// ORIGINAL text it came from.
+///
+/// The tag is the whole reason this exists. Matching happens on the canonical
+/// form — lowercased, accent-stripped, apostrophes gone, punctuation collapsed
+/// — and a match there is a range of a string the user never typed. To cut a
+/// signature out of a transcription and hand back the rest, the matcher has to
+/// be able to say where in the user's actual bytes the signature sat, accents,
+/// capitals, typography and all. `start`/`end` are that answer.
+///
+/// One original character can produce several canonical ones (`…` → `...`),
+/// none at all (a combining accent, an apostrophe), or exactly one; every
+/// canonical character carries the range of the original character that
+/// produced it, so the mapping stays monotonic and a canonical range always
+/// maps back to a contiguous original range.
+#[derive(Clone, Copy, Debug)]
+struct NormChar {
+    ch: char,
+    /// Byte offset of the source character in the original text.
+    start: usize,
+    /// Byte offset one past the source character in the original text.
+    end: usize,
+}
 
-    // NFKD + strip combining marks (Unicode category Mn)
-    let stripped: String = lower
-        .nfkd()
-        .filter(|c| !is_combining_mark(*c))
-        .collect();
+/// `normalize_for_hallucination_match`, keeping the provenance of every
+/// character it emits. The steps are documented on that function; this is the
+/// single implementation of them.
+///
+/// Being the single implementation is deliberate and is itself a fix. The
+/// canonical form used to exist twice — once in the matcher, once inline in
+/// `gram_is_corroborated` — and that is how ten list entries came to be
+/// unmatchable without anyone seeing it. A second copy written to serve
+/// excision would have been the same bug with a longer fuse, so the string
+/// version now reads this one, and `the_canonical_form_is_computed_in_exactly
+/// _one_place` holds it against the implementation it replaced.
+fn normalize_traced(s: &str) -> Vec<NormChar> {
+    use unicode_normalization::char::{decompose_compatible, is_combining_mark};
 
-    // Typographic punctuation normalization
-    let punct_normalized: String = stripped
-        .chars()
-        .map(|c| match c {
-            '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}' | '`' | '´' => '\'',
-            '\u{201C}' | '\u{201D}' | '\u{201E}' | '«' | '»' => '"',
-            '\u{2013}' | '\u{2014}' | '\u{2212}' => '-',
-            '\u{00A0}' | '\u{2009}' | '\u{200A}' | '\u{202F}' => ' ',
-            _ => c,
-        })
-        .collect();
+    let mut out: Vec<NormChar> = Vec::with_capacity(s.len());
+    for (start, original) in s.char_indices() {
+        let end = start + original.len_utf8();
+        for lowered in original.to_lowercase() {
+            decompose_compatible(lowered, |decomposed| {
+                if is_combining_mark(decomposed) {
+                    return;
+                }
+                let mapped = match decomposed {
+                    '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}' | '`' | '\u{00B4}' => '\'',
+                    '\u{201C}' | '\u{201D}' | '\u{201E}' | '\u{00AB}' | '\u{00BB}' => '"',
+                    '\u{2013}' | '\u{2014}' | '\u{2212}' => '-',
+                    '\u{00A0}' | '\u{2009}' | '\u{200A}' | '\u{202F}' => ' ',
+                    other => other,
+                };
+                match mapped {
+                    // NFKD already expands U+2026 into three dots, so this arm
+                    // is unreachable in practice; it is here so the ellipsis
+                    // rule does not depend on that staying true.
+                    '\u{2026}' => {
+                        for _ in 0..3 {
+                            out.push(NormChar { ch: '.', start, end });
+                        }
+                    }
+                    // Apostrophes vanish ("d'avoir" → "davoir") and internal
+                    // sentence punctuation becomes space, so a comma inside a
+                    // hallucination does not stop it matching the list entry.
+                    '\'' => {}
+                    // Hyphens too, and that one is a fix rather than a
+                    // restatement. Whisper writes the broadcaster credits
+                    // hyphenated — "Sous-titrage Société Radio-Canada" — and
+                    // both lists store them spaced, so
+                    // `normalized.contains("sous titrage societe radio
+                    // canada")` was false for the single most common French
+                    // signature we have. The substring arm could not see the
+                    // entries it was written for; only `gram_is_corroborated`
+                    // could, because it alone tokenized on non-alphanumerics
+                    // instead of on spaces. Measured over the 665-dictation
+                    // harvest corpus, this rule changes no verdict on real
+                    // speech (see `classify_hallucination`).
+                    ',' | ';' | ':' | '-' => out.push(NormChar { ch: ' ', start, end }),
+                    other => out.push(NormChar { ch: other, start, end }),
+                }
+            });
+        }
+    }
 
-    // Ellipsis → "..."
-    let with_ellipsis = punct_normalized.replace('\u{2026}', "...");
-
-    // Strip apostrophes (so "d'avoir" → "davoir") and replace internal
-    // sentence punctuation (, ; :) with spaces so a long Whisper hallu
-    // like "merci d'avoir regardé cette vidéo, n'hésitez pas..." still
-    // matches the canonical list entry without the comma.
-    let internal_cleaned: String = with_ellipsis
-        .chars()
-        .map(|c| match c {
-            '\'' => None,
-            ',' | ';' | ':' => Some(' '),
-            other => Some(other),
-        })
-        .flatten()
-        .collect();
-
-    // Trim outer punctuation/whitespace
-    let trimmed = internal_cleaned.trim_matches(|c: char| {
+    // Trim outer punctuation/whitespace.
+    let is_outer_trim = |c: char| {
         c.is_whitespace() || matches!(c, '.' | ',' | ';' | ':' | '!' | '?' | '"' | '-' | '_')
-    });
+    };
+    let first_kept = out.iter().position(|c| !is_outer_trim(c.ch));
+    let Some(first_kept) = first_kept else {
+        return Vec::new();
+    };
+    let last_kept = out
+        .iter()
+        .rposition(|c| !is_outer_trim(c.ch))
+        .unwrap_or(first_kept);
+    let kept = &out[first_kept..=last_kept];
 
-    // Collapse internal whitespace
-    trimmed.split_whitespace().collect::<Vec<_>>().join(" ")
+    // Collapse internal whitespace runs to a single space.
+    let mut collapsed: Vec<NormChar> = Vec::with_capacity(kept.len());
+    for c in kept {
+        if c.ch.is_whitespace() {
+            if collapsed.last().is_some_and(|p| p.ch == ' ') {
+                continue;
+            }
+            collapsed.push(NormChar { ch: ' ', ..*c });
+        } else {
+            collapsed.push(*c);
+        }
+    }
+    collapsed
 }
 
 /// The two lists above, canonicalized once, in the same representation the
@@ -524,6 +592,399 @@ fn canonical_substrings() -> &'static [String] {
             .map(|h| normalize_for_hallucination_match(h))
             .filter(|c| !c.is_empty())
             .collect()
+    })
+}
+
+/// What `excise_known_signatures` cut out, and what is left.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Excision {
+    /// The original text with every known signature removed.
+    text: String,
+    /// How many characters the cut took, seam tidying included.
+    removed_chars: usize,
+}
+
+/// The floor above which an entry of `HALLUCINATIONS` may be cut OUT of a
+/// longer text instead of only matching it whole. Canonical words, and
+/// canonical characters, both required.
+///
+/// DERIVED FROM THE LIST, not chosen. Sorted by canonical length, the 65
+/// non-empty entries fall into two shapes:
+///
+///   * One polite formula, at most four words: `uh`, `the end`, `please
+///     subscribe`, `je vous remercie`, `thanks for watching`, `see you next
+///     time`, `thank you for watching`, `merci davoir regarde`. Every one of
+///     these is something a person says, and several are ordinary ways to end
+///     a message. They stay whole-string-only, exactly as the list's own
+///     comment demands.
+///   * Five words or more, and every one of them either names the medium
+///     ("...cette video", "...to my channel", "...vous abonner") or joins two
+///     clauses ("thanks for watching please subscribe"). The shortest is 24
+///     characters (`abonnez vous a ma chaine`, `gracias por ver el video`).
+///
+/// So the floor is 5 words and 24 characters, which is where the list itself
+/// changes shape. It is NOT what makes this safe — see
+/// `is_standalone_edge_sentence`, and read the measurement on
+/// `excise_known_signatures` before touching either.
+const EXACT_EXCISION_MIN_WORDS: usize = 5;
+const EXACT_EXCISION_MIN_CHARS: usize = 24;
+
+/// Is the byte range `[start, end)` of `text` bounded by non-word characters?
+///
+/// The excision is allowed to cut whole words and nothing else. A canonical
+/// match can begin or end in the middle of an original word — the canonical
+/// form drops apostrophes and accents, so "d'Amara.org" contains the entry
+/// `amara.org` starting at the `A` — and cutting there would leave half a word
+/// of the user's behind. The check is made on the ORIGINAL text, which is
+/// where the words actually are: an apostrophe is a boundary, a letter is not.
+fn is_word_bounded(text: &str, start: usize, end: usize) -> bool {
+    let before_ok = text[..start]
+        .chars()
+        .next_back()
+        .is_none_or(|c| !c.is_alphanumeric());
+    let after_ok = text[end..]
+        .chars()
+        .next()
+        .is_none_or(|c| !c.is_alphanumeric());
+    before_ok && after_ok
+}
+
+/// Does `[start, end)` stand as a complete sentence at the START or the END of
+/// `text`?
+///
+/// THIS is what makes cutting an exact-list entry out of a longer text safe,
+/// and it is not a heuristic about length. Trace `0317-4ca8` (2026-09-07
+/// 21:38, 16 s, 314 characters, pasted) is the proof: seven minutes after
+/// losing two minutes of speech, the maintainer dictated the phrase "merci
+/// d'avoir regardé cette vidéo" INTO a sentence, followed by a comma and the
+/// words "je dirais jamais ça dans une transcription" — he said the outro in
+/// order to say he would never say it. Any rule that cuts that entry wherever
+/// it appears destroys the dictation in which he explained the bug.
+///
+/// What separates his sentence from Whisper's outro is not how long the phrase
+/// is — it is the same phrase — but where it sits. Whisper bleeds a credit
+/// onto the END of the audio (occasionally the start) as a sentence of its
+/// own. A person says it mid-flow, with a comma and more words after it.
+///
+/// So the occurrence must be the LAST sentence (nothing after it but
+/// whitespace and terminal punctuation, and a terminator before it) or the
+/// FIRST (nothing before it, a terminator immediately after). Mid-text
+/// occurrences are never cut, whatever their length.
+fn is_standalone_edge_sentence(text: &str, start: usize, end: usize) -> bool {
+    let terminator = |c: char| matches!(c, '.' | '!' | '?' | '\u{2026}' | '\n' | '\u{00BB}' | '"');
+    let before = text[..start].trim_end();
+    let after = text[end..].trim_start();
+
+    // Trailing: a terminator closes the sentence before it, and nothing but
+    // punctuation follows.
+    let opens = before
+        .chars()
+        .next_back()
+        .is_some_and(|c| terminator(c) || c == ':');
+    let closes = after
+        .trim_matches(|c: char| c.is_whitespace() || terminator(c) || c == ')')
+        .is_empty();
+    if opens && closes {
+        return true;
+    }
+
+    // Leading: the entry opens the text and a terminator closes it.
+    let starts_text = before
+        .trim_matches(|c: char| c.is_whitespace() || terminator(c) || c == '(')
+        .is_empty();
+    let terminated = after.chars().next().is_some_and(terminator);
+    starts_text && terminated
+}
+
+/// Extend a cut leftwards over an elision the cut is about to strand.
+///
+/// French signatures arrive elided: "la communauté d'Amara.org". Cutting
+/// `amara.org` at its word boundary leaves a "d'" attached to nothing — the
+/// apostrophe is punctuation the excision stranded, not a word the user said,
+/// and the brief for this filter is to trim what it strands. Only an elision
+/// of at most two letters immediately followed by an apostrophe qualifies
+/// (l', d', j', n', m', t', s', c', qu'), and only when it starts a word.
+fn extend_over_stranded_elision(text: &str, start: usize) -> usize {
+    let mut back = text[..start].char_indices().rev();
+    match back.next() {
+        Some((_, '\'' | '\u{2019}' | '\u{02BC}')) => {}
+        _ => return start,
+    }
+    let mut cut = start;
+    let mut letters = 0;
+    for (i, c) in back {
+        if c.is_alphabetic() && letters < 2 {
+            cut = i;
+            letters += 1;
+        } else {
+            break;
+        }
+    }
+    if letters == 0 {
+        return start;
+    }
+    // The elision has to BE the start of a word; "John's amara" must not lose
+    // the "n's" off the end of a name.
+    if text[..cut]
+        .chars()
+        .next_back()
+        .is_none_or(|c| !c.is_alphanumeric())
+    {
+        cut
+    } else {
+        start
+    }
+}
+
+/// Is what survived an excision the user's speech, or a scrap of the
+/// signature that was cut out?
+///
+/// This is how "the text IS the signature" is decided now that the signature
+/// can be removed. Whisper's credits arrive with fragments attached — "Sous-
+/// titres réalisés par la communauté d'Amara.org" leaves "la communauté" once
+/// both entries are cut, "Untertitel im Auftrag des ZDF, 2017" leaves "2017" —
+/// and pasting those is the other half of what the maintainer refused. He
+/// would never dictate a YouTube outro into a message, so pasting one is not
+/// acceptable either; the whole point is to decide case by case.
+///
+/// Two clauses, both about the REMAINDER rather than about the length of the
+/// original — a length threshold on the input is the blunt fix that was
+/// rejected:
+///
+///   * Nothing alphabetic survived. A transcription with no letters in it is
+///     not speech in any script the filter handles.
+///   * What survived is shorter than what was cut AND is not even a clause
+///     (under four words). A recording where the credit outweighs the words
+///     was a recording of silence.
+///
+/// The margin on real dictations is three orders of magnitude, which is why
+/// these numbers are safe where a threshold on the input was not: the two
+/// incidents this workstream comes from are 1879 and 2087 characters, 300+
+/// words each, against signatures of ~30 — the second clause is not close to
+/// firing on anything a person actually said.
+///
+/// What it costs, named so the next reader can weigh it: "Bonjour Marc. Sous-
+/// titrage Société Radio-Canada" is dropped, and the "Bonjour Marc" in it was
+/// real. Two words against a longer credit is a recording that was mostly
+/// silence, the audio backup now survives the drop, and the user is told what
+/// happened instead of being told there was no sound.
+fn is_signature_residue(remainder: &str, removed_chars: usize) -> bool {
+    if !remainder.chars().any(|c| c.is_alphabetic()) {
+        return true;
+    }
+    let kept_words = remainder.split_whitespace().count();
+    kept_words < 4 && removed_chars >= remainder.chars().count()
+}
+
+/// Cut every known signature out of `text`, and hand back what survives.
+///
+/// This is the surgical half of the filter, and the line it must not cross is
+/// that it cuts only strings we have ON FILE. Two sources, with different
+/// rules, because the two lists are different kinds of thing:
+///
+///   * `HALLUCINATION_SUBSTRINGS` — signatures and credits that exist for
+///     exactly this ("Amara.org", "Sous-titrage Société Radio-Canada"). Cut
+///     wherever they appear as whole words.
+///   * `HALLUCINATIONS` — whole-text matches, cut only when the entry is long
+///     enough (`EXACT_EXCISION_MIN_WORDS` / `_CHARS`) AND stands as the first
+///     or last sentence of the text (`is_standalone_edge_sentence`). The list
+///     holds phrases people genuinely say — `uh`, `je vous remercie` — and its
+///     safety has always come from whole-string equality, so the equality is
+///     only relaxed where the text says "this is a sentence Whisper appended",
+///     never where it says "this is how the user's sentence continues".
+///
+/// Nothing inferred is ever cut: the chain detector, which infers, can only
+/// keep or drop a whole text (see `the_chain_detector_never_edits_a_sentence`).
+///
+/// Returns `None` when no occurrence can be cut, which leaves the caller with
+/// the old whole-text decision. Refusing is the right answer there: a
+/// signature glued inside a word cannot be removed without guessing where the
+/// user's word ends.
+///
+/// The cut is made on the original bytes, so accents, capitals, apostrophes
+/// and typography come back exactly as Whisper wrote them; the canonical form
+/// is only ever used to FIND the signature.
+///
+/// MEASURED 2026-09-07 by injection, because the harvest corpus contains
+/// almost no signature to cut. Every substring entry, every one of the 19
+/// exact entries above the floor, and eight forms Whisper actually emits
+/// (hyphenated, accented: "Sous-titrage Société Radio-Canada", "Sous-titres
+/// réalisés par la communauté d'Amara.org", "Subtitles by the Amara.org
+/// community", "Untertitel im Auftrag des ZDF, 2017", "Sous-titré par
+/// <studio>", "Merci d'avoir regardé cette vidéo", …) — 63 signatures — were
+/// injected into each of the 629 real dictations of 20 characters or more, in
+/// four placements: appended, appended with a full stop, prepended as its own
+/// sentence, and QUOTED mid-sentence in the shape of `0317-4ca8`. 158,508
+/// injections:
+///
+///   * 0 removed any of the user's text. Not one, in any placement. That is
+///     the invariant this function exists to hold, checked by string
+///     containment rather than by reasoning about it.
+///   * 0 of the 39,627 quotation injections were cut or dropped: an exact
+///     entry quoted mid-sentence is never touched, which is what saves
+///     `0317-4ca8`.
+///   * 106,141 returned the dictation byte-identical.
+///   * 7,548 returned it with a scrap of the signature attached, and the
+///     scraps are four: `2017` (the year after the ZDF credit), `community`,
+///     `la communauté`, `Studio Machin`. Every one is the tail of a STEM
+///     entry — the list stores `subtitles by the amara` and `sous titre par`
+///     so that any future studio is caught, and a stem cannot know where its
+///     own signature ends. Cutting further would mean cutting text no list
+///     contains. That is the line, and the residue is what respecting it
+///     costs: one junk word beside the user's sentence, deleted with one
+///     keystroke, against the two minutes of speech the all-or-nothing filter
+///     deleted on 2026-09-07.
+///   * 5,192 exact-entry injections were left in place, all of them appended
+///     to one of the 120 corpus dictations (of 629) that do not end in
+///     terminal punctuation. Without a terminator in front of it, an outro is
+///     indistinguishable from the end of the user's own sentence — "je
+///     voulais te dire merci d'avoir regardé cette vidéo" is a sentence — so
+///     the filter leaves it. Junk pasted rather than speech cut, in the one
+///     direction this filter is allowed to err.
+fn excise_known_signatures(text: &str) -> Option<Excision> {
+    let chars = normalize_traced(text);
+    if chars.is_empty() {
+        return None;
+    }
+    let normalized: String = chars.iter().map(|c| c.ch).collect();
+
+    // Byte offset inside `normalized` → index into `chars`.
+    let mut index_at_byte = vec![usize::MAX; normalized.len() + 1];
+    let mut byte = 0usize;
+    for (i, c) in chars.iter().enumerate() {
+        index_at_byte[byte] = i;
+        byte += c.ch.len_utf8();
+    }
+    index_at_byte[normalized.len()] = chars.len();
+
+    // Every occurrence of every entry, as byte ranges of the ORIGINAL text.
+    let mut ranges: Vec<(usize, usize)> = Vec::new();
+    let anywhere = canonical_substrings().iter().map(|s| (s, false));
+    let at_the_edges = canonical_exact()
+        .iter()
+        .filter(|e| {
+            e.chars().count() >= EXACT_EXCISION_MIN_CHARS
+                && e.split_whitespace().count() >= EXACT_EXCISION_MIN_WORDS
+        })
+        .map(|s| (s, true));
+    for (needle, edge_only) in anywhere.chain(at_the_edges) {
+        // `canonical_substrings` already drops entries that canonicalize to
+        // nothing — `contains("")` is true for every string alive, and with
+        // excision in the picture an empty needle would also produce a
+        // zero-width cut at every position. Belt and braces, as before.
+        if needle.is_empty() {
+            continue;
+        }
+        let mut from = 0usize;
+        while let Some(offset) = normalized[from..].find(needle.as_str()) {
+            let match_start = from + offset;
+            let match_end = match_start + needle.len();
+            // Advance by a whole character: `match_start + 1` can land inside
+            // a multi-byte one (the `由 amara` entry does exactly that) and
+            // slicing there panics.
+            from = match_start
+                + normalized[match_start..]
+                    .chars()
+                    .next()
+                    .map_or(1, char::len_utf8);
+            let (Some(&si), Some(&ei)) = (
+                index_at_byte.get(match_start),
+                index_at_byte.get(match_end),
+            ) else {
+                continue;
+            };
+            if si == usize::MAX || ei == usize::MAX || ei == 0 || ei > chars.len() {
+                continue;
+            }
+            let start = chars[si].start;
+            let end = chars[ei - 1].end;
+            if !is_word_bounded(text, start, end) {
+                continue;
+            }
+            if edge_only && !is_standalone_edge_sentence(text, start, end) {
+                continue;
+            }
+            ranges.push((extend_over_stranded_elision(text, start), end));
+        }
+    }
+    if ranges.is_empty() {
+        return None;
+    }
+
+    // Merge overlapping ranges, and ranges separated only by the punctuation
+    // and whitespace between two signatures — that punctuation belongs to
+    // neither the user's sentence nor to one entry in particular.
+    ranges.sort_unstable();
+    let mut merged: Vec<(usize, usize)> = Vec::with_capacity(ranges.len());
+    for (start, end) in ranges {
+        match merged.last_mut() {
+            Some(last)
+                if start <= last.1
+                    || text[last.1..start].chars().all(|c| !c.is_alphanumeric()) =>
+            {
+                last.1 = last.1.max(end);
+            }
+            _ => merged.push((start, end)),
+        }
+    }
+
+    // Cut back to front so the offsets ahead of each cut stay valid, tidying
+    // the seam as we go.
+    let mut out = text.to_string();
+    for (start, end) in merged.iter().rev() {
+        let (mut start, mut end) = (*start, *end);
+
+        // Whatever the excision stranded on the right: the whitespace that
+        // framed the signature and the punctuation that followed it — the full
+        // stop after "Amara.org.", the comma after a signature dropped into
+        // the middle of a sentence. Stops at the first character that carries
+        // meaning.
+        let mut newline_at_seam = false;
+        for (i, c) in out[end..].char_indices() {
+            let strands = c.is_whitespace()
+                || matches!(
+                    c,
+                    '.' | ',' | ';' | ':' | '!' | '?' | '\u{2026}' | '-' | '\u{2013}' | '\u{2014}'
+                );
+            if !strands {
+                end += i;
+                break;
+            }
+            newline_at_seam |= c == '\n';
+            if end + i + c.len_utf8() == out.len() {
+                end = out.len();
+                break;
+            }
+        }
+        if end > out.len() {
+            end = out.len();
+        }
+
+        // On the left, whitespace only. The punctuation there ends the user's
+        // own sentence.
+        while let Some(c) = out[..start].chars().next_back() {
+            if !c.is_whitespace() {
+                break;
+            }
+            newline_at_seam |= c == '\n';
+            start -= c.len_utf8();
+        }
+
+        let separator = if start == 0 || end == out.len() {
+            ""
+        } else if newline_at_seam {
+            "\n"
+        } else {
+            " "
+        };
+        out.replace_range(start..end, separator);
+    }
+
+    let out = out.trim().to_string();
+    let removed_chars = text.chars().count().saturating_sub(out.chars().count());
+    Some(Excision {
+        text: out,
+        removed_chars,
     })
 }
 
@@ -769,8 +1230,20 @@ fn gram_is_corroborated(gram: &[&str; 3]) -> bool {
 /// the user the dictation *and* the audio backup (`remove_backup`) and tells
 /// them no speech was detected — irreversible. Not filtering costs them a
 /// line of visible junk and one keystroke.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum HallucinationVerdict {
+    /// A known signature was cut OUT of surrounding text. `text` is what
+    /// survived: the user's words, in the user's own spelling, minus the
+    /// entry. Non-destructive — this replaces `raw_text` and the pipeline
+    /// carries on to `cleanup` as if Whisper had never appended the credit.
+    Excised {
+        /// Which list the signature came from: `"substring"` or `"exact"`.
+        rule: &'static str,
+        /// The surviving text.
+        text: String,
+        /// How many characters the cut took.
+        removed_chars: usize,
+    },
     /// Nothing matched. Paste it.
     Clean,
     /// Drop the text. `rule` is the arm that fired, as a slug for the trace:
@@ -791,6 +1264,30 @@ enum HallucinationVerdict {
 ///      that bleed into otherwise-valid text)
 ///   4. Detect 3-gram repetition loops — and delete only when the looping
 ///      3-gram is corroborated by one of the phrases in 2 or 3
+///
+/// MEASURED 2026-09-07 over the harvest corpus — 665 dictations with text on
+/// file across `ttp-trace.log` and `ttp-trace.log.1`, replayed old verdict
+/// against new output, text for text, with BOTH excision paths live.
+///
+///   * ONE verdict moves, and it moves between two keeps: `0057-2e90` (393
+///     characters) goes `Clean` → `UncorroboratedLoop`. Hyphens now break
+///     words, so a 3-gram that was invisible chains — and the corroboration
+///     gate spares it, as it spares every uncorroborated loop. The text is
+///     pasted either way; the trace gains `repetition_loop:true,
+///     corroborated:false`.
+///   * NOTHING is newly dropped, and nothing is newly cut. `0317-4ca8` — the
+///     one dictation in the corpus containing an excisable exact entry — is
+///     untouched, which is the whole point of `is_standalone_edge_sentence`.
+///   * Three dictations still drop, the same three as before: `0125-c648`
+///     ("Uh...", 5 characters) and `0024-6328` / `0028-ac50`, the two
+///     identical 14-character Japanese outputs from the session where the
+///     maintainer was recording the app's own beeps (see `canonical_exact`).
+///     All three are the exact arm on a whole string; none is speech.
+///
+/// So the corpus proves the change is free. It cannot prove the excision is
+/// right, because only one of its 665 dictations contains a known entry at
+/// all — that was measured by injection instead, on
+/// `excise_known_signatures`.
 fn classify_hallucination(text: &str) -> HallucinationVerdict {
     let normalized = normalize_for_hallucination_match(text);
 
@@ -813,12 +1310,82 @@ fn classify_hallucination(text: &str) -> HallucinationVerdict {
         return HallucinationVerdict::Filtered { rule: "exact" };
     }
 
-    if canonical_substrings()
+    // The all-or-nothing arm, and the reason this workstream exists.
+    //
+    // It used to end at "a substring matched, delete everything": the text,
+    // the working audio AND the audio backup, with the user told no speech had
+    // been detected. A thirty-character signature bled onto the end of two
+    // thousand characters of speech destroyed two thousand characters (traces
+    // `0308-9590`, 121 s, and `0305-ba08`, 90 s, both recovered from the trace
+    // log afterwards).
+    //
+    // So the filter now cuts the signature out and asks what is left:
+    //
+    //   * nothing to cut → the old verdict stands; we do not guess where the
+    //     user's word ends.
+    //   * what remains is itself a hallucination, or a scrap of one, or
+    //     nothing → the text WAS the signature. Drop it, exactly as before.
+    //     This is the case the filter was built for and it still works.
+    //   * what remains is anything else → it is the user's speech. Keep it,
+    //     without the signature.
+    //
+    // The remainder is judged by this same function, so excision invents no
+    // new reason to keep text and none to drop it.
+    let substring_hit = canonical_substrings()
         .iter()
-        .any(|sub| normalized.contains(sub.as_str()))
-    {
+        .any(|sub| normalized.contains(sub.as_str()));
+    // Cutting can, in principle, join two fragments into a fresh match, so
+    // this runs to a fixed point rather than once. It converges after the
+    // first pass on everything we have ever seen; the cap is there so a future
+    // list edit cannot spin.
+    let mut remainder = text.to_string();
+    let mut removed_chars = 0usize;
+    let mut passes = 0;
+    while passes < 4 {
+        match excise_known_signatures(&remainder) {
+            Some(excision) => {
+                removed_chars += excision.removed_chars;
+                remainder = excision.text;
+                passes += 1;
+            }
+            None => break,
+        }
+    }
+    if passes > 0 {
+        let survives = !is_signature_residue(&remainder, removed_chars)
+            && !matches!(
+                classify_hallucination(&remainder),
+                HallucinationVerdict::Filtered { .. }
+            );
+        let rule = if substring_hit { "substring" } else { "exact" };
+        if !survives {
+            crate::logging::log_info(&format!(
+                "[Pipeline] filtered {} hallucination chars={}",
+                rule, char_count
+            ));
+            return HallucinationVerdict::Filtered { rule };
+        }
+        // PRIVACY: chars only, never the text or the entry. The counts are
+        // enough to see the arm fire without putting a word of the dictation
+        // into Console.app.
         crate::logging::log_info(&format!(
-            "[Pipeline] filtered substring hallucination chars={}",
+            "[Pipeline] excised {} hallucination removed={} kept={}",
+            rule,
+            removed_chars,
+            remainder.chars().count()
+        ));
+        return HallucinationVerdict::Excised {
+            rule,
+            text: remainder,
+            removed_chars,
+        };
+    }
+    if substring_hit {
+        // The entry is in there, but not as whole words — glued inside one.
+        // Cutting would slice a word of the user's in half, so the old
+        // whole-text verdict stands.
+        crate::logging::log_info(&format!(
+            "[Pipeline] filtered substring hallucination chars={} (not separable)",
             char_count
         ));
         return HallucinationVerdict::Filtered { rule: "substring" };
@@ -1062,6 +1629,15 @@ mod hallucination_tests {
         // What the detector is actually for: the same phrase emitted over and
         // over on silence. Vocabulary collapses, so the diversity gate lets it
         // through to the chain detector.
+        //
+        // This fixture now dies one arm earlier, and deliberately: hyphens
+        // canonicalize to spaces, so the substring list can finally see
+        // "sous-titrage société radio-canada" — it could not before — and
+        // excising every occurrence leaves nothing at all. Either arm drops
+        // it; `a_corroborated_loop_of_a_substring_entry_still_dies_whole`
+        // pins which one, and the chain detector remains the only thing that
+        // catches a looped EXACT entry (`every_looped_known_phrase_is_still
+        // _caught_and_corroborated`).
         let text = "sous-titrage société radio-canada sous-titrage société radio-canada \
                     sous-titrage société radio-canada sous-titrage société radio-canada";
         assert!(is_hallucination(text));
@@ -1285,6 +1861,398 @@ mod hallucination_tests {
         assert!(!gram_is_corroborated(&["tu", "las", "bien"]));
     }
 
+    // ── Excision: a signature inside real speech is cut out, not fatal ──
+    //
+    // The defect these tests exist for: trace `0308-9590` (2026-09-07 21:31,
+    // 121 s, 2087 characters) and `0305-ba08` (90 s, 1879 characters) were
+    // deleted whole — text, working audio AND the audio backup — and the user
+    // was told no speech had been detected. Both were recovered from
+    // `ttp-trace.log` afterwards, which is the only reason those words still
+    // exist.
+    //
+    // The filter was all-or-nothing: any arm firing anywhere in the text
+    // destroyed the whole dictation. A thirty-character known signature
+    // appended to two thousand characters of speech is not a reason to delete
+    // two thousand characters. It is a reason to delete thirty.
+    //
+    // The maintainer refused the blunt fix ("past a length threshold, never
+    // delete") for the right reason: he would never dictate "Merci d'avoir
+    // regardé cette vidéo" into a real message, so pasting the junk is not
+    // acceptable either. "C'est du cas par cas et il faut l'analyser
+    // intelligemment." So the verdict is per-case, decided by which rule
+    // fired, and excision is confined to strings we have on file.
+    //
+    // None of the fixtures below are his words. The shapes are reproduced and
+    // the originals are cited by trace id.
+
+    /// The signature-hunting helper, for tests that need to see what survived.
+    fn excised_text(text: &str) -> String {
+        match classify_hallucination(text) {
+            HallucinationVerdict::Excised { text, .. } => text,
+            other => panic!("expected an excision, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn a_signature_appended_to_real_speech_leaves_the_speech() {
+        // THE case, in the shape of `0308-9590`: a long real sentence with a
+        // known signature bled onto the end of it. Whisper appends these to
+        // the end of genuine audio; the entry is an exact, known string, so
+        // cutting it is surgery and not a guess.
+        let speech = "J'ai beaucoup de choses à faire aujourd'hui et je voudrais \
+                      que tu m'aides à trier lesquelles comptent vraiment.";
+        let text = format!("{} Sous-titrage Société Radio-Canada", speech);
+
+        assert_eq!(excised_text(&text), speech, "the speech, and only the speech");
+        assert!(
+            !is_hallucination(&text),
+            "2087 characters must not die for a 33-character signature"
+        );
+    }
+
+    #[test]
+    fn the_text_that_is_only_the_signature_is_still_dropped() {
+        // Case 2, unchanged: the transcription IS the hallucination. This is
+        // what the filter was built for and it still works — excising the
+        // signature leaves nothing, and nothing is dropped.
+        assert!(is_hallucination("Sous-titrage Société Radio-Canada."));
+        assert!(is_hallucination("   Amara.org   "));
+        assert_eq!(
+            classify_hallucination("Sous-titrage Société Radio-Canada."),
+            HallucinationVerdict::Filtered { rule: "substring" }
+        );
+    }
+
+    #[test]
+    fn a_remainder_that_is_itself_a_hallucination_is_dropped() {
+        // Two hallucinations concatenated, which is what Whisper actually
+        // emits on silence. Excising the signature leaves a phrase that is
+        // itself on the exact list, so the whole thing goes. The remainder is
+        // judged on its own merits by the same filter — excision does not
+        // invent a new reason to keep text.
+        let text = "Merci d'avoir regardé cette vidéo. Sous-titrage Société Radio-Canada";
+        assert!(is_hallucination(text));
+    }
+
+    #[test]
+    fn excision_keeps_the_users_own_spelling() {
+        // The cut is made on the ORIGINAL text, not on the canonical form.
+        // Accents, apostrophes, capitals and typography all survive it — the
+        // normalized string is only ever used to FIND the signature.
+        let text = "Ça, c'est l'élément clé — n'oublie pas « le reste ». Amara.org";
+        assert_eq!(
+            excised_text(text),
+            "Ça, c'est l'élément clé — n'oublie pas « le reste »."
+        );
+    }
+
+    #[test]
+    fn excision_trims_what_it_strands() {
+        // A signature dropped into the middle of a sentence strands the
+        // punctuation and whitespace that framed it. Left behind, that is
+        // "Bonjour,  , et voilà".
+        assert_eq!(
+            excised_text("Bonjour Marc, Amara.org, et voilà le compte rendu."),
+            "Bonjour Marc, et voilà le compte rendu."
+        );
+        // At the head of the text, the stranded punctuation is on the right.
+        assert_eq!(
+            excised_text("Amara.org. Bonjour Marc, voilà le compte rendu."),
+            "Bonjour Marc, voilà le compte rendu."
+        );
+        // And a paragraph break is a break, not a space.
+        assert_eq!(
+            excised_text("Voilà le compte rendu.\n\nSous-titrage Société Radio-Canada\n\nEt la suite arrive demain."),
+            "Voilà le compte rendu.\nEt la suite arrive demain."
+        );
+    }
+
+    #[test]
+    fn the_elision_left_dangling_by_a_cut_goes_with_it() {
+        // "Sous-titres réalisés par la communauté d'Amara.org" is the most
+        // common French signature on file, and it matches TWO entries with
+        // four words between them. Cutting both would strand a "d'" that has
+        // nothing left to elide onto.
+        //
+        // The dangling elision is removed WITH the cut — it is punctuation
+        // the excision stranded, not a word of the user's. What sits BETWEEN
+        // the two entries is not ours to cut, so "la communauté" survives the
+        // excision; `is_signature_residue` is what then recognises two words
+        // outweighed by the credit as a scrap of the signature rather than
+        // speech, and the whole thing is dropped. Both halves are needed:
+        // without the elision rule the scrap would read "la communauté d'".
+        assert_eq!(
+            excise_known_signatures("Sous-titres réalisés par la communauté d'Amara.org")
+                .expect("both entries are separable")
+                .text,
+            "la communauté"
+        );
+        assert!(is_hallucination(
+            "Sous-titres réalisés par la communauté d'Amara.org"
+        ));
+    }
+
+    #[test]
+    fn every_occurrence_is_excised_not_just_the_first() {
+        let text = "Amara.org D'abord ceci, ensuite cela. Amara.org Et enfin le reste. Amara.org";
+        assert_eq!(
+            excised_text(text),
+            "D'abord ceci, ensuite cela. Et enfin le reste."
+        );
+    }
+
+    #[test]
+    fn a_signature_glued_inside_a_word_is_not_cut_out_of_it() {
+        // The boundary rule. A cut is only ever made where the signature
+        // stands as whole words in the original text; anything else would
+        // slice a word of the user's in half. When the match is not
+        // separable, the old whole-text verdict stands — the filter refuses
+        // rather than guessing where the user's word ends.
+        let text = "xamara.orgx";
+        assert_eq!(
+            classify_hallucination(text),
+            HallucinationVerdict::Filtered { rule: "substring" }
+        );
+        // An elided article IS a boundary, though: "d'Amara" is two words.
+        assert_eq!(
+            excised_text("Voici le compte rendu d'Amara.org pour demain."),
+            "Voici le compte rendu pour demain."
+        );
+    }
+
+    #[test]
+    fn the_chain_detector_never_edits_a_sentence() {
+        // The line that must not be crossed. Excision cuts strings we have on
+        // file; the chain detector INFERS, and its record on real speech is
+        // two false positives (`0004-ad78`, 16 s; `0308-9590`, 121 s) and
+        // zero true positives. It may keep or drop a whole text, and it may
+        // never rewrite one.
+        let anaphora = "J'ai beaucoup de choses à faire. Que ce soit les entraînements, \
+                        que ce soit les étirements, que ce soit la prospection, que ce soit \
+                        mon propre travail ou d'autres responsabilités.";
+        let looped = "merci merci merci merci merci merci merci merci merci merci merci";
+        for text in [anaphora, looped] {
+            assert!(
+                !matches!(
+                    classify_hallucination(text),
+                    HallucinationVerdict::Excised { .. }
+                ),
+                "a repetition loop must never be excised from: {:?}",
+                &text[..20.min(text.len())]
+            );
+        }
+        assert_eq!(
+            classify_hallucination(looped),
+            HallucinationVerdict::UncorroboratedLoop
+        );
+    }
+
+    #[test]
+    fn a_corroborated_loop_of_a_substring_entry_still_dies_whole() {
+        // Composition, case 3 against case 1. A signature looped on silence
+        // reaches the substring arm before the chain detector, and excising
+        // every occurrence leaves nothing — so it is dropped, exactly as
+        // `degenerate_loop_is_still_caught` expects, one arm earlier.
+        let text = "sous-titrage société radio-canada sous-titrage société radio-canada \
+                    sous-titrage société radio-canada sous-titrage société radio-canada";
+        assert_eq!(
+            classify_hallucination(text),
+            HallucinationVerdict::Filtered { rule: "substring" }
+        );
+    }
+
+    #[test]
+    fn excision_is_a_no_op_on_clean_speech() {
+        // Nothing on the lists, nothing cut. The excision path must be
+        // reachable ONLY through a known entry.
+        let text = "Est-ce que tu peux relire le brief et me dire ce qu'il te manque ?";
+        assert_eq!(classify_hallucination(text), HallucinationVerdict::Clean);
+    }
+
+    // ── The exact list, cut only at the edges ──────────────────────────
+    //
+    // `HALLUCINATIONS` holds phrases people genuinely say, and its safety has
+    // always come from whole-string equality: "uh" alone is a hallucination,
+    // "uh let me think" is not. Relaxing that equality is the dangerous half
+    // of this workstream, and the corpus says exactly how dangerous.
+
+    #[test]
+    fn the_outro_appended_to_a_long_dictation_is_cut() {
+        // The maintainer's own case, and the one he asked for by name: he
+        // would never dictate "Merci d'avoir regardé cette vidéo" into a long
+        // message to someone, so it must not be pasted — and his speech must
+        // not be deleted for it either.
+        let speech = "J'ai beaucoup de choses à faire cette semaine et il faut que je \
+                      prioritise les actions les plus critiques…";
+        let text = format!("{} Merci d'avoir regardé cette vidéo.", speech);
+        assert_eq!(
+            classify_hallucination(&text),
+            HallucinationVerdict::Excised {
+                rule: "exact",
+                text: speech.to_string(),
+                removed_chars: 35,
+            }
+        );
+    }
+
+    #[test]
+    fn the_same_phrase_inside_his_sentence_is_left_alone() {
+        // Trace `0317-4ca8`, 2026-09-07 21:38, 16 s, 314 characters, PASTED.
+        // Seven minutes after losing two minutes of speech to this filter, the
+        // maintainer dictated the outro on purpose, mid-sentence, to say that
+        // he would never dictate it: "Merci d'avoir regardé cette vidéo, je
+        // dirais jamais ça dans une transcription...".
+        //
+        // It is the only occurrence of the phrase in 665 real dictations, and
+        // it is genuine speech. A rule that cut this entry wherever it
+        // appeared would have destroyed the dictation containing the brief for
+        // this very change. What saves it is not length — it is the same
+        // phrase, at the same length, as the fixture above — but position: a
+        // comma and eight more words follow it, so it is not a sentence
+        // Whisper appended.
+        //
+        // His words are not in this file; the shape is, and the original is
+        // cited by trace id.
+        let text = "Bah non quand même. Merci d'avoir regardé cette vidéo, je dirais \
+                    jamais ça dans une transcription que j'écris à quelqu'un.";
+        assert_eq!(classify_hallucination(text), HallucinationVerdict::Clean);
+    }
+
+    #[test]
+    fn a_short_exact_entry_is_never_cut_out_of_a_sentence() {
+        // The floor, and what it protects. "Je vous remercie." is an ordinary
+        // way to end a French message and "Thanks for watching." an ordinary
+        // way to end an English one; both are on the exact list, both are
+        // under `EXACT_EXCISION_MIN_WORDS`, and both must survive as the last
+        // sentence of a real dictation.
+        for text in [
+            "Voilà le compte rendu de la réunion, je te l'envoie. Je vous remercie.",
+            "Here is the recording of the demo I promised you. Thanks for watching.",
+            "On se rappelle demain matin pour en discuter. Abonnez-vous.",
+            "I pushed the fix and the tests are green. The end.",
+        ] {
+            assert_eq!(
+                classify_hallucination(text),
+                HallucinationVerdict::Clean,
+                "a short exact entry was cut out of: {:?}",
+                text
+            );
+        }
+    }
+
+    #[test]
+    fn the_floor_is_where_the_list_changes_shape() {
+        // The threshold is derived, not chosen, so it has to be re-derivable.
+        // Every entry at or above the floor names the medium or joins two
+        // clauses; every entry below it is a single polite formula. If a
+        // future entry breaks that, this test is where it shows up.
+        for entry in HALLUCINATIONS {
+            let canonical = normalize_for_hallucination_match(entry);
+            let long_enough = canonical.chars().count() >= EXACT_EXCISION_MIN_CHARS
+                && canonical.split_whitespace().count() >= EXACT_EXCISION_MIN_WORDS;
+            if !long_enough {
+                continue;
+            }
+            let names_the_medium = ["video", "chaine", "channel", "canale", "canal", "kanal"]
+                .iter()
+                .any(|w| canonical.contains(w));
+            let is_a_subscribe_pitch = ["abonn", "subscribe", "iscriv", "suscrib", "inscreva"]
+                .iter()
+                .any(|w| canonical.contains(w));
+            let two_clauses = canonical.split_whitespace().count() >= 6;
+            assert!(
+                names_the_medium || is_a_subscribe_pitch || two_clauses,
+                "entry {:?} is excisable but reads like something a person \
+                 could say; the floor no longer separates the two populations",
+                entry
+            );
+        }
+    }
+
+    #[test]
+    fn an_outro_in_the_middle_is_never_cut() {
+        // Whisper appends its outros; it does not insert them. A match in the
+        // middle of the text is a person quoting, and stays.
+        let text = "Je lui ai dit merci d'avoir regardé cette vidéo et il a rigolé, \
+                    donc on va garder cette formule pour la fin du montage.";
+        assert_eq!(classify_hallucination(text), HallucinationVerdict::Clean);
+    }
+
+    #[test]
+    fn the_canonical_form_is_computed_in_exactly_one_place() {
+        // `normalize_for_hallucination_match` is now a thin reader of
+        // `normalize_traced`, which carries the provenance excision needs.
+        // This is the reference implementation it replaced, kept here so the
+        // refactor cannot drift: two implementations of the canonical form is
+        // the bug that left ten list entries unmatchable in the first place.
+        fn reference(s: &str) -> String {
+            use unicode_normalization::char::is_combining_mark;
+            use unicode_normalization::UnicodeNormalization;
+            let lower = s.to_lowercase();
+            let stripped: String = lower.nfkd().filter(|c| !is_combining_mark(*c)).collect();
+            let punct_normalized: String = stripped
+                .chars()
+                .map(|c| match c {
+                    '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}' | '`' | '´' => '\'',
+                    '\u{201C}' | '\u{201D}' | '\u{201E}' | '«' | '»' => '"',
+                    '\u{2013}' | '\u{2014}' | '\u{2212}' => '-',
+                    '\u{00A0}' | '\u{2009}' | '\u{200A}' | '\u{202F}' => ' ',
+                    _ => c,
+                })
+                .collect();
+            let with_ellipsis = punct_normalized.replace('\u{2026}', "...");
+            let internal_cleaned: String = with_ellipsis
+                .chars()
+                .filter_map(|c| match c {
+                    '\'' => None,
+                    // The one DELIBERATE difference from the implementation
+                    // this replaced: '-' joins the punctuation that becomes a
+                    // space, so the hyphenated credits Whisper actually emits
+                    // can be found in lists that store them spaced. Encoded
+                    // here so the test still pins one implementation against
+                    // another rather than against nothing.
+                    ',' | ';' | ':' | '-' => Some(' '),
+                    other => Some(other),
+                })
+                .collect();
+            let trimmed = internal_cleaned.trim_matches(|c: char| {
+                c.is_whitespace()
+                    || matches!(c, '.' | ',' | ';' | ':' | '!' | '?' | '"' | '-' | '_')
+            });
+            trimmed.split_whitespace().collect::<Vec<_>>().join(" ")
+        }
+
+        let mut fixtures: Vec<String> = HALLUCINATIONS
+            .iter()
+            .chain(HALLUCINATION_SUBSTRINGS.iter())
+            .map(|s| s.to_string())
+            .collect();
+        fixtures.extend(
+            [
+                "  Ça, c'est l'élément clé — n'oublie pas « le reste »…  ",
+                "Transcribed by https://otter.ai",
+                "ご視聴ありがとうございました",
+                "시청해주셔서 감사합니다",
+                "подписывайтесь на мой канал",
+                "A\u{300}\u{301}b\tc\r\n  d",
+                "...",
+                "",
+                "ＦＵＬＬＷＩＤＴＨ ｔｅｘｔ",
+            ]
+            .iter()
+            .map(|s| s.to_string()),
+        );
+        for f in fixtures {
+            assert_eq!(
+                normalize_for_hallucination_match(&f),
+                reference(&f),
+                "canonical form drifted on {:?}",
+                f
+            );
+        }
+    }
+
+
     // ── Every entry must be able to fire, measured 2026-09-06 ──────────
     //
     // These are the guard, and they are worth more than the ten entries they
@@ -1313,13 +2281,27 @@ mod hallucination_tests {
     fn every_substring_entry_actually_fires_inside_surrounding_text() {
         // The substring list exists for signatures Whisper bleeds INTO valid
         // text, so the fixture has to have text around it.
+        //
+        // This used to assert `is_hallucination`, i.e. that the surrounding
+        // text was destroyed along with the signature. It now asserts the
+        // stronger thing: the entry is found, the entry is CUT, and the
+        // sentence it was bled into comes back whole. An entry the matcher
+        // cannot reach still fails the build, which is what this test is for.
         for sub in HALLUCINATION_SUBSTRINGS {
             let bled = format!("bonjour voici le message {} et voila", sub);
-            assert!(
-                is_hallucination(&bled),
-                "HALLUCINATION_SUBSTRINGS entry cannot match anything: {:?}",
-                sub
-            );
+            match classify_hallucination(&bled) {
+                HallucinationVerdict::Excised { text, .. } => {
+                    assert_eq!(
+                        text, "bonjour voici le message et voila",
+                        "excising {:?} took more than the entry",
+                        sub
+                    );
+                }
+                other => panic!(
+                    "HALLUCINATION_SUBSTRINGS entry cannot match anything: {:?} ({:?})",
+                    sub, other
+                ),
+            }
         }
     }
 
@@ -1342,9 +2324,18 @@ mod hallucination_tests {
         assert!(is_hallucination("подписывайтесь на мой канал"));
         assert!(is_hallucination("시청해주셔서 감사합니다"));
         assert!(is_hallucination("구독 부탁드립니다"));
-        assert!(is_hallucination(
-            "voila le compte rendu Transcribed by https://otter.ai"
-        ));
+        // Reachability, not deletion: the entry is found inside surrounding
+        // text and CUT out of it, which is what a substring entry is for.
+        // Before the `:` was rewritten to a space on both sides, this one
+        // could not be found at all.
+        assert_eq!(
+            classify_hallucination("voila le compte rendu Transcribed by https://otter.ai"),
+            HallucinationVerdict::Excised {
+                rule: "substring",
+                text: "voila le compte rendu".to_string(),
+                removed_chars: 32,
+            }
+        );
 
         // And the half of the fix the assertions above cannot see. Those
         // compare an entry with itself, so they fail only if the matcher
@@ -1501,10 +2492,38 @@ mod hallucination_tests {
 
     #[test]
     fn matches_subtitle_signature_substring() {
+        // Both are still dropped, and both now go through excision to get
+        // there: cutting the entries out leaves "blah blah community" and
+        // "la communauté", scraps of the credit rather than speech.
         assert!(is_hallucination(
             "blah blah subtitles by the Amara.org community"
         ));
         assert!(is_hallucination("Sous-titres réalisés par la communauté d'Amara.org"));
+
+        // The same signature bled onto the end of a real sentence is a cut,
+        // not a deletion. This is the whole difference between the two cases
+        // and it is the reason this workstream exists.
+        //
+        // And the exact price of cutting only what is on file, pinned rather
+        // than glossed: the entry is `subtitles by the amara`, a STEM, so the
+        // word after it survives the cut. The sentence comes back whole and
+        // one junk word rides along, which the user deletes with one
+        // keystroke. Cutting further would mean cutting text no list
+        // contains, and that is the line this filter does not cross —
+        // guessing where a signature ends is how it came to delete two
+        // minutes of speech.
+        assert_eq!(
+            classify_hallucination(
+                "Voici le compte rendu de la réunion de ce matin, je te l'envoie. \
+                 Subtitles by the Amara.org community"
+            ),
+            HallucinationVerdict::Excised {
+                rule: "substring",
+                text: "Voici le compte rendu de la réunion de ce matin, je te l'envoie. community"
+                    .to_string(),
+                removed_chars: 27,
+            }
+        );
     }
 
     #[test]
@@ -2264,14 +3283,18 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         if all_in_dict {
             let _ = std::fs::remove_file(&audio_path);
             if use_converted { let _ = std::fs::remove_file(&converted_path); }
-            if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
-            emit_progress(app, "error", "error.no_speech", None);
+            // The audio backup STAYS. The working files are reproducible;
+            // the backup is the only copy of what the user actually said, and
+            // this is a branch that decides they said nothing. It is reclaimed
+            // by `cleanup_stale_backups` after 24 h like every other backup.
+            emit_progress(app, "error", "error.filtered_not_speech", None);
             crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
             trace.abort(
                 "glossary_ghost",
                 serde_json::json!({
                     "words": words.len(),
                     "audio_secs": approx_duration_secs,
+                    "backup_kept": backup_path.is_some(),
                 }),
             );
             set_state(app, RecordingState::Idle);
@@ -2316,8 +3339,11 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             ));
             let _ = std::fs::remove_file(&audio_path);
             if use_converted { let _ = std::fs::remove_file(&converted_path); }
-            if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
-            emit_progress(app, "error", "error.no_speech", None);
+            // The audio backup STAYS. The working files are reproducible;
+            // the backup is the only copy of what the user actually said, and
+            // this is a branch that decides they said nothing. It is reclaimed
+            // by `cleanup_stale_backups` after 24 h like every other backup.
+            emit_progress(app, "error", "error.filtered_not_speech", None);
             crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({
                 "error_category": "no_speech",
                 "duration_seconds": pipeline_start.elapsed().as_secs_f64(),
@@ -2325,7 +3351,11 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             })));
             trace.abort(
                 "prompt_introducer_leak",
-                serde_json::json!({ "leading": leading, "words": word_count }),
+                serde_json::json!({
+                    "leading": leading,
+                    "words": word_count,
+                    "backup_kept": backup_path.is_some(),
+                }),
             );
             set_state(app, RecordingState::Idle);
             return Err("No speech detected (prompt-introducer leak)".to_string());
@@ -2346,13 +3376,23 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     let verdict = classify_hallucination(&raw_text);
     let hallucinated = matches!(verdict, HallucinationVerdict::Filtered { .. });
     let mut hallucination_fields = serde_json::json!({ "chars": raw_text.chars().count() });
-    match verdict {
+    match &verdict {
         HallucinationVerdict::Filtered { rule } => {
-            hallucination_fields["rule"] = rule.into();
-            if rule == "repetition_loop" {
+            hallucination_fields["rule"] = (*rule).into();
+            if *rule == "repetition_loop" {
                 hallucination_fields["repetition_loop"] = true.into();
                 hallucination_fields["corroborated"] = true.into();
             }
+        }
+        HallucinationVerdict::Excised {
+            rule,
+            text,
+            removed_chars,
+        } => {
+            hallucination_fields["rule"] = (*rule).into();
+            hallucination_fields["excised"] = true.into();
+            hallucination_fields["removed_chars"] = (*removed_chars).into();
+            hallucination_fields["kept_chars"] = text.chars().count().into();
         }
         HallucinationVerdict::UncorroboratedLoop => {
             hallucination_fields["repetition_loop"] = true.into();
@@ -2365,20 +3405,45 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         let _ = std::fs::remove_file(&audio_path);
         if use_converted { let _ = std::fs::remove_file(&converted_path); }
 
-
-        if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
-        emit_progress(app, "error", "error.no_speech", None);
+        // The audio backup STAYS. Deleting it here is what turned a wrong
+        // verdict into an unrecoverable one: the working files are
+        // reproducible, the backup is the only copy of what the user actually
+        // said, and this is the branch most likely to be wrong about whether
+        // they said anything. `cleanup_stale_backups` reclaims it after 24 h.
+        emit_progress(app, "error", "error.filtered_not_speech", None);
         crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
         // The single most opaque drop in the pipeline: Whisper returned real
         // characters and we deleted all of them. The `whisper.response` line
         // above holds what was dropped (text included when diagnostics are on).
         trace.abort(
             "hallucination",
-            serde_json::json!({ "chars": raw_text.chars().count() }),
+            serde_json::json!({
+                "chars": raw_text.chars().count(),
+                "backup_kept": backup_path.is_some(),
+            }),
         );
         set_state(app, RecordingState::Idle);
         return Err("No speech detected (filtered)".to_string());
     }
+
+    // A known signature was cut out and the speech around it survives. The
+    // transform line is the whole point of doing this in the open: the trace
+    // shows what came back from Whisper, what was removed and what is being
+    // pasted, so a reader can second-guess the cut without the audio.
+    let raw_text = match verdict {
+        HallucinationVerdict::Excised {
+            text, removed_chars, ..
+        } => {
+            trace.transform(
+                "filter.excise",
+                &raw_text,
+                &text,
+                serde_json::json!({ "removed_chars": removed_chars }),
+            );
+            text
+        }
+        _ => raw_text,
+    };
 
     // Phase-1 deterministic cleanup BEFORE the LLM. Handles punctuation
     // commands, tech term normalization, acronyms, repetitions, standalone
