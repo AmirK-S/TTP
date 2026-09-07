@@ -1,13 +1,20 @@
 // TTP - Talk To Paste
-// Hook to control actual microphone recording via tauri-plugin-mic-recorder
-// This hooks into the recording-state-changed events from Rust and
-// starts/stops the mic recording plugin accordingly.
+// Hook to control actual microphone recording via our in-house cpal recorder
+// (src-tauri/src/audio_capture.rs). Replaces the upstream
+// tauri-plugin-mic-recorder, which silently dropped samples and swallowed
+// stream errors — see audio_capture.rs module-level comment.
+//
+// Hooks into the recording-state-changed events from Rust and
+// starts/stops capture accordingly.
 
-import { startRecording, stopRecording } from 'tauri-plugin-mic-recorder-api';
 import { invoke } from '@tauri-apps/api/core';
+
+const startRecording = () => invoke<void>('start_recording');
+const stopRecording = () => invoke<string>('stop_recording');
 import { emit } from '@tauri-apps/api/event';
 import { useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { parseAudioStreamError } from '../lib/audio-stream-error';
 import { useTauriEvent } from './useTauriEvent';
 
 type RecordingState = 'Idle' | 'Recording' | 'Processing';
@@ -48,7 +55,14 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
       const errorMsg = String(error);
       // Surface the failure to FloatingBar via the same event the Rust pipeline uses,
       // so the user always sees feedback even when no `onError` handler is wired.
-      const friendly = /permission/i.test(errorMsg)
+      //
+      // Prefer the error-code path: audio_capture.rs returns `error.xxx` keys
+      // that we resolve via i18next. Falling back to the legacy permission-regex
+      // covers the few sites that still return raw strings until they migrate.
+      const isCode = errorMsg.startsWith('error.');
+      const friendly = isCode
+        ? t(errorMsg)
+        : /permission/i.test(errorMsg)
         ? t('error.microphone_permission_denied')
         : t('error.microphone_generic', { error: errorMsg.slice(0, 120) });
       emit('transcription-progress', { stage: 'error', message: friendly }).catch(() => {});
@@ -125,19 +139,33 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
   // a user-facing message via the same error pill that the rest of the pipeline uses.
   // No toast lib in TTP yet, so we ride on `transcription-progress` which the
   // FloatingBar already renders as a red pill auto-dismissing after 4s.
-  useTauriEvent<string>('audio-stream-error', (event) => {
-    console.warn('[AudioStream] Stream error from Rust:', event.payload);
-    isRecordingRef.current = false;
-    recordingStartTime.current = null;
-    // Best-effort: try to stop the mic-recorder plugin so it releases the file
-    // handle. It may already be in an error state — ignore.
-    stopRecording().catch(() => {});
-    invoke('reset_to_idle').catch(() => {});
-    emit('transcription-progress', {
-      stage: 'error',
-      message: t('error.audio_stream_interrupted'),
-    }).catch(() => {});
-  });
+  useTauriEvent<string | { source?: 'capture' | 'monitor'; message?: string }>(
+    'audio-stream-error',
+    (event) => {
+      // Disambiguate capture (data loss → abort) vs monitor (waveform only →
+      // silently keep recording). The parsing rules live in
+      // `lib/audio-stream-error` and are covered by their own tests.
+      const parsed = parseAudioStreamError(event.payload);
+      console.warn(`[AudioStream] ${parsed.source} stream error from Rust:`, parsed.detail);
+
+      if (!parsed.isCaptureFailure) {
+        // Monitor stream died but audio_capture is still writing — keep the
+        // recording session alive and let the waveform stay flat. No toast,
+        // no state reset. (Sentry already got a breadcrumb on the Rust side.)
+        return;
+      }
+
+      // Capture stream — actual data loss. Abort + toast.
+      isRecordingRef.current = false;
+      recordingStartTime.current = null;
+      stopRecording().catch(() => {});
+      invoke('reset_to_idle').catch(() => {});
+      emit('transcription-progress', {
+        stage: 'error',
+        message: t('error.audio_stream_interrupted'),
+      }).catch(() => {});
+    },
+  );
 
   return {
     isRecording: isRecordingRef.current,

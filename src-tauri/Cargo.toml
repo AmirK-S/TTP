@@ -1,6 +1,6 @@
 [package]
 name = "ttp"
-version = "2.2.2"
+version = "3.1.7"
 description = "Talk To Paste - Voice to text transcription"
 authors = ["TTP Team"]
 edition = "2021"
@@ -23,7 +23,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rodio = { version = "0.19", default-features = false, features = ["wav"] }
 hound = "3.5"
-tauri-plugin-mic-recorder = "2"
 cpal = "0.15"
 tauri-plugin-http = "2"
 reqwest = { version = "0.12", default-features = false, features = ["multipart", "json", "rustls-tls"] }
@@ -60,6 +59,10 @@ getrandom = "0.3"
 # tray icon (red dot overlay on icon-idle.png) — avoids shipping a separate
 # warning asset.
 image = { version = "0.25", default-features = false, features = ["png"] }
+# Unicode normalization (NFKD + combining-mark strip) for the Whisper
+# hallucination filter so "regardé" matches "regarde" — Whisper returns
+# accented French and the filter must match regardless of accent shape.
+unicode-normalization = "0.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"
@@ -71,6 +74,46 @@ block = "0.1"
 [profile.release]
 lto = true
 codegen-units = 1
+# KEPT, decided 2026-09-05 against the alternative of switching to "unwind".
+# `docs/engineering-standards.md` §1.8 left this open on the grounds that
+# `catch_unwind` in the paste path is decorative under it. It is. That was
+# confirmed rather than assumed: `tests/abort_observability.rs` compiles a real
+# `-C panic=abort` binary and shows the closure's panic never returns control
+# to `catch_unwind`, so `pipeline.rs`'s `Ok(Err(_))` arm cannot execute here.
+#
+# Switching to "unwind" would buy one thing: that arm would start working, the
+# dictation would survive a paste panic, and the trace would get a
+# `paste.result {"kind":"panic"}` line. The evidence says the first two are
+# worth little and the third is available for free.
+#
+# The failure has never been seen. Across the whole harvest — 541 pastes in
+# `ttp-trace.log` + `.log.1` — there are 541 `paste.decision` lines and 541
+# `paste.result` lines, and ZERO trace ids carry a decision without a result.
+# The mid-paste abort signature §1.8 predicted does not occur in the corpus.
+# Paying landing pads on every frame of a binary otherwise tuned for size
+# (`opt-level = "z"`, `lto`, `strip`) to recover a failure with no sightings is
+# the wrong trade. And the recovery it would enable is weak: the paste already
+# fails soft when injection fails (`paste_success = false` and a user-visible
+# error), so surviving buys the user an error message they get anyway.
+#
+# The half worth having is observability, and it does NOT need this line
+# changed. `std::panic::set_hook` runs before the abort, and a synchronous
+# `open(O_APPEND)` + one `write_all` from inside the hook reaches the file with
+# no fsync — both proven by the same test file. What does NOT survive is a push
+# onto `trace.rs`'s channel: the writer thread is never scheduled again. So the
+# hook must call `logging::log_trace_line` directly, never `trace::event`.
+#
+# THE GAP THAT WAS BIGGER THAN THIS SETTING, now closed: the app's only panic
+# hook used to be installed inside `if telemetry_active`, and
+# `telemetry_enabled` defaults to false (`settings/store.rs`). For a default
+# user a panic produced no Sentry event, no trace line, and not even the
+# `eprintln!("[Panic] …")` — the abort was invisible because there was no hook
+# at all, not because of this profile, and it would have stayed invisible under
+# "unwind". `lib.rs::install_panic_hook` is now called unconditionally and
+# writes an `app.panic` record through `logging::log_trace_line`, the write
+# shape proven survivable above; only the Sentry report stays behind consent.
+# `tests/panic_hook.rs` covers the half this file cannot: that the hook exists
+# and fires when telemetry is off.
 panic = "abort"
 # Strip the binary itself but emit debug info to a packed sidecar (.dSYM on
 # macOS, .pdb on Windows) so Sentry can symbolicate stack traces while the

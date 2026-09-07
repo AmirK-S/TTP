@@ -20,6 +20,15 @@
             document.documentElement.setAttribute('data-theme', stored);
             document.documentElement.style.colorScheme = stored;
           }
+          // Same idea for the coat (src/lib/theme-coats.ts). A coat changes
+          // the whole palette, so a window that painted `wild` for one frame
+          // before React booted would flash white at a user who chose the
+          // dark one. Validated against the id list here rather than trusted,
+          // because this runs before any of our code does.
+          var coat = localStorage.getItem('ttp-coat');
+          if (coat && ['roan', 'piebald', 'merle', 'tortie'].indexOf(coat) !== -1) {
+            document.documentElement.setAttribute('data-ttp-theme', coat);
+          }
         } catch (e) {}
       })();
     </script>

@@ -67,32 +67,54 @@ pub fn start_correction_window(app: &AppHandle, pasted_text: String) {
 
                 let mut added = false;
                 for (original, correction) in &corrections {
+                    // PRIVACY: never log the original/correction pair verbatim.
+                    // These are extracts of user dictation that the AX layer
+                    // detected post-paste. Stderr on packaged macOS lands in
+                    // Console.app and gets exported into bug reports. We keep
+                    // the gate-decision signal without the content.
+                    let orig_len = original.chars().count();
+                    let corr_len = correction.chars().count();
                     // LLM validation gate: classify before adding
                     let should_learn = if let Some(ref key) = api_key {
                         match classify_correction(key, original, correction, &current_text).await {
                             Ok(true) => {
-                                eprintln!("[Detection] LLM classified '{}' → '{}' as LEARN", original, correction);
+                                crate::logging::log_info(&format!(
+                                    "[Detection] LLM classified pair (orig_len={}, corr_len={}) as LEARN",
+                                    orig_len, corr_len
+                                ));
                                 true
                             }
                             Ok(false) => {
-                                eprintln!("[Detection] LLM classified '{}' → '{}' as IGNORE, skipping", original, correction);
+                                crate::logging::log_info(&format!(
+                                    "[Detection] LLM classified pair (orig_len={}, corr_len={}) as IGNORE",
+                                    orig_len, corr_len
+                                ));
                                 false
                             }
                             Err(e) => {
                                 // Fail closed: do not add if LLM call fails
-                                eprintln!("[Detection] LLM classification failed for '{}' → '{}': {}, skipping", original, correction, e);
+                                crate::logging::log_warn(&format!(
+                                    "[Detection] LLM classification failed (orig_len={}, corr_len={}): {}",
+                                    orig_len, corr_len, e
+                                ));
                                 false
                             }
                         }
                     } else {
                         // No API key available — fail closed, skip entry
-                        eprintln!("[Detection] No API key available for LLM classification, skipping '{}' → '{}'", original, correction);
+                        crate::logging::log_info(&format!(
+                            "[Detection] No API key; skipping pair (orig_len={}, corr_len={})",
+                            orig_len, corr_len
+                        ));
                         false
                     };
 
                     if should_learn {
                         if let Err(e) = add_entry(original, correction) {
-                            eprintln!("[Detection] Failed to add dictionary entry: {}", e);
+                            crate::logging::log_warn(&format!(
+                                "[Detection] Failed to add dictionary entry: {}",
+                                e
+                            ));
                         } else {
                             added = true;
                         }

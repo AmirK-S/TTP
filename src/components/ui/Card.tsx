@@ -23,9 +23,9 @@ export function Card({ children, elevation = 'sm', interactive, className, ...re
   return (
     <div
       className={cn(
-        'bg-app-surface rounded-app-lg',
+        'ttp-card bg-app-surface rounded-app-lg',
         elevations[elevation],
-        interactive && 'transition-colors duration-150 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-app-raised',
+        interactive && 'transition-colors duration-hover ease-app-out hover:bg-app-raised',
         className,
       )}
       {...rest}
@@ -43,7 +43,7 @@ interface CardHeaderProps extends HTMLAttributes<HTMLDivElement> {
 
 export function CardHeader({ title, description, action, className, ...rest }: CardHeaderProps) {
   return (
-    <div className={cn('flex items-start justify-between gap-4 px-6 py-4 border-b border-app-border', className)} {...rest}>
+    <div className={cn('ttp-card-head flex items-start justify-between gap-4 px-6 py-4 border-b border-app-border', className)} {...rest}>
       <div className="min-w-0">
         <h3 className="text-[13px] font-semibold tracking-[-0.005em] text-app-text">{title}</h3>
         {description && <p className="mt-1 text-xs text-app-muted leading-relaxed">{description}</p>}
@@ -55,7 +55,7 @@ export function CardHeader({ title, description, action, className, ...rest }: C
 
 export function CardBody({ children, className, ...rest }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('px-6 py-5', className)} {...rest}>
+    <div className={cn('ttp-card-body px-6 py-5', className)} {...rest}>
       {children}
     </div>
   );

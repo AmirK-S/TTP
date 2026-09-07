@@ -1,0 +1,194 @@
+---
+/**
+ * The Companion — the one thing on this site that costs money.
+ *
+ * The rule it obeys, from `docs/ttp-pro-design.md`: **it unlocks nothing you
+ * need.** So the section leads with that sentence rather than burying it, and
+ * the reason-to-buy is Obsidian's, adapted (research C6): you are buying the
+ * absence of a worse business model. Not "support me", not "if you enjoy TTP,
+ * consider…" — `fun-purchase-research.md` §6 names both as failure modes.
+ *
+ * And per M7 there, the uselessness is the sincerity signal, so nothing here
+ * apologises for it or hints that it is secretly worth it.
+ */
+import { useTranslations, type Lang } from '@/i18n/utils';
+import { BUY_URL, COATS, FACES, PACKS } from '@/lib/coats';
+import CompanionFace from '@/components/CompanionFace.astro';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+const manualPath = lang === 'fr' ? '/fr/manuel' : '/manual';
+
+const coatNames = Object.fromEntries(COATS.map((c) => [c.id, t(c.nameKey)]));
+---
+
+<section id="companion" class="band">
+  <div class="wrap">
+    <p class="plate-label">{t('comp.plate')}</p>
+
+    <div class="max-w-2xl" data-reveal>
+      <h2 class="display text-[clamp(1.75rem,1.2rem+2vw,2.75rem)]">{t('comp.heading')}</h2>
+      <p class="mt-5 font-display text-[1.1875rem] leading-snug">{t('comp.lead')}</p>
+      <p class="mt-3 text-muted">{t('comp.sub')}</p>
+    </div>
+
+    <!-- ── a face ─────────────────────────────────────────────────────── -->
+    <div class="mt-12" data-reveal>
+      <div class="flex flex-wrap items-end justify-between gap-4">
+        <div class="max-w-2xl">
+          <h3 class="display text-xl">{t('comp.facesTitle')}</h3>
+          <p class="mt-3 text-muted">{t('comp.facesDesc')}</p>
+        </div>
+        <button type="button" class="btn btn-quiet !py-2 !text-sm" data-faces-play>{t('comp.facesPlay')}</button>
+      </div>
+
+      <ul class="mt-6 grid gap-px overflow-hidden rounded-[var(--r-lg)] border border-line bg-line sm:grid-cols-2 lg:grid-cols-5" data-faces>
+        {FACES.map((f) => (
+          <li class="bg-surface p-5">
+            <div class="flex justify-center rounded-[var(--r-md)] bg-raised py-6">
+              <span class="pill !px-7 !py-2.5" data-face-host={f.id}>
+                <CompanionFace variety={f.id} uid={`gallery-${f.id}`} size={30} />
+              </span>
+            </div>
+            <h4 class="mt-4 text-sm font-semibold">{t(f.nameKey)}</h4>
+            <p class="mt-1.5 text-[0.8125rem] leading-relaxed text-muted">{t(f.descKey)}</p>
+          </li>
+        ))}
+      </ul>
+
+      <p class="caption mt-4 max-w-3xl">{t('comp.facesLive')}</p>
+      <p class="mt-2 max-w-3xl text-sm text-faint">{t('comp.facesNever')}</p>
+    </div>
+
+    <!-- ── four coats ─────────────────────────────────────────────────── -->
+    <div class="mt-16" data-reveal>
+      <div class="max-w-2xl">
+        <h3 class="display text-xl">{t('comp.coatsTitle')}</h3>
+        <p class="mt-3 text-muted">{t('comp.coatsDesc')}</p>
+        <p class="mt-3 text-sm font-medium">
+          {t('comp.coatsTry')}{' '}
+          <span class="text-faint">
+            {t('comp.coatsWearing')}{' '}
+            <b class="font-semibold text-accent" data-wearing data-names={JSON.stringify(coatNames)}>
+              {t('coat.wild.name')}
+            </b>.
+          </span>
+        </p>
+      </div>
+
+      <ul class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {COATS.map((c) => (
+          <li>
+            <button type="button" class="specimen h-full !p-4" data-coat={c.id} data-set-coat={c.id} aria-pressed={c.id === 'wild' ? 'true' : 'false'}>
+              <span class="flex items-center gap-3">
+                <span class="spec-dot shrink-0"></span>
+                <span class="spec-stack flex-1">
+                  <span class="spec-row block" style="width: 82%"></span>
+                  <span class="spec-row block" style="width: 58%"></span>
+                  <span class="spec-row block" style="width: 70%"></span>
+                </span>
+              </span>
+              <span class="mt-3 flex items-center gap-2">
+                <span class="text-sm font-semibold">{t(c.nameKey)}</span>
+                {c.free && (
+                  <span class="mono rounded-full border border-current px-1.5 py-px text-[0.625rem] uppercase tracking-wider opacity-60">
+                    {t('coat.wild.tag')}
+                  </span>
+                )}
+              </span>
+              <span class="mt-1 block text-[0.8125rem] leading-relaxed opacity-70">{t(c.descKey)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <p class="caption mt-4 max-w-3xl">{t('comp.coatsHonest')}</p>
+    </div>
+
+    <!-- ── six voices, and the manual ─────────────────────────────────── -->
+    <div class="mt-16 grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:gap-14" data-reveal>
+      <div>
+        <h3 class="display text-xl">{t('comp.soundsTitle')}</h3>
+        <p class="mt-3 text-muted">{t('comp.soundsDesc')}</p>
+        <ul class="mt-6 grid gap-px overflow-hidden rounded-[var(--r-lg)] border border-line bg-line sm:grid-cols-2">
+          {PACKS.map((p) => (
+            <li class="bg-surface px-5 py-4">
+              <h4 class="text-sm font-semibold">{t(p.nameKey)}</h4>
+              <p class="mt-1 text-[0.8125rem] leading-relaxed text-muted">{t(p.descKey)}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div>
+        <h3 class="display text-xl">{t('comp.manualTitle')}</h3>
+        <p class="mt-3 text-muted">{t('comp.manualDesc')}</p>
+
+        <figure class="panel mt-6 p-6">
+          <blockquote class="prose !text-[1.0625rem]">
+            <p>{t('man.s1p3')}</p>
+            <p>{t('man.s1p4')}</p>
+          </blockquote>
+          <figcaption class="caption mt-4">{t('man.title')} — {t('man.s1Title')}</figcaption>
+        </figure>
+
+        <a href={manualPath} class="btn btn-quiet mt-5">{t('comp.manualCta')}</a>
+      </div>
+    </div>
+
+    <!-- ── the purchase ───────────────────────────────────────────────── -->
+    <div class="mt-16 grid gap-10 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:gap-14" data-reveal>
+      <div>
+        <h3 class="display text-[clamp(1.375rem,1rem+1.2vw,1.875rem)]">{t('comp.whyTitle')}</h3>
+        <div class="mt-5 grid gap-4 text-muted">
+          <p>{t('comp.why1')}</p>
+          <p>{t('comp.why2')}</p>
+          <p>{t('comp.why3')}</p>
+        </div>
+      </div>
+
+      <div class="panel flex flex-col justify-center p-7 text-center">
+        <p class="display text-5xl">{t('comp.price')}</p>
+        <p class="mt-2 text-sm text-faint">{t('comp.priceSub')}</p>
+        <a href={BUY_URL} target="_blank" rel="noopener" class="btn btn-primary mt-6">{t('comp.cta')}</a>
+        <p class="mt-3 text-xs text-faint">{t('comp.ctaNote')}</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { mountFace, type FaceState } from '@/lib/face';
+  import { FACE_VARIETY_IDS, type FaceVarietyId } from '@/lib/face';
+
+  const gallery = document.querySelector<HTMLElement>('[data-faces]');
+  if (gallery) {
+    const handles = FACE_VARIETY_IDS.map((id) => {
+      const host = gallery.querySelector<HTMLElement>(`[data-face-host="${id}"]`);
+      return host ? mountFace(host, id as FaceVarietyId) : null;
+    }).filter(Boolean);
+
+    /* All five run the same dictation at the same moment. Side by side is the
+       only way the differences are visible at all: the doc's own line is that
+       a drawing of two varieties shows the same animal twice, and ten seconds
+       of watching separates them without effort. */
+    const play = document.querySelector<HTMLButtonElement>('[data-faces-play]');
+    let running: number[] = [];
+
+    function all(state: FaceState) {
+      handles.forEach((h) => h?.setState(state));
+    }
+
+    play?.addEventListener('click', () => {
+      running.forEach(window.clearTimeout);
+      running = [];
+      const at = (ms: number, fn: () => void) => running.push(window.setTimeout(fn, ms));
+
+      all('listening');
+      at(2200, () => all('thinking'));
+      at(3600, () => all('resolving'));
+      at(4600, () => all('idle'));
+    });
+  }
+</script>

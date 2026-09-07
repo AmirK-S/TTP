@@ -1,0 +1,10 @@
+[2026-09-01 10:00:00.010] [········]          app.launched {"arch":"aarch64","os":"macos","version":"3.1.6"}
+[2026-09-01 10:00:00.020] [········]          state.transition {"from":"Idle","to":"Recording"}
+[2026-09-01 10:00:00.030] [········]          state.transition {"from":"Recording","to":"Processing"}
+[2026-09-01 10:00:05.030] [········]          hotkey.press {"flags":"0x800000","held_ms":160}
+[2026-09-01 10:00:10.030] [········]          hotkey.press {"flags":"0x800000","held_ms":160}
+[2026-09-01 10:00:11.030] [········]          app.launched {"arch":"aarch64","os":"macos","version":"3.1.6"}
+[2026-09-01 10:00:12.030] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:13.030] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:14.030] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:15.030] [········]          hotkey.tap_armed {}

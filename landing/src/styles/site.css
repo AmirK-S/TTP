@@ -1,0 +1,734 @@
+/* ----------------------------------------------------------------------------
+   TTP — the website.
+
+   The app has "coats": whole aesthetics, not palette swaps. This file gives the
+   site the same machinery, with the same five names, so a visitor can dress the
+   page in one and see what the word means before installing anything.
+
+   Layout:
+     1. tokens — one base (`wild`) plus four coats, each declaring `--l-*`
+        (light) and `--d-*` (dark).
+     2. the resolver — picks a side from `prefers-color-scheme` unless
+        `data-appearance` overrides it. Written once.
+     3. base + components.
+
+   Contract: `<html>` carries `data-coat="<id>"` and optionally
+   `data-appearance="light|dark"`. Everything else reads the resolved names.
+   ------------------------------------------------------------------------- */
+
+@import "@fontsource-variable/inter";
+
+/* `source(none)` plus one explicit root. Left to auto-detection Tailwind walks
+   up from this file looking for a project boundary and can end up crawling the
+   whole Tauri repository — `src-tauri/target` included, which is gigabytes and
+   turns a five-second build into one that never finishes. */
+@import "tailwindcss" source(none);
+@source "../";
+
+/* ============================================================================
+   1. TOKENS
+   ========================================================================= */
+
+/* ── wild type: the base, and the free coat ───────────────────────────────
+   The app's own default values. The display serif is the website's, not the
+   app's — see the note in the coats section of the page. */
+:root,
+[data-coat="wild"] {
+  --l-bg: #ffffff;
+  --l-surface: #fafafa;
+  --l-raised: #f4f4f5;
+  --l-line: rgba(0, 0, 0, 0.10);
+  --l-line-strong: rgba(0, 0, 0, 0.20);
+  --l-text: #18181b;
+  --l-muted: #52525b;
+  --l-faint: #73737b;
+  --l-accent: #2158d8;
+  --l-accent-hover: #1a46b0;
+  --l-accent-fg: #ffffff;
+  --l-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px rgba(16, 24, 40, 0.07);
+  --l-wash: none;
+
+  --d-bg: #0a0a0c;
+  --d-surface: #111114;
+  --d-raised: #17171b;
+  --d-line: rgba(255, 255, 255, 0.09);
+  --d-line-strong: rgba(255, 255, 255, 0.20);
+  --d-text: #ededee;
+  --d-muted: #a8a8b0;
+  --d-faint: #7b7b84;
+  --d-accent: #6ba0f8;
+  --d-accent-hover: #8bb6fa;
+  --d-accent-fg: #0a0a0c;
+  --d-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.45);
+  --d-wash: none;
+
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+
+  --f-body: "Inter Variable", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --f-display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, ui-serif, serif;
+  --f-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --track-display: -0.014em;
+  --weight-display: 600;
+  --line: 1.6;
+  --rule-weight: 1px;
+  --panel-blur: none;
+  --pad-section: clamp(3.25rem, 5vw, 5.5rem);
+}
+
+/* ── roan ─────────────────────────────────────────────────────────────────
+   Paper. Ivory light, tobacco dark, a serif for everything, wide margins. */
+[data-coat="roan"] {
+  --l-bg: #fbf7f0;
+  --l-surface: #f6f0e6;
+  --l-raised: #efe7d9;
+  --l-line: rgba(94, 68, 38, 0.16);
+  --l-line-strong: rgba(94, 68, 38, 0.30);
+  --l-text: #2a2016;
+  --l-muted: #5e4f3d;
+  --l-faint: #7c6c57;
+  --l-accent: #9c4a21;
+  --l-accent-hover: #7f3a17;
+  --l-accent-fg: #fffdf8;
+  --l-shadow: 0 2px 6px rgba(74, 52, 28, 0.06), 0 14px 34px rgba(74, 52, 28, 0.10);
+
+  --d-bg: #17120c;
+  --d-surface: #1f1811;
+  --d-raised: #271f16;
+  --d-line: rgba(255, 233, 200, 0.12);
+  --d-line-strong: rgba(255, 233, 200, 0.24);
+  --d-text: #f2e7d6;
+  --d-muted: #c3af92;
+  --d-faint: #8f7e66;
+  --d-accent: #e59058;
+  --d-accent-hover: #f2a771;
+  --d-accent-fg: #17120c;
+  --d-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.5);
+
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 22px;
+
+  --f-body: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, ui-serif, serif;
+  --f-display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, ui-serif, serif;
+  --track-display: -0.004em;
+  --weight-display: 600;
+  --line: 1.68;
+  --pad-section: clamp(4rem, 6.5vw, 7rem);
+}
+
+/* ── piebald ──────────────────────────────────────────────────────────────
+   Two tones, hard edges, nothing in between. Mono throughout, square corners,
+   no shadows at all — depth comes from the rule and nothing else. */
+[data-coat="piebald"] {
+  --l-bg: #ffffff;
+  --l-surface: #ffffff;
+  --l-raised: #f1f1f1;
+  --l-line: rgba(0, 0, 0, 0.26);
+  --l-line-strong: rgba(0, 0, 0, 0.62);
+  --l-text: #0b0b0b;
+  --l-muted: #3b3b3b;
+  --l-faint: #5e5e5e;
+  --l-accent: #111111;
+  --l-accent-hover: #000000;
+  --l-accent-fg: #ffffff;
+  --l-shadow: none;
+
+  --d-bg: #050505;
+  --d-surface: #0c0c0c;
+  --d-raised: #171717;
+  --d-line: rgba(255, 255, 255, 0.28);
+  --d-line-strong: rgba(255, 255, 255, 0.62);
+  --d-text: #fbfbfb;
+  --d-muted: #c4c4c4;
+  --d-faint: #949494;
+  --d-accent: #fafafa;
+  --d-accent-hover: #ffffff;
+  --d-accent-fg: #050505;
+  --d-shadow: none;
+
+  --r-sm: 0px;
+  --r-md: 0px;
+  --r-lg: 2px;
+
+  --f-body: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "Roboto Mono", monospace;
+  --f-display: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "Roboto Mono", monospace;
+  --track-display: -0.02em;
+  --weight-display: 700;
+  --line: 1.45;
+  --rule-weight: 1px;
+  --pad-section: clamp(3rem, 4.5vw, 5rem);
+}
+
+/* ── merle ────────────────────────────────────────────────────────────────
+   Mottled blue-grey. Two fixed radial washes on the canvas, panels
+   translucent and blurred so the wash comes through. Nothing animates. */
+[data-coat="merle"] {
+  --l-bg: #eef1f6;
+  --l-surface: rgba(251, 253, 255, 0.72);
+  --l-raised: rgba(243, 246, 251, 0.8);
+  --l-line: rgba(36, 58, 90, 0.13);
+  --l-line-strong: rgba(36, 58, 90, 0.26);
+  --l-text: #141d2b;
+  --l-muted: #48586f;
+  --l-faint: #5e6c82;
+  --l-accent: #12657d;
+  --l-accent-hover: #0d5468;
+  --l-accent-fg: #ffffff;
+  --l-shadow: 0 2px 8px rgba(20, 40, 70, 0.05), 0 16px 44px rgba(20, 40, 70, 0.10);
+  --l-wash:
+    radial-gradient(120% 90% at 12% -10%, rgba(120, 176, 214, 0.34), transparent 60%),
+    radial-gradient(110% 80% at 92% 8%, rgba(156, 140, 208, 0.26), transparent 62%);
+
+  --d-bg: #0a0f17;
+  --d-surface: rgba(18, 26, 38, 0.72);
+  --d-raised: rgba(24, 34, 47, 0.8);
+  --d-line: rgba(150, 190, 235, 0.14);
+  --d-line-strong: rgba(150, 190, 235, 0.28);
+  --d-text: #e7eef7;
+  --d-muted: #a8b8cc;
+  --d-faint: #71829a;
+  --d-accent: #5cc6e6;
+  --d-accent-hover: #85d7f0;
+  --d-accent-fg: #061019;
+  --d-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 18px 50px rgba(0, 0, 0, 0.5);
+  --d-wash:
+    radial-gradient(120% 90% at 10% -12%, rgba(46, 104, 158, 0.44), transparent 62%),
+    radial-gradient(110% 80% at 94% 6%, rgba(96, 78, 158, 0.36), transparent 64%);
+
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 22px;
+  --panel-blur: saturate(140%) blur(14px);
+  --line: 1.62;
+}
+
+/* ── tortoiseshell ────────────────────────────────────────────────────────
+   Ginger and black, kept close. Small radii, tight rows, no white anywhere.
+   More of the page is content and less of it is margin. */
+[data-coat="tortie"] {
+  --l-bg: #f2ece3;
+  --l-surface: #fbf6ee;
+  --l-raised: #eae1d3;
+  --l-line: rgba(66, 44, 20, 0.17);
+  --l-line-strong: rgba(66, 44, 20, 0.32);
+  --l-text: #241a10;
+  --l-muted: #55462f;
+  --l-faint: #766551;
+  --l-accent: #9a5410;
+  --l-accent-hover: #7d4205;
+  --l-accent-fg: #fffcf6;
+  --l-shadow: 0 1px 2px rgba(58, 38, 16, 0.07), 0 8px 20px rgba(58, 38, 16, 0.11);
+
+  --d-bg: #100b06;
+  --d-surface: #1a1209;
+  --d-raised: #221809;
+  --d-line: rgba(255, 198, 120, 0.13);
+  --d-line-strong: rgba(255, 198, 120, 0.26);
+  --d-text: #f7ead6;
+  --d-muted: #c9b18e;
+  --d-faint: #8e7a5e;
+  --d-accent: #f0a12e;
+  --d-accent-hover: #ffb851;
+  --d-accent-fg: #150e05;
+  --d-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 26px rgba(0, 0, 0, 0.55);
+
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+
+  --f-body: "SF Compact Display", "Avenir Next Condensed", "Inter Variable", -apple-system, system-ui, sans-serif;
+  --f-display: "SF Compact Display", "Avenir Next Condensed", "Inter Variable", -apple-system, system-ui, sans-serif;
+  --track-display: -0.026em;
+  --weight-display: 700;
+  --line: 1.45;
+  --pad-section: clamp(2.5rem, 3.75vw, 4.25rem);
+}
+
+/* ============================================================================
+   2. THE RESOLVER — written once, for every coat.
+   ========================================================================= */
+
+:root {
+  --bg: var(--l-bg);
+  --surface: var(--l-surface);
+  --raised: var(--l-raised);
+  --line-c: var(--l-line);
+  --line-strong: var(--l-line-strong);
+  --text: var(--l-text);
+  --muted: var(--l-muted);
+  --faint: var(--l-faint);
+  --accent: var(--l-accent);
+  --accent-hover: var(--l-accent-hover);
+  --accent-fg: var(--l-accent-fg);
+  --shadow: var(--l-shadow);
+  --wash: var(--l-wash, none);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-appearance="light"]) {
+    --bg: var(--d-bg);
+    --surface: var(--d-surface);
+    --raised: var(--d-raised);
+    --line-c: var(--d-line);
+    --line-strong: var(--d-line-strong);
+    --text: var(--d-text);
+    --muted: var(--d-muted);
+    --faint: var(--d-faint);
+    --accent: var(--d-accent);
+    --accent-hover: var(--d-accent-hover);
+    --accent-fg: var(--d-accent-fg);
+    --shadow: var(--d-shadow);
+    --wash: var(--d-wash, none);
+    color-scheme: dark;
+  }
+}
+
+:root[data-appearance="dark"] {
+  --bg: var(--d-bg);
+  --surface: var(--d-surface);
+  --raised: var(--d-raised);
+  --line-c: var(--d-line);
+  --line-strong: var(--d-line-strong);
+  --text: var(--d-text);
+  --muted: var(--d-muted);
+  --faint: var(--d-faint);
+  --accent: var(--d-accent);
+  --accent-hover: var(--d-accent-hover);
+  --accent-fg: var(--d-accent-fg);
+  --shadow: var(--d-shadow);
+  --wash: var(--d-wash, none);
+  color-scheme: dark;
+}
+
+/* Tailwind utilities that read the resolved names. `inline` keeps the var()
+   reference instead of freezing today's value into the class. */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-line: var(--line-c);
+  --color-line-strong: var(--line-strong);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --font-sans: var(--f-body);
+  --font-display: var(--f-display);
+  --font-mono: var(--f-mono);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+}
+
+/* ============================================================================
+   3. BASE
+   ========================================================================= */
+
+* {
+  border-color: var(--line-c);
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 5.5rem;
+  background: var(--bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+body {
+  background-color: var(--bg);
+  background-image: var(--wash);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: var(--f-body);
+  line-height: var(--line);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* The colour transition when a coat is swapped. Everything interpolates, so
+   the page turns into the new coat rather than cutting to it. */
+html.coat-shifting,
+html.coat-shifting * {
+  transition:
+    background-color 420ms ease,
+    border-color 420ms ease,
+    color 420ms ease,
+    box-shadow 420ms ease !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.coat-shifting,
+  html.coat-shifting * { transition: none !important; }
+}
+
+/* ============================================================================
+   4. COMPONENTS
+   ========================================================================= */
+
+.wrap {
+  width: 100%;
+  max-width: 68rem;
+  margin-inline: auto;
+  padding-inline: clamp(1.25rem, 5vw, 2.5rem);
+}
+
+.wrap-narrow {
+  width: 100%;
+  max-width: 44rem;
+  margin-inline: auto;
+  padding-inline: clamp(1.25rem, 5vw, 2.5rem);
+}
+
+.band {
+  padding-block: var(--pad-section);
+  border-top: var(--rule-weight) solid var(--line-c);
+}
+
+.display {
+  font-family: var(--f-display);
+  font-weight: var(--weight-display);
+  letter-spacing: var(--track-display);
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+/* The running head above each band: a plate number and a name, in the register
+   of an engraved figure caption. */
+.plate-label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  font-family: var(--f-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin-bottom: 1.75rem;
+}
+
+.plate-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line-c);
+  transform: translateY(-0.25em);
+}
+
+.panel {
+  background: var(--surface);
+  border: var(--rule-weight) solid var(--line-c);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  backdrop-filter: var(--panel-blur);
+  -webkit-backdrop-filter: var(--panel-blur);
+}
+
+.panel-flat {
+  background: var(--surface);
+  border: var(--rule-weight) solid var(--line-c);
+  border-radius: var(--r-md);
+  backdrop-filter: var(--panel-blur);
+  -webkit-backdrop-filter: var(--panel-blur);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: var(--r-sm);
+  padding: 0.8125rem 1.375rem;
+  font-family: var(--f-body);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.1;
+  border: var(--rule-weight) solid transparent;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, transform 120ms ease;
+}
+
+.btn:active { transform: translateY(1px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .btn:active { transform: none; }
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.btn-primary:hover { background: var(--accent-hover); }
+
+.btn-quiet {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+
+.btn-quiet:hover { background: var(--raised); }
+
+.link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: from-font;
+  text-underline-offset: 0.18em;
+}
+
+.link:hover { color: var(--accent-hover); }
+
+.mono {
+  font-family: var(--f-mono);
+  font-size: 0.8125em;
+  letter-spacing: 0;
+}
+
+/* A caption under a figure. Always a full sentence, always in the manual's
+   register: it describes the specimen, it does not sell it. */
+.caption {
+  font-family: var(--f-display);
+  font-style: italic;
+  font-size: 0.875rem;
+  color: var(--faint);
+  line-height: 1.5;
+}
+
+/* Reveal-on-scroll. The hidden state is scoped to `html.js`, which an inline
+   head script sets, so a page without JS renders everything rather than
+   rendering nothing. IntersectionObserver then adds `.in`. */
+html.js [data-reveal] {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 620ms ease, transform 620ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html.js [data-reveal].in {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.js [data-reveal] { opacity: 1; transform: none; transition: none; }
+}
+
+/* ── the pill ─────────────────────────────────────────────────────────────
+   A drawing of the floating bar, at the size it actually is. Dark in every
+   coat, because the real one floats over a wallpaper. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--pill-body, #111114);
+  color: var(--pill-ink, #f4f4f5);
+  border-radius: 999px;
+  padding: 0.4375rem 0.875rem;
+  box-shadow:
+    inset 0 0 0 1px var(--pill-ring, rgba(255, 255, 255, 0.14)),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.09),
+    0 8px 26px rgba(0, 0, 0, 0.35);
+}
+
+[data-coat="roan"] { --pill-body: #1f1811; --pill-ink: #f6ead6; --pill-ring: rgba(255, 233, 200, 0.16); }
+[data-coat="piebald"] { --pill-body: #000000; --pill-ink: #ffffff; --pill-ring: rgba(255, 255, 255, 0.45); }
+[data-coat="merle"] { --pill-body: #101b28; --pill-ink: #d8f0fb; --pill-ring: rgba(140, 210, 240, 0.24); }
+[data-coat="tortie"] { --pill-body: #1a1209; --pill-ink: #ffd9a0; --pill-ring: rgba(255, 198, 120, 0.2); }
+
+/* Fourteen bars. All fourteen; the manual is specific about it. */
+.bars {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 16px;
+}
+
+.bars i {
+  display: block;
+  width: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0.55;
+  height: var(--h, 4px);
+  transition: height 90ms linear;
+}
+
+.bars.quiet i { height: 3px; opacity: 0.34; }
+
+/* ── the face ─────────────────────────────────────────────────────────────
+   Drawn from the same geometry the app uses. Motion is CSS transitions driven
+   by a setTimeout scheduler — never a RAF loop, because these sit on the page
+   permanently and a permanent render loop on a laptop is the opposite of the
+   point. */
+.face path {
+  transition-property: d, transform, fill-opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .face path { transition: none !important; }
+  .face .breath { animation: none !important; }
+}
+
+@keyframes face-breath {
+  0%, 100% { transform: scaleY(0.94); }
+  50% { transform: scaleY(1.06); }
+}
+
+.face .breath {
+  display: block;
+  transform-origin: center;
+  will-change: transform;
+  animation: face-breath var(--breath-period, 4600ms) ease-in-out infinite;
+}
+
+/* ── coat picker specimens ────────────────────────────────────────────────
+   Each swatch is painted by the coat it names, live, so the picker cannot
+   drift from what the page will actually look like. */
+.specimen {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--l-line);
+  border-radius: var(--r-md);
+  background: var(--l-bg);
+  color: var(--l-text);
+  padding: 0.75rem;
+  cursor: pointer;
+  transition: border-color 140ms ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-appearance="light"]) .specimen {
+    border-color: var(--d-line);
+    background: var(--d-bg);
+    color: var(--d-text);
+  }
+  :root:not([data-appearance="light"]) .specimen .spec-row { background: var(--d-raised); }
+  :root:not([data-appearance="light"]) .specimen .spec-dot { background: var(--d-accent); }
+}
+
+:root[data-appearance="dark"] .specimen {
+  border-color: var(--d-line);
+  background: var(--d-bg);
+  color: var(--d-text);
+}
+
+:root[data-appearance="dark"] .specimen .spec-row { background: var(--d-raised); }
+:root[data-appearance="dark"] .specimen .spec-dot { background: var(--d-accent); }
+
+.specimen[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.specimen .spec-row {
+  height: 6px;
+  border-radius: var(--r-sm);
+  background: var(--l-raised);
+}
+
+.specimen .spec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--l-accent);
+}
+
+.specimen .spec-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spec-gap, 6px);
+}
+
+/* Density, honestly, at swatch scale: a tortoiseshell swatch really is tighter
+   than a roan one, because that is the difference between the coats. */
+.specimen[data-coat="roan"] { --spec-gap: 10px; }
+.specimen[data-coat="piebald"] { --spec-gap: 5px; }
+.specimen[data-coat="merle"] { --spec-gap: 8px; }
+.specimen[data-coat="tortie"] { --spec-gap: 3px; }
+
+/* ── prose, for the manual page ───────────────────────────────────────────
+   A book column: one measure, a serif, and nothing in the margin competing
+   with it. */
+.prose {
+  font-family: var(--f-display);
+  font-size: 1.0625rem;
+  line-height: 1.72;
+  color: var(--text);
+}
+
+.prose > * + * { margin-top: 1.35em; }
+
+.prose h2 {
+  font-family: var(--f-display);
+  font-weight: var(--weight-display);
+  font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2rem);
+  line-height: 1.2;
+  letter-spacing: var(--track-display);
+  margin-top: 2.6em;
+  margin-bottom: 0.2em;
+}
+
+.prose h3 {
+  font-family: var(--f-display);
+  font-weight: var(--weight-display);
+  font-size: 1.1875rem;
+  margin-top: 2em;
+  margin-bottom: 0.1em;
+}
+
+.prose strong { font-weight: 700; }
+.prose em { font-style: italic; }
+
+.prose blockquote {
+  border-left: 2px solid var(--line-strong);
+  padding-left: 1.25rem;
+  font-style: italic;
+  color: var(--muted);
+}
+
+/* The plate note, set as it is in the manual: bracketed, monospaced, an
+   instruction to a draughtsman rather than a picture. */
+.plate-note {
+  font-family: var(--f-mono);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--faint);
+  background: var(--raised);
+  border-left: 2px solid var(--line-c);
+  padding: 0.9rem 1.1rem;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-style: normal;
+}
+
+.dropcap::first-letter {
+  float: left;
+  font-family: var(--f-display);
+  font-size: 3.4em;
+  line-height: 0.82;
+  padding-right: 0.08em;
+  padding-top: 0.06em;
+  font-weight: var(--weight-display);
+}
+
+/* Utility: a hairline that reads as a printed rule rather than a div edge. */
+.rule {
+  height: 1px;
+  background: var(--line-c);
+  border: 0;
+}

@@ -4,8 +4,8 @@
 // Enables TTP to learn from user corrections of proper nouns (names, places,
 // specialized terms) and improve future transcription accuracy.
 
-pub mod classify;
-pub mod detection;
-pub mod store;
+pub(crate) mod classify;
+pub(crate) mod detection;
+pub(crate) mod store;
 
-pub use store::{add_dictionary_entry, add_entry, apply_dictionary, clear_dictionary, delete_dictionary_entry, get_dictionary, DictionaryEntry};
+pub(crate) use store::{add_dictionary_entry, add_entry, apply_dictionary, clear_dictionary, delete_dictionary_entry, get_dictionary, DictionaryEntry};

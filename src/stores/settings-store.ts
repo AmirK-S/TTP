@@ -37,6 +37,26 @@ export interface Settings {
   language: string | null;
   /** 'system' | 'light' | 'dark' | null. null is treated as 'system' (follow OS). */
   theme: string | null;
+  /** Auto-stop recording after sustained silence. Default false. */
+  vad_auto_stop_enabled: boolean;
+  /** Seconds of continuous silence before auto-stop fires. Bounded [1, 10]. */
+  vad_silence_secs: number;
+  /** User-preferred input device by name. null/undefined = OS default. */
+  audio_device_name: string | null;
+  /** Language sent to Whisper: "auto" | "en" | "fr" | null. null = auto. */
+  transcription_language: string | null;
+  /**
+   * Write full transcription text into the dictation trace at every pipeline
+   * stage. The trace itself (timings, filter verdicts, stuck modifiers) is
+   * always written; this adds the text. Default false.
+   */
+  diagnostics_enabled: boolean;
+  /** Start/stop sound set id. null or a locked id plays the house sounds. */
+  sound_pack: string | null;
+  /** Whether the pill draws a face. Independent of the sound choice. */
+  companion_face_enabled: boolean;
+  /** What the user named their pill. Local only, never sent anywhere. */
+  companion_name: string | null;
 }
 
 /** License info returned by Rust backend */
@@ -57,11 +77,8 @@ interface UsageStats {
   trial_days_left: number | null;
   trial_started_at: number | null;
   polish_count_this_month: number;
-  polish_limit_free: number;
   dictionary_count: number;
-  dictionary_limit_free: number;
   history_count: number;
-  history_limit_free: number;
 }
 
 interface SettingsStore {
@@ -75,6 +92,14 @@ interface SettingsStore {
   autostartEnabled: boolean;
   historyEnabled: boolean;
   useBetaChannel: boolean;
+  vadAutoStopEnabled: boolean;
+  vadSilenceSecs: number;
+  audioDeviceName: string | null;
+  transcriptionLanguage: string;
+  diagnosticsEnabled: boolean;
+  soundPack: string;
+  companionFaceEnabled: boolean;
+  companionName: string;
   language: LanguageChoice;
   theme: ThemeChoice;
   dictionary: DictionaryEntry[];
@@ -134,6 +159,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   autostartEnabled: false,
   historyEnabled: true,
   useBetaChannel: false,
+  vadAutoStopEnabled: false,
+  vadSilenceSecs: 3,
+  audioDeviceName: null,
+  transcriptionLanguage: 'auto',
+  diagnosticsEnabled: false,
+  soundPack: 'default',
+  companionFaceEnabled: false,
+  companionName: '',
   language: 'system',
   theme: 'system',
   dictionary: [],
@@ -170,6 +203,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         autostartEnabled: settings.autostart_enabled ?? false,
         historyEnabled: settings.history_enabled ?? true,
         useBetaChannel: settings.use_beta_channel ?? false,
+        vadAutoStopEnabled: settings.vad_auto_stop_enabled ?? false,
+        vadSilenceSecs: settings.vad_silence_secs ?? 3,
+        audioDeviceName: settings.audio_device_name ?? null,
+        transcriptionLanguage: settings.transcription_language ?? 'auto',
+        diagnosticsEnabled: settings.diagnostics_enabled ?? false,
+        soundPack: settings.sound_pack ?? 'default',
+        companionFaceEnabled: settings.companion_face_enabled ?? false,
+        companionName: settings.companion_name ?? '',
         language: lang,
         theme,
       });
@@ -195,6 +236,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         autostart_enabled: get().autostartEnabled,
         history_enabled: get().historyEnabled,
         use_beta_channel: get().useBetaChannel,
+        vad_auto_stop_enabled: get().vadAutoStopEnabled,
+        vad_silence_secs: get().vadSilenceSecs,
+        audio_device_name: get().audioDeviceName,
+        transcription_language: get().transcriptionLanguage === 'auto' ? null : get().transcriptionLanguage,
+        diagnostics_enabled: get().diagnosticsEnabled,
+        sound_pack: get().soundPack,
+        companion_face_enabled: get().companionFaceEnabled,
+        companion_name: get().companionName || null,
         language: get().language,
         theme: get().theme,
       };
@@ -219,6 +268,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         autostartEnabled: newSettings.autostart_enabled,
         historyEnabled: newSettings.history_enabled,
         useBetaChannel: newSettings.use_beta_channel,
+        vadAutoStopEnabled: newSettings.vad_auto_stop_enabled,
+        vadSilenceSecs: newSettings.vad_silence_secs,
+        audioDeviceName: newSettings.audio_device_name,
+        transcriptionLanguage: newSettings.transcription_language ?? 'auto',
+        diagnosticsEnabled: newSettings.diagnostics_enabled ?? false,
+        soundPack: newSettings.sound_pack ?? 'default',
+        companionFaceEnabled: newSettings.companion_face_enabled ?? false,
+        companionName: newSettings.companion_name ?? '',
         language: newLang,
         theme: newTheme,
       });
@@ -244,6 +301,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         autostartEnabled: false,
         historyEnabled: true,
         useBetaChannel: false,
+        vadAutoStopEnabled: false,
+        vadSilenceSecs: 3,
+        audioDeviceName: null,
+        transcriptionLanguage: 'auto',
+        diagnosticsEnabled: false,
+        soundPack: 'default',
+        companionFaceEnabled: false,
+        companionName: '',
         language: 'system',
         theme: 'system',
       }); // Default values

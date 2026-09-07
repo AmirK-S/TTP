@@ -1,0 +1,13 @@
+[2026-09-01 10:00:00.010] [········]          app.launched {"arch":"aarch64","os":"macos","version":"3.1.6"}
+[2026-09-01 10:00:30.010] [········]          keychain.slow {"account":"usage_hmac_secret","lock_wait_ms":0,"ms":62304,"op":"secret_read"}
+[2026-09-01 10:01:00.010] [········]          keychain.slow {"account":"usage_hmac_secret","lock_wait_ms":0,"ms":13612,"op":"secret_read"}
+[2026-09-01 10:01:30.010] [········]          keychain.slow {"account":"usage_hmac_secret","lock_wait_ms":0,"ms":397600,"op":"secret_read"}
+[2026-09-01 10:02:00.010] [········]          keychain.slow {"account":"usage_hmac_secret","lock_wait_ms":0,"ms":97407,"op":"secret_read"}
+[2026-09-01 10:02:30.010] [········]          keychain.slow {"account":"usage_hmac_secret","lock_wait_ms":0,"ms":157,"op":"secret_read"}
+[2026-09-01 10:03:00.010] [········]          keychain.slow {"account":"usage_hmac_secret","lock_wait_ms":0,"ms":56037,"op":"secret_read"}
+[2026-09-01 10:03:30.010] [········]          keychain.slow {"account":"usage_hmac_secret","lock_wait_ms":0,"ms":106,"op":"secret_read"}
+[2026-09-01 10:04:00.010] [········]          keychain.slow {"account":"usage_hmac_secret","lock_wait_ms":0,"ms":86,"op":"secret_read"}
+[2026-09-01 10:04:01.010] [········]          hotkey.tap_armed {}
+[2026-09-01 10:04:02.010] [········]          hotkey.tap_armed {}
+[2026-09-01 10:04:03.010] [········]          hotkey.tap_armed {}
+[2026-09-01 10:04:04.010] [········]          hotkey.tap_armed {}

@@ -156,7 +156,12 @@ pub fn refresh_tray(app: &AppHandle) {
 /// surface the warning state.
 #[cfg(target_os = "macos")]
 fn input_monitoring_warning_active() -> bool {
-    get_settings().fn_key_enabled && !crate::fnkey::has_input_monitoring()
+    if !get_settings().fn_key_enabled {
+        return false;
+    }
+    // A tap this process gave up on is indistinguishable from a missing
+    // permission at the user's end: the Fn key does nothing. Same red dot.
+    !crate::fnkey::has_input_monitoring() || crate::fnkey::tap_abandoned()
 }
 #[cfg(not(target_os = "macos"))]
 fn input_monitoring_warning_active() -> bool {
@@ -260,6 +265,39 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Minimum wall-clock gap between two tray toggle clicks. Anything tighter
+/// is treated as a spam-click and dropped.
+///
+/// Why this exists: a v3.1.1 user reported the tray button leaving the app
+/// stuck in "Recording" after a burst of rapid clicks. The cause: each
+/// Idle→Recording / Recording→Processing transition emits an event that the
+/// JS side handles ASYNCHRONOUSLY (it invokes start_recording / stop_recording
+/// IPCs). A second click that lands while the first invoke is still in
+/// flight races the audio_capture::STATE lifecycle (the first start hadn't
+/// inserted yet when the second stop tried to take). The follow-up
+/// fs::canonicalize on a zero-byte WAV then errored out, the catch path
+/// reset Rust state to Idle, but the in-flight cpal stream eventually
+/// finished opening and parked itself in STATE — leaving every later
+/// click stuck on "error.recording_already_in_progress".
+///
+/// 300 ms is long enough to absorb the slowest observed start_recording
+/// round-trip (~120 ms on Windows WASAPI cold start) and short enough to
+/// stay invisible during deliberate two-fingered double-tap workflows.
+const TRAY_CLICK_DEBOUNCE_MS: u64 = 300;
+
+/// Wall-clock of the most recent successful tray toggle. Reset to 0 on
+/// startup; written under the AppState lock so concurrent clicks see a
+/// consistent value without an extra mutex.
+static LAST_TRAY_TOGGLE_MS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+fn now_ms_since_epoch() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 /// Toggle recording state from tray menu
 fn toggle_recording(app: &AppHandle) {
     // Compute the transition inside the lock, then drop the lock BEFORE
@@ -269,13 +307,31 @@ fn toggle_recording(app: &AppHandle) {
     let next_state = {
         let state = app.state::<Mutex<AppState>>();
         let Ok(mut app_state) = state.try_lock() else {
-            eprintln!("[Tray] Could not acquire state lock");
+            crate::logging::log_warn("[Tray] Could not acquire state lock");
             return;
         };
 
+        // Debounce spam-clicks BEFORE we touch state. See doc on the
+        // const for the full failure mode this guards against.
+        let now = now_ms_since_epoch();
+        let last = LAST_TRAY_TOGGLE_MS.load(std::sync::atomic::Ordering::Relaxed);
+        if now.saturating_sub(last) < TRAY_CLICK_DEBOUNCE_MS {
+            crate::logging::log_warn(&format!(
+                "[Tray] click ignored ({}ms since last toggle, debounce={}ms)",
+                now.saturating_sub(last),
+                TRAY_CLICK_DEBOUNCE_MS
+            ));
+            return;
+        }
+        LAST_TRAY_TOGGLE_MS.store(now, std::sync::atomic::Ordering::Relaxed);
+
         match app_state.recording_state {
             RecordingState::Idle => {
-                app_state.hands_free_mode = true; // Use hands-free mode for tray
+                // Tray "Start recording" entries always launch a hands-free
+                // session — there's no key to release. The session override
+                // clears on the next Idle transition; the persisted setting
+                // stays untouched.
+                app_state.enter_hands_free_session();
                 app_state.set_state(RecordingState::Recording, app);
                 RecordingState::Recording
             }
@@ -510,13 +566,16 @@ pub fn setup_settings_listener(app: &AppHandle) {
             hide_pill(&app_handle);
         }
 
-        // Sync hands_free_mode from settings to AppState
+        // Sync the persisted hands-free preference into AppState. We can
+        // safely refresh it any time the user is idle; we deliberately avoid
+        // touching it mid-recording so a settings tweak can't yank the
+        // current session out of its established mode. Transient overrides
+        // live in `session_hands_free` and are unaffected.
         let settings = get_settings();
         if let Some(state) = app_handle.try_state::<Mutex<AppState>>() {
             if let Ok(mut app_state) = state.try_lock() {
-                // Only update if not currently recording (avoid disrupting active session)
                 if app_state.is_idle() {
-                    app_state.hands_free_mode = settings.hands_free_mode;
+                    app_state.set_persistent_hands_free(settings.hands_free_mode);
                 }
             }
         }

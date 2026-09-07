@@ -3,7 +3,7 @@
 
 pub mod store;
 
-pub use store::{get_settings, reset_settings, set_settings, Settings};
+pub use store::{get_settings, reset_settings, set_settings, trace_companion_state, Settings};
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri::command;

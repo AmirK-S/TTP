@@ -39,7 +39,7 @@ fn en_tree() -> &'static serde_json::Value {
             // if it's malformed we have a build-time bug. Fall back to an
             // empty object so `tr()` returns the key string and the app
             // doesn't crash.
-            eprintln!("[i18n] Failed to parse en.json at runtime: {}", e);
+            crate::logging::log_error(&format!("[i18n] Failed to parse en.json at runtime: {}", e));
             serde_json::Value::Object(Default::default())
         })
     })
@@ -48,7 +48,7 @@ fn en_tree() -> &'static serde_json::Value {
 fn fr_tree() -> &'static serde_json::Value {
     FR_TREE.get_or_init(|| {
         serde_json::from_str(FR_JSON).unwrap_or_else(|e| {
-            eprintln!("[i18n] Failed to parse fr.json at runtime: {}", e);
+            crate::logging::log_error(&format!("[i18n] Failed to parse fr.json at runtime: {}", e));
             serde_json::Value::Object(Default::default())
         })
     })
@@ -70,10 +70,49 @@ pub fn current_language() -> &'static str {
     }
 }
 
-/// Inspect $LC_ALL / $LC_MESSAGES / $LANG and return "fr" if any starts with
-/// "fr" (case-insensitive), otherwise "en". This is best-effort — the
-/// frontend has its own navigator.language sniffing for the renderer side.
+/// Detect the user's preferred language for "system" / unset settings.
+///
+/// On macOS, POSIX env vars (`LANG`, `LC_ALL`) are almost always unset for
+/// apps launched from the GUI — Finder doesn't inherit them. As a result, the
+/// previous LANG-only sniffer reported "en" for the vast majority of French
+/// Macs (whose users had set "Français" in System Settings → Language &
+/// Region but had no `LANG=fr_FR` in `~/.zprofile`). The fix is to read
+/// macOS's actual preference store (`AppleLocale`) the same way Apple's own
+/// frameworks do.
+///
+/// On Windows/Linux we keep the env-var path: Windows ships locale via env
+/// in most contexts, and Linux apps typically have $LANG set.
+///
+/// Returns a `&'static str` ("fr" or "en") so callers can use it without
+/// allocating.
 fn system_locale_language() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        // `defaults read -g AppleLocale` returns e.g. "fr_FR" or "en_US".
+        // This reads the same NSUserDefaults preference NSLocale reads,
+        // including the case where the user picked "Français" in System
+        // Settings but never set $LANG. Bounded short-lived subprocess —
+        // called at most once per settings-cache TTL (5s).
+        if let Ok(out) = std::process::Command::new("defaults")
+            .args(["read", "-g", "AppleLocale"])
+            .output()
+        {
+            if out.status.success() {
+                if let Ok(s) = String::from_utf8(out.stdout) {
+                    let trimmed = s.trim().to_lowercase();
+                    if trimmed.starts_with("fr") {
+                        return "fr";
+                    }
+                    if !trimmed.is_empty() {
+                        return "en";
+                    }
+                }
+            }
+        }
+        // Fall through to env vars if defaults is unavailable — rare, but
+        // covers headless test runs and harness contexts.
+    }
+
     for var in ["LC_ALL", "LC_MESSAGES", "LANG"] {
         if let Ok(val) = std::env::var(var) {
             if val.to_lowercase().starts_with("fr") {

@@ -14,7 +14,7 @@ import { useUpdater } from './hooks/useUpdater';
  */
 function App() {
   // This hook listens for recording state changes from the backend
-  // and controls the actual microphone recording via tauri-plugin-mic-recorder
+  // and drives the in-house cpal capture (src-tauri/src/audio_capture.rs).
   useRecordingControl({
     onRecordingComplete: () => {},
     onError: () => {},
@@ -37,8 +37,13 @@ function App() {
       try {
         const isFirstLaunch = await safeInvoke<boolean>('is_first_launch_cmd');
         if (isFirstLaunch) return;
-        const result = await safeInvoke<[string, string] | null>('check_whats_new');
-        if (!result) return;
+        // `check_whats_new` returns the VERSION, or null when the note has
+        // already been seen. It used to return `[version, changelog]`; the
+        // changelog is a translation now and lives in the locale files, so
+        // Rust no longer has it to give. This site only tests for presence,
+        // but the annotation was still describing the old tuple.
+        const unseenVersion = await safeInvoke<string | null>('check_whats_new');
+        if (!unseenVersion) return;
         const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
         const settingsWindow = await WebviewWindow.getByLabel('settings');
         if (settingsWindow) {

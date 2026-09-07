@@ -1,0 +1,35 @@
+---
+/** The three commands, taken from the manual's Training section. */
+import { useTranslations, type Lang } from '@/i18n/utils';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+
+const steps = [
+  { title: t('steps.holdTitle'), desc: t('steps.holdDesc') },
+  { title: t('steps.speakTitle'), desc: t('steps.speakDesc') },
+  { title: t('steps.releaseTitle'), desc: t('steps.releaseDesc') },
+] as const;
+---
+
+<section id="what" class="band">
+  <div class="wrap">
+    <p class="plate-label">{t('steps.plate')}</p>
+    <h2 class="display max-w-2xl text-[clamp(1.75rem,1.2rem+2vw,2.75rem)]" data-reveal>{t('steps.heading')}</h2>
+
+    <ol class="mt-10 grid gap-px overflow-hidden rounded-[var(--r-lg)] border border-line bg-line md:grid-cols-3">
+      {steps.map((s, i) => (
+        <li class="bg-surface p-6 sm:p-7" data-reveal style={`transition-delay:${i * 90}ms`}>
+          <div class="flex items-baseline gap-3">
+            <span class="mono text-xs text-faint">{String(i + 1).padStart(2, '0')}</span>
+            <h3 class="mono text-sm font-semibold uppercase tracking-[0.14em]">{s.title}</h3>
+          </div>
+          <p class="mt-3 text-sm leading-relaxed text-muted">{s.desc}</p>
+        </li>
+      ))}
+    </ol>
+
+    <p class="caption mt-4">{t('steps.footnote')}</p>
+  </div>
+</section>

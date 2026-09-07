@@ -21,6 +21,12 @@ fn machine_hmac_secret() -> [u8; 32] {
     crate::keychain::get_or_create_hmac_secret(KEYCHAIN_ACCOUNT, LEGACY_HMAC_SECRET)
 }
 
+/// Pre-read this store's keychain material so the first dictation does not
+/// pay for it. See [`crate::keychain::warm_caches`].
+pub fn warm_keychain_cache() {
+    crate::keychain::warm_caches(&[(KEYCHAIN_ACCOUNT, LEGACY_HMAC_SECRET)]);
+}
+
 type HmacSha256 = Hmac<Sha256>;
 
 /// Per-day usage stats for the in-app analytics panel. One entry per day
@@ -110,6 +116,9 @@ enum SigVerify {
 /// Constant-time HMAC verification via `verify_slice`. Tries the per-machine
 /// secret first, falls back to the legacy hardcoded constant so usage.json
 /// files written by previous versions still verify on first run after upgrade.
+/// Anti-replant: once the legacy migration marker is set on this machine,
+/// the legacy path is closed and any "legacy-signed" file is rejected. See
+/// keychain.rs for the rationale.
 fn verify_usage_signature(record: &UsageRecord) -> SigVerify {
     let Some(stored_hex) = record.signature.as_deref() else {
         return SigVerify::NotPresent;
@@ -127,10 +136,12 @@ fn verify_usage_signature(record: &UsageRecord) -> SigVerify {
         return SigVerify::ValidMachine;
     }
 
-    let mut legacy = HmacSha256::new_from_slice(LEGACY_HMAC_SECRET).expect("32-byte secret");
-    legacy.update(input.as_bytes());
-    if legacy.verify_slice(&stored_bytes).is_ok() {
-        return SigVerify::ValidLegacy;
+    if !crate::keychain::legacy_migration_complete(KEYCHAIN_ACCOUNT) {
+        let mut legacy = HmacSha256::new_from_slice(LEGACY_HMAC_SECRET).expect("32-byte secret");
+        legacy.update(input.as_bytes());
+        if legacy.verify_slice(&stored_bytes).is_ok() {
+            return SigVerify::ValidLegacy;
+        }
     }
     SigVerify::Invalid
 }
@@ -198,6 +209,10 @@ pub fn save_usage(record: &UsageRecord) -> Result<(), String> {
     let json = serde_json::to_string_pretty(&record)
         .map_err(|e| format!("Failed to serialize usage: {}", e))?;
     fs::write(&path, json).map_err(|e| format!("Failed to write usage file: {}", e))?;
+
+    // First successful machine-signed write closes the legacy verification
+    // path for this account on this machine. See `keychain.rs` rationale.
+    crate::keychain::mark_legacy_migration_complete(KEYCHAIN_ACCOUNT);
     Ok(())
 }
 
@@ -220,7 +235,7 @@ pub fn record_polish_success() {
     }
     record.polish_count = record.polish_count.saturating_add(1);
     if let Err(e) = save_usage(&record) {
-        eprintln!("[Usage] Failed to persist polish count: {}", e);
+        crate::logging::log_error(&format!("[Usage] Failed to persist polish count: {}", e));
     }
 }
 
@@ -236,7 +251,7 @@ pub fn start_trial_if_needed() -> bool {
     record.trial_started_at = Some(Utc::now().timestamp());
     record.trial_count = 1;
     if let Err(e) = save_usage(&record) {
-        eprintln!("[Usage] Failed to persist trial start: {}", e);
+        crate::logging::log_error(&format!("[Usage] Failed to persist trial start: {}", e));
         return false;
     }
     true
@@ -267,7 +282,7 @@ pub fn record_transcription(words: u32, chars: u32) {
     entry.words = entry.words.saturating_add(words as u64);
     entry.chars = entry.chars.saturating_add(chars as u64);
     if let Err(e) = save_usage(&record) {
-        eprintln!("[Usage] Failed to persist daily transcription stats: {}", e);
+        crate::logging::log_error(&format!("[Usage] Failed to persist daily transcription stats: {}", e));
     }
 }
 
@@ -312,38 +327,6 @@ fn add_to_window(window: &mut AnalyticsWindow, stats: &DailyStats) {
     window.chars = window.chars.saturating_add(stats.chars);
 }
 
-/// Marker file that records the month key ("YYYY-MM") for which we last
-/// surfaced the "AI Polish cap hit" system notification. Unsigned on purpose:
-/// this is purely a UX dedupe, not a security-relevant counter. The cap itself
-/// is still enforced in pipeline.rs against the signed `polish_count`.
-fn polish_cap_notify_marker_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|p| p.join("ttp").join("polish_cap_notified"))
-}
-
-/// Returns true the first time it's called within a calendar month, false on
-/// every subsequent call until the month rolls over. Used to throttle the
-/// upgrade notification so a free user who's at cap doesn't get a fresh toast
-/// every single transcription — on Windows the OS doesn't group repeats and
-/// the spam was reported as "giga chiant" (and read as bloatware).
-///
-/// Best-effort: if the config dir isn't resolvable or the file write fails,
-/// we still return true so the user sees the message at least that one time.
-pub fn should_notify_polish_cap_once_this_month() -> bool {
-    let Some(path) = polish_cap_notify_marker_path() else {
-        return true;
-    };
-    let current = current_month_key();
-    if let Ok(last) = fs::read_to_string(&path) {
-        if last.trim() == current {
-            return false;
-        }
-    }
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let _ = fs::write(&path, &current);
-    true
-}
 
 /// Aggregate the daily buckets into rolling-window totals + a 30-day series.
 pub fn analytics_summary() -> AnalyticsSummary {
@@ -387,5 +370,153 @@ pub fn analytics_summary() -> AnalyticsSummary {
         month,
         all_time,
         daily,
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests — pure-function coverage for the usage signature + trial-guard logic.
+//
+// The trial-reset loophole (memory: project_trial_reset_loophole) is what
+// makes `trial_count` load-bearing: once it's > 0, no machine that signs the
+// file with the same keychain secret should ever issue a fresh trial again.
+// These tests pin that contract.
+// ─────────────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fresh_record() -> UsageRecord {
+        UsageRecord {
+            polish_month: "2026-06".into(),
+            polish_count: 5,
+            trial_started_at: Some(1_700_000_000),
+            trial_count: 1,
+            daily_stats: BTreeMap::new(),
+            signature: None,
+        }
+    }
+
+    fn test_secret() -> [u8; 32] {
+        *b"\x21\x22\x23\x24\x25\x26\x27\x28\x29\x2A\x2B\x2C\x2D\x2E\x2F\x30\x31\x32\x33\x34\x35\x36\x37\x38\x39\x3A\x3B\x3C\x3D\x3E\x3F\x40"
+    }
+
+    fn sign_with(record: &mut UsageRecord, secret: &[u8]) {
+        let input = usage_signature_input(record);
+        let mut mac = HmacSha256::new_from_slice(secret).expect("32-byte secret");
+        mac.update(input.as_bytes());
+        record.signature = Some(hex::encode(mac.finalize().into_bytes()));
+    }
+
+    fn verify_with(record: &UsageRecord, secret: &[u8]) -> bool {
+        let Some(sig) = record.signature.as_deref() else { return false; };
+        let Ok(bytes) = hex::decode(sig) else { return false; };
+        let mut mac = HmacSha256::new_from_slice(secret).expect("32-byte secret");
+        mac.update(usage_signature_input(record).as_bytes());
+        mac.verify_slice(&bytes).is_ok()
+    }
+
+    #[test]
+    fn round_trip_sign_verify() {
+        let secret = test_secret();
+        let mut record = fresh_record();
+        sign_with(&mut record, &secret);
+        assert!(verify_with(&record, &secret));
+    }
+
+    #[test]
+    fn tampered_trial_started_at_rejected() {
+        let secret = test_secret();
+        let mut record = fresh_record();
+        sign_with(&mut record, &secret);
+        // Simulate the trial-reset attack: bump trial_started_at forward
+        // to claim a fresh trial without resigning.
+        record.trial_started_at = Some(Utc::now().timestamp());
+        assert!(!verify_with(&record, &secret));
+    }
+
+    #[test]
+    fn tampered_trial_count_rejected() {
+        let secret = test_secret();
+        let mut record = fresh_record();
+        sign_with(&mut record, &secret);
+        // Simulate "reset trial_count to 0 so start_trial_if_needed re-fires."
+        record.trial_count = 0;
+        assert!(!verify_with(&record, &secret));
+    }
+
+    #[test]
+    fn tampered_polish_count_rejected() {
+        let secret = test_secret();
+        let mut record = fresh_record();
+        sign_with(&mut record, &secret);
+        record.polish_count = 0;
+        assert!(!verify_with(&record, &secret));
+    }
+
+    #[test]
+    fn signature_input_pinned_no_daily_stats() {
+        // Pre-2.0.5 wire format. Pinning this guards against an accidental
+        // refactor that would invalidate every legacy user's signature on
+        // upgrade.
+        let record = fresh_record();
+        let input = usage_signature_input(&record);
+        assert_eq!(input, "2026-06|5|1700000000|1");
+    }
+
+    #[test]
+    fn signature_input_pinned_with_daily_stats() {
+        let mut record = fresh_record();
+        record.daily_stats.insert(
+            "2026-06-10".into(),
+            DailyStats { transcriptions: 3, words: 42, chars: 250 },
+        );
+        let input = usage_signature_input(&record);
+        // BTreeMap iteration is key-ordered, so this string is deterministic.
+        assert_eq!(input, "2026-06|5|1700000000|1|2026-06-10:3:42:250");
+    }
+
+    #[test]
+    fn daily_stats_order_is_deterministic() {
+        // Two records with the same daily stats inserted in different order
+        // MUST produce identical signature inputs — otherwise the same file
+        // would verify differently after a save/load roundtrip.
+        let mut a = fresh_record();
+        let mut b = fresh_record();
+        a.daily_stats.insert("2026-06-10".into(), DailyStats { transcriptions: 1, words: 10, chars: 50 });
+        a.daily_stats.insert("2026-06-09".into(), DailyStats { transcriptions: 2, words: 20, chars: 100 });
+        b.daily_stats.insert("2026-06-09".into(), DailyStats { transcriptions: 2, words: 20, chars: 100 });
+        b.daily_stats.insert("2026-06-10".into(), DailyStats { transcriptions: 1, words: 10, chars: 50 });
+        assert_eq!(usage_signature_input(&a), usage_signature_input(&b));
+    }
+
+    #[test]
+    fn trial_days_left_clamps_to_zero_when_expired() {
+        let record = UsageRecord {
+            trial_started_at: Some(0), // 1970 - trial long over
+            ..UsageRecord::default()
+        };
+        assert_eq!(trial_days_left(&record), 0);
+    }
+
+    #[test]
+    fn trial_days_left_returns_zero_when_not_started() {
+        let record = UsageRecord {
+            trial_started_at: None,
+            ..UsageRecord::default()
+        };
+        assert_eq!(trial_days_left(&record), 0);
+    }
+
+    #[test]
+    fn trial_days_left_within_trial_window_bounded() {
+        // Trial started 1 day ago — should report 3 days left (TRIAL_DAYS=4).
+        let one_day_ago = Utc::now().timestamp() - 86_400;
+        let record = UsageRecord {
+            trial_started_at: Some(one_day_ago),
+            ..UsageRecord::default()
+        };
+        let left = trial_days_left(&record);
+        assert!(left >= TRIAL_DAYS - 1 - 1 && left <= TRIAL_DAYS - 1 + 1,
+            "expected ~{} days left, got {}", TRIAL_DAYS - 1, left);
     }
 }

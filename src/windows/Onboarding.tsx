@@ -400,12 +400,12 @@ function PermissionRow({ permKey, status, isChecking, onClick, delay }: PermRowP
 
 function TrialCountdown() {
   const { t } = useTranslation();
-  const [trialStartedAt, setTrialStartedAt] = useState<number | null>(null);
+  const [trialEndsAt, setTrialEndsAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    invoke<{ trial_started_at: number | null }>('get_usage_stats')
-      .then((u) => setTrialStartedAt(u.trial_started_at))
+    invoke<{ trial_ends_at: number | null }>('get_usage_stats')
+      .then((u) => setTrialEndsAt(u.trial_ends_at))
       .catch(() => {});
   }, []);
 
@@ -414,8 +414,8 @@ function TrialCountdown() {
     return () => window.clearInterval(id);
   }, []);
 
-  if (!trialStartedAt) return null;
-  const endMs = (trialStartedAt + 7 * 86_400) * 1000;
+  if (!trialEndsAt) return null;
+  const endMs = trialEndsAt * 1000;
   const msLeft = Math.max(0, endMs - now);
   if (msLeft === 0) return null;
   const days = Math.floor(msLeft / 86_400_000);

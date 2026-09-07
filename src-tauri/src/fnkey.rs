@@ -14,12 +14,19 @@
 // to ignore the system's quick Fn/Globe key tap (emoji picker, etc.)
 // and to filter out brief F-key presses.
 
+use crate::fnkey_fsm::{
+    fn_decide, fn_stale_check, FnAction, FnFsmState, FN_DEBOUNCE_MS, FN_STALE_RESYNC_TICKS,
+};
+// DOUBLE_TAP_THRESHOLD_MS / HANDS_FREE_STOP_GRACE_MS are referenced via the
+// FSM module's internal logic; we don't need them here. FN_DEBOUNCE_MS is
+// still used by the startup diagnostic log so the operator can read the
+// active value at a glance.
 use crate::shortcuts::handle_shortcut_event_public;
 use block::ConcreteBlock;
 use cocoa::base::id;
 use objc::{class, msg_send, sel, sel_impl};
 use std::io::Write;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU64, Ordering};
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
@@ -73,6 +80,9 @@ extern "C" {
     fn CFRunLoopGetCurrent() -> CFRunLoopRef;
     fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
     fn CGEventTapEnable(tap: CFMachPortRef, enable: u8);
+    fn CGEventTapIsEnabled(tap: CFMachPortRef) -> bool;
+    fn CFRunLoopRemoveSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: CFStringRef);
+    fn CFRelease(cf: *const std::ffi::c_void);
     fn CGEventGetIntegerValueField(event: CGEventRef, field: u32) -> i64;
     fn CGEventGetFlags(event: CGEventRef) -> u64;
     static kCFRunLoopCommonModes: CFStringRef;
@@ -90,6 +100,17 @@ const KCG_EVENT_KEY_UP: u32 = 11;
 /// F3 etc.) and never fire FlagsChanged with keycode 63 — which is exactly
 /// what lets us tell apart a real Fn press from an F-key "flag bleed".
 const KCG_EVENT_FLAGS_CHANGED: u32 = 12;
+/// kCGEventTapDisabledByTimeout — the window server unhooked our tap because
+/// a callback took too long to return. Until the tap is re-armed it delivers
+/// NOTHING, which means `FN_KEY_PHYSICALLY_DOWN` freezes at whatever it was:
+/// stuck false → the Fn key silently stops starting recordings; stuck true →
+/// the FSM believes Fn is held forever AND the session keeps the Globe
+/// modifier set, so injected characters get routed to the Globe shortcut
+/// layer instead of the text field. Both look to the user like "TTP just
+/// stopped working", which is why this is handled rather than ignored.
+const KCG_EVENT_TAP_DISABLED_BY_TIMEOUT: u32 = 0xFFFF_FFFE;
+/// kCGEventTapDisabledByUserInput — same consequence, different trigger.
+const KCG_EVENT_TAP_DISABLED_BY_USER_INPUT: u32 = 0xFFFF_FFFF;
 const KCG_KEYBOARD_EVENT_KEYCODE: u32 = 9;
 /// kVK_Function — virtual keycode of the physical Fn/Globe key. The single
 /// source of truth for "is the Fn key actually held?". Independent of any
@@ -134,8 +155,130 @@ static FKEY_CURRENTLY_HELD: AtomicBool = AtomicBool::new(false);
 /// F-key bled the bit, the F-key veto callback hadn't run yet) is gone.
 static FN_KEY_PHYSICALLY_DOWN: AtomicBool = AtomicBool::new(false);
 
-/// Double-tap detection threshold in milliseconds
-const DOUBLE_TAP_THRESHOLD_MS: u64 = 300;
+/// True while the app is recording in hands-free / toggle mode. Set by
+/// `shortcuts.rs` via [`set_hands_free_recording`]. When set, a single quick Fn
+/// tap STOPS the recording (instead of being ignored as too-short / treated as
+/// a double-tap candidate).
+static HANDS_FREE_RECORDING: AtomicBool = AtomicBool::new(false);
+
+/// The live event-tap port, kept so the tap can be re-armed after macOS
+/// disables it. Previously the `CFMachPortRef` was a local that went out of
+/// scope at the end of `start_fn_key_monitor`, which made recovery
+/// impossible: nothing in the process could name the tap any more.
+static TAP_PORT: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
+
+/// Consecutive timer ticks on which the tap claims Fn is held while
+/// `NSEvent.modifierFlags` says it is not. See `FN_STALE_RESYNC_TICKS`.
+static FN_STALE_TICKS: AtomicU64 = AtomicU64::new(0);
+
+/// Timer ticks counted since launch, used to pace the tap watchdog.
+static TIMER_TICKS: AtomicU64 = AtomicU64::new(0);
+
+/// Wall-clock time of the last re-arm message we wrote to the log.
+static LAST_REARM_LOG_MS: AtomicU64 = AtomicU64::new(0);
+
+/// The run loop source feeding the tap, kept so a dead tap can be fully torn
+/// down rather than merely disabled.
+static TAP_SOURCE: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
+
+/// Consecutive re-arms without the tap being observed healthy in between.
+static REARM_STREAK: AtomicU64 = AtomicU64::new(0);
+
+/// Rebuilds attempted before we accept that this process cannot hold a tap.
+///
+/// Evidence from 2026-08-28: one session rebuilt the tap 444 times over 90
+/// minutes, every 12 seconds, and never recovered. It ended only when the app
+/// was relaunched. So a tap that will not stay enabled is not a property of
+/// the tap object — recreating it inside the same process does not help —
+/// it is a property of the process, almost certainly its Input Monitoring
+/// grant being evaluated once at launch.
+///
+/// Which means unbounded escalation is not persistence, it is 444 pointless
+/// teardown/create cycles and 2600 lines of noise in the file the user is
+/// keeping in order to find real failures. Three attempts, then stop and say
+/// so — the only remedy is a restart, and only the user can do that.
+const TAP_REBUILD_MAX_ATTEMPTS: u64 = 3;
+
+/// Rebuilds attempted since the tap was last seen healthy.
+static REBUILD_ATTEMPTS: AtomicU64 = AtomicU64::new(0);
+
+/// Set once we have given up on this process's tap, so the watchdog stops
+/// touching it and stops logging about it.
+static TAP_ABANDONED: AtomicBool = AtomicBool::new(false);
+
+/// Failed re-arms before we stop re-enabling and rebuild the tap outright.
+///
+/// `CGEventTapEnable` on a tap the window server has given up on is a no-op,
+/// so the watchdog can "recover" a dead tap every two seconds forever while
+/// the Fn key stays dead. Observed on 2026-08-28: a session re-armed 37 times
+/// across 73 seconds, never recovered, and recorded not one key press. The
+/// trigger is visible one line earlier — `timer_stall {"gap_ms":2085}` during
+/// Tauri's startup, long enough for macOS to time the tap out before the app
+/// had finished launching.
+///
+/// 5 attempts is ~10s at the watchdog interval: long enough that a tap merely
+/// wedged by a transient stall gets its chance to come back, short enough
+/// that the user is not left without a hotkey.
+const TAP_REBUILD_AFTER_FAILED_REARMS: u64 = 5;
+
+/// Minimum gap between two re-arm log lines while the tap keeps flapping.
+///
+/// A tap that macOS refuses to keep enabled — which is what happens while
+/// Input Monitoring is being granted — is re-armed on every watchdog pass.
+/// Logging each attempt buried the interesting first occurrence under a
+/// dozen identical lines. We log the first, then at most one line per
+/// interval, carrying the streak count so the flapping is still visible.
+const REARM_LOG_INTERVAL_MS: u64 = 30_000;
+
+/// Wall-clock time of the previous timer tick, for stall detection.
+static LAST_TICK_MS: AtomicU64 = AtomicU64::new(0);
+
+/// A 20ms timer that goes quiet for at least this long was not idle — the
+/// process was descheduled.
+///
+/// macOS App Nap suspends `LSUIElement` background agents aggressively, and a
+/// napped TTP stops polling the Fn key, stops advancing the recording state
+/// machine, and leaves an in-flight dictation parked mid-pipeline. From the
+/// user's seat that is indistinguishable from a crash. There is no API that
+/// reports "you were napped", so the only way to observe it is to notice that
+/// our own clock skipped.
+const TIMER_STALL_THRESHOLD_MS: u64 = 1_000;
+
+/// How often the timer verifies the tap is still armed (~2s at 20ms/tick).
+/// Belt-and-braces for the case where the disable notification itself is
+/// never delivered — the failure mode is total silence, so we cannot rely on
+/// being told about it.
+const TAP_WATCHDOG_TICKS: u64 = 100;
+
+/// How often the watchdog records that the tap is *healthy*.
+///
+/// The tap's failures have been traced since v3.1 and its successes have not,
+/// which leaves the most common reading of the log ambiguous: no
+/// `hotkey.tap_*` line between two dictations is equally consistent with "the
+/// tap was fine" and "the watchdog was not running because the process was
+/// napping". A heartbeat every five minutes settles that, and bounds any
+/// outage to five minutes without it.
+///
+/// Five minutes rather than one: at ~90 bytes a line this costs ~26 KB a day,
+/// which is under 1% of the retained trace window. At one minute it would be
+/// five times that, for five times the resolution on a question whose answer
+/// is measured in hours.
+const TAP_HEALTH_INTERVAL_MS: u64 = 300_000;
+
+/// Wall clock of the last `hotkey.tap_health` line.
+static LAST_TAP_HEALTH_MS: AtomicU64 = AtomicU64::new(0);
+
+/// Timestamp (ms) when the current hands-free recording started. A single tap
+/// may only stop the recording after [`HANDS_FREE_STOP_GRACE_MS`] has elapsed —
+/// this stops the *second* tap of the starting double-tap (and HID jitter right
+/// after it) from instantly ending the recording it just began.
+static HANDS_FREE_START_MS: AtomicU64 = AtomicU64::new(0);
+
+// Timing constants moved to `fnkey_fsm` so the pure FSM owns them. We keep
+// only the macOS-platform-specific constants below.
+//
+// HANDS_FREE_STOP_GRACE_MS, DOUBLE_TAP_THRESHOLD_MS, FN_DEBOUNCE_MS:
+//   see `fnkey_fsm` — re-exported via the `use` block above.
 
 /// NSEventModifierFlagFunction = 1 << 23 = 0x800000
 const NS_EVENT_MODIFIER_FLAG_FUNCTION: u64 = 0x800000;
@@ -147,9 +290,6 @@ const NS_EVENT_MODIFIER_FLAG_NUMERIC_PAD: u64 = 0x200000;
 /// Mask for all "real" modifier keys (Shift, Ctrl, Option, Command)
 /// If any of these are set alongside Function, it's likely a key combo, not bare Fn.
 const NS_MODIFIER_KEY_MASK: u64 = 0x1E0000; // Shift|Ctrl|Option|Command
-
-/// Debounce: Fn must be held for this long before recording starts (ms)
-const FN_DEBOUNCE_MS: u64 = 150;
 
 /// How long after the LAST F-key event (down OR up) to ignore Function-flag
 /// events. macOS holds the Function modifier flag for the duration of system
@@ -203,6 +343,17 @@ pub fn request_input_monitoring() -> bool {
     unsafe { CGRequestListenEventAccess() }
 }
 
+/// True once this process has given up on keeping an event tap alive.
+///
+/// Surfaced to the tray because the user-visible consequence is identical to
+/// Input Monitoring being missing — the Fn key does nothing — and the tray
+/// already knows how to show that. The remedy differs (restart rather than
+/// grant a permission) but the signal that something is wrong should not wait
+/// for the user to go reading a log.
+pub fn tap_abandoned() -> bool {
+    TAP_ABANDONED.load(Ordering::Relaxed)
+}
+
 /// Return whether the physical Fn/Globe key is currently held.
 ///
 /// The signal comes from `kCGEventFlagsChanged` events with keycode 63
@@ -216,6 +367,165 @@ pub fn request_input_monitoring() -> bool {
 /// source we just replaced.
 fn is_physical_fn_key(_flags: u64) -> bool {
     FN_KEY_PHYSICALLY_DOWN.load(Ordering::Relaxed)
+}
+
+/// Create the HID event tap, wire it into the current run loop, and enable it.
+///
+/// Must run on the thread whose run loop will service the callback — the main
+/// thread, both at startup and from the watchdog inside the NSTimer.
+///
+/// We tap at `kCGHIDEventTap` rather than using NSEvent's global monitor
+/// because macOS consumes F3/F4/F6 for Mission Control / Launchpad / DND
+/// before they reach global monitors, and those keys hold the Function flag
+/// for the duration of the system overlay — which used to trigger false
+/// recordings. Subscribed events:
+///   * FlagsChanged (12) for the physical Fn key — the primary signal;
+///     keycode 63 fires only when Fn itself is pressed or released.
+///   * KeyDown (10) + KeyUp (11) for the defensive F-key path, which only
+///     matters on non-Apple keyboards that never emit FlagsChanged for Fn.
+///
+/// Returns whether a live tap is now installed.
+unsafe fn install_tap(reason: &str) -> bool {
+    let mask: u64 = (1u64 << KCG_EVENT_FLAGS_CHANGED)
+        | (1u64 << KCG_EVENT_KEY_DOWN)
+        | (1u64 << KCG_EVENT_KEY_UP);
+    let tap = CGEventTapCreate(
+        KCG_HID_EVENT_TAP,
+        KCG_TAIL_APPEND_EVENT_TAP,
+        KCG_EVENT_TAP_OPTION_LISTEN_ONLY,
+        mask,
+        fkey_tap_callback,
+        std::ptr::null_mut(),
+    );
+    if tap.is_null() {
+        fnlog!("[FnKey] CGEventTapCreate returned null — F3/F4/F6 veto disabled (Input Monitoring permission missing?)");
+        crate::logging::log_error(
+            "[FnKey] CGEventTapCreate returned null — the Fn key will not work. \
+             Input Monitoring permission is probably missing.",
+        );
+        crate::trace::event(
+            "hotkey.tap_create_failed",
+            serde_json::json!({ "reason": reason }),
+        );
+        return false;
+    }
+
+    let source = CFMachPortCreateRunLoopSource(std::ptr::null_mut(), tap, 0);
+    CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
+    CGEventTapEnable(tap, 1);
+
+    // Publish both handles BEFORE anything can disable the tap: they are what
+    // make re-arming and, failing that, rebuilding possible at all.
+    TAP_PORT.store(tap as *mut std::ffi::c_void, Ordering::Relaxed);
+    TAP_SOURCE.store(source as *mut std::ffi::c_void, Ordering::Relaxed);
+    REARM_STREAK.store(0, Ordering::Relaxed);
+
+    fnlog!("[FnKey] CGEventTap armed at HID level ({})", reason);
+    crate::trace::event(
+        "hotkey.tap_armed",
+        serde_json::json!({ "reason": reason }),
+    );
+    true
+}
+
+/// Remove and release the current tap and its run loop source.
+///
+/// Must run on the same thread that installed them.
+unsafe fn teardown_tap() {
+    let source = TAP_SOURCE.swap(std::ptr::null_mut(), Ordering::Relaxed) as CFRunLoopSourceRef;
+    if !source.is_null() {
+        CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
+        CFRelease(source as *const std::ffi::c_void);
+    }
+    let tap = TAP_PORT.swap(std::ptr::null_mut(), Ordering::Relaxed) as CFMachPortRef;
+    if !tap.is_null() {
+        CGEventTapEnable(tap, 0);
+        CFRelease(tap as *const std::ffi::c_void);
+    }
+}
+
+/// Replace a tap the system has stopped honouring.
+///
+/// The distinction from [`re_arm_tap`] is the whole point: `CGEventTapEnable`
+/// on a tap the window server has written off does nothing at all, so the
+/// watchdog can report a successful recovery every two seconds while the Fn
+/// key stays dead. Only a fresh tap gets the events flowing again.
+unsafe fn rebuild_tap(streak: u64) {
+    let attempt = REBUILD_ATTEMPTS.fetch_add(1, Ordering::Relaxed) + 1;
+
+    if attempt > TAP_REBUILD_MAX_ATTEMPTS {
+        // Rebuilding demonstrably is not working. Stop: the process cannot
+        // hold a tap and will not until it is restarted. Said once, then
+        // never again for this session.
+        if !TAP_ABANDONED.swap(true, Ordering::Relaxed) {
+            crate::logging::log_error(&format!(
+                "[FnKey] Event tap could not be kept alive after {} rebuilds. The Fn \
+                 key will not work until TTP is restarted. This is a process-level \
+                 condition — most likely Input Monitoring was granted after launch.",
+                TAP_REBUILD_MAX_ATTEMPTS
+            ));
+            crate::trace::event(
+                "hotkey.tap_abandoned",
+                serde_json::json!({ "rebuilds": TAP_REBUILD_MAX_ATTEMPTS }),
+            );
+        }
+        return;
+    }
+
+    crate::logging::log_warn(&format!(
+        "[FnKey] Event tap did not survive {} re-arms — rebuilding it (attempt {} of {}). \
+         The Fn key was not delivering events until now.",
+        streak, attempt, TAP_REBUILD_MAX_ATTEMPTS
+    ));
+    crate::trace::event(
+        "hotkey.tap_rebuilt",
+        serde_json::json!({ "after_failed_rearms": streak, "attempt": attempt }),
+    );
+    teardown_tap();
+    install_tap("rebuild");
+}
+
+/// Re-arm the HID event tap after macOS disabled it.
+///
+/// This is the recovery path for the single worst failure mode in the input
+/// layer: a disabled tap is completely silent, so without this the Fn key
+/// stops working until the app is restarted — and the user has no way to
+/// tell that is what happened. Logged at WARN (release builds keep Warn) and
+/// mirrored into the dictation trace so the event lines up chronologically
+/// with the dictations that failed around it.
+///
+/// Safe to call from the tap callback and from the timer; `CGEventTapEnable`
+/// on an already-enabled tap is a no-op.
+fn re_arm_tap(reason: &str) {
+    let port = TAP_PORT.load(Ordering::Relaxed) as CFMachPortRef;
+    if port.is_null() {
+        return;
+    }
+    unsafe { CGEventTapEnable(port, 1) };
+
+    let streak = REARM_STREAK.fetch_add(1, Ordering::Relaxed) + 1;
+    let now = now_ms();
+    let last_logged = LAST_REARM_LOG_MS.load(Ordering::Relaxed);
+    let should_log = streak == 1 || now.saturating_sub(last_logged) >= REARM_LOG_INTERVAL_MS;
+
+    if should_log {
+        LAST_REARM_LOG_MS.store(now, Ordering::Relaxed);
+        fnlog!("[FnKey] event tap was disabled ({}) — re-armed (streak {})", reason, streak);
+        crate::logging::log_warn(&format!(
+            "[FnKey] Event tap was disabled ({}) and has been re-armed \
+             ({} consecutive re-arms). The Fn key would have stopped \
+             responding until restart.",
+            reason, streak
+        ));
+    }
+
+    // The trace keeps every occurrence — it is the timeline you consult to
+    // line a broken dictation up against the tap dying. Only the human-facing
+    // log is rate-limited.
+    crate::trace::event(
+        "hotkey.tap_rearmed",
+        serde_json::json!({ "reason": reason, "streak": streak }),
+    );
 }
 
 /// Start Fn key monitoring using NSTimer on the main run loop.
@@ -238,79 +548,209 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
                 return;
             }
 
-            let flags: u64 = msg_send![class!(NSEvent), modifierFlags];
-            let fn_held = is_physical_fn_key(flags);
-            let was_held = FN_KEY_DOWN.load(Ordering::Relaxed);
-            let recording_active = FN_RECORDING_ACTIVE.load(Ordering::Relaxed);
+            // The timer was historically a sprawl of branches with the
+            // timing rules buried inline. Now the whole decision is one call
+            // to `fnkey_fsm::fn_decide`. Steps:
+            //   1. Snapshot the atomics into an FnFsmState.
+            //   2. Read whether Fn is physically held right now (the source
+            //      of truth maintained by `fkey_tap_callback`).
+            //   3. Run the FSM.
+            //   4. Apply the new state to the atomics.
+            //   5. Dispatch the action.
+            //
+            // `flags` is read only for the diagnostic log — the FSM no
+            // longer consults NSEvent.modifierFlags directly.
+            // Stall detection. This timer is scheduled every 20ms, so a gap
+            // of a second or more means nothing ran — see
+            // TIMER_STALL_THRESHOLD_MS. Recorded before anything else so the
+            // trace shows the stall even if the tick that noticed it goes on
+            // to do nothing interesting.
+            let tick_now = now_ms();
+            let prev_tick = LAST_TICK_MS.swap(tick_now, Ordering::Relaxed);
+            if prev_tick != 0 {
+                let gap_ms = tick_now.saturating_sub(prev_tick);
+                if gap_ms >= TIMER_STALL_THRESHOLD_MS {
+                    crate::trace::event(
+                        "hotkey.timer_stall",
+                        serde_json::json!({ "gap_ms": gap_ms }),
+                    );
+                }
+            }
 
-            if fn_held && !was_held {
-                // Fn just pressed — note the time, but don't start recording yet
-                let now = now_ms();
-                FN_KEY_DOWN.store(true, Ordering::Relaxed);
-                FN_PRESS_TIME_MS.store(now, Ordering::Relaxed);
-                
-                // Check for double-tap (within 300ms of last press)
-                let last_press = LAST_FN_PRESS_TIME_MS.load(Ordering::Relaxed);
-                let is_double_tap = last_press > 0 && (now - last_press) < DOUBLE_TAP_THRESHOLD_MS;
-                
-                if is_double_tap {
-                    fnlog!("[FnKey] Fn key DOUBLE-TAP detected ({}ms since last press)", now - last_press);
-                    // Reset the last press time to prevent triple-tap detection
-                    LAST_FN_PRESS_TIME_MS.store(0, Ordering::Relaxed);
-                    // Handle double-tap - toggle mode
+            let tick = TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
+
+            // Watchdog. A tap that macOS disabled without us seeing the
+            // notification is indistinguishable from "the user isn't
+            // pressing anything", so the only way to detect it is to ask.
+            if tick % TAP_WATCHDOG_TICKS == 0 {
+                let port = TAP_PORT.load(Ordering::Relaxed) as CFMachPortRef;
+                if TAP_ABANDONED.load(Ordering::Relaxed) {
+                    // Given up for this session. Touching the tap again would
+                    // only burn cycles and flood the trace.
+                } else if port.is_null() {
+                    // No tap at all — an earlier create failed. Keep trying:
+                    // Input Monitoring may have been granted since.
+                    install_tap("watchdog_no_tap");
+                } else if CGEventTapIsEnabled(port) {
+                    // Healthy: end any flapping streak so the next genuine
+                    // failure logs immediately instead of being rate-limited,
+                    // and forgive earlier rebuilds — they evidently worked.
+                    let streak_before = REARM_STREAK.swap(0, Ordering::Relaxed);
+                    let rebuilds_before = REBUILD_ATTEMPTS.swap(0, Ordering::Relaxed);
+
+                    // Say so, periodically. A recovery is only legible against
+                    // a baseline of health, and "the Fn key worked all
+                    // afternoon" is a claim the trace could not previously
+                    // support. Emitted immediately after a streak rather than
+                    // waiting out the interval, so the line that closes an
+                    // outage sits next to the ones that opened it.
+                    let last = LAST_TAP_HEALTH_MS.load(Ordering::Relaxed);
+                    let recovered = streak_before > 0 || rebuilds_before > 0;
+                    if recovered
+                        || last == 0
+                        || tick_now.saturating_sub(last) >= TAP_HEALTH_INTERVAL_MS
+                    {
+                        LAST_TAP_HEALTH_MS.store(tick_now, Ordering::Relaxed);
+                        crate::trace::event(
+                            "hotkey.tap_health",
+                            serde_json::json!({
+                                "enabled": true,
+                                "recovered": recovered,
+                                "cleared_rearm_streak": streak_before,
+                                "cleared_rebuilds": rebuilds_before,
+                                "ticks": tick,
+                            }),
+                        );
+                    }
+                } else if REARM_STREAK.load(Ordering::Relaxed) >= TAP_REBUILD_AFTER_FAILED_REARMS {
+                    // Re-enabling has demonstrably stopped working. Stop
+                    // asking and build a new tap.
+                    rebuild_tap(REARM_STREAK.load(Ordering::Relaxed));
+                } else {
+                    re_arm_tap("watchdog");
+                }
+            }
+
+            let flags: u64 = msg_send![class!(NSEvent), modifierFlags];
+            let mut fn_held = is_physical_fn_key(flags);
+
+            // Stale-flag resync.
+            //
+            // `FN_KEY_PHYSICALLY_DOWN` is maintained purely by the tap, so a
+            // key-up that the tap never saw (it was disabled, or another
+            // process swallowed the event) latches it at `true` forever. The
+            // FSM then never fires StopRecording, and every keystroke TTP
+            // injects inherits the Globe modifier from the session state and
+            // is eaten by the shortcut layer.
+            //
+            // `NSEvent.modifierFlags` is an independent view of the same
+            // hardware, so a sustained disagreement means our copy is stale.
+            // We only ever use it to force the flag DOWN, never up: F-keys
+            // bleed the Function bit ON (the whole reason the tap exists),
+            // so trusting it in that direction would resurrect the F3/F4/F6
+            // false-trigger bug. Forcing down has no such failure mode.
+            let resync = fn_stale_check(
+                fn_held,
+                (flags & NS_EVENT_MODIFIER_FLAG_FUNCTION) != 0,
+                FN_STALE_TICKS.load(Ordering::Relaxed),
+            );
+            FN_STALE_TICKS.store(resync.new_ticks, Ordering::Relaxed);
+            if resync.clear_flag {
+                FN_KEY_PHYSICALLY_DOWN.store(false, Ordering::Relaxed);
+                fn_held = false;
+                let stale_ms = FN_STALE_RESYNC_TICKS * 20;
+                fnlog!("[FnKey] stale Fn-down flag cleared (NSEvent disagreed for {}ms)", stale_ms);
+                crate::logging::log_warn(
+                    "[FnKey] Cleared a stuck Fn-down flag: the tap reported the Globe key \
+                     held while NSEvent reported it up. Injected keystrokes would have been \
+                     routed to the Globe shortcut layer.",
+                );
+                crate::trace::event(
+                    "hotkey.stale_fn_cleared",
+                    serde_json::json!({ "stale_ms": stale_ms }),
+                );
+            }
+
+            let state = FnFsmState {
+                fn_was_held: FN_KEY_DOWN.load(Ordering::Relaxed),
+                recording_active: FN_RECORDING_ACTIVE.load(Ordering::Relaxed),
+                press_time_ms: FN_PRESS_TIME_MS.load(Ordering::Relaxed),
+                last_press_time_ms: LAST_FN_PRESS_TIME_MS.load(Ordering::Relaxed),
+                hands_free_recording: HANDS_FREE_RECORDING.load(Ordering::Relaxed),
+                hands_free_start_ms: HANDS_FREE_START_MS.load(Ordering::Relaxed),
+            };
+
+            let now = now_ms();
+            let decision = fn_decide(state, fn_held, now);
+
+            // Commit every field the FSM touches. We write unconditionally
+            // (even when nothing changed) so a future field added to
+            // FnFsmState can't accidentally desync the atomics — the FSM
+            // is the single source of truth for the state shape.
+            FN_KEY_DOWN.store(decision.new_state.fn_was_held, Ordering::Relaxed);
+            FN_RECORDING_ACTIVE.store(decision.new_state.recording_active, Ordering::Relaxed);
+            FN_PRESS_TIME_MS.store(decision.new_state.press_time_ms, Ordering::Relaxed);
+            LAST_FN_PRESS_TIME_MS.store(decision.new_state.last_press_time_ms, Ordering::Relaxed);
+
+            // Note: we do NOT write back `hands_free_recording` /
+            // `hands_free_start_ms` — those are set by `set_hands_free_recording`,
+            // which is called from `shortcuts.rs` on session boundaries. The
+            // FSM treats them as read-only inputs.
+
+            match decision.action {
+                FnAction::None => {}
+                FnAction::FireDoubleTap => {
+                    fnlog!(
+                        "[FnKey] Fn key DOUBLE-TAP detected ({}ms since last press)",
+                        now.saturating_sub(state.last_press_time_ms)
+                    );
+                    crate::trace::event(
+                        "hotkey.double_tap",
+                        serde_json::json!({ "gap_ms": now.saturating_sub(state.last_press_time_ms) }),
+                    );
                     if let Some(app) = APP_HANDLE.get() {
                         crate::shortcuts::handle_fn_double_tap(app);
                     }
-                } else {
-                    fnlog!("[FnKey] Fn key DOWN (flags=0x{:X}, debouncing {}ms...)", flags, FN_DEBOUNCE_MS);
                 }
-            } else if fn_held && was_held && !recording_active {
-                // Fn still held — check if debounce period has passed
-                let press_time = FN_PRESS_TIME_MS.load(Ordering::Relaxed);
-                let elapsed = now_ms() - press_time;
-                if elapsed >= FN_DEBOUNCE_MS {
-                    // Debounce passed — start recording
-                    FN_RECORDING_ACTIVE.store(true, Ordering::Relaxed);
-                    fnlog!("[FnKey] Fn key HELD ({}ms, flags=0x{:X}) — starting recording", elapsed, flags);
+                FnAction::StartRecording => {
+                    fnlog!(
+                        "[FnKey] Fn key HELD ({}ms, flags=0x{:X}) — starting recording",
+                        now.saturating_sub(state.press_time_ms),
+                        flags
+                    );
+                    crate::trace::event(
+                        "hotkey.press",
+                        serde_json::json!({
+                            "held_ms": now.saturating_sub(state.press_time_ms),
+                            "flags": format!("0x{:X}", flags),
+                        }),
+                    );
                     if let Some(app) = APP_HANDLE.get() {
                         handle_shortcut_event_public(app, ShortcutState::Pressed);
                     }
                 }
-            } else if !fn_held && was_held {
-                // Fn released (or another key now set NumericPad flag)
-                FN_KEY_DOWN.store(false, Ordering::Relaxed);
-
-                if recording_active {
-                    // Was recording — stop it
-                    FN_RECORDING_ACTIVE.store(false, Ordering::Relaxed);
+                FnAction::StopRecording => {
                     fnlog!("[FnKey] Fn key UP (flags=0x{:X}) — stopping recording", flags);
+                    crate::trace::event(
+                        "hotkey.release",
+                        serde_json::json!({ "flags": format!("0x{:X}", flags) }),
+                    );
                     if let Some(app) = APP_HANDLE.get() {
                         handle_shortcut_event_public(app, ShortcutState::Released);
                     }
-                } else {
-                    // Released before debounce — too short to start recording
-                    // (system emoji tap, or first half of a double-tap).
-                    //
-                    // We still register this as a double-tap candidate. The
-                    // previous lower bound of FN_DEBOUNCE_MS (150 ms) silently
-                    // killed double-tap detection: a natural double-tap is
-                    // ~50–100 ms per tap, so the first tap was always discarded
-                    // and the second tap never saw a `LAST_FN_PRESS_TIME_MS`
-                    // to compare against — `is_double_tap` could not become
-                    // true on macOS even when the user did exactly what was
-                    // supposed to trigger hands-free mode.
-                    //
-                    // 20 ms is enough to filter hardware/HID jitter (the timer
-                    // itself polls at 20 ms) while accepting any deliberate
-                    // tap. The 500 ms upper bound is moot in practice — at
-                    // anything ≥150 ms the recording branch above fires first
-                    // and we never reach this else — but kept defensively.
-                    let press_time = FN_PRESS_TIME_MS.load(Ordering::Relaxed);
-                    let elapsed = now_ms() - press_time;
-                    if elapsed >= 20 && elapsed < 500 {
-                        LAST_FN_PRESS_TIME_MS.store(press_time, Ordering::Relaxed);
+                }
+                FnAction::StopHandsFree => {
+                    fnlog!(
+                        "[FnKey] Fn key UP ({}ms) — single tap stops hands-free recording",
+                        now.saturating_sub(state.press_time_ms)
+                    );
+                    crate::trace::event(
+                        "hotkey.hands_free_stop",
+                        serde_json::json!({ "tap_ms": now.saturating_sub(state.press_time_ms) }),
+                    );
+                    if let Some(app) = APP_HANDLE.get() {
+                        crate::shortcuts::handle_fn_stop(app);
                     }
-                    fnlog!("[FnKey] Fn key UP ({}ms, flags=0x{:X}, ignored — too short)", elapsed, flags);
                 }
             }
         });
@@ -339,26 +779,7 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
         //   - KeyDown (10) + KeyUp (11) for the defensive F-key belt-and-
         //     suspenders path (helpful only on non-Apple keyboards that
         //     don't emit FlagsChanged for Fn)
-        let mask: u64 = (1u64 << KCG_EVENT_FLAGS_CHANGED)
-            | (1u64 << KCG_EVENT_KEY_DOWN)
-            | (1u64 << KCG_EVENT_KEY_UP);
-        let tap = CGEventTapCreate(
-            KCG_HID_EVENT_TAP,
-            KCG_TAIL_APPEND_EVENT_TAP,
-            KCG_EVENT_TAP_OPTION_LISTEN_ONLY,
-            mask,
-            fkey_tap_callback,
-            std::ptr::null_mut(),
-        );
-        if tap.is_null() {
-            fnlog!("[FnKey] CGEventTapCreate returned null — F3/F4/F6 veto disabled (Input Monitoring permission missing?)");
-        } else {
-            let source = CFMachPortCreateRunLoopSource(std::ptr::null_mut(), tap, 0);
-            let rl = CFRunLoopGetCurrent();
-            CFRunLoopAddSource(rl, source, kCFRunLoopCommonModes);
-            CGEventTapEnable(tap, 1);
-            fnlog!("[FnKey] CGEventTap armed at HID level (FlagsChanged for Fn keycode 63 + F-key safety net)");
-        }
+        install_tap("startup");
     }
 }
 
@@ -369,6 +790,21 @@ unsafe extern "C" fn fkey_tap_callback(
     _user_info: *mut std::ffi::c_void,
 ) -> CGEventRef {
     if !FN_MONITORING_ACTIVE.load(Ordering::Relaxed) {
+        return event;
+    }
+
+    // macOS delivers these two instead of a key event when it has unhooked
+    // the tap. They must be handled first: the tap is dead from this moment
+    // until it is re-armed, and every Fn press in between is lost.
+    if event_type == KCG_EVENT_TAP_DISABLED_BY_TIMEOUT
+        || event_type == KCG_EVENT_TAP_DISABLED_BY_USER_INPUT
+    {
+        let reason = if event_type == KCG_EVENT_TAP_DISABLED_BY_TIMEOUT {
+            "timeout"
+        } else {
+            "user_input"
+        };
+        re_arm_tap(reason);
         return event;
     }
 
@@ -410,6 +846,18 @@ pub fn set_fn_key_enabled(enabled: bool) {
         FN_KEY_DOWN.store(false, Ordering::Relaxed);
         FN_RECORDING_ACTIVE.store(false, Ordering::Relaxed);
         FN_PRESS_TIME_MS.store(0, Ordering::Relaxed);
+        HANDS_FREE_RECORDING.store(false, Ordering::Relaxed);
+        HANDS_FREE_START_MS.store(0, Ordering::Relaxed);
     }
     fnlog!("[FnKey] Fn key monitoring {}", if enabled { "enabled" } else { "disabled" });
+}
+
+/// Called by `shortcuts.rs` when a hands-free / toggle recording starts (`true`)
+/// or ends (`false`). While active, a single quick Fn tap stops the recording.
+/// Idempotent; safe to call from any thread.
+pub fn set_hands_free_recording(active: bool) {
+    HANDS_FREE_RECORDING.store(active, Ordering::Relaxed);
+    if active {
+        HANDS_FREE_START_MS.store(now_ms(), Ordering::Relaxed);
+    }
 }

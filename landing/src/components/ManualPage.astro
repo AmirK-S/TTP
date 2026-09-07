@@ -1,0 +1,139 @@
+---
+/**
+ * The manual, excerpted, as a web page.
+ *
+ * Research C8 / §5: the manual is the only component of the Companion that can
+ * be experienced by someone who has not installed TTP — on any device, in a
+ * browser, in ten seconds. It is also the only thing TTP owns that survives
+ * being posted as a link. Nobody upvotes a screenshot of a menu-bar icon.
+ *
+ * The split is a judgement call and the research says so: three sections of
+ * eleven here, and the Certificate of Adoption — which cannot be pre-published,
+ * because it does not exist until somebody names their pill — stays with the
+ * purchase. The certificate at the foot of this page is deliberately blank and
+ * deliberately unfilled-in.
+ *
+ * Set as a book: one measure, a serif, a rule under the running head, and
+ * nothing in the margin competing with the text.
+ */
+import Layout from '@/layouts/Layout.astro';
+import Navbar from '@/components/Navbar.astro';
+import Footer from '@/components/Footer.astro';
+import CompanionFace from '@/components/CompanionFace.astro';
+import { getLangFromUrl, getLocalizedPath, useTranslations } from '@/i18n/utils';
+import { BUY_URL, FACES } from '@/lib/coats';
+
+interface Props { altPath: string }
+const { altPath } = Astro.props;
+
+const lang = getLangFromUrl(Astro.url);
+const t = useTranslations(lang);
+
+const rest = [
+  t('man.rest1'), t('man.rest2'), t('man.rest3'), t('man.rest4'),
+  t('man.rest5'), t('man.rest6'), t('man.rest7'), t('man.rest8'),
+];
+---
+
+<Layout title={t('meta.manualTitle')} description={t('meta.manualDescription')} altPath={altPath}>
+  <Navbar />
+
+  <main id="main" class="wrap-narrow py-14 sm:py-20">
+    <a href={getLocalizedPath(lang)} class="mono text-xs text-faint hover:text-text">&larr; {t('man.back')}</a>
+
+    <header class="mt-10 border-b border-line pb-10 text-center">
+      <p class="mono text-[0.6875rem] uppercase tracking-[0.2em] text-faint">{t('man.subtitle')}</p>
+      <h1 class="display mt-4 text-[clamp(1.875rem,1.3rem+2.4vw,3rem)]">{t('man.title')}</h1>
+      <p class="caption mt-5">{t('man.edition')}</p>
+      <p class="mono mx-auto mt-7 max-w-md border border-line px-4 py-3 text-[0.6875rem] uppercase leading-relaxed tracking-[0.08em]">
+        {t('man.warning')}
+      </p>
+    </header>
+
+    <p class="mx-auto mt-8 max-w-xl text-center text-sm leading-relaxed text-faint">{t('man.excerptNote')}</p>
+
+    <article class="prose mt-14">
+      <h2>{t('man.s1Title')}</h2>
+      <p class="dropcap">{t('man.s1p1')}</p>
+      <p>{t('man.s1p2')}</p>
+      <p>{t('man.s1p3')}</p>
+      <p>{t('man.s1p4')}</p>
+      <p class="plate-note">{t('man.s1plate')}</p>
+
+      <hr class="rule !my-14" />
+
+      <h2>{t('man.s2Title')}</h2>
+      <p>{t('man.s2p1')}</p>
+      <p>{t('man.s2p2')}</p>
+      <p>{t('man.s2p3')}</p>
+      <p>{t('man.s2p4')}</p>
+
+      <h3>{t('man.s2sub')}</h3>
+      <p>{t('man.s2p5')}</p>
+      <p>{t('man.s2p6')}</p>
+      <p>{t('man.s2p7')}</p>
+      <p>{t('man.s2p8')}</p>
+      <p>{t('man.s2p9')}</p>
+      <p>{t('man.s2p10')}</p>
+      <p>{t('man.s2p11')}</p>
+
+      {/* Plate II-a, rendered rather than described: the varieties in a row,
+          at the same scale, in the same attitude. They are identical, and the
+          caption in the manual says the plate is not in error. On a screen the
+          plate can do the thing a printed one cannot — the animals are alive
+          in it, and ten seconds of watching separates them. */}
+      <figure class="!mt-10">
+        <div class="panel flex flex-wrap items-center justify-center gap-4 px-6 py-8 sm:gap-8">
+          {FACES.map((f) => (
+            <span class="pill !px-3 !py-1.5" data-face-auto-host>
+              <CompanionFace variety={f.id} uid={`plate-${f.id}`} size={26} auto />
+            </span>
+          ))}
+        </div>
+        <figcaption class="plate-note !mt-4">{t('man.s2plate')}</figcaption>
+      </figure>
+
+      <hr class="rule !my-14" />
+
+      <h2>{t('man.s3Title')}</h2>
+      <p>{t('man.s3p1')}</p>
+      <p>{t('man.s3p2')}</p>
+      <p>{t('man.s3p3')}</p>
+      <p>{t('man.s3p4')}</p>
+      <p>{t('man.s3p5')}</p>
+      <p>{t('man.s3p6')}</p>
+      <p class="plate-note">{t('man.s3plate')}</p>
+    </article>
+
+    <section class="mt-16 border-t border-line pt-10">
+      <h2 class="mono text-xs uppercase tracking-[0.14em] text-faint">{t('man.restTitle')}</h2>
+      <p class="mt-3 text-sm text-muted">{t('man.restNote')}</p>
+      <ol class="mt-5 grid gap-1.5 sm:grid-cols-2">
+        {rest.map((r, i) => (
+          <li class="flex gap-3 text-sm text-faint">
+            <span class="mono">{String(i + 1).padStart(2, '0')}</span>
+            <span>{r}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+
+    <section class="mt-14">
+      <div class="panel px-6 py-10 text-center sm:px-12 sm:py-14">
+        <p class="mono text-[0.6875rem] uppercase tracking-[0.24em] text-faint">{t('man.certTitle')}</p>
+        <p class="prose mx-auto mt-6 max-w-md !text-[0.9375rem]">{t('man.certBody')}</p>
+        <p class="mx-auto mt-7 max-w-sm border-b border-line-strong pb-1 text-center font-display text-lg text-faint">
+          {t('man.certName')}
+        </p>
+        <p class="caption mx-auto mt-8 max-w-md">{t('man.certFoot')}</p>
+      </div>
+
+      <div class="mt-8 text-center">
+        <a href={BUY_URL} target="_blank" rel="noopener" class="btn btn-primary">{t('man.cta')}</a>
+        <p class="mt-3 text-xs text-faint">{t('man.ctaNote')}</p>
+      </div>
+    </section>
+  </main>
+
+  <Footer />
+</Layout>

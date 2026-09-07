@@ -19,6 +19,7 @@
 // cost, and the pill never pulls it in at all.
 
 import { safeInvoke } from './safeInvoke';
+import { isSensitiveKey, scrubMessage } from './pii-scrub';
 
 // Same DSN as src-tauri/src/telemetry/consent.rs. Public, write-only.
 const SENTRY_DSN =
@@ -27,30 +28,25 @@ const SENTRY_DSN =
 // Subset of the Settings struct from src-tauri/src/settings/store.rs.
 type SettingsSnapshot = { telemetry_enabled?: boolean };
 
-/** Keys whose values may contain credentials or other secrets. */
-function isSensitiveKey(key: string): boolean {
-  const lower = key.toLowerCase();
-  return (
-    lower.includes('api_key') ||
-    lower.includes('apikey') ||
-    lower.includes('token') ||
-    lower.includes('password') ||
-    lower.includes('license') ||
-    lower.includes('secret')
-  );
-}
+// `isSensitiveKey` and `scrubMessage` are imported from `./pii-scrub` —
+// kept in a separate module so both the test suite and the future Sentry
+// breadcrumb hook can reach them without going through this consent-gated
+// file.
 
 /**
- * Strip obvious PII before an event leaves the device. Mirrors the scope
- * of scrub_event_pii() in src-tauri/src/telemetry/sentry.rs (cookies,
- * email/IP on user, sensitive `extra` keys). Regex-level scrubbing of
- * file paths and Groq keys inside exception messages is left to the
- * Rust side — JS exceptions don't usually carry those.
+ * Strip obvious PII before an event leaves the device. Mirrors the scope of
+ * `scrub_event_pii` in `src-tauri/src/telemetry/sentry.rs`:
+ *   - drop cookies + user.email + user.ip_address
+ *   - drop sensitive `extra` keys (denylist above)
+ *   - regex-scrub API keys / file paths / emails out of every exception
+ *     message and every breadcrumb message (previously: skipped on the JS
+ *     side because exceptions "don't usually carry those". They DO — see
+ *     `useUpdater.ts` which catches Rust IPC errors verbatim).
  *
- * Typed as `any` since we no longer import the Sentry types statically;
- * the runtime shape matches `Sentry.ErrorEvent`.
+ * Typed as `any` since we no longer import the Sentry types statically; the
+ * runtime shape matches `Sentry.ErrorEvent`.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+/* eslint-disable @typescript-eslint/no-explicit-any */
 function scrubEvent(event: any): any {
   if (event?.request?.cookies) {
     delete event.request.cookies;
@@ -66,8 +62,20 @@ function scrubEvent(event: any): any {
       }
     }
   }
+  if (event?.message) event.message = scrubMessage(event.message);
+  if (Array.isArray(event?.exception?.values)) {
+    for (const ex of event.exception.values) {
+      if (ex?.value) ex.value = scrubMessage(ex.value);
+    }
+  }
+  if (Array.isArray(event?.breadcrumbs)) {
+    for (const b of event.breadcrumbs) {
+      if (b?.message) b.message = scrubMessage(b.message);
+    }
+  }
   return event;
 }
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 let initStarted = false;
 

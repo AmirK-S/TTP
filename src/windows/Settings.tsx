@@ -2,11 +2,11 @@
 // Settings window — configure app behavior, manage dictionary/history, manage
 // the Pro license. Five IA groups: General / Capture / Pro / Data / Advanced.
 
-import { useEffect, useState, useCallback, useRef, memo } from 'react';
+import { useEffect, useState, useCallback, useRef, memo, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
+import { Volume2,
   Copy, Check, Download, RefreshCw, Crown, ArrowRight, ExternalLink,
-  User, Mic, SlidersHorizontal, Database, BookOpen,
+  User, Mic, SlidersHorizontal, Database, BookOpen, Repeat,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { invoke } from '@tauri-apps/api/core';
@@ -19,8 +19,11 @@ import { trackEvent } from '../lib/analytics';
 import { useUpdater } from '../hooks/useUpdater';
 import { useSettingsStore, DictionaryEntry, HistoryEntry } from '../stores/settings-store';
 import { PermissionBanner } from '../components/PermissionBanner';
+import { CoatPicker } from '../components/CoatPicker';
+import { FnEmojiNudge } from '../components/FnEmojiNudge';
 import type { LanguageChoice } from '../i18n/config';
 import type { ThemeChoice } from '../lib/theme';
+import { getCoatSnapshot, setCoat, subscribeCoat } from '../lib/theme-coats';
 import WhatsNew from '../components/WhatsNew';
 import {
   Button, Input, Banner, Spinner, Toggle, ConfirmDialog,
@@ -68,6 +71,7 @@ const DictionaryRow = memo(function DictionaryRow({
 const HistoryRow = memo(function HistoryRow({ entry }: { entry: HistoryEntry }) {
   const { t, i18n } = useTranslation();
   const [copied, setCopied] = useState(false);
+  const [replaying, setReplaying] = useState(false);
 
   const handleCopy = async () => {
     try {
@@ -75,6 +79,24 @@ const HistoryRow = memo(function HistoryRow({ entry }: { entry: HistoryEntry }) 
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (error) { console.error('Failed to copy:', error); }
+  };
+
+  const handleReplay = async () => {
+    if (replaying) return;
+    setReplaying(true);
+    try {
+      // Close the Settings window first so the focused-app target is
+      // whatever the user was working on, not the Settings window itself.
+      // Replay completes asynchronously on the Rust side after the window
+      // is gone — accessibility events go to the newly-focused app.
+      await getCurrentWindow().hide();
+      await new Promise((r) => setTimeout(r, 120));
+      await invoke('replay_history_entry', { text: entry.text });
+    } catch (error) {
+      console.error('Failed to replay history entry:', error);
+    } finally {
+      setReplaying(false);
+    }
   };
 
   const preview = entry.text.length > 100 ? entry.text.slice(0, 100) + '…' : entry.text;
@@ -85,15 +107,25 @@ const HistoryRow = memo(function HistoryRow({ entry }: { entry: HistoryEntry }) 
         <p className="text-[11px] text-app-faint mb-1 tabular-nums">{formatTimestamp(entry.timestamp, i18n.language)}</p>
         <p className="text-[13px] text-app-text break-words leading-relaxed">{preview}</p>
       </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={handleCopy}
-        className="opacity-0 group-hover:opacity-100 shrink-0"
-        title={t('settings.dictionary.copyTooltip')}
-      >
-        {copied ? <Check className="size-3.5 text-app-success" /> : <Copy className="size-3.5" />}
-      </Button>
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 shrink-0">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleReplay}
+          loading={replaying}
+          title={t('settings.history.replayTooltip')}
+        >
+          <Repeat className="size-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleCopy}
+          title={t('settings.dictionary.copyTooltip')}
+        >
+          {copied ? <Check className="size-3.5 text-app-success" /> : <Copy className="size-3.5" />}
+        </Button>
+      </div>
     </div>
   );
 });
@@ -181,14 +213,36 @@ function UpdatesCard() {
   const { t } = useTranslation();
   const { status, updateInfo, progress, error, checkForUpdates, downloadAndInstall, restartApp, dismiss } = useUpdater();
   const [appVersion, setAppVersion] = useState('...');
+  const [buildSha, setBuildSha] = useState<string>('');
+  const [channel, setChannel] = useState<string>('stable');
 
   useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
+  useEffect(() => {
+    // Build info: marketing version + git SHA + channel. The SHA is the
+    // ground truth when the user is on a beta — marketing version stays
+    // "3.0.0" across betas since the Windows MSI bundler rejects non-numeric
+    // pre-release suffixes.
+    invoke<{ version: string; commit_sha: string; channel: string }>('get_build_info')
+      .then((info) => {
+        setBuildSha(info.commit_sha);
+        setChannel(info.channel);
+      })
+      .catch(() => {});
+  }, []);
   useTauriEvent('update-available', () => { checkForUpdates(); });
+
+  const versionLabel = (
+    <span className="text-[11px] text-app-faint tabular-nums">
+      v{appVersion}
+      {buildSha && buildSha !== 'unknown' ? ` · ${buildSha}` : ''}
+      {channel === 'beta' ? ' · beta' : ''}
+    </span>
+  );
 
   return (
     <SettingsSection
       title={t('settings.updates.title')}
-      action={<span className="text-[11px] text-app-faint tabular-nums">v{appVersion}</span>}
+      action={versionLabel}
     >
       <div className="space-y-3">
         {status === 'idle' && (
@@ -254,9 +308,10 @@ export function Settings() {
   const { t } = useTranslation();
   const {
     aiPolishEnabled, telemetryEnabled, shortcut, handsFreeMode, hidePillWhenInactive,
-    autostartEnabled, historyEnabled, language, theme, dictionary, history, loading, isPro, licenseKey,
+    autostartEnabled, historyEnabled, vadAutoStopEnabled, vadSilenceSecs, audioDeviceName,
+    transcriptionLanguage, diagnosticsEnabled, language, theme, dictionary, history, loading, isPro, licenseKey,
     licenseStatus, licenseExpiresAt, licenseActivationCount, licenseActivationLimit,
-    licenseLoading, licenseError, usage,
+    licenseLoading, licenseError, soundPack, companionFaceEnabled, companionName,
     loadSettings, saveSettings, resetSettings, loadDictionary, deleteEntry,
     clearDictionary, loadHistory, clearHistory, loadLicense, activateLicense,
     deactivateLicense, validateLicense, loadUsage,
@@ -360,9 +415,9 @@ export function Settings() {
 
   useTauriEvent('dictionary-changed', () => { loadDictionary(); loadUsage(); });
 
-  /* ---- Generic toggle factory: cuts 6 near-identical handlers down to 1 --- */
+  /* ---- Generic toggle factory: cuts 7 near-identical handlers down to 1 --- */
   const makeToggle = useCallback(
-    <K extends 'ai_polish_enabled' | 'telemetry_enabled' | 'hands_free_mode' | 'hide_pill_when_inactive' | 'history_enabled'>(
+    <K extends 'ai_polish_enabled' | 'telemetry_enabled' | 'hands_free_mode' | 'hide_pill_when_inactive' | 'history_enabled' | 'vad_auto_stop_enabled' | 'diagnostics_enabled' | 'companion_face_enabled'>(
       key: K,
       sideEffect?: () => void,
     ) => async (enabled: boolean) => {
@@ -380,6 +435,44 @@ export function Settings() {
   const handleHandsFreeModeToggle = makeToggle('hands_free_mode');
   const handleHidePillWhenInactiveToggle = makeToggle('hide_pill_when_inactive');
   const handleHistoryEnabledToggle = makeToggle('history_enabled');
+  const handleVadAutoStopToggle = makeToggle('vad_auto_stop_enabled');
+  const handleDiagnosticsToggle = makeToggle('diagnostics_enabled');
+  const handleVadSilenceSecsChange = useCallback(
+    async (raw: number) => {
+      // Clamp to the same window the Rust side enforces.
+      const next = Math.min(10, Math.max(1, Math.round(raw)));
+      try {
+        await saveSettings({ vad_silence_secs: next });
+      } catch (error) {
+        console.error('Failed to save vad_silence_secs:', error);
+      }
+    },
+    [saveSettings],
+  );
+
+  // Audio input devices: enumerated on Settings open + on focus return so
+  // a user who hot-plugs a USB mic sees it without restarting.
+  const [audioDevices, setAudioDevices] = useState<Array<{ name: string; is_default: boolean }>>([]);
+  const refreshAudioDevices = useCallback(() => {
+    invoke<Array<{ name: string; is_default: boolean }>>('list_audio_input_devices')
+      .then(setAudioDevices)
+      .catch((e) => console.error('[Settings] list_audio_input_devices failed:', e));
+  }, []);
+  useEffect(() => {
+    refreshAudioDevices();
+  }, [refreshAudioDevices]);
+  const handleAudioDeviceChange = useCallback(
+    async (raw: string) => {
+      // Empty string from the <select> means "use the OS default".
+      const next = raw === '' ? null : raw;
+      try {
+        await saveSettings({ audio_device_name: next });
+      } catch (error) {
+        console.error('Failed to save audio_device_name:', error);
+      }
+    },
+    [saveSettings],
+  );
 
   const handleGroqKeySave = async () => {
     if (!groqApiKey.trim()) return;
@@ -487,17 +580,65 @@ export function Settings() {
 
   const maskedLicenseKey = licenseKey ? `${licenseKey.slice(0, 4)}…${licenseKey.slice(-4)}` : '';
 
-  const isInTrial = !!usage?.is_in_trial && !isPro;
-  const trialDaysLeft = usage?.trial_days_left ?? 0;
-  const polishUsed = usage?.polish_count_this_month ?? 0;
-  const polishLimit = usage?.polish_limit_free ?? 0;
-  const dictCount = usage?.dictionary_count ?? dictionary.length;
-  const dictLimit = usage?.dictionary_limit_free ?? 20;
-  const histCount = usage?.history_count ?? history.length;
-  const histLimit = usage?.history_limit_free ?? 50;
-  const dictAtCap = !isPro && !isInTrial && dictCount >= dictLimit;
-  const histAtCap = !isPro && !isInTrial && histCount >= histLimit;
-  const polishAtCap = !isPro && !isInTrial && polishUsed >= polishLimit;
+  // The Companion catalogue. Locked packs are listed on purpose — you should
+  // be able to hear what you might buy, and a list that hides its contents
+  // cannot tempt anyone.
+  //
+  // THREE STATES, NOT TWO. `null` means "the answer has not arrived"; a value
+  // means the backend answered; `companionError` means it could not be
+  // reached. These used to collapse into two: a failed `list_sound_packs`
+  // called `setSoundPacks([])` and a failed `cosmetics_unlocked` called
+  // `setCosmeticsUnlocked(false)`, so an IPC failure was indistinguishable
+  // from an honest empty catalogue and from not having bought anything. The
+  // panel then hid itself on `packs.length === 0`. A paying customer whose
+  // IPC call failed was shown, with no error anywhere, the exact UI that says
+  // "you do not own this" — the app accusing its own buyer of not paying.
+  const [soundPacks, setSoundPacks] = useState<SoundPack[] | null>(null);
+  const [cosmeticsUnlocked, setCosmeticsUnlocked] = useState<boolean | null>(null);
+  const [companionError, setCompanionError] = useState(false);
+  const [nameDraft, setNameDraft] = useState(companionName);
+
+  useEffect(() => { setNameDraft(companionName); }, [companionName]);
+
+  const loadCompanion = useCallback(() => {
+    setCompanionError(false);
+    // Both calls must land before the panel can say anything true: the
+    // catalogue without the entitlement would paint every paid pack as
+    // locked. Either failing is one failure, reported once.
+    Promise.all([
+      invoke<SoundPack[]>('list_sound_packs'),
+      invoke<boolean>('cosmetics_unlocked'),
+    ])
+      .then(([packs, unlocked]) => {
+        setSoundPacks(packs);
+        setCosmeticsUnlocked(unlocked);
+      })
+      .catch((e) => {
+        console.error('companion:', e);
+        setSoundPacks(null);
+        setCosmeticsUnlocked(null);
+        setCompanionError(true);
+      });
+  }, []);
+
+  useEffect(() => { loadCompanion(); }, [isPro, loadCompanion]);
+
+  const handleSelectPack = useCallback(async (id: string) => {
+    try { await saveSettings({ sound_pack: id }); } catch (e) { console.error('sound_pack:', e); }
+  }, [saveSettings]);
+
+  const handleCompanionFaceToggle = makeToggle('companion_face_enabled');
+
+  const commitCompanionName = useCallback(async () => {
+    const next = nameDraft.trim();
+    if (next === companionName) return;
+    try { await saveSettings({ companion_name: next || null }); }
+    catch (e) { console.error('companion_name:', e); }
+  }, [nameDraft, companionName, saveSettings]);
+
+  // No caps, so no "at cap" states, no trial countdown, and no x/y rows
+  // counting down to a paywall. Every feature is free and unlimited; a
+  // licence is a thank-you, not a key.
 
   const triggerOptions = isMac
     ? [
@@ -524,6 +665,11 @@ export function Settings() {
     { value: 'fr', label: t('settings.language.optionFrench') },
   ];
 
+  // The painted coat, read from the DOM attribute rather than mirrored into
+  // component state, so the picker and the document cannot disagree — a coat
+  // set from another window arrives as an event, not as a re-render here.
+  const coat = useSyncExternalStore(subscribeCoat, getCoatSnapshot, getCoatSnapshot);
+
   const themeOptions: { value: ThemeChoice; label: string }[] = [
     { value: 'system', label: t('settings.theme.optionSystem') },
     { value: 'light', label: t('settings.theme.optionLight') },
@@ -534,7 +680,7 @@ export function Settings() {
     <div className="h-screen flex bg-app-bg text-app-text bg-noise">
       <SettingsSidebar />
       <main className="flex-1 min-w-0 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-8 pt-8 pb-12">
+        <div className="ttp-scroll max-w-2xl mx-auto px-8 pt-8 pb-12">
           <PermissionBanner />
 
           {/* ===== GENERAL ===== */}
@@ -588,6 +734,30 @@ export function Settings() {
                   />
                 ))}
               </div>
+            </SettingsSection>
+
+            {/* The coat.
+
+                It sits with the other appearance settings rather than in the
+                Support section on purpose. Four of the five coats arrive with
+                the Companion, but a picker parked inside the purchase block
+                reads as a shop window, and a picker that turns into an upsell
+                the moment you scroll to it is the thing this product does not
+                do. This is an appearance setting. The free coat is the default
+                and it is first. */}
+            <SettingsSection title={t('settings.appearance.title')} description={t('settings.appearance.desc')}>
+              {/* `=== true`: while the entitlement is unknown, show the free
+                  coat rather than guessing in either direction. CoatPicker
+                  belongs to another workstream and keeps its boolean. */}
+              <CoatPicker
+                value={coat}
+                unlocked={cosmeticsUnlocked === true}
+                disabled={loading}
+                onSelect={(id) => {
+                  setCoat(id, cosmeticsUnlocked === true, { animate: true });
+                  trackEvent('setting_changed', { setting_name: 'coat', new_value: id });
+                }}
+              />
             </SettingsSection>
 
             <SettingsSection title={t('settings.startup.title')}>
@@ -650,6 +820,8 @@ export function Settings() {
                 ))}
               </div>
 
+              <FnEmojiNudge />
+
               {shortcutError && (
                 <div className="mt-4 space-y-2">
                   <p className="text-[13px] text-app-danger">{showShortcutError}</p>
@@ -682,6 +854,67 @@ export function Settings() {
                 description={t('settings.recordingMode.hidePillDesc')}
                 control={<Toggle enabled={hidePillWhenInactive} onChange={handleHidePillWhenInactiveToggle} disabled={loading} />}
               />
+              <div className="border-t border-app-border my-1" />
+              <SettingsRow
+                label={t('settings.recordingMode.vadAutoStopLabel')}
+                description={t('settings.recordingMode.vadAutoStopDesc')}
+                control={<Toggle enabled={vadAutoStopEnabled} onChange={handleVadAutoStopToggle} disabled={loading} />}
+              />
+              {vadAutoStopEnabled && (
+                <div className="pl-1 py-2 flex items-center gap-3">
+                  <label
+                    htmlFor="vad-silence-secs"
+                    className="text-[12px] text-app-muted shrink-0"
+                  >
+                    {t('settings.recordingMode.vadSilenceSecsLabel')}
+                  </label>
+                  <input
+                    id="vad-silence-secs"
+                    type="range"
+                    min={1}
+                    max={10}
+                    step={1}
+                    value={vadSilenceSecs}
+                    onChange={(e) => handleVadSilenceSecsChange(Number(e.target.value))}
+                    disabled={loading}
+                    className="flex-1 accent-app-accent"
+                  />
+                  <span className="text-[12px] font-medium tabular-nums text-app-text w-10 text-right">
+                    {vadSilenceSecs}s
+                  </span>
+                </div>
+              )}
+              <div className="border-t border-app-border my-1" />
+              <div className="py-2">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <label
+                      htmlFor="audio-device-select"
+                      className="text-[13px] font-medium text-app-text"
+                    >
+                      {t('settings.recordingMode.audioDeviceLabel')}
+                    </label>
+                    <p className="mt-0.5 text-[12px] text-app-muted leading-relaxed">
+                      {t('settings.recordingMode.audioDeviceDesc')}
+                    </p>
+                  </div>
+                  <select
+                    id="audio-device-select"
+                    value={audioDeviceName ?? ''}
+                    onChange={(e) => handleAudioDeviceChange(e.target.value)}
+                    onFocus={refreshAudioDevices}
+                    disabled={loading}
+                    className="h-8 rounded-app-md border border-app-border bg-app-surface px-2 text-[13px] text-app-text shrink-0 max-w-[55%] focus:border-app-accent focus:outline-none"
+                  >
+                    <option value="">{t('settings.recordingMode.audioDeviceDefault')}</option>
+                    {audioDevices.map((d) => (
+                      <option key={d.name} value={d.name}>
+                        {d.is_default ? `${d.name} ${t('settings.recordingMode.audioDeviceDefaultSuffix')}` : d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </SettingsSection>
 
             <SettingsSection title={t('settings.transcription.title')}>
@@ -703,6 +936,8 @@ export function Settings() {
                         onChange={(e) => setGroqApiKey(e.target.value)}
                         placeholder={t('settings.transcription.keyPlaceholder')}
                         className="flex-1"
+                        aria-label={t('form.apiKey.label')}
+                        autoComplete="off"
                       />
                       <Button
                         onClick={handleGroqKeySave}
@@ -730,6 +965,38 @@ export function Settings() {
                   control={<Toggle enabled={aiPolishEnabled} onChange={handlePolishToggle} disabled={loading} />}
                 />
               </div>
+              <div className="border-t border-app-border pt-4 py-2">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <label
+                      htmlFor="transcription-language-select"
+                      className="text-[13px] font-medium text-app-text"
+                    >
+                      {t('settings.transcription.languageLabel')}
+                    </label>
+                    <p className="mt-0.5 text-[12px] text-app-muted leading-relaxed">
+                      {t('settings.transcription.languageDesc')}
+                    </p>
+                  </div>
+                  <select
+                    id="transcription-language-select"
+                    value={transcriptionLanguage}
+                    onChange={(e) =>
+                      saveSettings({
+                        transcription_language: e.target.value === 'auto' ? null : e.target.value,
+                      }).catch((err) =>
+                        console.error('Failed to save transcription_language:', err),
+                      )
+                    }
+                    disabled={loading}
+                    className="h-8 rounded-app-md border border-app-border bg-app-surface px-2 text-[13px] text-app-text shrink-0 focus:border-app-accent focus:outline-none"
+                  >
+                    <option value="auto">{t('settings.transcription.languageAuto')}</option>
+                    <option value="en">{t('settings.transcription.languageEnglish')}</option>
+                    <option value="fr">{t('settings.transcription.languageFrench')}</option>
+                  </select>
+                </div>
+              </div>
             </SettingsSection>
           </div>
 
@@ -742,15 +1009,10 @@ export function Settings() {
               title={t('settings.pro.title')}
               action={
                 <div className="flex items-center gap-2">
-                  <Crown className={cn('size-4', isPro || isInTrial ? 'text-app-warning' : 'text-app-faint')} />
+                  <Crown className={cn('size-4', isPro ? 'text-app-warning' : 'text-app-faint')} />
                   {isPro && (
                     <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-app-warning-tint text-app-warning">
                       {t('settings.pro.badgeActive')}
-                    </span>
-                  )}
-                  {!isPro && isInTrial && (
-                    <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-app-accent-tint text-app-accent">
-                      {t('settings.pro.badgeTrial', { days: trialDaysLeft })}
                     </span>
                   )}
                 </div>
@@ -759,15 +1021,23 @@ export function Settings() {
               {!isPro ? (
                 <>
                   <p className="text-[13px] text-app-muted mb-4">
-                    {isInTrial ? t('settings.pro.descTrial', { days: trialDaysLeft }) : t('settings.pro.descFree')}
+                    {t('settings.pro.descFree')}
                   </p>
-                  {!isInTrial && (
-                    <div className="space-y-2 mb-4 p-3 bg-app-raised rounded-app-sm border border-app-border">
-                      <UsageRow label={t('settings.pro.usagePolish')} used={polishUsed} limit={polishLimit} atCap={polishAtCap} />
-                      <UsageRow label={t('settings.pro.usageDictionary')} used={dictCount} limit={dictLimit} atCap={dictAtCap} />
-                      <UsageRow label={t('settings.pro.usageHistory')} used={histCount} limit={histLimit} atCap={histAtCap} />
-                    </div>
-                  )}
+                  <CompanionPanel
+                    t={t}
+                    packs={soundPacks}
+                    unlocked={cosmeticsUnlocked}
+                    error={companionError}
+                    onRetry={loadCompanion}
+                    selected={soundPack}
+                    onSelect={handleSelectPack}
+                    faceEnabled={companionFaceEnabled}
+                    onFaceToggle={handleCompanionFaceToggle}
+                    nameDraft={nameDraft}
+                    setNameDraft={setNameDraft}
+                    commitName={commitCompanionName}
+                    loading={loading}
+                  />
                   <div className="space-y-2 mb-4">
                     <Input
                       type="text"
@@ -778,6 +1048,7 @@ export function Settings() {
                       disabled={licenseLoading}
                       className="font-mono"
                       onKeyDown={(e) => { if (e.key === 'Enter' && licenseInput.trim()) handleActivateLicense(); }}
+                      aria-label={t('settings.pro.labelKey')}
                     />
                     {licenseError && <p className="text-[12px] text-app-danger">{showLicenseError}</p>}
                   </div>
@@ -798,6 +1069,21 @@ export function Settings() {
                 </>
               ) : (
                 <>
+                  <CompanionPanel
+                    t={t}
+                    packs={soundPacks}
+                    unlocked={cosmeticsUnlocked}
+                    error={companionError}
+                    onRetry={loadCompanion}
+                    selected={soundPack}
+                    onSelect={handleSelectPack}
+                    faceEnabled={companionFaceEnabled}
+                    onFaceToggle={handleCompanionFaceToggle}
+                    nameDraft={nameDraft}
+                    setNameDraft={setNameDraft}
+                    commitName={commitCompanionName}
+                    loading={loading}
+                  />
                   <div className="space-y-2 mb-4">
                     <ProInfoRow label={t('settings.pro.labelKey')} value={<span className="font-mono">{maskedLicenseKey}</span>} />
                     <ProInfoRow label={t('settings.pro.labelStatus')} value={<span className="capitalize">{licenseStatus ?? t('settings.pro.statusUnknown')}</span>} />
@@ -849,35 +1135,30 @@ export function Settings() {
             >
               <div className="mb-4 flex gap-2 items-end">
                 <div className="flex-1">
-                  <label className="block text-[11px] text-app-muted mb-1 font-medium">{t('settings.dictionary.labelMisheard')}</label>
+                  <label htmlFor="dict-original" className="block text-[11px] text-app-muted mb-1 font-medium">{t('settings.dictionary.labelMisheard')}</label>
                   <Input
+                    id="dict-original"
                     type="text"
                     value={newOriginal}
                     onChange={(e) => setNewOriginal(e.target.value)}
                     placeholder={t('settings.dictionary.placeholderMisheard')}
-                    disabled={dictAtCap}
                   />
                 </div>
                 <ArrowRight className="size-4 text-app-faint shrink-0 mb-2.5" aria-hidden />
                 <div className="flex-1">
-                  <label className="block text-[11px] text-app-muted mb-1 font-medium">{t('settings.dictionary.labelCorrection')}</label>
+                  <label htmlFor="dict-correction" className="block text-[11px] text-app-muted mb-1 font-medium">{t('settings.dictionary.labelCorrection')}</label>
                   <Input
+                    id="dict-correction"
                     type="text"
                     value={newCorrection}
                     onChange={(e) => setNewCorrection(e.target.value)}
                     placeholder={t('settings.dictionary.placeholderCorrection')}
-                    disabled={dictAtCap}
                   />
                 </div>
-                <Button onClick={handleAddEntry} disabled={!newOriginal.trim() || !newCorrection.trim() || dictAtCap}>
+                <Button onClick={handleAddEntry} disabled={!newOriginal.trim() || !newCorrection.trim()}>
                   {t('common.add')}
                 </Button>
               </div>
-              {dictAtCap && (
-                <Banner tone="warning" className="mb-3">
-                  {t('settings.dictionary.limitReached', { limit: dictLimit })}
-                </Banner>
-              )}
               {addEntryError && <p className="text-[13px] text-app-danger mb-3">{addEntryError}</p>}
 
               {dictionary.length === 0 ? (
@@ -940,6 +1221,39 @@ export function Settings() {
           {/* ===== ADVANCED ===== */}
           <div id="advanced" data-section="advanced" className="scroll-mt-6">
             <UpdateChannelCard />
+
+            <SettingsSection
+              title={t('settings.logs.title')}
+              description={t('settings.logs.desc')}
+            >
+              <SettingsRow
+                label={t('settings.diagnostics.label')}
+                description={t('settings.diagnostics.desc')}
+                control={<Toggle enabled={diagnosticsEnabled} onChange={handleDiagnosticsToggle} disabled={loading} />}
+              />
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    invoke('reveal_log_folder').catch((e) =>
+                      console.error('[Settings] reveal_log_folder failed:', e),
+                    );
+                  }}
+                >
+                  {t('settings.logs.button')}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    invoke('reveal_recordings_folder').catch((e) =>
+                      console.error('[Settings] reveal_recordings_folder failed:', e),
+                    );
+                  }}
+                >
+                  {t('settings.logs.recordingsButton')}
+                </Button>
+              </div>
+            </SettingsSection>
 
             <SettingsSection title={t('settings.reset.title')} description={t('settings.reset.desc')}>
               <Button
@@ -1025,13 +1339,167 @@ export function Settings() {
    Misc inline helpers
    ------------------------------------------------------------------------- */
 
-function UsageRow({ label, used, limit, atCap }: { label: string; used: number; limit: number; atCap: boolean }) {
+interface SoundPack {
+  id: string;
+  free: boolean;
+}
+
+/**
+ * The Companion: sound packs, a face, a name.
+ *
+ * Nothing here changes what TTP does — see docs/ttp-pro-design.md. Previewing
+ * works whether or not the packs are unlocked, because hearing what you might
+ * buy is not the same as owning it. Selecting a locked pack is refused in the
+ * backend too, so this UI is a courtesy, not the enforcement.
+ */
+function CompanionPanel({
+  t, packs, unlocked, error, onRetry, selected, onSelect, faceEnabled, onFaceToggle,
+  nameDraft, setNameDraft, commitName, loading,
+}: {
+  t: (k: string) => string;
+  /** `null` = not loaded yet. `[]` = the backend really has no packs. */
+  packs: SoundPack[] | null;
+  /** `null` = entitlement unknown. Never render a lock on an unknown. */
+  unlocked: boolean | null;
+  error: boolean;
+  onRetry: () => void;
+  selected: string;
+  onSelect: (id: string) => void;
+  faceEnabled: boolean;
+  onFaceToggle: (v: boolean) => void;
+  nameDraft: string;
+  setNameDraft: (v: string) => void;
+  commitName: () => void;
+  loading: boolean;
+}) {
+  // The failure is louder than the empty state on purpose, and it says what it
+  // is: a broken call, not a verdict on what the user owns.
+  if (error) {
+    return (
+      <div className="mb-5">
+        <p className="text-[12px] font-medium text-app-text mb-2">{t('settings.companion.soundsLabel')}</p>
+        <Banner
+          tone="warning"
+          title={t('error.companion_unreachable_title')}
+          action={
+            <button
+              type="button"
+              onClick={onRetry}
+              className="text-[12px] font-medium text-app-accent hover:underline"
+            >
+              {t('error.retry')}
+            </button>
+          }
+        >
+          {t('error.companion_unreachable')}
+        </Banner>
+      </div>
+    );
+  }
+
+  // Not loaded yet, or genuinely empty. Neither is worth a message.
+  if (packs === null || packs.length === 0) return null;
+
   return (
-    <div className="flex items-center justify-between text-[12px]">
-      <span className="text-app-muted">{label}</span>
-      <span className={cn('font-mono tabular-nums', atCap ? 'text-app-danger font-semibold' : 'text-app-text')}>
-        {used} / {limit}
-      </span>
+    <div className="mb-5">
+      <p className="text-[12px] font-medium text-app-text mb-2">{t('settings.companion.soundsLabel')}</p>
+      <div className="space-y-1.5 mb-4">
+        {packs.map((pack) => {
+          // `unlocked === true`, not `!unlocked`: an unknown entitlement must
+          // not be rendered as a lock. Unknown cannot reach here today (the
+          // error branch above catches it) and this keeps it that way if a
+          // future caller passes a partial load.
+          const locked = !pack.free && unlocked !== true;
+          return (
+            // The preview control is a SIBLING of the RadioOption, not its
+            // `trailing`. RadioOption renders a <button>, so anything
+            // interactive passed into it becomes a button inside a button —
+            // invalid HTML, and browsers resolve it by swallowing the inner
+            // click roughly half the time. Passing `trailing` also suppresses
+            // the description, which is why the pack blurbs were invisible.
+            <div key={pack.id} className="flex items-center gap-2">
+              {/* Not RadioOption. That component lays label and description
+                  side by side in a justify-between row with shrink-0 on the
+                  description — it is built for a short trailing word like
+                  "Recommended", and a full sentence collides with the name,
+                  which is exactly what shipped. A sentence goes underneath. */}
+              <button
+                type="button"
+                onClick={() => !locked && onSelect(pack.id)}
+                disabled={locked || loading}
+                aria-pressed={selected === pack.id}
+                className={cn(
+                  'flex-1 min-w-0 flex items-start gap-3 px-4 py-3 text-left',
+                  'rounded-app-md border border-app-border bg-app-surface',
+                  'transition-[background-color,border-color] duration-hover ease-app-out',
+                  'hover:bg-app-raised hover:border-app-border-strong',
+                  selected === pack.id && 'border-app-accent bg-app-accent-tint',
+                  (locked || loading) && 'opacity-50 cursor-not-allowed',
+                )}
+              >
+                <span
+                  className={cn(
+                    'mt-0.5 size-4 rounded-full border-2 grid place-items-center shrink-0',
+                    selected === pack.id ? 'border-app-accent' : 'border-app-border-strong',
+                  )}
+                  aria-hidden
+                >
+                  {selected === pack.id && <span className="size-2 rounded-full bg-app-accent" />}
+                </span>
+                <span className="min-w-0">
+                  <span className={cn(
+                    'block text-[13px]',
+                    selected === pack.id ? 'text-app-accent font-medium' : 'text-app-text',
+                  )}>
+                    {t(`settings.companion.packs.${pack.id}.name`)}
+                  </span>
+                  <span className="block text-[12px] text-app-faint mt-0.5">
+                    {t(`settings.companion.packs.${pack.id}.desc`)}
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { invoke('preview_sound_pack', { packId: pack.id }).catch(() => {}); }}
+                aria-label={`${t('settings.companion.preview')} — ${t(`settings.companion.packs.${pack.id}.name`)}`}
+                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-app-sm border border-app-border
+                           text-[12px] font-medium text-app-muted
+                           hover:text-app-text hover:bg-app-raised active:scale-[0.97] transition"
+              >
+                <Volume2 className="size-3.5" />
+                {t('settings.companion.preview')}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <SettingsRow
+        label={t('settings.companion.faceLabel')}
+        description={t('settings.companion.faceDesc')}
+        control={
+          <Toggle
+            enabled={faceEnabled}
+            onChange={onFaceToggle}
+            disabled={unlocked !== true || loading}
+          />
+        }
+      />
+
+      {faceEnabled && unlocked === true && (
+        <div className="mt-3">
+          <p className="text-[12px] font-medium text-app-text mb-1.5">{t('settings.companion.nameLabel')}</p>
+          <Input
+            type="text"
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            onBlur={commitName}
+            onKeyDown={(e) => { if (e.key === 'Enter') commitName(); }}
+            placeholder={t('settings.companion.namePlaceholder')}
+            maxLength={24}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -1091,7 +1559,7 @@ function SettingsSidebar() {
   };
 
   return (
-    <aside className="w-56 shrink-0 bg-app-dim border-r border-app-border flex flex-col h-screen sticky top-0">
+    <aside className="ttp-sidebar w-56 shrink-0 bg-app-dim border-r border-app-border flex flex-col h-screen sticky top-0">
       <div className="px-5 pt-6 pb-4">
         <div className="flex items-center gap-2.5">
           <BrandTile size="sm" />

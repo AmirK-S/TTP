@@ -1,0 +1,7 @@
+[2026-09-01 10:00:00.010] [········]          app.launched {"arch":"aarch64","os":"macos","version":"3.1.6"}
+[2026-09-01 10:00:00.020] [········]          state.transition {"from":"Idle","to":"Recording"}
+[2026-09-01 10:00:00.030] [········]          state.transition {"from":"Processing","to":"Idle"}
+[2026-09-01 10:00:01.030] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:02.030] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:03.030] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:04.030] [········]          hotkey.tap_armed {}

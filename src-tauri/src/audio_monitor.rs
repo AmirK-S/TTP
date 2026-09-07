@@ -1,149 +1,123 @@
 // TTP - Talk To Paste
-// Real-time audio level monitoring for pill wave visualization
+// Real-time audio level monitoring for the pill waveform visualisation.
 //
-// Opens a separate cpal input stream to compute RMS volume levels
-// and emits them as Tauri events (~30fps) for the pill window bars.
+// History: until v3.1 this module owned a SECOND cpal input stream opened
+// in parallel with the WAV-writing stream in `audio_capture`. On CoreAudio
+// (and several WASAPI drivers) the second `default_input_device()` open
+// against the same device can fail or degrade silently — symptom was the
+// intermittent "recording captured nothing" failure mode flagged by the
+// audit as high.
+//
+// v3.1: there is no longer a second stream. `audio_capture` computes RMS
+// inside its existing write callback and publishes via
+// `audio_capture::current_rms()`. This module just polls that bucket at
+// ~30fps and emits `audio-level` events.
+//
+// Side benefit: this thread no longer needs cpal at all — it's a pure
+// "read atomic, emit event, sleep" loop. Easy to reason about, no stream
+// lifecycle bugs.
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 use tauri::{AppHandle, Emitter};
+use tauri_plugin_global_shortcut::ShortcutState;
 
-/// Whether the monitor is currently active
+/// Hard upper bound on a single recording session, in seconds. Past this
+/// point the watchdog forces a stop so a user who walked away mid-session
+/// (forgot to release the hotkey, double-tap entered hands-free and never
+/// re-engaged) doesn't end up with a 30-minute file that fails Groq's
+/// 25 MB upload limit downstream.
+///
+/// Also keeps a runaway hands-free session from hammering CPU forever.
+pub const MAX_RECORDING_SECS: u64 = 5 * 60;
+
+/// Whether the monitor loop is currently active.
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 
-/// Start monitoring microphone input levels.
-/// Spawns a background thread that emits `audio-level` events at ~30fps.
-/// Safe to call multiple times — subsequent calls are no-ops while active.
+/// Start emitting `audio-level` events at ~30fps from the shared RMS bucket
+/// that `audio_capture` updates inside its WAV-writing callback.
+///
+/// Safe to call multiple times. Subsequent calls are no-ops while the loop
+/// is already running.
 pub fn start(app: AppHandle) {
     if ACTIVE.swap(true, Ordering::SeqCst) {
         return; // Already running
     }
 
-    // Use Tauri's blocking runtime so cpal callbacks live inside the
-    // tokio reactor (raw std::thread::spawn caused "no reactor running"
-    // panics in TTP-B; same latent risk here).
+    // Use Tauri's blocking runtime so the spawn binds to the active reactor.
+    // Bare `std::thread::spawn` historically panicked here with "no reactor
+    // running" on macOS (TTP-B) when the emit fired from a thread detached
+    // from the Tauri runtime.
     tauri::async_runtime::spawn_blocking(move || {
         if let Err(e) = run(&app) {
-            eprintln!("[AudioMonitor] Failed: {}", e);
+            crate::logging::log_warn(&format!("[AudioMonitor] Failed: {}", e));
         }
         ACTIVE.store(false, Ordering::SeqCst);
     });
 }
 
-/// Stop the audio level monitor.
+/// Stop the audio level monitor. The loop checks ACTIVE between ticks and
+/// exits within ~33ms.
 pub fn stop() {
     ACTIVE.store(false, Ordering::SeqCst);
 }
 
-/// Main monitor loop: opens cpal input stream, reads RMS, emits events.
+/// Main monitor loop: read the shared RMS bucket, emit normalised levels
+/// to the pill window, and enforce the hard recording-duration ceiling.
 fn run(app: &AppHandle) -> Result<(), String> {
-    let host = cpal::default_host();
-    let device = host
-        .default_input_device()
-        .ok_or("No input device available")?;
-    let config = device
-        .default_input_config()
-        .map_err(|e| format!("No input config: {}", e))?;
-
-    // Shared RMS level (f32 stored as u32 bits for atomic access)
-    let level = Arc::new(AtomicU32::new(0f32.to_bits()));
-    let level_writer = level.clone();
-
-    let stream = match config.sample_format() {
-        cpal::SampleFormat::F32 => {
-            let lw = level_writer;
-            let err_app = app.clone();
-            device
-                .build_input_stream(
-                    &config.config(),
-                    move |data: &[f32], _| {
-                        let rms = rms_f32(data);
-                        lw.store(rms.to_bits(), Ordering::Relaxed);
-                    },
-                    move |e| handle_stream_error(&err_app, e),
-                    None,
-                )
-                .map_err(|e| format!("Failed to build F32 stream: {}", e))?
-        }
-        cpal::SampleFormat::I16 => {
-            let lw = level_writer;
-            let err_app = app.clone();
-            device
-                .build_input_stream(
-                    &config.config(),
-                    move |data: &[i16], _| {
-                        let rms = rms_i16(data);
-                        lw.store(rms.to_bits(), Ordering::Relaxed);
-                    },
-                    move |e| handle_stream_error(&err_app, e),
-                    None,
-                )
-                .map_err(|e| format!("Failed to build I16 stream: {}", e))?
-        }
-        format => return Err(format!("Unsupported sample format: {:?}", format)),
-    };
-
-    stream.play().map_err(|e| format!("Failed to play: {}", e))?;
-
-    // Emit audio level events at ~30fps
+    let started_at = Instant::now();
+    // Latched so a dead input is announced once, not thirty times a second.
+    let mut dead_input_reported = false;
     while ACTIVE.load(Ordering::SeqCst) {
-        let rms = f32::from_bits(level.load(Ordering::Relaxed));
-        // Amplify RMS (raw mic RMS is typically 0.0-0.2 for speech)
+        // Hard duration cap. We check from the audio_monitor (always live
+        // during Recording) so the cap applies regardless of whether VAD
+        // is opt-in or not. If the user crossed the threshold, force a
+        // stop via the same code path as a manual release — the pipeline
+        // then transcribes whatever we have and returns to Idle.
+        if started_at.elapsed().as_secs() >= MAX_RECORDING_SECS {
+            crate::logging::log_warn(&format!(
+                "[AudioMonitor] hard duration cap reached ({}s), forcing stop",
+                MAX_RECORDING_SECS
+            ));
+            crate::shortcuts::handle_shortcut_event_public(app, ShortcutState::Released);
+            ACTIVE.store(false, Ordering::SeqCst);
+            break;
+        }
+
+        // Say it while there is still time to act on it.
+        //
+        // A capture that has delivered nothing but zeros past the grace
+        // period is not going to start working, and the user is talking into
+        // it. Told at second two they lose one sentence and go fix their
+        // headphones; told at the end — which is how we found this, after a
+        // twenty-one second dictation came back empty — they lose everything
+        // and have no idea why. Emitted once per capture, so it is a warning
+        // rather than a stream of them.
+        if !dead_input_reported {
+            if let Some(elapsed) = crate::audio_capture::dead_input_elapsed_ms() {
+                dead_input_reported = true;
+                crate::logging::log_warn(&format!(
+                    "[AudioMonitor] {}ms into this recording and the microphone has \
+                     delivered nothing but silence.",
+                    elapsed
+                ));
+                crate::trace::event(
+                    "capture.dead_input_detected",
+                    serde_json::json!({
+                        "ms": elapsed,
+                        "device": crate::audio_capture::last_capture_device(),
+                    }),
+                );
+                app.emit("audio-dead-input", elapsed).ok();
+            }
+        }
+
+        let rms = crate::audio_capture::current_rms();
+        // Amplify RMS (typical speech RMS sits around 0.0-0.2) and cap at 1.0
+        // so the pill's transform-scale stays inside its bounded envelope.
         let normalized = (rms * 18.0).min(1.0);
         app.emit("audio-level", normalized).ok();
         std::thread::sleep(std::time::Duration::from_millis(33));
     }
-
-    // Stream is dropped here, stopping capture
     Ok(())
-}
-
-/// Handle a fatal cpal input-stream error (typically: another process — e.g. macOS
-/// Dictation on F5 — took exclusive access of the mic, so our stream was kicked).
-///
-/// We can't recover the stream from inside the callback, so we:
-///   1. Flip ACTIVE off so the 30fps emit loop in `run()` exits and drops the stream
-///      cleanly instead of pumping zeros forever.
-///   2. Emit `audio-stream-error` so the frontend can reset the recording state
-///      machine to Idle and toast the user (instead of leaving them with a stuck
-///      pill and an empty audio file).
-///   3. Drop a Sentry breadcrumb so we get visibility on Sentry when consent is on.
-fn handle_stream_error(app: &AppHandle, e: cpal::StreamError) {
-    let msg = e.to_string();
-    eprintln!("[AudioMonitor] Stream error: {}", msg);
-
-    // Stop the emit loop — it would otherwise keep firing audio-level=0 forever
-    // and leave the pill visible with the bars stuck flat.
-    ACTIVE.store(false, Ordering::SeqCst);
-
-    sentry::add_breadcrumb(sentry::Breadcrumb {
-        category: Some("audio_stream".into()),
-        level: sentry::Level::Warning,
-        message: Some(format!("cpal input stream error: {}", msg)),
-        ..Default::default()
-    });
-
-    app.emit("audio-stream-error", msg).ok();
-}
-
-fn rms_f32(data: &[f32]) -> f32 {
-    if data.is_empty() {
-        return 0.0;
-    }
-    (data.iter().map(|s| s * s).sum::<f32>() / data.len() as f32).sqrt()
-}
-
-fn rms_i16(data: &[i16]) -> f32 {
-    if data.is_empty() {
-        return 0.0;
-    }
-    let sum: f32 = data
-        .iter()
-        .map(|&s| {
-            let f = s as f32 / 32768.0;
-            f * f
-        })
-        .sum();
-    (sum / data.len() as f32).sqrt()
 }

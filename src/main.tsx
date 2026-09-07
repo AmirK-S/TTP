@@ -19,6 +19,7 @@ import { ErrorBoundary } from './lib/ErrorBoundary';
 import { captureExceptionIfActive, initSentryIfConsented } from './lib/sentry';
 import { initI18n, setLanguage, resolveLanguage, type LanguageChoice } from './i18n/config';
 import { applyTheme, installSystemThemeListener, type ThemeChoice } from './lib/theme';
+import { installCoat } from './lib/theme-coats';
 import { useSettingsStore } from './stores/settings-store';
 import './index.css';
 
@@ -63,6 +64,13 @@ function main() {
   // mode. Mutated below by the settings reconciliation + cross-window sync.
   let currentTheme: ThemeChoice = 'system';
   installSystemThemeListener(() => currentTheme);
+
+  // The coat: paint the stored one, then stay in step with the other windows.
+  // Runs for preview builds too — a coat is pure CSS, so it is exactly as
+  // valid in a plain browser as it is under Tauri, and every Tauri call inside
+  // is guarded. Independent of `data-theme` above: light/dark and the coat are
+  // orthogonal and neither reads the other.
+  installCoat();
 
   if (!isPreview) {
     // Reconcile with the persisted language + theme choice in the background.

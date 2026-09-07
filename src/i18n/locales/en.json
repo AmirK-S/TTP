@@ -26,6 +26,7 @@
   "error": {
     "audio_file_not_found": "Audio file not found",
     "audio_corrupt": "Recording is corrupt. Try again.",
+    "recording_empty": "Mic captured no audio. Check System Settings → Privacy → Microphone, or close any app using the mic.",
     "audio_too_large": "Recording too long ({{mb}} MB). Max ~14 min.",
     "compression_failed": "Couldn't compress audio. Sending the original.",
     "no_api_key": "No Groq API key configured",
@@ -34,10 +35,11 @@
     "transcription_too_long": "Recording too long. Try a shorter one.",
     "transcription_generic": "Transcription failed: {{error}}",
     "no_speech": "Didn't catch anything. Mic muted?",
+    "filtered_not_speech": "What came back was filler, not speech. Nothing pasted — the audio is kept for a day.",
     "polish_unavailable": "Polish unavailable. Pasting raw text.",
     "clipboard_write_failed": "Failed to write to clipboard",
     "enable_accessibility": "Enable Accessibility to auto-paste",
-    "paste_failed": "Paste failed. Use Cmd+V.",
+    "paste_failed": "Couldn't paste. The text is on your clipboard — Cmd+V.",
     "rate_limit_exceeded": "Slow down a sec, then try again.",
     "api_timeout": "Groq didn't answer in time. Wi-Fi flaky?",
     "api_network": "Network error: {{error}}",
@@ -45,6 +47,8 @@
     "api_forbidden": "Your Groq key doesn't have access. Check your account.",
     "api_generic": "Groq API error ({{status}}): {{body}}",
     "microphone_permission_denied": "Mic blocked. Enable it in System Settings.",
+    "microphone_permission_undetermined": "Allow mic access when macOS prompts, then try again.",
+    "recording_already_in_progress": "Already recording. Stop the current session first.",
     "microphone_generic": "Mic error: {{error}}",
     "audio_stream_interrupted": "Another app grabbed the mic. Try again.",
     "input_monitoring_required": "Input Monitoring is needed for the Fn key. Open System Settings → Privacy & Security → Input Monitoring, enable TTP, then restart the app.",
@@ -53,7 +57,10 @@
     "license_activation_failed": "Activation failed. Try again or double-check the key.",
     "license_deactivation_failed": "Deactivation failed. Try again.",
     "license_validation_failed": "Validation failed. Check your connection.",
-    "license_server_error": "License server unreachable. Try again later."
+    "license_server_error": "License server unreachable. Try again later.",
+    "companion_unreachable_title": "Couldn't load your Companion",
+    "companion_unreachable": "The app couldn't reach its own backend. This says nothing about what you own \u2014 if you've bought the Companion, it's still yours.",
+    "retry": "Try again"
   },
   "progress": {
     "transcribing": "Transcribing…",
@@ -79,7 +86,8 @@
     "recordingTooLong": "Recording too long. Max ~14 minutes.",
     "transcriptionFailed": "Transcription failed",
     "noSpeech": "Didn't catch anything",
-    "polishLimitReached": "AI Polish cap hit ({{used}}/{{limit}} this month). €17 unlocks it forever with TTP Pro.",
+    "recordingEmpty": "Mic captured no audio. Check permission.",
+    "polishUnavailable": "AI Polish keeps failing. Your transcriptions are being pasted unpolished — check your Groq key's model access.",
     "clipboardFailed": "Failed to copy text to clipboard",
     "addToAccessibility": "Add TTP to Accessibility in Settings, then paste with Cmd+V",
     "textCopied": "Text copied. Paste with Cmd+V.",
@@ -134,15 +142,10 @@
       "privacyBody": "TTP collects none of your data. Your API key is stored locally on your machine. Audio is sent directly from your device to Groq's servers for transcription. I never see, store, or have access to any of it. Same for AI Polish: your text goes straight to Groq, not through me. Everything stays between you and your API provider."
     },
     "pro": {
-      "title": "TTP Pro",
+      "title": "Support TTP",
       "badgeActive": "Active",
-      "badgeTrial": "Trial · {{days}}d left",
       "refreshTitle": "Re-validate with server",
-      "descTrial": "You're on a {{days}}-day Pro trial. Unlimited AI Polish, dictionary, and history. After the trial, activate a license to keep them.",
-      "descFree": "€17 once, yours forever. Unlimited AI Polish, dictionary entries, history, and priority support. No subscription.",
-      "usagePolish": "AI Polish (this month)",
-      "usageDictionary": "Dictionary entries",
-      "usageHistory": "History entries",
+      "descFree": "TTP is free and complete — every feature, no limits, no subscription. If it saves you time and you feel like sending something back, a one-off licence is a way to do that. It unlocks nothing; you already have everything.",
       "inputPlaceholder": "Paste your license key here",
       "activate": "Activate License",
       "buyLink": "Buy TTP Pro →",
@@ -155,6 +158,64 @@
       "statusUnknown": "unknown",
       "deactivateDevice": "Deactivate this device",
       "deactivateHelp": "Deactivating frees an activation slot so you can use this license on another device."
+    },
+    "companion": {
+      "soundsLabel": "Voice",
+      "preview": "Listen",
+      "faceLabel": "Give it a face",
+      "faceDesc": "Two marks that blink when nothing is happening, hold still while it works, and mark the moment your words land. Every variety is subtle by default, and none of them ever ask you for anything.",
+      "faceOff": "None",
+      "previewFace": "Watch",
+      "faces": {
+        "house": {
+          "name": "House",
+          "desc": "The one it was born with. You stop seeing it around the third day, and you would notice if it left."
+        },
+        "shut": {
+          "name": "Shut",
+          "desc": "Eyes closed until you press the key. Everything it has is in the fifth of a second where they open."
+        },
+        "drowsy": {
+          "name": "Drowsy",
+          "desc": "Heavy lids, a long slow blink, and always a beat behind you. It never once startles you."
+        },
+        "quick": {
+          "name": "Quick",
+          "desc": "Short sharp blinks, often two at a time. Good company for a four-second dictation and bad company for an afternoon of writing."
+        },
+        "bead": {
+          "name": "Bead",
+          "desc": "Two small dots set as wide as the body allows. Still for ten seconds, two blinks, still again."
+        }
+      },
+      "nameLabel": "Its name",
+      "namePlaceholder": "Name your Talk-To-Paste",
+      "packs": {
+        "default": {
+          "name": "House",
+          "desc": "The two polite tones TTP was born with."
+        },
+        "bowl": {
+          "name": "Bowl",
+          "desc": "A small brass bowl. The stop is someone's hand on it."
+        },
+        "marimba": {
+          "name": "Marimba",
+          "desc": "Two notes on a wooden bar. Up to begin, down to finish."
+        },
+        "submarine": {
+          "name": "Submarine",
+          "desc": "A sonar ping into the quiet. Something down there heard it."
+        },
+        "felt": {
+          "name": "Felt",
+          "desc": "A piano with a blanket over it. Barely a sound at all."
+        },
+        "bubble": {
+          "name": "Bubble",
+          "desc": "A drop going in, and a drop coming back out."
+        }
+      }
     },
     "recordingTrigger": {
       "title": "Shortcut",
@@ -170,7 +231,10 @@
       "descCmdShiftR": "Cmd + Shift + R",
       "descNoConflicts": "No conflicts",
       "openInputMonitoring": "Open Input Monitoring settings",
-      "successUpdated": "Shortcut updated!"
+      "successUpdated": "Shortcut updated!",
+      "fnEmojiTitle": "The 🌐 key opens the emoji picker",
+      "fnEmojiDesc": "macOS pops the emoji picker every time you press Fn. Set the 🌐 key to \"Do Nothing\" so Fn just records. Your shortcut keeps working.",
+      "fnEmojiButton": "Open Keyboard settings"
     },
     "recordingMode": {
       "title": "Behavior",
@@ -178,6 +242,13 @@
       "handsFreeDesc": "Press once to start, press again to stop.",
       "hidePillLabel": "Hide pill when inactive",
       "hidePillDesc": "Only show the recording indicator while you're recording.",
+      "vadAutoStopLabel": "Auto-stop after silence",
+      "vadAutoStopDesc": "End the recording automatically once you've stopped speaking. Useful when you forget to release the hotkey.",
+      "vadSilenceSecsLabel": "Silence before auto-stop",
+      "audioDeviceLabel": "Input device",
+      "audioDeviceDesc": "Pick the microphone to record from. Falls back to the system default if the device is unplugged.",
+      "audioDeviceDefault": "System default",
+      "audioDeviceDefaultSuffix": "(default)",
       "launchStartupLabel": "Launch at startup",
       "launchStartupDesc": "Open TTP automatically when you log in."
     },
@@ -189,15 +260,20 @@
       "keySaved": "API key validated and saved.",
       "getKeyAt": "Get your free key at",
       "polishLabel": "AI Polish",
-      "polishDesc": "Trim filler words and fix grammar with AI."
+      "polishDesc": "Trim filler words and fix grammar with AI.",
+      "languageLabel": "Transcription language",
+      "languageDesc": "Pin Whisper to a specific language. Defaults to Auto (Whisper detects per recording). Pin to English or French if Whisper occasionally hears the wrong language.",
+      "languageAuto": "Auto-detect",
+      "languageEnglish": "English",
+      "languageFrench": "French"
     },
     "privacy": {
       "title": "Privacy",
       "helpLabel": "Help improve TTP",
-      "helpDesc": "Send anonymous crash reports and usage stats.",
+      "helpDesc": "Send anonymous crash reports to Sentry.",
       "restartHint": "Changes take effect after restart.",
       "whatSentLabel": "What is sent:",
-      "whatSentBody": "Crash reports (error type, OS, app version, pipeline stage) and anonymous usage events (feature usage counts).",
+      "whatSentBody": "Crash reports only (error type, OS, app version, pipeline stage). No usage analytics are collected.",
       "neverSentLabel": "Never sent:",
       "neverSentBody": "Your transcription text, API keys, file paths, or any personal data."
     },
@@ -210,7 +286,6 @@
       "labelCorrection": "Correction",
       "placeholderMisheard": "grok",
       "placeholderCorrection": "Groq",
-      "limitReached": "Free tier cap hit ({{limit}} entries). €17 unlocks unlimited with TTP Pro.",
       "emptyTitle": "No corrections yet",
       "emptyState": "Type a misheard word above and the correction TTP should use instead.",
       "tableOriginal": "Original",
@@ -226,7 +301,8 @@
       "saveDesc": "When off, new transcriptions aren't saved to history.",
       "emptyTitle": "Nothing here yet",
       "emptyEnabled": "Your transcriptions will show up here.",
-      "emptyDisabled": "Turn on \"Save transcriptions\" to keep a history."
+      "emptyDisabled": "Turn on \"Save transcriptions\" to keep a history.",
+      "replayTooltip": "Type this entry into the focused app"
     },
     "analytics": {
       "title": "Your usage",
@@ -263,6 +339,16 @@
       "errorDefault": "Couldn't check for updates",
       "currentVersion": "Current version: v{{version}}"
     },
+    "logs": {
+      "title": "Diagnostics",
+      "desc": "Open the folders containing ttp.log, ttp-trace.log and any retained recordings so you can attach them to a bug report.",
+      "button": "Show log folder",
+      "recordingsButton": "Show recordings folder"
+    },
+    "diagnostics": {
+      "label": "Record transcription text in the trace",
+      "desc": "ttp-trace.log always records every dictation stage — timings, filter verdicts, whether the keystrokes actually landed. Turn this on to also record the text itself at each stage, which is what you need to see exactly which stage dropped a dictation. Your transcriptions are then stored in plain text on this Mac."
+    },
     "reset": {
       "title": "Reset",
       "desc": "Reset all settings to defaults and clear the dictionary.",
@@ -270,7 +356,7 @@
     },
     "uninstall": {
       "title": "Uninstall TTP",
-      "desc": "Remove the app and every trace of your data — settings, history, dictionary, license, Keychain credentials, and macOS permissions.",
+      "desc": "Remove the app and every trace of your data: settings, history, dictionary, license, Keychain credentials, and macOS permissions.",
       "button": "Uninstall TTP completely"
     },
     "language": {
@@ -286,6 +372,34 @@
       "optionSystem": "System",
       "optionLight": "Light",
       "optionDark": "Dark"
+    },
+    "appearance": {
+      "title": "Coat",
+      "desc": "Light and dark decide how the room is lit. The coat decides what the animal looks like in it.",
+      "lockedNote": "These four arrive with the Companion.",
+      "footnote": "Coats are decorative. A Talk-To-Paste in any of them hears exactly as well as one in any other.",
+      "coats": {
+        "wild": {
+          "name": "Wild type",
+          "desc": "The form it arrives in. Nobody bred this one."
+        },
+        "roan": {
+          "name": "Roan",
+          "desc": "White hairs through a warm base. Paper, a serif, and a wide margin."
+        },
+        "piebald": {
+          "name": "Piebald",
+          "desc": "Two tones with a hard edge between them. Square corners, and nothing floats."
+        },
+        "merle": {
+          "name": "Merle",
+          "desc": "Mottled blue-grey. The panels let the background through and nothing is in a hurry."
+        },
+        "tortie": {
+          "name": "Tortoiseshell",
+          "desc": "Ginger and black, kept close together. More window, less margin."
+        }
+      }
     },
     "sidebar": {
       "thisMonth": "This month",
@@ -380,7 +494,7 @@
       "autostartLabel": "Launch TTP at startup",
       "autostartDesc": "Wakes up with your Mac so the shortcut is ready when you are.",
       "telemetryLabel": "Share anonymous crash reports",
-      "telemetryDesc": "Only crash signals and feature counters. Never your transcripts.",
+      "telemetryDesc": "Only crash signals. Never your transcripts.",
       "footnote": "You can change all of these any time in Settings."
     },
     "tour": {
@@ -400,7 +514,7 @@
   "setup": {
     "title": "Welcome to TTP by AmirKS",
     "description": "Talk To Paste needs a free API key from Groq to transcribe your voice.",
-    "localStorage": "Your keys are stored locally on your machine and are never sent anywhere except to Groq for transcription."
+    "localStorage": "Your key is stored locally and never leaves your machine. Your voice goes to Groq for transcription."
   },
   "form": {
     "apiKey": {
@@ -420,7 +534,18 @@
     "tutorialPrefix": "Hold",
     "tutorialSuffix": "to dictate",
     "errorFallback": "Something broke",
-    "statusTranscribing": "Transcribing…"
+    "statusTranscribing": "Transcribing…",
+    "handsFreeIndicatorLabel": "Hands-free recording, single tap to stop",
+    "deadInput": "No sound — check your mic",
+    "outcome": {
+      "unverified": "Sent — not confirmed",
+      "unverifiedAnnouncement": "The text was sent. Nothing confirmed it arrived.",
+      "arrivedAnnouncement": "The text arrived.",
+      "swallowed": "Nothing arrived — it's in Settings → History",
+      "swallowedAnnouncement": "The text did not arrive in the app. It is saved in Settings → History.",
+      "clipboard": "Not inserted — the text is on your clipboard",
+      "clipboardAnnouncement": "The text was not inserted. It is on your clipboard — press Cmd+V to paste it."
+    }
   },
   "permissionBanner": {
     "titleOne": "{{item}} permission missing",
@@ -429,6 +554,19 @@
   "whatsNew": {
     "title": "What's new in v{{version}}",
     "subtitle": "TTP has been updated.",
-    "dismiss": "Got it"
+    "dismiss": "Got it",
+    "notes": {
+      "3-1-7": "TTP is free. Every feature, uncapped, no account, no trial that runs out.\n• The Companion: the pill has a face, and TTP has sound packs — bowl, marimba, felt. Cosmetic and nothing else: no sound and no face changes what TTP does with your voice.\n• AI Polish works again. Groq decommissioned the model we were using on 16 August; we migrated, and every attempt is now timed so the next outage announces itself instead of looking like a slow model.\n• Dead microphone: if your headset is connected but streaming nothing, TTP says so after two seconds — while you can still do something about it — instead of letting you talk into it for twenty and losing the lot.\n• The microphone can no longer be left on. A capture that finishes starting after you have already let go of the key is now refused rather than left running with nobody to close it.\n• Faster: the macOS keychain no longer sits between your last word and your text. One read measured 62 seconds was waiting there.\n• The Fn key survives: when macOS disables our keyboard tap and re-arming it stops helping, we rebuild it.\n• Diagnostics: every dictation now leaves a stage-by-stage trace in ttp-trace.log. Settings → Advanced → Diagnostics.",
+      "3-1-6": "Fix: even the minimal \"French and English bilingual speaker.\" prompt was leaking at the end of transcriptions on trailing silence (Whisper copied the prompt tail and started a continuation). Radical fix: we no longer send ANY prompt to Whisper. Language is handled by the `language` API parameter, proper-noun correction by the post-transcription word-boundary pass which can never add words that weren't already present. Zero prompt-bias risk going forward.",
+      "3-1-5": "Explicit transcription-language picker + bigger WASAPI drain.\n• Settings → Transcription → \"Transcription language\": explicit\nAuto / English / French dropdown. Before, we silently followed the\nUI language — a French speaker using TTP in English would get their\nFrench audio mis-transcribed. Auto lets Whisper detect (recommended\nfor bilingual use), pinning forces a specific language.\n• WASAPI drain bumped 200ms → 400ms before tearing down the cpal\nstream. The 200ms wasn't always enough on Windows drivers with\nlarger internal buffers (reported cutoff was longer than a typical\ntrailing buffer). 400ms gives headroom for the slowest observed\nconfigurations.",
+      "3-1-4": "Two field-reported bugs from v3.1.3-1 fixed:\n• Trailing words / last syllable are no longer cut off. WASAPI (Windows) holds up to 150ms of captured audio in its internal buffer between the device and the cpal callback. We were dropping the stream immediately on key release, losing that trailing buffer. Added a 200ms drain delay before tearing the stream down — you recover your last syllable / word.\n• Dictionary words no longer appear pasted onto the end of your messages. We were passing the proper-noun list inline in the Whisper prompt to help with recognition — Whisper occasionally regurgitated those nouns at the end of legitimate transcriptions (classic prompt-bias trailing-token leak). The prompt is now minimal ('French and English bilingual speaker.'). Proper-noun correction still happens, just through the post-transcription word-boundary dictionary pass, which never adds words that weren't already in the transcription.",
+      "3-1-3": "Fix: Whisper hallucinated sentences like \"Glossary, c'est une phrase très importante.\" on silent recordings. Root cause: the prompt we send Whisper to bias toward dictionary proper nouns literally started with \"Glossary:\" — the decoder picked up the word and wrote a sentence ABOUT glossaries. We dropped the introducer from the prompt (proper nouns are now sent without any introducer word) and added a safety net that filters \"Glossary,...\" / \"Glossaire,...\" leading short recordings (≤ 6 s, ≤ 8 words).",
+      "3-1-2": "Four fixes from v3.1.1-1 field reports:\n• Spam-clicking the tray Record button no longer leaves the app stuck in \"Recording\". 300ms debounce on tray clicks + audio_capture self-heals a stale state instead of returning \"recording_already_in_progress\".\n• Whisper no longer returns Chinese / Russian / Korean transcriptions on silent stretches: the decoder is now pinned to your UI language (en/fr) instead of per-frame auto-detection.\n• Whisper no longer hallucinates \"thank you\" on silent recordings: pre-API RMS check, if the audio is effectively silent we skip Whisper and surface \"no speech detected\".\n• Hallucination filter now catches \"Sous-titré par <studio>\", \"Captions by X\", \"Untertitel von X\" and other subtitle-credit stems Whisper bleeds onto short noisy clips.",
+      "3-1-1": "Fix: a Ctrl+Space double-tap could leave the app stuck in a \"Processing\" state from which every subsequent shortcut press was a no-op (reported by a user on v3.1.0-1, Windows). Every error path in process_audio now resets state to Idle before bubbling up, and the double-tap detector now clears its timestamp so the next tap isn't misread as the third tap of a triple-tap.",
+      "3-1-0": "Big update: VAD auto-stop, mic picker, one-click history re-paste, hands-free indicator on the pill.\n• Auto-stop after silence (opt-in): ends the recording automatically once you've stopped speaking. Useful when you forget to release Fn. Tunable 1-10 seconds in Settings → Behavior.\n• Input device picker: pick the mic to record from explicitly (helpful with AirPods + built-in mic). If your chosen device is unplugged, TTP falls back to the system default automatically.\n• Re-paste a past transcription: open Settings → History, hover a row, click the Repeat icon → the entry is typed back into the focused app.\n• Hands-free visual cue: a small lock icon now shows on the pill when you're in hands-free mode, as a reminder that a single tap stops the session.\n• Hard 5-minute recording ceiling: protects against a hands-free session you forgot about overnight.\n• Under the hood: Sentry now captures real Rust panics (they used to disappear silently), settings.json is written atomically (no more corruption on kill), one shared cpal audio stream instead of two (kills the #1 cause of \"silent recording\" reports on some drivers), more honest privacy copy throughout.",
+      "3-0-4": "More reliable mic capture + clearer no-speech signals.\n• Replaced the third-party mic-recorder plugin with our in-house cpal capture. No more empty 68-byte WAVs when mic permission was silently revoked after an update (root cause of the \"nothing captured\" reports in v3.0.x).\n• The no-speech path is hardened: if Whisper returns empty text or a known Whisper hallucination, we filter it cleanly with a targeted message instead of a generic error toast.\n• No action needed. Your shortcuts, key, and preferences carry over.",
+      "3-0-3": "Guided nudge for the Globe key emoji picker.\n• If you use Fn to talk but macOS pops the emoji picker instead, TTP now offers a step-by-step guide to switch Globe to \"No action\" under System Settings → Keyboard.\n• The nudge shows once and stays dismissable. No-op if Fn already works.",
+      "3-0-2": "Fn emoji-picker fix + single-tap hands-free stop.\n• On macOS Sequoia, pressing Fn sometimes launched the emoji picker instead of recording. Patched at the event-tap layer: we consume the event before the system routes it to the IME.\n• In hands-free mode, a single Fn tap now ends the session (was: had to double-tap to exit)."
+    }
   }
 }

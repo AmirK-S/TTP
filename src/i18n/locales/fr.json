@@ -26,6 +26,7 @@
   "error": {
     "audio_file_not_found": "Fichier audio introuvable",
     "audio_corrupt": "L'enregistrement est corrompu. Réessaie.",
+    "recording_empty": "Le micro n'a rien capté. Vérifie Réglages Système → Confidentialité → Microphone, ou ferme toute app qui utilise le micro.",
     "audio_too_large": "Enregistrement trop long ({{mb}} Mo). Max ~14 min.",
     "compression_failed": "Compression audio impossible. J'envoie l'original.",
     "no_api_key": "Aucune clé API Groq configurée",
@@ -34,10 +35,11 @@
     "transcription_too_long": "Enregistrement trop long. Fais-en un plus court.",
     "transcription_generic": "Échec de la transcription : {{error}}",
     "no_speech": "Je n'ai rien capté. Micro coupé ?",
+    "filtered_not_speech": "Ce qui est revenu était une phrase parasite, pas de la parole. Rien collé — l'audio est gardé un jour.",
     "polish_unavailable": "Correction indisponible. Je colle le texte brut.",
     "clipboard_write_failed": "Échec de l'écriture dans le presse-papiers",
     "enable_accessibility": "Active l'Accessibilité pour le collage automatique",
-    "paste_failed": "Collage raté. Fais Cmd+V.",
+    "paste_failed": "Collage impossible. Le texte est dans ton presse-papiers — Cmd+V.",
     "rate_limit_exceeded": "Doucement. Attends quelques secondes et réessaie.",
     "api_timeout": "Groq n'a pas répondu à temps. Wi-Fi capricieux ?",
     "api_network": "Erreur réseau : {{error}}",
@@ -45,6 +47,8 @@
     "api_forbidden": "Cette clé Groq n'a pas les droits. Vérifie ton compte.",
     "api_generic": "Erreur API Groq ({{status}}) : {{body}}",
     "microphone_permission_denied": "Micro bloqué. Active-le dans les Réglages Système.",
+    "microphone_permission_undetermined": "Autorise l'accès au micro quand macOS le demande, puis réessaie.",
+    "recording_already_in_progress": "Enregistrement déjà en cours. Arrête-le d'abord.",
     "microphone_generic": "Erreur micro : {{error}}",
     "audio_stream_interrupted": "Une autre app a pris le micro. Réessaie.",
     "input_monitoring_required": "Input Monitoring requis pour la touche Fn. Ouvre Réglages Système → Confidentialité et sécurité → Input Monitoring, active TTP, puis redémarre l'app.",
@@ -53,7 +57,10 @@
     "license_activation_failed": "Activation échouée. Réessaie ou vérifie ta clé.",
     "license_deactivation_failed": "Désactivation échouée. Réessaie.",
     "license_validation_failed": "Validation échouée. Vérifie ta connexion.",
-    "license_server_error": "Serveur de licence injoignable. Réessaie plus tard."
+    "license_server_error": "Serveur de licence injoignable. Réessaie plus tard.",
+    "companion_unreachable_title": "Impossible de charger ton Compagnon",
+    "companion_unreachable": "L'app n'a pas réussi à joindre son propre backend. Ça ne dit rien de ce que tu possèdes — si tu as acheté le Compagnon, il est toujours à toi.",
+    "retry": "Réessayer"
   },
   "progress": {
     "transcribing": "Transcription…",
@@ -69,9 +76,9 @@
     "stopRecording": "Arrêter l'enregistrement",
     "settings": "Paramètres…",
     "quit": "Quitter TTP",
-    "fixAccessibility": "Fix Accessibility permission",
-    "fixInputMonitoring": "Fix Input Monitoring permission",
-    "installUpdate": "Install update (v{{version}})",
+    "fixAccessibility": "Corriger la permission Accessibilité",
+    "fixInputMonitoring": "Corriger la permission Surveillance des entrées",
+    "installUpdate": "Installer la mise à jour (v{{version}})",
     "tooltip": "TTP by AmirKS · Talk To Paste"
   },
   "notification": {
@@ -79,7 +86,8 @@
     "recordingTooLong": "Enregistrement trop long. Max ~14 minutes.",
     "transcriptionFailed": "Échec de la transcription",
     "noSpeech": "Je n'ai rien capté",
-    "polishLimitReached": "Limite Correction IA atteinte ({{used}}/{{limit}} ce mois-ci). 17€ une fois et c'est à vie avec TTP Pro.",
+    "recordingEmpty": "Le micro n'a rien capté. Vérifie la permission.",
+    "polishUnavailable": "L'amélioration IA échoue en boucle. Tes transcriptions sont collées sans amélioration — vérifie l'accès aux modèles de ta clé Groq.",
     "clipboardFailed": "Échec de la copie dans le presse-papiers",
     "addToAccessibility": "Ajoute TTP dans Accessibilité, puis colle avec Cmd+V",
     "textCopied": "Texte copié. Colle avec Cmd+V.",
@@ -134,15 +142,10 @@
       "privacyBody": "TTP ne collecte aucune de tes données. Ta clé API est stockée localement sur ta machine. L'audio est envoyé directement depuis ton appareil vers les serveurs de Groq pour la transcription. Je n'y ai jamais accès, je ne vois ni ne stocke rien. Idem pour la Correction IA : ton texte va directement à Groq, pas par moi. Tout reste entre toi et ton fournisseur d'API."
     },
     "pro": {
-      "title": "TTP Pro",
+      "title": "Soutenir TTP",
       "badgeActive": "Active",
-      "badgeTrial": "Essai · {{days}} j restants",
       "refreshTitle": "Revalider avec le serveur",
-      "descTrial": "Tu es en essai Pro de {{days}} jours. Correction IA, dictionnaire et historique illimités. Après l'essai, active une licence pour les garder.",
-      "descFree": "17€ une fois, à vie. Correction IA, entrées de dictionnaire, historique illimités, et support prioritaire. Pas d'abonnement.",
-      "usagePolish": "Correction IA (ce mois-ci)",
-      "usageDictionary": "Entrées du dictionnaire",
-      "usageHistory": "Entrées de l'historique",
+      "descFree": "TTP est gratuit et complet — toutes les fonctionnalités, sans limite, sans abonnement. Si l'app te fait gagner du temps et que tu as envie de renvoyer quelque chose, une licence à vie est là pour ça. Elle ne débloque rien : tu as déjà tout.",
       "inputPlaceholder": "Colle ta clé de licence ici",
       "activate": "Activer la licence",
       "buyLink": "Acheter TTP Pro →",
@@ -155,6 +158,64 @@
       "statusUnknown": "inconnu",
       "deactivateDevice": "Désactiver cet appareil",
       "deactivateHelp": "Désactiver libère un slot d'activation pour utiliser cette licence sur un autre appareil."
+    },
+    "companion": {
+      "soundsLabel": "Voix",
+      "preview": "Écouter",
+      "faceLabel": "Lui donner un visage",
+      "faceDesc": "Deux marques qui clignent quand il ne se passe rien, restent immobiles pendant qu'elle travaille, et marquent l'instant où tes mots arrivent. Chaque variété est discrète par défaut, et aucune ne te demande jamais rien.",
+      "faceOff": "Aucun",
+      "previewFace": "Regarder",
+      "faces": {
+        "house": {
+          "name": "Maison",
+          "desc": "Celui avec lequel elle est née. Tu cesses de le voir vers le troisième jour, et tu remarquerais s'il partait."
+        },
+        "shut": {
+          "name": "Fermé",
+          "desc": "Les yeux fermés jusqu'à ce que tu appuies. Tout ce qu'il a tient dans le cinquième de seconde où ils s'ouvrent."
+        },
+        "drowsy": {
+          "name": "Somnolent",
+          "desc": "Paupières lourdes, un clignement long et lent, toujours un temps derrière toi. Il ne te fait jamais sursauter."
+        },
+        "quick": {
+          "name": "Vif",
+          "desc": "Des clignements courts et nets, souvent deux d'affilée. Bonne compagnie pour une dictée de quatre secondes, mauvaise pour un après-midi d'écriture."
+        },
+        "bead": {
+          "name": "Perle",
+          "desc": "Deux petits points aussi écartés que le corps le permet. Immobile dix secondes, deux clignements, immobile à nouveau."
+        }
+      },
+      "nameLabel": "Son nom",
+      "namePlaceholder": "Donne un nom à ton Talk-To-Paste",
+      "packs": {
+        "default": {
+          "name": "Maison",
+          "desc": "Les deux tons polis avec lesquels TTP est né."
+        },
+        "bowl": {
+          "name": "Bol",
+          "desc": "Un petit bol en laiton. L'arrêt, c'est une main posée dessus."
+        },
+        "marimba": {
+          "name": "Marimba",
+          "desc": "Deux notes sur une lame de bois. Vers le haut pour commencer, vers le bas pour finir."
+        },
+        "submarine": {
+          "name": "Sous-marin",
+          "desc": "Un ping sonar dans le silence. Quelque chose en dessous a entendu."
+        },
+        "felt": {
+          "name": "Feutre",
+          "desc": "Un piano avec une couverture dessus. À peine un son."
+        },
+        "bubble": {
+          "name": "Bulle",
+          "desc": "Une goutte qui entre, une goutte qui ressort."
+        }
+      }
     },
     "recordingTrigger": {
       "title": "Raccourci",
@@ -170,7 +231,10 @@
       "descCmdShiftR": "Cmd + Maj + R",
       "descNoConflicts": "Sans conflit",
       "openInputMonitoring": "Ouvrir les réglages Input Monitoring",
-      "successUpdated": "Raccourci mis à jour !"
+      "successUpdated": "Raccourci mis à jour !",
+      "fnEmojiTitle": "La touche 🌐 ouvre le sélecteur d'emoji",
+      "fnEmojiDesc": "macOS ouvre le sélecteur d'emoji à chaque appui sur Fn. Mets la touche 🌐 sur « Ne rien faire » pour que le Fn serve juste à dicter. Ton raccourci continue de marcher.",
+      "fnEmojiButton": "Ouvrir les réglages Clavier"
     },
     "recordingMode": {
       "title": "Comportement",
@@ -178,6 +242,13 @@
       "handsFreeDesc": "Appuie une fois pour démarrer, appuie de nouveau pour arrêter.",
       "hidePillLabel": "Masquer la pill quand inactive",
       "hidePillDesc": "N'affiche l'indicateur que pendant un enregistrement.",
+      "vadAutoStopLabel": "Arrêt auto après un silence",
+      "vadAutoStopDesc": "Termine l'enregistrement automatiquement quand tu as fini de parler. Pratique quand tu oublies de relâcher le raccourci.",
+      "vadSilenceSecsLabel": "Silence avant arrêt auto",
+      "audioDeviceLabel": "Source audio",
+      "audioDeviceDesc": "Choisis le micro à utiliser. Revient à la source système si le périphérique est débranché.",
+      "audioDeviceDefault": "Source système",
+      "audioDeviceDefaultSuffix": "(par défaut)",
       "launchStartupLabel": "Lancer au démarrage",
       "launchStartupDesc": "Ouvre TTP automatiquement à la connexion."
     },
@@ -189,15 +260,20 @@
       "keySaved": "Clé API validée et enregistrée.",
       "getKeyAt": "Récupère ta clé gratuite sur",
       "polishLabel": "Correction IA",
-      "polishDesc": "Retire les hésitations et corrige la grammaire avec l'IA."
+      "polishDesc": "Retire les hésitations et corrige la grammaire avec l'IA.",
+      "languageLabel": "Langue de transcription",
+      "languageDesc": "Force Whisper sur une langue précise. Auto par défaut (Whisper détecte par enregistrement). Force en anglais ou français si Whisper se trompe parfois de langue.",
+      "languageAuto": "Auto-détection",
+      "languageEnglish": "Anglais",
+      "languageFrench": "Français"
     },
     "privacy": {
       "title": "Confidentialité",
       "helpLabel": "Aide à améliorer TTP",
-      "helpDesc": "Envoie des rapports de crash anonymes et des stats d'usage.",
+      "helpDesc": "Envoie des rapports de crash anonymes à Sentry.",
       "restartHint": "Les changements prennent effet au redémarrage.",
       "whatSentLabel": "Ce qui est envoyé :",
-      "whatSentBody": "Rapports de crash (type d'erreur, OS, version de l'app, étape du pipeline) et événements d'usage anonymes (compteurs d'utilisation des fonctionnalités).",
+      "whatSentBody": "Uniquement les rapports de crash (type d'erreur, OS, version de l'app, étape du pipeline). Aucune analytique d'usage n'est collectée.",
       "neverSentLabel": "Jamais envoyé :",
       "neverSentBody": "Le texte de tes transcriptions, tes clés API, les chemins de fichiers, ou aucune donnée personnelle."
     },
@@ -210,7 +286,6 @@
       "labelCorrection": "Correction",
       "placeholderMisheard": "grok",
       "placeholderCorrection": "Groq",
-      "limitReached": "Limite du tier gratuit atteinte ({{limit}} entrées). 17€ une fois pour l'illimité avec TTP Pro.",
       "emptyTitle": "Aucune correction",
       "emptyState": "Tape un mot mal entendu au-dessus et la correction que TTP doit utiliser à la place.",
       "tableOriginal": "Original",
@@ -226,7 +301,8 @@
       "saveDesc": "Quand désactivé, les nouvelles transcriptions ne sont pas sauvegardées.",
       "emptyTitle": "Rien pour l'instant",
       "emptyEnabled": "Tes transcriptions apparaîtront ici.",
-      "emptyDisabled": "Active « Enregistrer les transcriptions » pour garder un historique."
+      "emptyDisabled": "Active « Enregistrer les transcriptions » pour garder un historique.",
+      "replayTooltip": "Retape cette entrée dans l'app au premier plan"
     },
     "analytics": {
       "title": "Tes statistiques",
@@ -244,8 +320,8 @@
     },
     "updateChannel": {
       "title": "Canal de version",
-      "betaBadge": "Beta",
-      "labelBeta": "Beta",
+      "betaBadge": "Bêta",
+      "labelBeta": "Bêta",
       "labelStable": "Stable",
       "descBeta": "Tu testes les nouvelles versions avant la sortie publique.",
       "descStable": "Tu reçois uniquement les versions stables et fiables.",
@@ -262,6 +338,16 @@
       "ready": "Mise à jour téléchargée. Redémarre pour l'appliquer.",
       "errorDefault": "Impossible de vérifier les mises à jour",
       "currentVersion": "Version actuelle : v{{version}}"
+    },
+    "logs": {
+      "title": "Diagnostics",
+      "desc": "Ouvre les dossiers contenant ttp.log, ttp-trace.log et les enregistrements conservés pour les joindre à un rapport de bug.",
+      "button": "Afficher le dossier des journaux",
+      "recordingsButton": "Afficher le dossier des enregistrements"
+    },
+    "diagnostics": {
+      "label": "Enregistrer le texte des transcriptions dans la trace",
+      "desc": "ttp-trace.log consigne toujours chaque étape d'une dictée — les temps, les verdicts des filtres, si les frappes ont bien atterri. Active ceci pour consigner aussi le texte à chaque étape, ce qu'il faut pour voir exactement quelle étape a fait disparaître une dictée. Tes transcriptions sont alors stockées en clair sur ce Mac."
     },
     "reset": {
       "title": "Réinitialisation",
@@ -287,6 +373,34 @@
       "optionLight": "Clair",
       "optionDark": "Sombre"
     },
+    "appearance": {
+      "title": "Robe",
+      "desc": "Le mode clair ou sombre décide de l'éclairage de la pièce. La robe décide de l'allure de l'animal dedans.",
+      "lockedNote": "Ces quatre-là arrivent avec le Compagnon.",
+      "footnote": "Les robes sont ornementales. Un Talk-To-Paste entend exactement aussi bien dans chacune d'entre elles.",
+      "coats": {
+        "wild": {
+          "name": "Type sauvage",
+          "desc": "La forme dans laquelle il arrive. Personne ne l'a sélectionnée."
+        },
+        "roan": {
+          "name": "Rouan",
+          "desc": "Des poils blancs sur un fond chaud. Du papier, une serif et de grandes marges."
+        },
+        "piebald": {
+          "name": "Pie",
+          "desc": "Deux tons et une frontière nette entre eux. Angles droits, et rien ne flotte."
+        },
+        "merle": {
+          "name": "Arlequin",
+          "desc": "Gris-bleu marbré. Les panneaux laissent passer le fond et rien ne se presse."
+        },
+        "tortie": {
+          "name": "Écaille de tortue",
+          "desc": "Roux et noir, serrés l'un contre l'autre. Plus de fenêtre, moins de marge."
+        }
+      }
+    },
     "sidebar": {
       "thisMonth": "Ce mois",
       "words": "mots",
@@ -300,7 +414,7 @@
     "item": {
       "microphone": "Microphone",
       "accessibility": "Accessibilité",
-      "inputMonitoring": "Input Monitoring",
+      "inputMonitoring": "Surveillance des entrées",
       "apikey": "Clé API Groq"
     },
     "help": {
@@ -380,7 +494,7 @@
       "autostartLabel": "Lancer TTP au démarrage",
       "autostartDesc": "S'éveille avec ton Mac pour que le raccourci soit prêt quand tu l'es.",
       "telemetryLabel": "Partager les crash reports anonymes",
-      "telemetryDesc": "Uniquement les signaux de crash et des compteurs de features. Jamais tes transcriptions.",
+      "telemetryDesc": "Uniquement les signaux de crash. Jamais tes transcriptions.",
       "footnote": "Tu peux modifier tout ça à tout moment dans Paramètres."
     },
     "tour": {
@@ -400,7 +514,7 @@
   "setup": {
     "title": "Bienvenue dans TTP by AmirKS",
     "description": "Talk To Paste a besoin d'une clé API gratuite de Groq pour transcrire ta voix.",
-    "localStorage": "Tes clés sont stockées localement sur ta machine et ne sont jamais envoyées ailleurs qu'à Groq pour la transcription."
+    "localStorage": "Ta clé est stockée localement et ne quitte jamais ta machine. Ta voix est envoyée à Groq pour la transcription."
   },
   "form": {
     "apiKey": {
@@ -420,7 +534,18 @@
     "tutorialPrefix": "Maintiens",
     "tutorialSuffix": "pour dicter",
     "errorFallback": "Quelque chose a cassé",
-    "statusTranscribing": "Transcription…"
+    "statusTranscribing": "Transcription…",
+    "handsFreeIndicatorLabel": "Mode mains libres, un seul tap pour arrêter",
+    "deadInput": "Aucun son — vérifie ton micro",
+    "outcome": {
+      "unverified": "Envoyé — non confirmé",
+      "unverifiedAnnouncement": "Le texte a été envoyé. Rien n'a confirmé qu'il est arrivé.",
+      "arrivedAnnouncement": "Le texte est arrivé.",
+      "swallowed": "Rien n'est arrivé — c'est dans Paramètres → Historique",
+      "swallowedAnnouncement": "Le texte n'est pas arrivé dans l'app. Il est enregistré dans Paramètres → Historique.",
+      "clipboard": "Rien n'a été inséré — le texte est dans ton presse-papiers",
+      "clipboardAnnouncement": "Le texte n'a pas été inséré. Il est dans ton presse-papiers ; fais Cmd+V pour le coller."
+    }
   },
   "permissionBanner": {
     "titleOne": "Permission {{item}} manquante",
@@ -429,6 +554,19 @@
   "whatsNew": {
     "title": "Nouveautés de la v{{version}}",
     "subtitle": "TTP a été mis à jour.",
-    "dismiss": "Compris"
+    "dismiss": "Compris",
+    "notes": {
+      "3-1-7": "TTP est entièrement gratuit. Toutes les fonctionnalités, sans limite, sans compte, sans essai qui expire.\n• Le Compagnon : la pilule a un visage, et TTP a des packs de sons — bol, marimba, feutre. Cosmétique et rien d'autre : aucun son, aucun visage ne change ce que TTP fait de ta voix.\n• La correction IA remarche. Groq a débranché le modèle qu'on utilisait le 16 août ; on a migré, et chaque tentative est maintenant chronométrée pour que la prochaine panne se voie.\n• Micro mort : si ton casque est connecté sans rien envoyer, TTP te le dit au bout de deux secondes, pendant que tu peux encore agir — au lieu de te laisser parler vingt secondes dans le vide.\n• Le micro ne peut plus rester allumé. Un enregistrement qui démarre après que tu as relâché la touche est refusé au lieu d'être laissé ouvert sans personne pour le fermer.\n• Plus rapide : le trousseau macOS ne s'intercale plus entre ta dernière phrase et ton texte. Une lecture mesurée à 62 secondes se faisait attendre là.\n• La touche Fn survit : quand macOS désactive notre écoute clavier et que la réarmer ne suffit plus, on la reconstruit.\n• Diagnostic : chaque dictée laisse une trace, étape par étape, dans ttp-trace.log. Paramètres → Avancé → Diagnostics.",
+      "3-1-6": "Fix : même le prompt minimal \"French and English bilingual speaker.\" leakait à la fin des transcriptions sur du silence en fin de phrase (Whisper recopiait la queue du prompt + commençait une suite). Solution radicale : on n'envoie PLUS de prompt du tout à Whisper. La langue est gérée par le paramètre API `language`, et la correction des noms propres est gérée par le post-traitement word-boundary qui ne peut jamais ajouter de mots absents. Plus aucun risque de prompt-bias.",
+      "3-1-5": "Sélecteur explicite de langue de transcription + drain WASAPI bumpé.\n• Paramètres → Transcription → \"Langue de transcription\" : choix explicite Auto / Anglais / Français. Avant, on suivait aveuglément la langue UI → si tu utilisais TTP en anglais mais parlais français, le français était mis-transcrit. Auto laisse Whisper détecter (recommandé pour bilingue), Anglais/Français force une langue précise.\n• Drain WASAPI bumpé de 200ms → 400ms avant de fermer le stream cpal. Sur ta machine ça coupait encore une portion plus longue que la trailing buffer typique → 400ms donne de la marge pour les drivers Windows avec buffer interne plus gros.",
+      "3-1-4": "Deux bugs reportés en v3.1.3-1 corrigés :\n• La fin de tes phrases n'est plus coupée. WASAPI (Windows) garde jusqu'à 150ms d'audio dans son buffer interne entre la device et le callback cpal. Je dropais le stream trop vite → ce buffer était perdu. Drain de 200ms ajouté avant le drop → tu récupères ta dernière syllabe / dernier mot.\n• Plus de mots du dictionnaire qui apparaissent à la fin de tes messages. Je passais la liste des noms propres directement dans le prompt Whisper pour aider la reconnaissance → Whisper recopiait parfois ces noms à la fin de tes phrases (prompt-bias). Le prompt est maintenant minimal ('French and English bilingual speaker.'). La correction des noms propres se fait toujours, mais via le post-traitement word-boundary qui n'ajoute jamais des mots absents de la transcription.",
+      "3-1-3": "Fix : Whisper hallucinait des phrases du type \"Glossary, c'est une phrase très importante.\" sur les enregistrements silencieux. Cause : le prompt qu'on envoyait à Whisper pour biaiser vers les noms propres du dictionnaire commençait littéralement par \"Glossary:\" — le décodeur captait le mot et écrivait une phrase à propos d'un glossaire. Le mot d'amorce est supprimé du prompt (les noms propres sont passés sans introducteur) + filet de sécurité qui détecte \"Glossary,...\" / \"Glossaire,...\" en tête d'une recording courte (≤ 6s, ≤ 8 mots).",
+      "3-1-2": "Quatre fixes basés sur ton retour sur v3.1.1-1 :\n• Spam-click du bouton tray ne bloque plus l'app en \"Recording\". Debounce 300ms sur les clics tray + audio_capture s'auto-soigne si un état stale traîne au lieu de retourner \"recording_already_in_progress\".\n• Whisper ne te retourne plus de transcriptions en chinois / russe / coréen sur des passages silencieux : la langue est maintenant forcée à ta langue UI (en/fr) au lieu d'auto-détection.\n• Whisper n'hallucine plus \"thank you\" / \"merci\" sur les enregistrements muets : check RMS local avant l'appel API, si c'est du silence on saute Whisper et on affiche \"pas de voix détectée\".\n• Le filtre anti-hallucinations attrape maintenant \"Sous-titré par <studio>\", \"Captions by X\", \"Untertitel von X\" et autres signatures de générique que Whisper crache parfois sur les recordings courts.",
+      "3-1-1": "Fix : Ctrl+Space en double-tap pouvait coincer l'app dans un état \"Processing\" dont elle ne sortait plus, et chaque appui suivant restait sans effet (rapport utilisateur en v3.1.0-1 sur Windows). Toutes les voies d'erreur de process_audio remettent maintenant l'état à Idle avant de remonter l'erreur, et la détection de double-tap reset le timestamp pour éviter qu'un tap suivant soit interprété comme un triple-tap.",
+      "3-1-0": "Grosse mise à jour : VAD auto-stop, sélecteur de micro, retape une transcription d'un clic, indicateur mains libres sur la pill.\n• Arrêt auto après silence (opt-in) : termine l'enregistrement automatiquement quand tu as fini de parler. Pratique quand tu oublies de relâcher Fn. Réglable de 1 à 10 secondes dans Paramètres → Comportement.\n• Sélecteur de micro : choisis explicitement ton micro (utile avec AirPods + micro intégré). Si ton micro choisi est débranché, TTP repasse automatiquement sur la source système.\n• Re-tape une transcription : ouvre Paramètres → Historique, survole une entrée, clique sur l'icône Repeat → ton ancienne transcription est retapée dans l'app au premier plan.\n• Mode mains libres visuel : une petite icône cadenas apparaît sur la pill quand tu es en hands-free, pour rappeler qu'un seul tap suffit pour arrêter.\n• Plafond dur de 5 minutes par enregistrement : protection contre un mode hands-free oublié toute la nuit.\n• Sous le capot : Sentry capture maintenant les vrais panics Rust (avant ils disparaissaient en silence), settings.json est écrit atomiquement (plus de corruption sur kill), un seul flux audio cpal au lieu de deux (élimine la cause #1 des \"enregistrement silencieux\" sur certains drivers), copy plus honnête côté privacy.",
+      "3-0-4": "Capture micro plus fiable + signaux de pas-de-voix plus clairs.\n• Remplacement du plugin micro tiers par notre capture cpal maison. Plus de WAV vides de 68 octets quand le permission micro a été révoquée silencieusement après une mise à jour (cause #1 du \"rien capturé\" en v3.0.x).\n• Le chemin pas-de-voix est durci : si Whisper renvoie un texte vide ou Whisper-hallucinations connues, on le filtre proprement avec un message ciblé au lieu du toast d'erreur générique.\n• Aucune action requise. Tes raccourcis, ta clé et tes préférences restent comme avant.",
+      "3-0-3": "Nudge guidé pour la touche Globe / sélecteur emoji.\n• Si tu utilises Fn pour parler mais que macOS affiche le sélecteur emoji à la place, TTP te propose maintenant un guide étape par étape pour basculer Globe vers \"Aucune action\" dans Réglages Système → Clavier.\n• Le nudge n'apparaît qu'une fois et reste désactivable. Pas d'action si Fn fonctionne déjà.",
+      "3-0-2": "Fix sélecteur emoji avec Fn + stop hands-free en simple tap.\n• Sur macOS Sequoia, presser Fn lançait parfois le sélecteur emoji au lieu de l'enregistrement. Patché côté event tap : on consomme l'event avant que le système ne le routes vers l'IME.\n• En mode hands-free, un seul tap de Fn arrête maintenant la session (au lieu de devoir double-tap pour sortir)."
+    }
   }
 }

@@ -1,0 +1,89 @@
+---
+/**
+ * The Groq key, named out loud and defused.
+ *
+ * Research C4: TTP's funnel has a cliff at "get an API key from
+ * console.groq.com", and both direct competitors' *free* tiers need no setup
+ * at all because they bundle a local model. TTP's free tier is more generous
+ * than their paid ones and harder to start than their free ones. The site
+ * cannot fix the onboarding; it can refuse to hide it, and it can say what the
+ * two minutes buy — which is the same paragraph that explains the price.
+ *
+ * The costs column is not hedging. A reader who finds the trade-off themselves
+ * after installing trusts nothing else on the page.
+ */
+import { useTranslations, getLocalizedPath, type Lang } from '@/i18n/utils';
+import { GROQ_CONSOLE } from '@/lib/coats';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+
+const steps = [
+  { title: t('key.step1Title'), desc: t('key.step1Desc') },
+  { title: t('key.step2Title'), desc: t('key.step2Desc') },
+  { title: t('key.step3Title'), desc: t('key.step3Desc') },
+] as const;
+
+const buys = [t('key.buys1'), t('key.buys2'), t('key.buys3'), t('key.buys4')];
+const costs = [t('key.costs1'), t('key.costs2'), t('key.costs3')];
+---
+
+<section id="key" class="band">
+  <div class="wrap">
+    <p class="plate-label">{t('key.plate')}</p>
+
+    <div class="grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-16">
+      <div data-reveal>
+        <h2 class="display text-[clamp(1.75rem,1.2rem+2vw,2.75rem)]">{t('key.heading')}</h2>
+        <p class="mt-5 text-[1.0625rem] text-text">{t('key.lead')}</p>
+        <p class="mt-4 text-muted">{t('key.p1')}</p>
+        <p class="mt-4 text-muted">{t('key.p2')}</p>
+
+        <div class="mt-7 flex flex-wrap gap-3">
+          <a href={GROQ_CONSOLE} target="_blank" rel="noopener" class="btn btn-primary">{t('key.cta')}</a>
+          <a href={getLocalizedPath(lang, '#audio')} class="btn btn-quiet">{t('key.detailLink')}</a>
+        </div>
+      </div>
+
+      <ol class="grid content-start gap-4" data-reveal>
+        {steps.map((s, i) => (
+          <li class="panel-flat flex gap-4 p-5">
+            <span class="mono mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border border-line text-xs text-faint">
+              {i + 1}
+            </span>
+            <div>
+              <h3 class="text-[0.9375rem] font-semibold">{s.title}</h3>
+              <p class="mt-1 text-sm leading-relaxed text-muted">{s.desc}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+
+    <div class="mt-12 grid gap-px overflow-hidden rounded-[var(--r-lg)] border border-line bg-line md:grid-cols-2">
+      <div class="bg-surface p-6 sm:p-7">
+        <h3 class="mono mb-4 text-xs uppercase tracking-[0.14em] text-faint">{t('key.buysTitle')}</h3>
+        <ul class="grid gap-2.5">
+          {buys.map((b) => (
+            <li class="flex gap-3 text-sm leading-relaxed">
+              <span class="mt-[0.55em] h-1 w-3 shrink-0 bg-accent"></span>
+              <span>{b}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div class="bg-surface p-6 sm:p-7">
+        <h3 class="mono mb-4 text-xs uppercase tracking-[0.14em] text-faint">{t('key.costsTitle')}</h3>
+        <ul class="grid gap-2.5">
+          {costs.map((c) => (
+            <li class="flex gap-3 text-sm leading-relaxed text-muted">
+              <span class="mt-[0.55em] h-1 w-3 shrink-0 bg-line-strong"></span>
+              <span>{c}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>

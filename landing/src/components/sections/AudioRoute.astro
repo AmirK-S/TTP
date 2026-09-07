@@ -1,0 +1,118 @@
+---
+/**
+ * Where the audio goes.
+ *
+ * This section exists because the page it replaced said, under a heading
+ * reading "Privacy First", that nothing leaves your machine — while
+ * `whisper.rs` POSTs the recording to `api.groq.com`. Research §2d records a
+ * competitor's identical claim being taken apart by a reader in its own launch
+ * thread, on this exact architecture, within hours of posting.
+ *
+ * Two rules, from C1 and C2:
+ *   - Do not lead with privacy. This is section six, not the hero. Not one
+ *     product in the category leads with it; the market leader uses the word
+ *     "private" zero times on its homepage.
+ *   - The claim is about the *relationship*, not the *location*. "Local" is
+ *     unavailable and commoditised. "There is no server of mine for your audio
+ *     to pass through" is true, unusual, and checkable — so every sentence
+ *     here ships with the line of source that backs it.
+ */
+import { useTranslations, getLocalizedPath, type Lang } from '@/i18n/utils';
+import { REPO_URL } from '@/lib/coats';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+
+const src = (path: string, line?: string) =>
+  `${REPO_URL}/blob/master/${path}${line ? `#L${line}` : ''}`;
+
+const sources = [
+  { label: 'transcription/whisper.rs:28', href: src('src-tauri/src/transcription/whisper.rs', '28') },
+  { label: 'telemetry/analytics.rs', href: src('src-tauri/src/telemetry/analytics.rs') },
+  { label: 'telemetry/consent.rs', href: src('src-tauri/src/telemetry/consent.rs') },
+];
+
+const stays = [t('audio.stays1'), t('audio.stays2'), t('audio.stays3')];
+const off = [t('audio.off1'), t('audio.off2'), t('audio.off3')];
+---
+
+<section id="audio" class="band">
+  <div class="wrap">
+    <p class="plate-label">{t('audio.plate')}</p>
+
+    <div class="grid gap-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-16">
+      <div data-reveal>
+        <h2 class="display text-[clamp(1.75rem,1.2rem+2vw,2.75rem)]">{t('audio.heading')}</h2>
+        <p class="mt-5 font-display text-[1.1875rem] leading-snug">{t('audio.lead')}</p>
+        <p class="mt-4 text-muted">{t('audio.p1')}</p>
+        <p class="mt-4 text-muted">{t('audio.p2')}</p>
+      </div>
+
+      <figure class="panel self-start p-6 sm:p-7" data-reveal>
+        <div class="flex items-stretch gap-3">
+          <div class="panel-flat flex-1 p-4">
+            <p class="text-sm font-semibold">{t('audio.diagYou')}</p>
+            <p class="mt-1 text-xs leading-relaxed text-faint">{t('audio.diagYouNote')}</p>
+          </div>
+
+          <div class="grid shrink-0 place-items-center" aria-hidden="true">
+            <svg width="34" height="16" viewBox="0 0 34 16" fill="none" stroke="currentColor" class="text-line-strong">
+              <path d="M0 8h30" stroke-width="1.5" />
+              <path d="M25 3l5 5-5 5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </div>
+
+          <div class="panel-flat flex-1 p-4">
+            <p class="mono text-sm font-semibold">{t('audio.diagGroq')}</p>
+            <p class="mt-1 text-xs leading-relaxed text-faint">{t('audio.diagGroqNote')}</p>
+          </div>
+        </div>
+
+        {/* The negative space is the claim. Drawn, because a struck-out box is
+            read faster than a sentence saying the same thing. */}
+        <div class="mt-3 rounded-[var(--r-md)] border border-dashed border-line p-4 text-center">
+          <p class="text-sm font-semibold text-faint line-through decoration-1">{t('audio.diagNone')}</p>
+          <p class="mt-1 text-xs text-faint">{t('audio.diagNoneNote')}</p>
+        </div>
+
+        <figcaption class="caption mt-4">{t('audio.plate')}</figcaption>
+      </figure>
+    </div>
+
+    <div class="mt-12 grid gap-px overflow-hidden rounded-[var(--r-lg)] border border-line bg-line md:grid-cols-3">
+      <div class="bg-surface p-6">
+        <h3 class="mono mb-4 text-xs uppercase tracking-[0.14em] text-faint">{t('audio.staysTitle')}</h3>
+        <ul class="grid gap-2.5">
+          {stays.map((s) => <li class="text-sm leading-relaxed text-muted">{s}</li>)}
+        </ul>
+      </div>
+
+      <div class="bg-surface p-6">
+        <h3 class="mono mb-4 text-xs uppercase tracking-[0.14em] text-faint">{t('audio.offTitle')}</h3>
+        <ul class="grid gap-2.5">
+          {off.map((s) => <li class="text-sm leading-relaxed text-muted">{s}</li>)}
+        </ul>
+      </div>
+
+      <div class="bg-surface p-6">
+        <h3 class="mono mb-4 text-xs uppercase tracking-[0.14em] text-faint">{t('audio.checkTitle')}</h3>
+        <p class="text-sm leading-relaxed text-muted">{t('audio.checkNote')}</p>
+        <ul class="mt-3 grid gap-2">
+          {sources.map((s) => (
+            <li>
+              <a href={s.href} target="_blank" rel="noopener" class="mono link text-xs">{s.label}</a>
+            </li>
+          ))}
+        </ul>
+        <div class="mt-5 grid gap-1.5 border-t border-line pt-4">
+          <a href={getLocalizedPath(lang, 'privacy')} class="link text-sm">{t('audio.privacyLink')}</a>
+          <a href="https://groq.com/privacy-policy/" target="_blank" rel="noopener" class="link text-sm">
+            {t('audio.groqLink')}
+          </a>
+          <p class="text-xs text-faint">{t('audio.groqNote')}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
