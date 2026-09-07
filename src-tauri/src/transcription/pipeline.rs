@@ -1027,6 +1027,29 @@ mod hallucination_tests {
     }
 
     #[test]
+    fn long_dictation_anaphora_survives() {
+        // Trace 0308-9590, 2026-09-07 21:31: 121 seconds of speech, 2087
+        // characters, dropped in full by the shipped 3.1.6 binary. The second
+        // such loss, and four times longer than 0004-ad78.
+        //
+        // The trigger is "que ce soit" listing four alternatives — a figure of
+        // speech, not a Whisper loop, and the chain detector cannot tell them
+        // apart. Nothing in the known-hallucination list corroborates it.
+        //
+        // His words are not in this file. The shape is; the original is cited
+        // by trace id above.
+        let text = "J'ai beaucoup de choses à faire. Que ce soit les entraînements, \
+                    que ce soit les étirements, que ce soit la prospection, que ce soit \
+                    mon propre travail ou d'autres responsabilités qui sont \
+                    transitoires. J'ai beaucoup de choses à faire, mais il n'y a que \
+                    certaines actions qui sont vraiment clés.";
+        assert!(
+            !is_hallucination(text),
+            "two minutes of real speech must survive the loop detector"
+        );
+    }
+
+    #[test]
     fn repeated_list_intro_survives() {
         // Another shape people genuinely dictate: parallel clauses.
         let text = "il faut que je pense à acheter du pain, il faut que je pense à \
