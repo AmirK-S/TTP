@@ -230,6 +230,9 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             "record" => {
                 toggle_recording(app);
             }
+            "copy_last" => {
+                copy_last_transcription(app);
+            }
             "fix_input_monitoring" => {
                 // Open macOS Privacy & Security → Input Monitoring directly.
                 // Same deep link as the in-Settings button; here we just
@@ -360,6 +363,51 @@ fn toggle_recording(app: &AppHandle) {
     }
 }
 
+/// Put the newest transcription in history back on the clipboard.
+///
+/// After a paste the pipeline restores whatever the user had on the clipboard
+/// before they spoke, so the text they just dictated is not there to paste a
+/// second time. This gets it back from the menu-bar icon without opening
+/// Settings → History.
+///
+/// Reads history, so with history turned off there is nothing to copy — the
+/// trace says `history_empty` rather than pretending.
+fn copy_last_transcription(app: &AppHandle) {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+
+    let entries = crate::history::get_history();
+    let Some(entry) = crate::history::store::latest_with_text(&entries) else {
+        crate::trace::event(
+            "tray.copy_last",
+            serde_json::json!({ "ok": false, "reason": "history_empty" }),
+        );
+        return;
+    };
+    // PRIVACY: counts and age only — the text is the user's speech.
+    let age_s = (now_ms_since_epoch() as i64 - entry.timestamp).max(0) / 1000;
+    match app.clipboard().write_text(entry.text.as_str()) {
+        Ok(()) => crate::trace::event(
+            "tray.copy_last",
+            serde_json::json!({
+                "ok": true,
+                "chars": entry.text.chars().count(),
+                "age_s": age_s,
+            }),
+        ),
+        Err(e) => {
+            crate::logging::log_warn(&format!("[Tray] copy last transcription failed: {}", e));
+            crate::trace::event(
+                "tray.copy_last",
+                serde_json::json!({
+                    "ok": false,
+                    "reason": "clipboard_write_failed",
+                    "error": e.to_string(),
+                }),
+            );
+        }
+    }
+}
+
 /// Update tray menu text based on recording state. Also re-evaluates the
 /// Input Monitoring permission state — if the user has granted it since
 /// the previous build, the warning entry disappears at the next state
@@ -390,6 +438,10 @@ fn build_tray_menu(
         crate::i18n::tr("tray.startRecording")
     };
     let record = MenuItem::with_id(app, "record", &record_text, true, None::<&str>)?;
+    // Always enabled. The menu is only rebuilt on tray toggles and settings
+    // changes, not after every dictation, so an "is there anything to copy"
+    // state baked in here would be stale; the click decides instead.
+    let copy_last = MenuItem::with_id(app, "copy_last", crate::i18n::tr("tray.copyLast"), true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let settings = MenuItem::with_id(app, "settings", crate::i18n::tr("tray.settings"), true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", crate::i18n::tr("tray.quit"), true, None::<&str>)?;
@@ -451,6 +503,7 @@ fn build_tray_menu(
     if let Some(i) = input_mon_item.as_ref() { refs.push(i); }
     if let Some(s) = perm_sep.as_ref() { refs.push(s); }
     refs.push(&record);
+    refs.push(&copy_last);
     refs.push(&separator);
     refs.push(&settings);
     refs.push(&quit);

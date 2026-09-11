@@ -85,6 +85,41 @@ pub fn get_history() -> Vec<HistoryEntry> {
     entries
 }
 
+/// The newest entry that has text to copy, from a newest-first list.
+///
+/// Skips blank entries rather than handing the clipboard an empty string: a
+/// copy that silently wipes what the user already had is worse than no copy.
+pub fn latest_with_text(entries: &[HistoryEntry]) -> Option<&HistoryEntry> {
+    entries.iter().find(|e| !e.text.trim().is_empty())
+}
+
+#[cfg(test)]
+mod latest_with_text_tests {
+    use super::*;
+
+    fn entry(text: &str, timestamp: i64) -> HistoryEntry {
+        HistoryEntry { text: text.to_string(), timestamp, raw_text: None }
+    }
+
+    #[test]
+    fn picks_the_first_entry_of_a_newest_first_list() {
+        let entries = vec![entry("newest", 3), entry("older", 2)];
+        assert_eq!(latest_with_text(&entries).unwrap().text, "newest");
+    }
+
+    #[test]
+    fn skips_blank_entries() {
+        let entries = vec![entry("  ", 3), entry("", 2), entry("real text", 1)];
+        assert_eq!(latest_with_text(&entries).unwrap().text, "real text");
+    }
+
+    #[test]
+    fn nothing_to_copy_is_none() {
+        assert!(latest_with_text(&[]).is_none());
+        assert!(latest_with_text(&[entry(" ", 1)]).is_none());
+    }
+}
+
 /// Add a new entry to history
 /// Prepends to existing history (newest first).
 /// Free tier: skips silently when at the cap (existing entries are grandfathered).

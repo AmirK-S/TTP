@@ -148,6 +148,8 @@ KNOWN_STAGES = {
     # cap that now also stops hands-free sessions, and the sweep of stale WAVs
     # from recordings/ and audio_backups/.
     "capture.duration_cap", "files.swept",
+    # The menu-bar icon's "copy last transcription" entry.
+    "tray.copy_last",
     # `audio.rms` below has no emitter left in the source and is kept on
     # purpose: it is the pre-`audio.signal` schema generation, 52 dictations
     # of it are in the corpus, and dropping it would list a stage the app once

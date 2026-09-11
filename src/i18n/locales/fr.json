@@ -74,6 +74,7 @@
   "tray": {
     "startRecording": "Démarrer l'enregistrement",
     "stopRecording": "Arrêter l'enregistrement",
+    "copyLast": "Copier la dernière transcription",
     "settings": "Paramètres…",
     "quit": "Quitter TTP",
     "fixAccessibility": "Corriger la permission Accessibilité",
