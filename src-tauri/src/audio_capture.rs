@@ -227,6 +227,38 @@ static SIGNAL_SEEN: AtomicBool = AtomicBool::new(false);
 /// Wall-clock ms at which the current capture began. Zero when idle.
 static CAPTURE_STARTED_MS: AtomicU64 = AtomicU64::new(0);
 
+/// Samples a single capture may write before the callback stops writing.
+///
+/// A backstop, not the limit. `audio_monitor::MAX_RECORDING_SECS` is the
+/// limit, and it works through the state machine: it stops a recording the
+/// app knows about. The 2026-08-30 capture was one it did not know about —
+/// published after the app had already gone Idle — so nothing watching
+/// Recording ever saw it, and it wrote 7.2 GB to `recordings/` over eleven
+/// hours. This check lives in the callback, which every sample passes through
+/// whoever does or does not own the stream.
+///
+/// Set per capture from the device's rate and channel count. Zero means no
+/// capture has set one, and nothing is capped.
+static SAMPLE_LIMIT: AtomicU64 = AtomicU64::new(0);
+
+/// Latched by the callback when it refuses a buffer for [`SAMPLE_LIMIT`].
+/// The callback cannot write a trace line, so whichever path closes the
+/// capture reports it as `sample_cap_hit`.
+static SAMPLE_CAP_HIT: AtomicBool = AtomicBool::new(false);
+
+/// How far above the monitor's cap the backstop sits, as a multiple of it.
+///
+/// Three, not one, so the backstop can never cut a recording the monitor was
+/// about to end cleanly. The margin is not decorative: the 2026-08-30 file
+/// holds 20.9 hours of audio at its header's rate for 10.95 hours of wall
+/// time, so a device can deliver samples at twice its nominal rate, and a
+/// factor of two would have raced the monitor on exactly that device.
+const SAMPLE_CAP_FACTOR: u64 = 3;
+
+fn sample_limit_for(rate: u32, channels: u16) -> u64 {
+    rate as u64 * channels as u64 * crate::audio_monitor::MAX_RECORDING_SECS * SAMPLE_CAP_FACTOR
+}
+
 /// How long a capture may deliver nothing but zeros before we say so.
 ///
 /// A Bluetooth device that is still handing itself over from a phone needs
@@ -450,36 +482,46 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
     // parked in STATE after a race between an in-flight start_recording
     // IPC and an early stop_recording / reset_to_idle from the JS side. The
     // next start would then return "recording_already_in_progress" forever
-    // until the user restarted the app. Instead of failing, we discard the
-    // stale state (dropping the stream closes the cpal callback, the
-    // unfinalised WAV stays on disk and gets swept by the next backup
-    // cleanup pass) and proceed with a fresh start.
-    {
+    // until the user restarted the app. Instead of failing, we close the
+    // stale capture, delete its WAV, and proceed with a fresh start.
+    //
+    // The WAV used to be left behind, under a comment promising that the
+    // backup cleanup pass would sweep it. That pass only looked in
+    // `audio_backups/`, so this is how the eleven-hour capture of 2026-08-30
+    // came to sit in `recordings/` as a 7.2 GB file until 2026-09-11.
+    let stale = {
         let mut state = STATE.lock().map_err(|e| format!("state lock poisoned: {}", e))?;
-        if let Some(stale) = state.take() {
-            let stale_samples = stale.samples_written.load(Ordering::Relaxed);
-            log_warn(&format!(
-                "[AudioCapture] start_recording: dropping stale STATE for {} (samples written: {})",
-                stale.save_path.display(),
-                stale_samples
-            ));
-            // The arbiter believed a capture was live. It was, and we have
-            // just closed it — so say so, or the Idle backstop will later
-            // find nothing where it expected something and report a
-            // disagreement that is really this line.
+        let stale = state.take();
+        if stale.is_some() {
+            // The arbiter believed a capture was live. It was, and we are
+            // closing it — so say so while STATE is still held, or the Idle
+            // backstop could find nothing where it expected something and
+            // report a disagreement that is really this line.
             crate::capture_arbiter::ARBITER.mark_reclaimed();
-            // A stale capture reaching here means a previous cycle ended with
-            // the microphone still open. It used to leave a `log_warn` in a
-            // file that is filtered to Warn in release and read by nobody.
-            crate::trace::event(
-                "capture.stale_dropped",
-                serde_json::json!({ "samples": stale_samples }),
-            );
-            // Dropping `stale` closes the stream and releases the writer.
-            // We do NOT attempt to finalize the WAV — the file's payload is
-            // already discardable since the caller is asking for a fresh
-            // session.
         }
+        stale
+    };
+    if let Some(stale) = stale {
+        log_warn(&format!(
+            "[AudioCapture] start_recording: dropping stale STATE for {} (samples written: {})",
+            stale.save_path.display(),
+            stale.samples_written.load(Ordering::Relaxed)
+        ));
+        // Read before this start re-arms it for the new capture.
+        let sample_cap_hit = SAMPLE_CAP_HIT.load(Ordering::SeqCst);
+        let discarded = close_and_discard(stale);
+        // A stale capture reaching here means a previous cycle ended with
+        // the microphone still open. It used to leave a `log_warn` in a
+        // file that is filtered to Warn in release and read by nobody.
+        crate::trace::event(
+            "capture.stale_dropped",
+            serde_json::json!({
+                "samples": discarded.samples,
+                "wav_finalised": discarded.finalised,
+                "wav_deleted": discarded.deleted,
+                "sample_cap_hit": sample_cap_hit,
+            }),
+        );
     }
     reset_rms();
 
@@ -541,6 +583,8 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
         *slot = Some(device_name.clone());
     }
 
+    let sample_limit = sample_limit_for(config.sample_rate().0, config.channels());
+
     crate::trace::event(
         "capture.start",
         serde_json::json!({
@@ -550,6 +594,7 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
             "rate": config.sample_rate().0,
             "channels": config.channels(),
             "format": format!("{:?}", config.sample_format()),
+            "sample_limit": sample_limit,
         }),
     );
 
@@ -560,6 +605,9 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
     // session's last sample on session start.
     reset_rms();
     arm_dead_input_watch();
+    // Armed before the stream exists, so the callback never runs uncapped.
+    SAMPLE_LIMIT.store(sample_limit, Ordering::SeqCst);
+    SAMPLE_CAP_HIT.store(false, Ordering::SeqCst);
     let stream = build_stream(&device, &supported_config, &writer_handle, &samples_written, &app)?;
     stream
         .play()
@@ -709,14 +757,47 @@ pub fn reclaim_orphaned_capture() {
     };
     drop(guard);
 
-    let samples = orphan.samples_written.load(Ordering::SeqCst);
-    let path = orphan.save_path.clone();
+    let discarded = close_and_discard(orphan);
+    ARBITER.mark_reclaimed();
+
+    log_warn(&format!(
+        "[AudioCapture] reclaimed an orphaned capture ({} samples) — the microphone was live with no owner",
+        discarded.samples
+    ));
+    // The defect was invisible for a day because nothing said the microphone
+    // was on. It now announces itself the moment it happens.
+    crate::trace::event(
+        "capture.orphan_reclaimed",
+        serde_json::json!({
+            "samples": discarded.samples,
+            "device": last_capture_device(),
+            "wav_finalised": discarded.finalised,
+            "wav_deleted": discarded.deleted,
+            "sample_cap_hit": SAMPLE_CAP_HIT.load(Ordering::SeqCst),
+        }),
+    );
+}
+
+/// What closing an unwanted capture did, for the line that reports it.
+struct Discarded {
+    samples: u64,
+    finalised: bool,
+    deleted: bool,
+}
+
+/// Close a capture nobody will transcribe, and delete its file.
+///
+/// Shared by the two paths that find one — the Idle backstop and a start that
+/// finds a stale capture still in STATE — so they cannot drift apart again.
+/// They had: this one deleted its WAV, the stale path left its WAV on disk.
+fn close_and_discard(capture: RecordingState) -> Discarded {
+    let samples = capture.samples_written.load(Ordering::SeqCst);
     // Dropping the stream closes the cpal callback. This is the line that
     // turns the microphone off.
-    drop(orphan.stream);
+    drop(capture.stream);
     reset_rms();
     disarm_dead_input_watch();
-    let finalised = match orphan.writer.lock() {
+    let finalised = match capture.writer.lock() {
         Ok(mut w) => match w.take() {
             Some(writer) => writer.finalize().is_ok(),
             None => true,
@@ -729,23 +810,8 @@ pub fn reclaim_orphaned_capture() {
     // Nobody will ever transcribe this file: the dictation it belonged to
     // finished without it. Leaving it would grow the recordings directory
     // one orphan at a time.
-    let _ = std::fs::remove_file(&path);
-    ARBITER.mark_reclaimed();
-
-    log_warn(&format!(
-        "[AudioCapture] reclaimed an orphaned capture ({} samples) — the microphone was live with no owner",
-        samples
-    ));
-    // The defect was invisible for a day because nothing said the microphone
-    // was on. It now announces itself the moment it happens.
-    crate::trace::event(
-        "capture.orphan_reclaimed",
-        serde_json::json!({
-            "samples": samples,
-            "device": last_capture_device(),
-            "wav_finalised": finalised,
-        }),
-    );
+    let deleted = std::fs::remove_file(&capture.save_path).is_ok();
+    Discarded { samples, finalised, deleted }
 }
 
 /// Stop the active recording, finalise the WAV file, and return its path.
@@ -896,6 +962,11 @@ async fn stop_recording_inner() -> Result<PathBuf, String> {
             // WAV means the device was streaming silence, which is the
             // Bluetooth-not-really-connected signature.
             "samples": written,
+            // The callback reached SAMPLE_LIMIT and refused everything after
+            // it. With the monitor's cap in front of it this should never be
+            // true on a stop; when it is, the monitor did not stop this
+            // recording and the backstop did.
+            "sample_cap_hit": SAMPLE_CAP_HIT.load(Ordering::SeqCst),
         }),
     );
 
@@ -923,6 +994,9 @@ fn build_stream(
     let config: cpal::StreamConfig = supported.config();
     let err_app = app.clone();
     let err_fn = move |e: cpal::StreamError| handle_stream_error(&err_app, e);
+    // Read once and moved into the callback: the limit belongs to this
+    // stream, and a later start re-arming the static cannot change it.
+    let limit = SAMPLE_LIMIT.load(Ordering::SeqCst);
 
     let stream = match supported.sample_format() {
         cpal::SampleFormat::I8 => {
@@ -933,7 +1007,7 @@ fn build_stream(
                     &config,
                     move |data: &[i8], _: &_| {
                         store_rms(rms_from_i8(data));
-                        write_samples::<i8, i8>(data, &w, &counter);
+                        write_samples::<i8, i8>(data, &w, &counter, limit);
                     },
                     err_fn,
                     None,
@@ -948,7 +1022,7 @@ fn build_stream(
                     &config,
                     move |data: &[i16], _: &_| {
                         store_rms(rms_from_i16(data));
-                        write_samples::<i16, i16>(data, &w, &counter);
+                        write_samples::<i16, i16>(data, &w, &counter, limit);
                     },
                     err_fn,
                     None,
@@ -963,7 +1037,7 @@ fn build_stream(
                     &config,
                     move |data: &[i32], _: &_| {
                         store_rms(rms_from_i32(data));
-                        write_samples::<i32, i32>(data, &w, &counter);
+                        write_samples::<i32, i32>(data, &w, &counter, limit);
                     },
                     err_fn,
                     None,
@@ -978,7 +1052,7 @@ fn build_stream(
                     &config,
                     move |data: &[f32], _: &_| {
                         store_rms(rms_from_f32(data));
-                        write_samples::<f32, f32>(data, &w, &counter);
+                        write_samples::<f32, f32>(data, &w, &counter, limit);
                     },
                     err_fn,
                     None,
@@ -997,11 +1071,19 @@ fn build_stream(
 /// and releases — contention is bounded to a single buffer's worth of
 /// time, well under any audio deadline. Dropping samples silently (the
 /// plugin's bug) is far worse than a single 10 ms hiccup on stop.
-fn write_samples<T, U>(input: &[T], writer: &WavWriterHandle, counter: &Arc<AtomicU64>)
+///
+/// `limit` is the stream's [`SAMPLE_LIMIT`]; zero writes without one. The
+/// check is per buffer, before the lock, so a capped stream costs one atomic
+/// read per callback, and the file can pass `limit` by at most one buffer.
+fn write_samples<T, U>(input: &[T], writer: &WavWriterHandle, counter: &Arc<AtomicU64>, limit: u64)
 where
     T: Sample,
     U: Sample + hound::Sample + FromSample<T>,
 {
+    if limit != 0 && counter.load(Ordering::Relaxed) >= limit {
+        SAMPLE_CAP_HIT.store(true, Ordering::Relaxed);
+        return;
+    }
     let mut guard = match writer.lock() {
         Ok(g) => g,
         Err(poisoned) => {
@@ -1065,5 +1147,70 @@ fn wav_spec_from_config(config: &cpal::SupportedStreamConfig) -> WavSpec {
         sample_rate: config.sample_rate().0,
         bits_per_sample: (config.sample_format().sample_size() * 8) as u16,
         sample_format,
+    }
+}
+
+#[cfg(test)]
+mod sample_cap_tests {
+    use super::*;
+
+    fn writer_at(name: &str) -> (PathBuf, WavWriterHandle) {
+        let path = std::env::temp_dir().join(name);
+        let spec = WavSpec {
+            channels: 1,
+            sample_rate: 16_000,
+            bits_per_sample: 16,
+            sample_format: SampleFormat::Int,
+        };
+        let writer = WavWriter::create(&path, spec).unwrap();
+        (path, Arc::new(Mutex::new(Some(writer))))
+    }
+
+    #[test]
+    fn the_callback_stops_writing_at_the_sample_limit() {
+        let (path, writer) = writer_at("ttp_test_sample_cap.wav");
+        let counter = Arc::new(AtomicU64::new(0));
+        SAMPLE_CAP_HIT.store(false, Ordering::SeqCst);
+
+        for _ in 0..5 {
+            write_samples::<i16, i16>(&[1i16; 100], &writer, &counter, 150);
+        }
+
+        // 0 and 100 are under the limit, so two buffers land; at 200 the
+        // callback refuses every buffer after.
+        assert_eq!(counter.load(Ordering::SeqCst), 200);
+        assert!(SAMPLE_CAP_HIT.load(Ordering::SeqCst), "the refusal must be latched for the close to report");
+        writer.lock().unwrap().take().unwrap().finalize().unwrap();
+        assert_eq!(hound::WavReader::open(&path).unwrap().duration(), 200);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_zero_limit_writes_everything() {
+        let (path, writer) = writer_at("ttp_test_sample_nocap.wav");
+        let counter = Arc::new(AtomicU64::new(0));
+        for _ in 0..5 {
+            write_samples::<i16, i16>(&[1i16; 100], &writer, &counter, 0);
+        }
+        assert_eq!(counter.load(Ordering::SeqCst), 500);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn the_backstop_never_cuts_what_the_monitor_would_have_stopped() {
+        let cap = crate::audio_monitor::MAX_RECORDING_SECS;
+        // A full-length recording, even from a device delivering at twice its
+        // nominal rate as the 2026-08-30 AirPods did, stays under the limit.
+        assert!(sample_limit_for(48_000, 2) > 2 * 48_000 * 2 * cap);
+        assert!(sample_limit_for(24_000, 1) > 2 * 24_000 * cap);
+    }
+
+    #[test]
+    fn the_backstop_would_have_ended_the_eleven_hour_capture_within_minutes() {
+        // 24 kHz mono, as the header of the 7.2 GB file says. Eleven hours of
+        // it is far past the limit; the limit is under half an hour of audio.
+        let limit = sample_limit_for(24_000, 1);
+        assert!(limit < 24_000 * 30 * 60);
+        assert!(limit < 24_000 * 11 * 3600);
     }
 }

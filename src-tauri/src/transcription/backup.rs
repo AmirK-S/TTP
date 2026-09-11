@@ -96,46 +96,107 @@ pub fn remove_backup(backup_path: &Path) {
     }
 }
 
-/// Delete backup files older than 24 hours.
+/// What one sweep of a directory removed.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct SweepReport {
+    pub count: u32,
+    pub bytes: u64,
+    /// Age of the oldest file removed, in whole hours. Zero when none was.
+    pub oldest_age_h: u64,
+}
+
+/// Delete every `.wav` in `dir` last modified more than `max_age` before `now`.
 ///
-/// Called once during app startup in `setup()`. Logs the count of cleaned
-/// files but never fails or panics -- if the backup directory does not
-/// exist, returns silently.
-pub fn cleanup_stale_backups(app: &AppHandle) {
-    let Ok(dir) = backup_dir(app) else {
-        crate::logging::log_warn("backup cleanup skipped: app data dir unavailable");
-        return;
+/// `.wav` only, so the sweep cannot take a file it does not own; the
+/// converted `.16k.wav` files match too. Age is modification time. A capture
+/// still being written is not a candidate in practice: its writer touches the
+/// file on every flush, and a recording is capped at minutes, not a day.
+///
+/// `now` is a parameter so the age arithmetic can be tested without waiting a
+/// day or forging timestamps.
+fn sweep_older_than(dir: &Path, max_age: Duration, now: SystemTime) -> SweepReport {
+    let mut report = SweepReport::default();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return report;
     };
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return;
-    };
-
-    let now = SystemTime::now();
-    let mut cleaned = 0u32;
-
     for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("wav") {
+            continue;
+        }
         let Ok(metadata) = entry.metadata() else {
             continue;
         };
+        if !metadata.is_file() {
+            continue;
+        }
         let Ok(modified) = metadata.modified() else {
             continue;
         };
         let Ok(age) = now.duration_since(modified) else {
             continue;
         };
-
-        if age > BACKUP_MAX_AGE {
-            if std::fs::remove_file(entry.path()).is_ok() {
-                cleaned += 1;
-            }
+        if age > max_age && std::fs::remove_file(&path).is_ok() {
+            report.count += 1;
+            report.bytes += metadata.len();
+            report.oldest_age_h = report.oldest_age_h.max(age.as_secs() / 3600);
         }
     }
+    report
+}
 
-    if cleaned > 0 {
-        crate::logging::log_info(&format!(
-            "Cleaned {} stale audio backup(s)",
-            cleaned
-        ));
+/// Delete audio nobody will read again: every WAV older than 24 hours in
+/// `audio_backups/` and in `recordings/`.
+///
+/// This used to be `cleanup_stale_backups`, and it had two blind spots that
+/// together let one file reach 7.2 GB and sit on disk for eleven days:
+///
+///   * **It never looked in `recordings/`.** Every pipeline exit that ends
+///     before `files.cleaned` — a tap under 0.3 s, a Whisper error, a stale
+///     capture, a process that died mid-recording — leaves its working WAV
+///     there, and `audio_capture`'s stale path said in a comment that "the
+///     backup cleanup pass" would collect it. It would not.
+///   * **It only ran at launch.** TTP is a tray app that runs for weeks, and
+///     backups are now deliberately kept on every text-dropping path so a
+///     wrong verdict stays recoverable. A sweep that waits for a relaunch
+///     lets those accumulate without bound.
+///
+/// `trigger` is `"launch"` or `"hourly"`. A launch sweep always writes its
+/// `files.swept` lines, including `count:0`, so a trace can show the sweep ran;
+/// an hourly one writes only when it removed something, because a line an
+/// hour that says nothing happened would be most of the trace's growth.
+pub fn sweep_stale_audio(app: &AppHandle, trigger: &'static str) {
+    let dirs = [
+        ("audio_backups", backup_dir(app)),
+        ("recordings", crate::recording::get_recording_dir(app)),
+    ];
+    for (name, dir) in dirs {
+        let Ok(dir) = dir else {
+            crate::logging::log_warn(&format!(
+                "audio sweep skipped {}: app data dir unavailable",
+                name
+            ));
+            continue;
+        };
+        let report = sweep_older_than(&dir, BACKUP_MAX_AGE, SystemTime::now());
+        if report.count > 0 {
+            crate::logging::log_info(&format!(
+                "Swept {} stale audio file(s) from {} ({} bytes)",
+                report.count, name, report.bytes
+            ));
+        }
+        if report.count > 0 || trigger == "launch" {
+            crate::trace::event(
+                "files.swept",
+                serde_json::json!({
+                    "dir": name,
+                    "trigger": trigger,
+                    "count": report.count,
+                    "bytes": report.bytes,
+                    "oldest_age_h": report.oldest_age_h,
+                }),
+            );
+        }
     }
 }
 
@@ -213,6 +274,56 @@ mod tests {
         }
         writer.finalize().unwrap();
         path.to_str().unwrap().to_string()
+    }
+
+    /// A fresh, empty directory under the system temp dir, unique to `name`.
+    fn sweep_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("ttp_sweep_{}_{}", name, std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn the_sweep_takes_day_old_wavs_and_nothing_else() {
+        // The shape `recordings/` was left in: a working WAV and its converted
+        // twin, which also ends in `.wav`. The text file stands for anything
+        // the sweep does not own.
+        let dir = sweep_dir("old");
+        std::fs::write(dir.join("recording_20260830_231821.wav"), [0u8; 10]).unwrap();
+        std::fs::write(dir.join("recording_20260830_231821.16k.wav"), [0u8; 4]).unwrap();
+        std::fs::write(dir.join("notes.txt"), b"not audio").unwrap();
+
+        let fresh = sweep_older_than(&dir, BACKUP_MAX_AGE, SystemTime::now());
+        assert_eq!(fresh, SweepReport::default(), "nothing is a day old yet");
+        assert!(dir.join("recording_20260830_231821.wav").exists());
+
+        let a_day_later = SystemTime::now() + BACKUP_MAX_AGE + Duration::from_secs(3600);
+        let report = sweep_older_than(&dir, BACKUP_MAX_AGE, a_day_later);
+        assert_eq!(report.count, 2);
+        assert_eq!(report.bytes, 14);
+        assert!(report.oldest_age_h >= 24, "oldest_age_h was {}", report.oldest_age_h);
+        assert!(!dir.join("recording_20260830_231821.wav").exists());
+        assert!(!dir.join("recording_20260830_231821.16k.wav").exists());
+        assert!(dir.join("notes.txt").exists(), "the sweep only takes .wav files");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_sweep_leaves_a_directory_of_wav_name_alone() {
+        let dir = sweep_dir("nested");
+        std::fs::create_dir_all(dir.join("keep.wav")).unwrap();
+        let a_day_later = SystemTime::now() + BACKUP_MAX_AGE + Duration::from_secs(3600);
+        assert_eq!(sweep_older_than(&dir, BACKUP_MAX_AGE, a_day_later).count, 0);
+        assert!(dir.join("keep.wav").is_dir());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_missing_directory_is_an_empty_sweep() {
+        let missing = std::env::temp_dir().join("ttp_sweep_does_not_exist_9f2c");
+        let report = sweep_older_than(&missing, BACKUP_MAX_AGE, SystemTime::now());
+        assert_eq!(report, SweepReport::default());
     }
 
     #[test]

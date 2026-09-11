@@ -829,8 +829,22 @@ pub fn run() {
             // Start the auto-trial on first launch (idempotent).
             usage::init();
 
-            // Clean up stale audio backups (>24 hours old)
-            transcription::backup::cleanup_stale_backups(app.handle());
+            // Sweep audio nobody will read again (>24 hours old) from both
+            // audio_backups/ and recordings/: now, and then every hour, because
+            // a tray app that runs for weeks never reaches its next launch.
+            transcription::backup::sweep_stale_audio(app.handle(), "launch");
+            {
+                let handle = app.handle().clone();
+                let spawned = std::thread::Builder::new()
+                    .name("ttp-audio-sweep".into())
+                    .spawn(move || loop {
+                        std::thread::sleep(std::time::Duration::from_secs(60 * 60));
+                        transcription::backup::sweep_stale_audio(&handle, "hourly");
+                    });
+                if let Err(e) = spawned {
+                    logging::log_warn(&format!("hourly audio sweep not started: {}", e));
+                }
+            }
 
             // Hide from dock — TTP is a tray-only app
             #[cfg(target_os = "macos")]

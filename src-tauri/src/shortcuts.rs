@@ -88,6 +88,35 @@ pub fn handle_shortcut_event_public(app: &AppHandle, shortcut_state: ShortcutSta
     }
 }
 
+/// Stop a recording because it reached `audio_monitor::MAX_RECORDING_SECS`.
+///
+/// The cap used to send a synthetic key release through
+/// `handle_shortcut_event_public`, which failed in exactly the two cases a cap
+/// exists for:
+///
+///   * `handle_shortcut_released` ignores releases in hands-free mode — the
+///     one mode where nobody is holding a key and a session can run
+///     unattended. The cap's own comment promised to catch that session.
+///   * `try_lock` drops the event when the lock is contended, and the monitor
+///     loop that sent it exits straight afterwards, so nothing ever asks again.
+///
+/// So this ignores the mode and blocks on the lock. The caller is the
+/// monitor's own blocking thread, and the lock is only ever held for a state
+/// transition.
+///
+/// Returns `None` when there was no recording to stop, otherwise whether the
+/// stopped recording was hands-free.
+pub fn stop_for_duration_cap(app: &AppHandle) -> Option<bool> {
+    let state = app.state::<Mutex<AppState>>();
+    let mut app_state = state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if !app_state.is_recording() {
+        return None;
+    }
+    let hands_free = app_state.effective_hands_free();
+    stop_recording(&mut app_state, app);
+    Some(hands_free)
+}
+
 /// Handle FN key double-tap event - toggles hands-free mode
 pub fn handle_fn_double_tap(app: &AppHandle) {
     let state = app.state::<Mutex<AppState>>();

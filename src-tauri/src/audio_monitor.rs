@@ -20,7 +20,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter};
-use tauri_plugin_global_shortcut::ShortcutState;
 
 /// Hard upper bound on a single recording session, in seconds. Past this
 /// point the watchdog forces a stop so a user who walked away mid-session
@@ -79,7 +78,19 @@ fn run(app: &AppHandle) -> Result<(), String> {
                 "[AudioMonitor] hard duration cap reached ({}s), forcing stop",
                 MAX_RECORDING_SECS
             ));
-            crate::shortcuts::handle_shortcut_event_public(app, ShortcutState::Released);
+            // Not a synthetic key release, which is what this used to send and
+            // which could not stop a hands-free session at all — see
+            // `shortcuts::stop_for_duration_cap`.
+            let stopped = crate::shortcuts::stop_for_duration_cap(app);
+            crate::trace::event(
+                "capture.duration_cap",
+                serde_json::json!({
+                    "limit_secs": MAX_RECORDING_SECS,
+                    "stopped": stopped.is_some(),
+                    // null when there was no recording left to stop.
+                    "hands_free": stopped,
+                }),
+            );
             ACTIVE.store(false, Ordering::SeqCst);
             break;
         }

@@ -3286,7 +3286,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             // The audio backup STAYS. The working files are reproducible;
             // the backup is the only copy of what the user actually said, and
             // this is a branch that decides they said nothing. It is reclaimed
-            // by `cleanup_stale_backups` after 24 h like every other backup.
+            // by `sweep_stale_audio` after 24 h like every other backup.
             emit_progress(app, "error", "error.filtered_not_speech", None);
             crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
             trace.abort(
@@ -3342,7 +3342,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             // The audio backup STAYS. The working files are reproducible;
             // the backup is the only copy of what the user actually said, and
             // this is a branch that decides they said nothing. It is reclaimed
-            // by `cleanup_stale_backups` after 24 h like every other backup.
+            // by `sweep_stale_audio` after 24 h like every other backup.
             emit_progress(app, "error", "error.filtered_not_speech", None);
             crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({
                 "error_category": "no_speech",
@@ -3409,7 +3409,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         // verdict into an unrecoverable one: the working files are
         // reproducible, the backup is the only copy of what the user actually
         // said, and this is the branch most likely to be wrong about whether
-        // they said anything. `cleanup_stale_backups` reclaims it after 24 h.
+        // they said anything. `sweep_stale_audio` reclaims it after 24 h.
         emit_progress(app, "error", "error.filtered_not_speech", None);
         crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
         // The single most opaque drop in the pipeline: Whisper returned real
