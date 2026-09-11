@@ -133,9 +133,14 @@ app it is never called Pro, because "Pro" implies withheld capability. It is
 
 ## Implementation shape
 
-The licence layer already exists and is dormant — it gated the three caps and
-now gates nothing (`licensing::is_pro_or_trial_disk`, kept deliberately). It
-gets repurposed from a gate on *features* to a gate on *cosmetics*.
+The licence layer already exists — it gated the three caps, and is
+repurposed from a gate on *features* to a gate on *cosmetics*.
+
+**There is no trial** (decided 2026-09-11). The app used to start a 4-day one
+on first launch, and with the caps gone it unlocked only the Companion. A
+trial of a thank-you is not a thank-you, and a countdown is exactly the
+nagging the rule above forbids. `cosmetics::unlocked()` asks
+`licensing::is_pro_disk()` and nothing else.
 
 ```
 licensing (existing, dormant)

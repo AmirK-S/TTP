@@ -73,9 +73,6 @@ interface LicenseInfo {
 /** Usage stats returned by Rust backend */
 interface UsageStats {
   is_pro: boolean;
-  is_in_trial: boolean;
-  trial_days_left: number | null;
-  trial_started_at: number | null;
   polish_count_this_month: number;
   dictionary_count: number;
   history_count: number;

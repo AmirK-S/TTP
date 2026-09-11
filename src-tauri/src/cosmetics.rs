@@ -23,25 +23,64 @@ use serde::Serialize;
 /// Deliberately the only question this module asks the licence layer, and
 /// deliberately infallible: any error, expiry or absence answers `false`.
 pub fn unlocked() -> bool {
-    // Development and review override.
-    //
-    // Not a hole: anyone who can set an environment variable on their own
-    // machine can also patch the binary, so this defends nothing that was
-    // defended before. What it buys is that the person who built the thing
-    // can look at it — the maintainer's own trial expired on 2026-08-18, and
-    // without this he would have to buy his own app to see whether the pill
-    // blinks correctly.
-    //
-    // It is also the honest shape for what this gate is. Nothing behind it
-    // affects whether TTP works; it decides which beep plays and whether a
-    // face is drawn. A cosmetic flag does not warrant tamper-proofing.
-    if matches!(
-        std::env::var("TTP_COSMETICS").as_deref(),
-        Ok("1") | Ok("true") | Ok("on")
-    ) {
+    if env_override() {
         return true;
     }
-    crate::licensing::is_pro_or_trial_disk()
+    // A licence, and nothing else. There used to be a 4-day trial in front of
+    // this; it was removed on 2026-09-11, because the cosmetics are a thank-you
+    // to people who support TTP, and a thank-you on trial is not one.
+    crate::licensing::is_pro_disk()
+}
+
+/// Development and review override.
+///
+/// Not a hole: anyone who can set an environment variable on their own
+/// machine can also patch the binary, so this defends nothing that was
+/// defended before. What it buys is that the person who built the thing
+/// can look at it — the maintainer's own trial expired on 2026-08-18, and
+/// without this he would have to buy his own app to see whether the pill
+/// blinks correctly.
+///
+/// It is also the honest shape for what this gate is. Nothing behind it
+/// affects whether TTP works; it decides which beep plays and whether a
+/// face is drawn. A cosmetic flag does not warrant tamper-proofing.
+fn env_override() -> bool {
+    matches!(
+        std::env::var("TTP_COSMETICS").as_deref(),
+        Ok("1") | Ok("true") | Ok("on")
+    )
+}
+
+/// Write one `cosmetics.state` line: whether the Companion is unlocked on this
+/// machine, what unlocked it, and the two facts that answer "my sounds and my
+/// pill's face disappeared" without a conversation.
+///
+/// Once per launch, and never on the main thread: the licence file and
+/// usage.json are both signed, and checking a signature reads the keychain.
+pub fn trace_state() {
+    let via = if env_override() {
+        "env"
+    } else if crate::licensing::is_pro_disk() {
+        "licence"
+    } else {
+        "none"
+    };
+    let usage = crate::usage::load_usage();
+    crate::trace::event(
+        "cosmetics.state",
+        serde_json::json!({
+            "unlocked": via != "none",
+            "via": via,
+            // "active", "expired", "disabled"… or null when no licence was
+            // ever activated here. `via:"none"` with "expired" is a lapsed
+            // licence; with null it is someone who never bought one.
+            "licence_status": crate::licensing::license_status_disk(),
+            // This install once started the 4-day trial removed on
+            // 2026-09-11. `unlocked:false` with this true means the Companion
+            // went away with that removal — a decision, not a bug.
+            "legacy_trial": usage.trial_started_at.is_some(),
+        }),
+    );
 }
 
 /// A selectable start/stop sound set.

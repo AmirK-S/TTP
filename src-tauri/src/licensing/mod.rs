@@ -22,17 +22,16 @@ const OFFLINE_GRACE_DAYS: i64 = 14;
 // MAX_HISTORY_ENTRIES (500) in history::store, but that is a retention policy
 // for everyone, not a tier.
 //
-// The licence machinery below is deliberately left in place and dormant: it
-// no longer gates anything, and is kept for a future purchase that adds
-// something playful rather than withholding something useful.
-/// Length of the auto-trial granted on first launch, in days. Was 7 in
-/// v1.6.0–v2.1.10, briefly 3 in v2.2.0, settled at 4 in v2.2.1 — gives
-/// one extra evaluation session over a strict 3-day window without
-/// materially weakening the friction against the uninstall+reinstall
-/// trial-refresh loop (the v2.1.4 uninstaller wipes the keychain HMAC
-/// secret + usage.json signed counter the original protection depended
-/// on, so the only real moat is reinstall friction).
-pub const TRIAL_DAYS: i64 = 4;
+// The licence machinery below gates exactly one thing: the cosmetics
+// (`cosmetics::unlocked`) — sound packs and the pill's face — which are the
+// thank-you for supporting TTP. Nothing that makes TTP work depends on it.
+//
+// There is no trial. A 4-day one used to start on first launch; it was
+// removed on 2026-09-11, because there is nothing to evaluate — everything
+// useful is already free — and a thank-you on a timer is not a thank-you.
+// `UsageRecord` still carries `trial_started_at` / `trial_count`: they are
+// part of the signed payload, and dropping them would invalidate every
+// existing usage.json.
 
 /// Public license info returned to the frontend.
 #[derive(Debug, Clone, Serialize)]
@@ -337,28 +336,11 @@ pub fn is_pro_disk() -> bool {
     load_license().as_ref().map(is_pro_for).unwrap_or(false)
 }
 
-/// Disk-only check: is the user currently within the auto-trial window?
-/// Caller passes a pre-loaded UsageRecord to avoid double IO.
-pub fn is_in_trial_disk(usage: &crate::usage::UsageRecord) -> bool {
-    let Some(started) = usage.trial_started_at else {
-        return false;
-    };
-    let elapsed_secs = chrono::Utc::now().timestamp().saturating_sub(started);
-    elapsed_secs < TRIAL_DAYS * 86_400
-}
-
-/// Combined check: Pro license OR active trial.
-/// No longer called: it existed to gate the free-tier caps, and there are no
-/// caps. Kept with the rest of the dormant licence layer for the eventual
-/// optional purchase, which will unlock something playful rather than
-/// withholding something useful.
-#[allow(dead_code)]
-pub fn is_pro_or_trial_disk() -> bool {
-    if is_pro_disk() {
-        return true;
-    }
-    let usage = crate::usage::load_usage();
-    is_in_trial_disk(&usage)
+/// The cached licence's status string, unjudged — `None` when there is no
+/// licence file. For the trace, where "expired" and "never bought one" must
+/// not collapse into the same `false`.
+pub fn license_status_disk() -> Option<String> {
+    load_license().map(|record| record.status)
 }
 
 fn device_label() -> String {

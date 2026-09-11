@@ -179,8 +179,10 @@ where
 /// `load_usage` and `load_license` both early-return when their JSON file
 /// does not exist, so on a machine with no `usage.json` the keychain is
 /// genuinely never reached — and on a machine that has actually run TTP, it
-/// is. `cosmetics::unlocked()` calls `is_pro_or_trial_disk()`, which calls
-/// `load_usage()`, which signs, which reads the keychain.
+/// is. `cosmetics::unlocked()` called `is_pro_or_trial_disk()`, which called
+/// `load_usage()`, which signs, which reads the keychain. (Since 2026-09-11 it
+/// calls `is_pro_disk()` alone — there is no trial — which still reads the
+/// licence through the same signed-file path.)
 ///
 /// Measured on this machine: `cargo test --lib` after any change to the
 /// library takes **200 seconds**, of which ~3 minutes is one securityd ACL

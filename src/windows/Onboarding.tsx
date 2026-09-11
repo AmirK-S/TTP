@@ -415,7 +415,8 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
 
         {/* What the user has — all of it, permanently. This screen used to
             announce a 4-day Pro trial, caps and a paywall that the product no
-            longer has; it now says the same thing as Settings → Support TTP. */}
+            longer has. No purchase is mentioned here at all: per
+            docs/ttp-pro-design.md there is exactly one mention, in Settings. */}
         <div className="mt-7 rounded-app-lg border border-app-border bg-app-surface shine-sm p-5">
           <div className="flex items-center gap-2 mb-3">
             <Sparkles className="size-4 text-app-accent" aria-hidden />
@@ -436,30 +437,6 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
             ))}
           </ul>
         </div>
-
-        <a
-          href="https://amirks.lemonsqueezy.com/checkout/buy/23ded1c4-c862-4f8c-ada5-0bb3dc2e0060"
-          target="_blank"
-          rel="noopener noreferrer"
-          className={
-            'mt-5 flex items-center justify-between rounded-app-md border border-app-accent/30 ' +
-            'bg-app-accent-tint hover:bg-app-accent-soft px-4 py-3 ' +
-            'transition-colors duration-hover ease-app-out group'
-          }
-        >
-          <div className="min-w-0">
-            <div className="text-[13px] font-medium text-app-text">
-              {t('onboarding.ready.supportTitle')}
-            </div>
-            <div className="text-[11px] text-app-muted mt-0.5">
-              {t('onboarding.ready.supportSubtitle')}
-            </div>
-          </div>
-          <span className="ml-3 inline-flex items-center gap-1 text-[12px] font-medium text-app-accent shrink-0">
-            {t('onboarding.ready.supportCta')}
-            <ExternalLink className="size-3" aria-hidden />
-          </span>
-        </a>
       </section>
     );
   }

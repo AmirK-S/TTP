@@ -146,7 +146,7 @@
       "title": "Support TTP",
       "badgeActive": "Active",
       "refreshTitle": "Re-validate with server",
-      "descFree": "TTP is free and complete — every feature, no limits, no subscription. If it saves you time and you feel like sending something back, a one-off licence is a way to do that. It unlocks nothing; you already have everything.",
+      "descFree": "TTP is free and complete — every feature, no limits, no subscription. If it saves you time and you feel like sending something back, a one-off licence is a way to do that. As a thank-you it brings the Companion: voices and faces for your pill. Nothing TTP needs to work depends on it.",
       "inputPlaceholder": "Paste your license key here",
       "activate": "Activate License",
       "buyLink": "Buy TTP Pro →",
@@ -451,10 +451,7 @@
       "includedHeader": "Everything is included",
       "perkPolish": "AI correction on every transcription",
       "perkDictionary": "Custom dictionary",
-      "perkHistory": "History of your transcriptions",
-      "supportTitle": "Support TTP",
-      "supportSubtitle": "If it saves you time, a one-off licence is a way to send something back. Nothing is locked without it.",
-      "supportCta": "Support TTP"
+      "perkHistory": "History of your transcriptions"
     },
     "whereToFind": {
       "title": "TTP keeps running in your menu bar.",

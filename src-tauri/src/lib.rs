@@ -821,13 +821,12 @@ pub fn run() {
                 // between the user's last word and the Whisper call. It was
                 // the one left uncached and unwarmed.
                 credentials::warm_key_cache();
+                // After the warm-up, so its two signed reads hit a warm keychain.
+                cosmetics::trace_state();
             });
 
             // Initialize license state (loads cached license + kicks off background refresh)
             licensing::init(app.handle());
-
-            // Start the auto-trial on first launch (idempotent).
-            usage::init();
 
             // Sweep audio nobody will read again (>24 hours old) from both
             // audio_backups/ and recordings/: now, and then every hour, because

@@ -1,7 +1,6 @@
 // TTP - Talk To Paste
 // Persisted usage cache (~/.config/ttp/usage.json)
 
-use crate::licensing::TRIAL_DAYS;
 use chrono::{Datelike, Duration, NaiveDate, Utc};
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
@@ -239,38 +238,6 @@ pub fn record_polish_success() {
     }
 }
 
-/// Start the trial if it has not been claimed yet. Returns true on first claim.
-/// `trial_count > 0` blocks restart, even if the user has deleted/edited the
-/// file (because a new file would be re-signed with trial_count=0, and our
-/// signature check prevents text-edited resets).
-pub fn start_trial_if_needed() -> bool {
-    let mut record = load_usage();
-    if record.trial_count > 0 {
-        return false;
-    }
-    record.trial_started_at = Some(Utc::now().timestamp());
-    record.trial_count = 1;
-    if let Err(e) = save_usage(&record) {
-        crate::logging::log_error(&format!("[Usage] Failed to persist trial start: {}", e));
-        return false;
-    }
-    true
-}
-
-pub fn trial_started_at(record: &UsageRecord) -> Option<i64> {
-    record.trial_started_at
-}
-
-/// Days remaining in the trial (0 if expired). Negative is clamped to 0.
-pub fn trial_days_left(record: &UsageRecord) -> i64 {
-    let Some(started) = record.trial_started_at else {
-        return 0;
-    };
-    let elapsed_secs = Utc::now().timestamp().saturating_sub(started);
-    let elapsed_days = elapsed_secs / 86_400;
-    (TRIAL_DAYS - elapsed_days).max(0)
-}
-
 /// Record a successful transcription for today's date bucket. Best-effort:
 /// failures to persist are logged but don't disrupt the pipeline (the
 /// transcription already completed, the user got their text).
@@ -439,7 +406,8 @@ mod tests {
         let secret = test_secret();
         let mut record = fresh_record();
         sign_with(&mut record, &secret);
-        // Simulate "reset trial_count to 0 so start_trial_if_needed re-fires."
+        // Simulate a text edit resetting trial_count to 0. Nothing reads the
+        // field any more, but it is still signed, so the edit must still fail.
         record.trial_count = 0;
         assert!(!verify_with(&record, &secret));
     }
@@ -487,36 +455,5 @@ mod tests {
         b.daily_stats.insert("2026-06-09".into(), DailyStats { transcriptions: 2, words: 20, chars: 100 });
         b.daily_stats.insert("2026-06-10".into(), DailyStats { transcriptions: 1, words: 10, chars: 50 });
         assert_eq!(usage_signature_input(&a), usage_signature_input(&b));
-    }
-
-    #[test]
-    fn trial_days_left_clamps_to_zero_when_expired() {
-        let record = UsageRecord {
-            trial_started_at: Some(0), // 1970 - trial long over
-            ..UsageRecord::default()
-        };
-        assert_eq!(trial_days_left(&record), 0);
-    }
-
-    #[test]
-    fn trial_days_left_returns_zero_when_not_started() {
-        let record = UsageRecord {
-            trial_started_at: None,
-            ..UsageRecord::default()
-        };
-        assert_eq!(trial_days_left(&record), 0);
-    }
-
-    #[test]
-    fn trial_days_left_within_trial_window_bounded() {
-        // Trial started 1 day ago — should report 3 days left (TRIAL_DAYS=4).
-        let one_day_ago = Utc::now().timestamp() - 86_400;
-        let record = UsageRecord {
-            trial_started_at: Some(one_day_ago),
-            ..UsageRecord::default()
-        };
-        let left = trial_days_left(&record);
-        assert!(left >= TRIAL_DAYS - 1 - 1 && left <= TRIAL_DAYS - 1 + 1,
-            "expected ~{} days left, got {}", TRIAL_DAYS - 1, left);
     }
 }

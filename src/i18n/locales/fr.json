@@ -146,7 +146,7 @@
       "title": "Soutenir TTP",
       "badgeActive": "Active",
       "refreshTitle": "Revalider avec le serveur",
-      "descFree": "TTP est gratuit et complet — toutes les fonctionnalités, sans limite, sans abonnement. Si l'app te fait gagner du temps et que tu as envie de renvoyer quelque chose, une licence à vie est là pour ça. Elle ne débloque rien : tu as déjà tout.",
+      "descFree": "TTP est gratuit et complet — toutes les fonctionnalités, sans limite, sans abonnement. Si l'app te fait gagner du temps et que tu as envie de renvoyer quelque chose, une licence à vie est là pour ça. En remerciement, elle t'offre le Compagnon : des voix et des visages pour ta pilule. Rien de ce qui fait marcher TTP n'en dépend.",
       "inputPlaceholder": "Colle ta clé de licence ici",
       "activate": "Activer la licence",
       "buyLink": "Acheter TTP Pro →",
@@ -451,10 +451,7 @@
       "includedHeader": "Tout est inclus",
       "perkPolish": "Correction IA sur chaque transcription",
       "perkDictionary": "Dictionnaire perso",
-      "perkHistory": "Historique de tes transcriptions",
-      "supportTitle": "Soutenir TTP",
-      "supportSubtitle": "Si l'app te fait gagner du temps, une licence à vie est là pour renvoyer quelque chose. Rien n'est bloqué sans.",
-      "supportCta": "Soutenir TTP"
+      "perkHistory": "Historique de tes transcriptions"
     },
     "whereToFind": {
       "title": "TTP continue de tourner dans ta barre de menu.",
