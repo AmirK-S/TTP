@@ -396,42 +396,6 @@ function PermissionRow({ permKey, status, isChecking, onClick, delay }: PermRowP
   );
 }
 
-/* ---------------------------- Trial countdown ----------------------------- */
-
-function TrialCountdown() {
-  const { t } = useTranslation();
-  const [trialEndsAt, setTrialEndsAt] = useState<number | null>(null);
-  const [now, setNow] = useState(Date.now());
-
-  useEffect(() => {
-    invoke<{ trial_ends_at: number | null }>('get_usage_stats')
-      .then((u) => setTrialEndsAt(u.trial_ends_at))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 60_000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  if (!trialEndsAt) return null;
-  const endMs = trialEndsAt * 1000;
-  const msLeft = Math.max(0, endMs - now);
-  if (msLeft === 0) return null;
-  const days = Math.floor(msLeft / 86_400_000);
-  const hours = Math.floor((msLeft % 86_400_000) / 3_600_000);
-  const minutes = Math.floor((msLeft % 3_600_000) / 60_000);
-
-  return (
-    <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-app-accent-tint border border-app-accent/20">
-      <span className="size-1.5 rounded-full bg-app-accent anim-pulse" aria-hidden />
-      <span className="text-[11px] font-medium text-app-accent tabular-nums">
-        {t('onboarding.trial.timeLeft', { days, hours, minutes })}
-      </span>
-    </div>
-  );
-}
-
 /* ---------------------------- Step 2: API key ----------------------------- */
 
 interface ApiKeyStepProps { hasApiKey: boolean; onSaved: () => void; }
@@ -445,24 +409,25 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
           <div className="mx-auto size-14 rounded-full bg-app-success-soft grid place-items-center mb-5 shine-sm">
             <CheckCircle2 className="size-7 text-app-success anim-check-pop" aria-hidden />
           </div>
-          <h2 className="text-display-md text-app-text">{t('onboarding.trial.title')}</h2>
-          <p className="mt-2 text-[13px] text-app-muted leading-relaxed">{t('onboarding.trial.subtitle')}</p>
-          <TrialCountdown />
+          <h2 className="text-display-md text-app-text">{t('onboarding.ready.title')}</h2>
+          <p className="mt-2 text-[13px] text-app-muted leading-relaxed">{t('onboarding.ready.subtitle')}</p>
         </div>
 
-        {/* Trial perks recap. */}
+        {/* What the user has — all of it, permanently. This screen used to
+            announce a 4-day Pro trial, caps and a paywall that the product no
+            longer has; it now says the same thing as Settings → Support TTP. */}
         <div className="mt-7 rounded-app-lg border border-app-border bg-app-surface shine-sm p-5">
           <div className="flex items-center gap-2 mb-3">
             <Sparkles className="size-4 text-app-accent" aria-hidden />
             <span className="text-[12px] font-semibold text-app-text uppercase tracking-wide">
-              {t('onboarding.trial.perksHeader')}
+              {t('onboarding.ready.includedHeader')}
             </span>
           </div>
           <ul className="space-y-2.5">
             {[
-              t('onboarding.trial.perkPolish'),
-              t('onboarding.trial.perkDictionary'),
-              t('onboarding.trial.perkHistory'),
+              t('onboarding.ready.perkPolish'),
+              t('onboarding.ready.perkDictionary'),
+              t('onboarding.ready.perkHistory'),
             ].map((perk, i) => (
               <li key={i} className="flex items-start gap-2.5 text-[13px] text-app-text">
                 <CheckCircle2 className="size-3.5 mt-0.5 shrink-0 text-app-success" aria-hidden />
@@ -471,10 +436,6 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
             ))}
           </ul>
         </div>
-
-        <p className="mt-4 text-center text-[11px] text-app-faint">
-          {t('onboarding.trial.fallback')}
-        </p>
 
         <a
           href="https://amirks.lemonsqueezy.com/checkout/buy/23ded1c4-c862-4f8c-ada5-0bb3dc2e0060"
@@ -488,14 +449,14 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
         >
           <div className="min-w-0">
             <div className="text-[13px] font-medium text-app-text">
-              {t('onboarding.trial.upgradeTitle')}
+              {t('onboarding.ready.supportTitle')}
             </div>
             <div className="text-[11px] text-app-muted mt-0.5">
-              {t('onboarding.trial.upgradeSubtitle')}
+              {t('onboarding.ready.supportSubtitle')}
             </div>
           </div>
           <span className="ml-3 inline-flex items-center gap-1 text-[12px] font-medium text-app-accent shrink-0">
-            {t('onboarding.trial.upgradeCta')}
+            {t('onboarding.ready.supportCta')}
             <ExternalLink className="size-3" aria-hidden />
           </span>
         </a>

@@ -445,18 +445,16 @@
       "openSettings": "Open Settings",
       "checking": "…"
     },
-    "trial": {
+    "ready": {
       "title": "You're all set",
-      "subtitle": "Your 4-day TTP Pro trial just started. No card needed. Free tier kicks in automatically after.",
-      "timeLeft": "{{days}}d {{hours}}h {{minutes}}m left",
-      "perksHeader": "Included for 4 days",
-      "perkPolish": "Unlimited AI Polish on every transcription",
-      "perkDictionary": "Custom dictionary up to 500 entries",
-      "perkHistory": "Full history of every transcription, searchable",
-      "fallback": "After the trial, TTP keeps working. Free tier covers most daily use.",
-      "upgradeTitle": "Keep Pro forever for €17",
-      "upgradeSubtitle": "One payment, yours forever. Unlimited polish, dictionary, history.",
-      "upgradeCta": "Upgrade for €17"
+      "subtitle": "TTP is free and complete: every feature, no limits, no subscription, no trial that runs out.",
+      "includedHeader": "Everything is included",
+      "perkPolish": "AI correction on every transcription",
+      "perkDictionary": "Custom dictionary",
+      "perkHistory": "History of your transcriptions",
+      "supportTitle": "Support TTP",
+      "supportSubtitle": "If it saves you time, a one-off licence is a way to send something back. Nothing is locked without it.",
+      "supportCta": "Support TTP"
     },
     "whereToFind": {
       "title": "TTP keeps running in your menu bar.",

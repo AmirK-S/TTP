@@ -445,18 +445,16 @@
       "openSettings": "Ouvrir les Réglages",
       "checking": "…"
     },
-    "trial": {
+    "ready": {
       "title": "Tu es prêt",
-      "subtitle": "Ton essai TTP Pro de 4 jours vient de démarrer. Aucune carte requise. Le tier gratuit prend le relais automatiquement après.",
-      "timeLeft": "{{days}}j {{hours}}h {{minutes}}m restants",
-      "perksHeader": "Inclus pendant 4 jours",
-      "perkPolish": "Correction AI Polish illimitée sur chaque transcription",
-      "perkDictionary": "Dictionnaire perso jusqu'à 500 entrées",
-      "perkHistory": "Historique complet de chaque transcription, cherchable",
-      "fallback": "Après l'essai, TTP continue de marcher. Le tier gratuit couvre la plupart des usages quotidiens.",
-      "upgradeTitle": "Garde Pro à vie pour 17€",
-      "upgradeSubtitle": "Un paiement unique, à vie. Correction, dictionnaire et historique illimités.",
-      "upgradeCta": "Passer Pro pour 17€"
+      "subtitle": "TTP est gratuit et complet : toutes les fonctionnalités, sans limite, sans abonnement, sans essai qui expire.",
+      "includedHeader": "Tout est inclus",
+      "perkPolish": "Correction IA sur chaque transcription",
+      "perkDictionary": "Dictionnaire perso",
+      "perkHistory": "Historique de tes transcriptions",
+      "supportTitle": "Soutenir TTP",
+      "supportSubtitle": "Si l'app te fait gagner du temps, une licence à vie est là pour renvoyer quelque chose. Rien n'est bloqué sans.",
+      "supportCta": "Soutenir TTP"
     },
     "whereToFind": {
       "title": "TTP continue de tourner dans ta barre de menu.",
