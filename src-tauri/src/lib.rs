@@ -28,6 +28,8 @@ mod licensing;
 pub(crate) mod logging;
 mod onboarding;
 mod paste;
+#[cfg(target_os = "macos")]
+mod permission_helper;
 mod permissions;
 mod recording;
 mod settings;
@@ -795,6 +797,9 @@ pub fn run() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_sentry::init(&client))
         .plugin(tauri_plugin_opener::init())
+        // Dragging TTP's own bundle into the System Settings privacy list —
+        // see `permission_helper`.
+        .plugin(tauri_plugin_drag::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, _shortcut, event| {
@@ -1087,6 +1092,14 @@ pub fn run() {
             check_accessibility_permission,
             request_accessibility_permission,
             reset_accessibility_permission,
+            #[cfg(target_os = "macos")]
+            permission_helper::show_permission_helper,
+            #[cfg(target_os = "macos")]
+            permission_helper::close_permission_helper,
+            #[cfg(target_os = "macos")]
+            permission_helper::permission_helper_kind,
+            #[cfg(target_os = "macos")]
+            permission_helper::app_bundle_path,
             show_onboarding,
             close_onboarding,
             check_whats_new,

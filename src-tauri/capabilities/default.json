@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for all windows",
-  "windows": ["main", "settings", "pill", "onboarding"],
+  "windows": ["main", "settings", "pill", "onboarding", "permission-helper"],
   "permissions": [
     "core:default",
     "core:event:default",
@@ -16,6 +16,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-close",
     "core:window:allow-set-title",
+    "drag:default",
     "opener:default",
     "opener:allow-open-url",
     "global-shortcut:allow-register",

@@ -63,6 +63,7 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # hallucination filter so "regardé" matches "regarde" — Whisper returns
 # accented French and the filter must match regardless of accent shape.
 unicode-normalization = "0.1"
+tauri-plugin-drag = "2.1.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"

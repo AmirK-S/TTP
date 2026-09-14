@@ -9,6 +9,13 @@ type PermKey = 'accessibility' | 'microphone' | 'inputMonitoring';
 
 const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.startsWith('Mac');
 
+/** Accessibility and Input Monitoring open with the drag panel; the
+ *  microphone has no list to drag into, so it opens its pane. */
+async function openFor(key: PermKey) {
+  if (key === 'microphone') return invoke(OPEN_COMMAND.microphone);
+  return invoke('show_permission_helper', { kind: key });
+}
+
 const OPEN_COMMAND: Record<PermKey, string> = {
   accessibility: 'open_accessibility_settings',
   microphone: 'open_microphone_settings',
@@ -73,7 +80,7 @@ export function PermissionBanner() {
       title={title}
       action={
         missing.length === 1 ? (
-          <Button size="sm" variant="secondary" onClick={() => invoke(OPEN_COMMAND[missing[0]])}>
+          <Button size="sm" variant="secondary" onClick={() => openFor(missing[0]).catch(console.error)}>
             {t('onboarding.button.openSettings')}
           </Button>
         ) : undefined
@@ -87,7 +94,7 @@ export function PermissionBanner() {
               key={k}
               size="sm"
               variant="secondary"
-              onClick={() => invoke(OPEN_COMMAND[k])}
+              onClick={() => openFor(k).catch(console.error)}
             >
               {t(`onboarding.item.${k}`)}
             </Button>

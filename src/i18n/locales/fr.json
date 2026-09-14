@@ -430,5 +430,9 @@
     },
     "mouseMiddle": "Clic molette",
     "mouseButton": "Bouton de souris {{n}}"
+  },
+  "permissionHelper": {
+    "instruction": "Glisse TTP dans la liste au-dessus pour autoriser {{permission}}",
+    "dragHint": "Glisse-moi"
   }
 }

@@ -430,5 +430,9 @@
     },
     "mouseMiddle": "Middle click",
     "mouseButton": "Mouse button {{n}}"
+  },
+  "permissionHelper": {
+    "instruction": "Drag TTP to the list above to allow {{permission}}",
+    "dragHint": "Drag me"
   }
 }

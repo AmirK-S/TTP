@@ -26,6 +26,7 @@ const App = lazy(() => import('./App'));
 const FloatingBar = lazy(() => import('./windows/FloatingBar'));
 const Onboarding = lazy(() => import('./windows/Onboarding'));
 const Settings = lazy(() => import('./windows/Settings'));
+const PermissionHelper = lazy(() => import('./windows/PermissionHelper'));
 
 /** Bridge our in-house ErrorBoundary to Sentry when the SDK is already active. */
 function onBoundaryError(error: Error) {
@@ -35,6 +36,7 @@ function onBoundaryError(error: Error) {
 /**
  * Get the current window and render the appropriate component.
  * - pill: Renders the transparent recording indicator
+ * - permission-helper: Renders the "drag TTP into the list" panel
  * - onboarding: Renders the first-launch permission onboarding
  * - main (or others): Renders the main App component (hidden for tray app)
  */
@@ -116,6 +118,9 @@ function main() {
   } else if (windowLabel === 'onboarding') {
     // Onboarding window - first-launch permission setup
     renderWindow(<Onboarding />);
+  } else if (windowLabel === 'permission-helper') {
+    // Drag-your-app-here panel pinned to the System Settings window
+    renderWindow(<PermissionHelper />);
   } else if (windowLabel === 'settings') {
     // Settings window - app configuration and dictionary management
     renderWindow(<Settings />);

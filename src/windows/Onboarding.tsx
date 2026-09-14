@@ -92,6 +92,10 @@ export default function Onboarding() {
 
   useEffect(() => { refreshAll(); }, [refreshAll]);
 
+  // The helper closes itself the moment the permission lands; this is what
+  // ticks the row without waiting for the next poll.
+  useTauriEvent('permission-granted', () => { refreshAll(); });
+
   useEffect(() => {
     try {
       const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
@@ -129,11 +133,16 @@ export default function Onboarding() {
     }
   };
 
+  // Accessibility and Input Monitoring both take the drag panel: the system
+  // prompt first (it puts TTP in the list, unchecked, which is often all that
+  // is needed), then System Settings on the right page with the panel beside
+  // it. `permission_helper` returns without a panel on a dev binary, where
+  // there is no bundle to drag.
   const requestAccessibility = async () => {
     setChecking('accessibility');
     try {
-      if (permStatus.accessibility === 'Denied') await openSettings('accessibility');
-      else await invoke('request_accessibility_permission');
+      if (permStatus.accessibility !== 'Denied') await invoke('request_accessibility_permission');
+      await invoke('show_permission_helper', { kind: 'accessibility' });
     } catch (e) {
       console.log('Accessibility permission result:', e);
     } finally {
@@ -146,7 +155,7 @@ export default function Onboarding() {
     setChecking('inputMonitoring');
     try {
       const granted = await invoke<boolean>('request_input_monitoring_permission');
-      if (!granted) await openSettings('inputMonitoring');
+      if (!granted) await invoke('show_permission_helper', { kind: 'inputMonitoring' });
     } catch (e) {
       console.log('Input Monitoring permission result:', e);
     } finally {
