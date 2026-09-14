@@ -352,29 +352,17 @@
       "next": "Suivant",
       "finish": "Terminer",
       "welcomeTitle": "Bienvenue dans Talk To Paste",
-      "welcomeSubtitle": "Voix en entrée, texte en sortie, partout sur ton Mac.",
-      "welcomeBullet1": "Maintiens un raccourci et parle. TTP transcrit et colle dans l'app active.",
-      "welcomeBullet2": "Vit dans la barre de menus. Aucune fenêtre à gérer, aucune icône dans le dock.",
-      "welcomeBullet3": "Ta voix part chez Groq pour la transcription. Rien d'autre ne quitte ton Mac.",
-      "permissionsTitle": "Autoriser les accès",
       "permissionsSubtitle": "TTP a besoin de ces permissions macOS pour enregistrer et coller. On t'amène directement au bon panneau des Réglages.",
       "apiKeyTitle": "Connecter à Groq",
       "apiKeySubtitle": "API de transcription gratuite. Le tier gratuit de Groq couvre des dizaines de milliers de dictées par mois.",
-      "tourTitle": "Voici comment ça marche",
-      "tourSubtitle": "Trois choses à savoir avant de partir. Ça prend dix secondes.",
       "stepIndicatorLabel": "Étape {{current}} sur {{total}}"
     },
-    "tour": {
-      "pressLabel": "Maintiens",
-      "step1Title": "Maintiens ton raccourci pour parler",
-      "step1Body": "Appuie et maintiens. Parle. Relâche. TTP enregistre tant que la touche est enfoncée.",
-      "step2Title": "Regarde le pill en bas",
-      "step2Body": "Un petit pill sombre indique l'enregistrement, puis devient un indicateur de progression pendant que Groq transcrit.",
-      "step3Title": "Retrouve TTP à tout moment",
-      "step3Body": "TTP vit dans la barre de menu en haut de ton écran. Tu peux aussi chercher \"TTP\" dans Spotlight (⌘Espace).",
-      "menuBarHint": "Barre de menu",
-      "spotlightHint": "Spotlight",
-      "closeReassurance": "Tu peux fermer cette fenêtre avec ×. TTP continue de tourner."
+    "try": {
+      "title": "Essaie",
+      "subtitle": "Clique dans la zone, maintiens {{key}}, dis une phrase, puis relâche.",
+      "placeholder": "Tes mots apparaîtront ici.",
+      "worked": "Ça marche. Tu peux fermer cette fenêtre : TTP continue de tourner dans la barre de menus.",
+      "menuBar": "TTP vit dans la barre de menus en haut de ton écran, avec ses réglages."
     }
   },
   "form": {

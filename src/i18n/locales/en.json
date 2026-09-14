@@ -352,29 +352,17 @@
       "next": "Next",
       "finish": "Finish",
       "welcomeTitle": "Welcome to Talk To Paste",
-      "welcomeSubtitle": "Voice in, text out, anywhere on your Mac.",
-      "welcomeBullet1": "Hold a hotkey and talk. TTP transcribes and pastes into the active app.",
-      "welcomeBullet2": "Lives in the menu bar. No window to manage, no dock icon.",
-      "welcomeBullet3": "Your voice goes to Groq for transcription. Nothing else leaves your Mac.",
-      "permissionsTitle": "Grant access",
       "permissionsSubtitle": "TTP needs these macOS permissions to record and paste. We'll take you straight to the right Settings pane.",
       "apiKeyTitle": "Connect to Groq",
       "apiKeySubtitle": "Free transcription API. Groq's free tier covers tens of thousands of dictations per month.",
-      "tourTitle": "Here's how it works",
-      "tourSubtitle": "Three things to know before you go. Take ten seconds.",
       "stepIndicatorLabel": "Step {{current}} of {{total}}"
     },
-    "tour": {
-      "pressLabel": "Hold",
-      "step1Title": "Hold your shortcut to talk",
-      "step1Body": "Press and hold. Speak. Release. TTP records while the key is down.",
-      "step2Title": "Watch the pill at the bottom",
-      "step2Body": "A small dark pill shows you're recording, then turns into a progress indicator while Groq transcribes.",
-      "step3Title": "Find TTP again any time",
-      "step3Body": "TTP lives in the menu bar at the top of your screen. You can also search \"TTP\" in Spotlight (⌘Space).",
-      "menuBarHint": "Menu bar",
-      "spotlightHint": "Spotlight",
-      "closeReassurance": "You can close this window with ×. TTP keeps running."
+    "try": {
+      "title": "Try it",
+      "subtitle": "Click in the box, hold {{key}}, say a sentence, then let go.",
+      "placeholder": "Your words will appear here.",
+      "worked": "It works. You can close this window: TTP keeps running in the menu bar.",
+      "menuBar": "TTP lives in the menu bar at the top of your screen, with its settings."
     }
   },
   "form": {

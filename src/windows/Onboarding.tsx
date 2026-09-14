@@ -1,10 +1,10 @@
 // TTP - Talk To Paste
 // First-launch onboarding wizard.
 //
-// Four steps: Welcome → Permissions → API key → Tour. Gating is intentionally
-// soft: only Microphone and the API key are required to advance.
-// Accessibility + Input Monitoring are strong recommendations but skippable.
-// Tour is purely informational.
+// Three steps: Permissions → API key → Try it. Gating is intentionally soft:
+// only Microphone and the API key are required to advance. Accessibility +
+// Input Monitoring are strong recommendations but skippable. The last step
+// is a real dictation into a text box, so the user leaves having seen it work.
 
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -19,18 +19,19 @@ import {
   ChevronLeft,
   ExternalLink,
   Sparkles,
-  Search,
 } from 'lucide-react';
-import { Button, Card, BrandTile, DarkPill } from '../components/ui';
+import { Button, Card, BrandTile } from '../components/ui';
 import { ApiKeyForm } from '../components/ApiKeyForm';
 import { cn } from '../lib/cn';
+import { useTauriEvent } from '../hooks/useTauriEvent';
+import { TriggerPicker } from '../components/TriggerPicker';
 import { useTrigger } from '../hooks/useTrigger';
 
 type PermissionStatus = 'Granted' | 'Denied' | 'Undetermined';
 type PermKey = 'microphone' | 'accessibility' | 'inputMonitoring';
-type StepIndex = 0 | 1 | 2 | 3;
+type StepIndex = 0 | 1 | 2;
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 3;
 const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.startsWith('Mac');
 
 const SETTINGS_COMMAND: Record<PermKey, string> = {
@@ -52,7 +53,7 @@ export default function Onboarding() {
     if (typeof window === 'undefined') return 0;
     const p = new URLSearchParams(window.location.search).get('step');
     const n = p ? Number(p) : NaN;
-    return n >= 0 && n <= 3 ? (n as StepIndex) : 0;
+    return n >= 0 && n <= 2 ? (n as StepIndex) : 0;
   })();
   const [step, setStep] = useState<StepIndex>(initialStep);
   // `?trial=1` forces the post-save success view for screenshots.
@@ -105,7 +106,7 @@ export default function Onboarding() {
   // Permissions step: poll once per second so the user can toggle perms in
   // System Settings and see the wizard update live (Wispr-style seamless flow).
   useEffect(() => {
-    if (step !== 1) return;
+    if (step !== 0) return;
     const id = window.setInterval(refreshAll, 1000);
     return () => window.clearInterval(id);
   }, [step, refreshAll]);
@@ -160,7 +161,7 @@ export default function Onboarding() {
   };
 
   const micGranted = permStatus.microphone === 'Granted';
-  const advance = () => setStep((s) => Math.min(3, s + 1) as StepIndex);
+  const advance = () => setStep((s) => Math.min(2, s + 1) as StepIndex);
   const back = () => setStep((s) => Math.max(0, s - 1) as StepIndex);
 
   return (
@@ -169,8 +170,7 @@ export default function Onboarding() {
         {/* `key={step}` forces a remount so the anim-fade-up entry replays.
             A poor man's crossfade without framer-motion. */}
         <div key={step} className="max-w-xl mx-auto px-8 pt-16 pb-8">
-          {step === 0 && <WelcomeStep />}
-          {step === 1 && (
+          {step === 0 && (
             <PermissionsStep
               permStatus={permStatus}
               checking={checking}
@@ -181,10 +181,10 @@ export default function Onboarding() {
               }}
             />
           )}
-          {step === 2 && (
+          {step === 1 && (
             <ApiKeyStep hasApiKey={hasApiKey} onSaved={() => setHasApiKey(true)} />
           )}
-          {step === 3 && <TourStep />}
+          {step === 2 && <TryStep />}
         </div>
       </div>
 
@@ -203,11 +203,6 @@ export default function Onboarding() {
               </Button>
             )}
             {step === 0 && (
-              <Button size="md" rightIcon={<ChevronRight className="size-4" />} onClick={advance}>
-                {t('onboarding.wizard.next')}
-              </Button>
-            )}
-            {step === 1 && (
               <Button
                 size="md"
                 rightIcon={<ChevronRight className="size-4" />}
@@ -218,12 +213,12 @@ export default function Onboarding() {
                 {t('onboarding.wizard.next')}
               </Button>
             )}
-            {step === 2 && hasApiKey && (
+            {step === 1 && hasApiKey && (
               <Button size="md" rightIcon={<ChevronRight className="size-4" />} onClick={advance}>
                 {t('onboarding.wizard.next')}
               </Button>
             )}
-            {step === 3 && (
+            {step === 2 && (
               <Button size="md" onClick={finish}>
                 {t('onboarding.wizard.finish')}
               </Button>
@@ -235,41 +230,7 @@ export default function Onboarding() {
   );
 }
 
-/* ----------------------------- Step 0: Welcome ---------------------------- */
-
-function WelcomeStep() {
-  const { t } = useTranslation();
-  return (
-    <section className="anim-fade-up text-center max-w-md mx-auto">
-      <BrandTile size="lg" className="mx-auto mb-7" />
-      <h1 className="text-display-md text-app-text">
-        {t('onboarding.wizard.welcomeTitle')}
-      </h1>
-      <p className="mt-2 text-[13px] text-app-muted leading-relaxed">
-        {t('onboarding.wizard.welcomeSubtitle')}
-      </p>
-
-      <ul className="mt-8 text-left space-y-3.5">
-        {[
-          t('onboarding.wizard.welcomeBullet1'),
-          t('onboarding.wizard.welcomeBullet2'),
-          t('onboarding.wizard.welcomeBullet3'),
-        ].map((bullet, i) => (
-          <li
-            key={i}
-            className="flex items-start gap-3 anim-fade-up"
-            style={{ animationDelay: `${0.08 + i * 0.06}s` }}
-          >
-            <CheckCircle2 className="size-4 mt-0.5 shrink-0 text-app-accent" aria-hidden />
-            <span className="text-[13px] text-app-text leading-relaxed">{bullet}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-/* --------------------------- Step 1: Permissions -------------------------- */
+/* --------------------------- Step 0: Permissions -------------------------- */
 
 interface PermStepProps {
   permStatus: Record<PermKey, PermissionStatus>;
@@ -283,7 +244,8 @@ function PermissionsStep({ permStatus, checking, onRequest }: PermStepProps) {
 
   return (
     <section className="anim-fade-up">
-      <h2 className="text-display-sm text-app-text">{t('onboarding.wizard.permissionsTitle')}</h2>
+      <BrandTile size="md" className="mb-5" />
+      <h1 className="text-display-sm text-app-text">{t('onboarding.wizard.welcomeTitle')}</h1>
       <p className="mt-2 text-[13px] text-app-muted leading-relaxed">{t('onboarding.wizard.permissionsSubtitle')}</p>
 
       <div className="mt-7 space-y-2">
@@ -383,7 +345,7 @@ function PermissionRow({ permKey, status, isChecking, onClick, delay }: PermRowP
   );
 }
 
-/* ---------------------------- Step 2: API key ----------------------------- */
+/* ---------------------------- Step 1: API key ----------------------------- */
 
 interface ApiKeyStepProps { hasApiKey: boolean; onSaved: () => void; }
 
@@ -439,116 +401,51 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
   );
 }
 
-/* ----------------------------- Step 3: Tour ------------------------------- */
+/* ------------------------------ Step 2: Try it ---------------------------- */
 
 /**
- * Three illustrated cards walking through the actual usage flow. Replaces the
- * "user finishes the wizard and stares at their desktop wondering what just
- * happened" failure mode. The illustrations are static (an animated kbd glyph,
- * a mini DarkPill mockup, and icons for menu bar + Spotlight) — keeps the
- * bundle tiny and the message clear.
+ * A real dictation, not a tour. The text box is in this window, so TTP pastes
+ * into itself and the user watches their own words arrive — the one proof
+ * that permissions, key and trigger are all right.
  */
-function TourStep() {
+function TryStep() {
   const { t } = useTranslation();
   const { label } = useTrigger();
-  const shortcutKey = IS_MAC ? label || 'fn' : 'Ctrl';
+  const [worked, setWorked] = useState(false);
+
+  useTauriEvent<{ stage: string }>('transcription-progress', (event) => {
+    if (event.payload.stage === 'complete') setWorked(true);
+  });
+
   return (
-    <section className="anim-fade-up max-w-md mx-auto">
-      <h2 className="text-display-sm text-app-text">{t('onboarding.wizard.tourTitle')}</h2>
+    <section className="anim-fade-up">
+      <h2 className="text-display-sm text-app-text">{t('onboarding.try.title')}</h2>
       <p className="mt-2 text-[13px] text-app-muted leading-relaxed">
-        {t('onboarding.wizard.tourSubtitle')}
+        {t('onboarding.try.subtitle', { key: label || (IS_MAC ? 'fn' : 'Ctrl+Space') })}
       </p>
 
-      <div className="mt-7 space-y-3">
-        <TourCard
-          delay={0}
-          illustration={
-            <div className="flex items-center justify-center gap-2 px-5 py-4 bg-app-raised border border-app-border rounded-app-md">
-              <span className="text-[11px] text-app-muted">{t('onboarding.tour.pressLabel')}</span>
-              <kbd className="inline-flex items-center justify-center min-w-[36px] h-[28px] px-2 rounded-app-sm bg-app-surface border border-app-border-strong text-[12px] font-mono font-semibold text-app-text shadow-[inset_0_-1px_0_var(--border-strong)]">
-                {shortcutKey}
-              </kbd>
-            </div>
-          }
-          title={t('onboarding.tour.step1Title')}
-          body={t('onboarding.tour.step1Body')}
-        />
-        <TourCard
-          delay={1}
-          illustration={
-            <div className="flex items-center justify-center px-5 py-4 bg-app-raised border border-app-border rounded-app-md">
-              <DarkPill tone="active" className="flex items-center gap-2 px-3 py-1.5">
-                <span className="flex items-end gap-[2px] h-[12px]">
-                  {[3, 6, 10, 7, 4, 8, 11, 5].map((h, i) => (
-                    <span
-                      key={i}
-                      className="w-[2px] rounded-full bg-white/90 anim-pulse"
-                      style={{ height: `${h}px`, animationDelay: `${i * 0.08}s` }}
-                    />
-                  ))}
-                </span>
-                <span className="text-[10px] font-medium tabular-nums text-white/90">0:03</span>
-              </DarkPill>
-            </div>
-          }
-          title={t('onboarding.tour.step2Title')}
-          body={t('onboarding.tour.step2Body')}
-        />
-        <TourCard
-          delay={2}
-          illustration={
-            <div className="px-5 py-4 bg-app-raised border border-app-border rounded-app-md">
-              {/* Mini macOS menu-bar mockup with the TTP brand mark highlighted.
-                  Way clearer than a microphone glyph, which read as the
-                  keyboard mic key rather than the menu bar location. */}
-              <div className="relative h-7 bg-app-overlay border border-app-border-strong rounded-app-xs flex items-center justify-end gap-2 px-2 shine-sm">
-                <span className="size-1.5 rounded-full bg-app-faint/35" aria-hidden />
-                <span className="size-1.5 rounded-full bg-app-faint/35" aria-hidden />
-                <span className="size-1.5 rounded-full bg-app-faint/35" aria-hidden />
-                <div className="relative size-4 rounded-app-xs bg-app-surface border border-app-accent/40 grid place-items-center">
-                  <span className="text-app-text font-semibold text-[6px] tracking-tighter leading-none">TTP</span>
-                  <span className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-app-accent ring-2 ring-app-overlay" aria-hidden />
-                </div>
-              </div>
-              <div className="mt-2.5 flex items-center justify-center gap-2 text-[10px] text-app-faint">
-                <span aria-hidden>↑</span>
-                <span>{t('onboarding.tour.menuBarHint')}</span>
-                <span aria-hidden className="text-app-faint/40">·</span>
-                <Search className="size-3" aria-hidden />
-                <span>{t('onboarding.tour.spotlightHint')}</span>
-              </div>
-            </div>
-          }
-          title={t('onboarding.tour.step3Title')}
-          body={t('onboarding.tour.step3Body')}
-        />
-      </div>
+      {IS_MAC && (
+        <div className="mt-6">
+          <TriggerPicker />
+        </div>
+      )}
 
-      <p className="mt-6 text-[12px] text-app-success text-center font-medium">
-        {t('onboarding.tour.closeReassurance')}
-      </p>
+      <textarea
+        autoFocus
+        rows={4}
+        placeholder={t('onboarding.try.placeholder')}
+        className="mt-5 w-full resize-none rounded-app-md border border-app-border bg-app-surface px-3.5 py-3 text-[13px] text-app-text placeholder:text-app-faint focus:border-app-accent focus:outline-none"
+      />
+
+      {worked ? (
+        <p className="mt-4 flex items-start gap-2 text-[13px] font-medium text-app-success">
+          <CheckCircle2 className="size-4 mt-0.5 shrink-0" aria-hidden />
+          {t('onboarding.try.worked')}
+        </p>
+      ) : (
+        <p className="mt-4 text-[12px] text-app-muted leading-relaxed">{t('onboarding.try.menuBar')}</p>
+      )}
     </section>
-  );
-}
-
-function TourCard({
-  illustration, title, body, delay,
-}: {
-  illustration: React.ReactNode;
-  title: string;
-  body: string;
-  delay: number;
-}) {
-  return (
-    <Card
-      elevation="sm"
-      className="anim-fade-up p-4"
-      style={{ animationDelay: `${0.06 + delay * 0.06}s` }}
-    >
-      {illustration}
-      <p className="mt-3 text-[13px] font-medium text-app-text">{title}</p>
-      <p className="mt-1 text-[12px] text-app-muted leading-snug">{body}</p>
-    </Card>
   );
 }
 
