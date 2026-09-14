@@ -666,6 +666,12 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
         // experience of an abandoned press.
         return Ok(());
     }
+    // Read the screen now, while the app the user is dictating into still has
+    // focus. Its own thread: the key press never waits on a slow app.
+    let settings = crate::settings::get_settings();
+    if settings.ai_polish_enabled && settings.screen_context_enabled {
+        crate::screen_context::spawn_capture(save_path.clone());
+    }
     *state = Some(RecordingState {
         stream: Some(SafeStream(stream)),
         writer: writer_handle,

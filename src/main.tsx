@@ -62,6 +62,7 @@ function main() {
     // window's store so the next save merges on top of the right baseline.
     listen<{
       ai_polish_enabled?: boolean;
+      screen_context_enabled?: boolean;
       fn_key_enabled?: boolean;
       telemetry_enabled?: boolean;
       autostart_enabled?: boolean;
@@ -74,6 +75,7 @@ function main() {
       // every open window reflects reality immediately.
       useSettingsStore.setState({
         ...(p?.ai_polish_enabled !== undefined && { aiPolishEnabled: p.ai_polish_enabled }),
+        ...(p?.screen_context_enabled !== undefined && { screenContextEnabled: p.screen_context_enabled }),
         ...(p?.fn_key_enabled !== undefined && { fnKeyEnabled: p.fn_key_enabled }),
         ...(p?.telemetry_enabled !== undefined && { telemetryEnabled: p.telemetry_enabled }),
         ...(p?.autostart_enabled !== undefined && { autostartEnabled: p.autostart_enabled }),

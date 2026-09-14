@@ -204,6 +204,8 @@
       "keySaved": "API key validated and saved.",
       "polishLabel": "AI Polish",
       "polishDesc": "Trim filler words and fix grammar with AI.",
+      "screenContextLabel": "Use what's on screen",
+      "screenContextDesc": "Reads the text around your cursor to spell names right. Never in password fields.",
       "languageLabel": "Transcription language",
       "languageAuto": "Auto-detect",
       "languageEnglish": "English",

@@ -9,5 +9,4 @@ pub(crate) mod whisper;
 pub(crate) mod backup;
 
 pub(crate) use pipeline::{process_audio, process_recording};
-pub(crate) use polish::polish_text;
 pub(crate) use whisper::transcribe_audio;

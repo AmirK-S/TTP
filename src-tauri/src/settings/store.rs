@@ -14,6 +14,11 @@ use tauri::{AppHandle, Emitter};
 pub struct Settings {
     /// Whether to run AI polish on transcriptions (removes filler words, fixes grammar)
     pub ai_polish_enabled: bool,
+    /// Send what is on screen around the cursor to the polish model, so it
+    /// spells names the way the window does (see `crate::screen_context`).
+    /// Default ON; does nothing while `ai_polish_enabled` is off.
+    #[serde(default = "default_true")]
+    pub screen_context_enabled: bool,
     /// Global keyboard shortcut for recording (e.g., "Alt+Space", "Ctrl+Shift+R")
     #[serde(default = "default_shortcut")]
     pub shortcut: String,
@@ -130,6 +135,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             ai_polish_enabled: true,
+            screen_context_enabled: true,
             shortcut: default_shortcut(),
             #[cfg(target_os = "macos")]
             fn_key_enabled: true,

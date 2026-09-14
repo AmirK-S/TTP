@@ -235,7 +235,7 @@ function UpdatesRow() {
 export function Settings() {
   const { t } = useTranslation();
   const {
-    aiPolishEnabled, telemetryEnabled, shortcut, useBetaChannel,
+    aiPolishEnabled, screenContextEnabled, telemetryEnabled, shortcut, useBetaChannel,
     autostartEnabled, historyEnabled, vadAutoStopEnabled, vadSilenceSecs, audioDeviceName,
     transcriptionLanguage, diagnosticsEnabled, dictionary, history, loading, isPro, licenseKey,
     licenseStatus, licenseExpiresAt,
@@ -337,7 +337,7 @@ export function Settings() {
 
   /* ---- Generic toggle factory: cuts 7 near-identical handlers down to 1 --- */
   const makeToggle = useCallback(
-    <K extends 'ai_polish_enabled' | 'telemetry_enabled' | 'history_enabled' | 'vad_auto_stop_enabled' | 'diagnostics_enabled'>(
+    <K extends 'ai_polish_enabled' | 'screen_context_enabled' | 'telemetry_enabled' | 'history_enabled' | 'vad_auto_stop_enabled' | 'diagnostics_enabled'>(
       key: K,
       sideEffect?: () => void,
     ) => async (enabled: boolean) => {
@@ -350,6 +350,7 @@ export function Settings() {
   );
 
   const handlePolishToggle = makeToggle('ai_polish_enabled');
+  const handleScreenContextToggle = makeToggle('screen_context_enabled');
   const handleTelemetryToggle = makeToggle('telemetry_enabled', () => setShowRestartBanner(true));
   const handleHistoryEnabledToggle = makeToggle('history_enabled');
   const handleVadAutoStopToggle = makeToggle('vad_auto_stop_enabled');
@@ -646,6 +647,15 @@ export function Settings() {
                 onChange={handlePolishToggle}
                 disabled={loading}
               />
+              {aiPolishEnabled && (
+                <ToggleRow
+                  label={t('settings.transcription.screenContextLabel')}
+                  hint={t('settings.transcription.screenContextDesc')}
+                  enabled={screenContextEnabled}
+                  onChange={handleScreenContextToggle}
+                  disabled={loading}
+                />
+              )}
               {shortcutError && <p className="px-3.5 py-2 text-[12px] text-app-danger">{showShortcutError}</p>}
               {shortcutSuccess && <p className="px-3.5 py-2 text-[12px] text-app-success">{t('settings.recordingTrigger.successUpdated')}</p>}
             </Group>

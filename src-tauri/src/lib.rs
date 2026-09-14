@@ -32,6 +32,7 @@ mod paste;
 mod permission_helper;
 mod permissions;
 mod recording;
+mod screen_context;
 mod settings;
 mod shortcuts;
 mod sounds;

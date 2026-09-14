@@ -287,8 +287,8 @@ const HALLUCINATION_SUBSTRINGS: &[&str] = &[
 
 use crate::logging::log_error;
 use super::cleanup::cleanup;
-use super::polish::{guard_polish, GuardVerdict};
-use super::{convert::convert_to_mono_16khz, polish_text, transcribe_audio};
+use super::polish::{guard_polish_with_context, polish_text_with_context, GuardVerdict};
+use super::{convert::convert_to_mono_16khz, transcribe_audio};
 
 /// Progress event sent to frontend during transcription pipeline.
 ///
@@ -2696,6 +2696,64 @@ mod hallucination_tests {
 /// 3. Paste into active app (or clipboard fallback)
 ///
 /// Emits progress events throughout for frontend updates.
+/// Collect this recording's screen capture and record how it went.
+async fn take_screen_context(
+    trace: &crate::trace::Trace,
+    audio_path: &str,
+) -> Option<crate::screen_context::ScreenContext> {
+    use crate::screen_context::{take, Captured, Taken, TAKE_WAIT};
+
+    let path = std::path::PathBuf::from(audio_path);
+    let span = crate::trace::Span::start();
+    let taken = tauri::async_runtime::spawn_blocking(move || take(&path, TAKE_WAIT))
+        .await
+        .unwrap_or(Taken::Missing);
+    let waited_ms = span.ms();
+
+    match taken {
+        Taken::Ready(Captured::Context(ctx, stats)) => {
+            let chars = |t: &Option<String>| t.as_ref().map_or(0, |t| t.chars().count());
+            trace.stage(
+                "screen_context",
+                serde_json::json!({
+                    "outcome": "captured",
+                    "capture_ms": stats.ms,
+                    "waited_ms": waited_ms,
+                    "field": stats.field,
+                    "before_chars": chars(&ctx.before_cursor),
+                    "after_chars": chars(&ctx.after_cursor),
+                    "selected_chars": chars(&ctx.selected),
+                    "window_title": ctx.window_title.is_some(),
+                    "terms": ctx.terms.len(),
+                    "window_nodes": stats.window_nodes,
+                    "window_chars": stats.window_chars,
+                    "window_truncated": stats.window_truncated,
+                    "app": ctx.bundle_id,
+                }),
+            );
+            Some(ctx)
+        }
+        Taken::Ready(Captured::Skipped(reason)) => {
+            trace.stage(
+                "screen_context",
+                serde_json::json!({ "outcome": "skipped", "reason": reason, "waited_ms": waited_ms }),
+            );
+            None
+        }
+        Taken::Pending => {
+            trace.stage(
+                "screen_context",
+                serde_json::json!({ "outcome": "pending", "waited_ms": waited_ms }),
+            );
+            None
+        }
+        Taken::Missing => {
+            trace.stage("screen_context", serde_json::json!({ "outcome": "missing" }));
+            None
+        }
+    }
+}
+
 pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<String, String> {
     // One trace per dictation. Every `return Err` below is a path where the
     // user pressed the hotkey, spoke, and got nothing — and until this
@@ -2718,6 +2776,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             "settings.snapshot",
             serde_json::json!({
                 "ai_polish": s.ai_polish_enabled,
+                "screen_context": s.screen_context_enabled,
                 "transcription_language": s.transcription_language.as_deref().unwrap_or("auto"),
                 "vad_auto_stop": s.vad_auto_stop_enabled,
                 "vad_silence_secs": s.vad_silence_secs,
@@ -3472,12 +3531,32 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     let mut polish_detail = serde_json::json!({});
     let mut polish_total_ms: u64 = 0;
 
+    // What was on screen when this recording started, for the polish model.
+    // Captured at recording start by `screen_context::spawn_capture`; taken
+    // here, after Whisper, so the capture has had the whole recording to
+    // finish. Counts only in the stage; the text goes through `text_stage`,
+    // which writes it only when diagnostics are on.
+    let screen_context = if polish_quota_ok && settings.screen_context_enabled {
+        take_screen_context(&trace, &audio_path).await
+    } else {
+        None
+    };
+    let context_block = screen_context.as_ref().and_then(|c| c.render_block());
+    if let Some(block) = &context_block {
+        trace.text_stage("screen_context.block", block, serde_json::json!({}));
+    }
+    // The guard only knows the screen's words if the model was shown them.
+    let context_vocabulary = match (&screen_context, &context_block) {
+        (Some(ctx), Some(_)) => ctx.vocabulary(),
+        _ => std::collections::HashSet::new(),
+    };
+
     let polish_span = crate::trace::Span::start();
     let final_text = if polish_quota_ok {
         emit_progress(app, "polishing", "progress.polishing", None);
 
         let polish_start = std::time::Instant::now();
-        match polish_text(&api_key, &cleaned_text).await {
+        match polish_text_with_context(&api_key, &cleaned_text, context_block.as_deref()).await {
             Ok(result) => {
                 // Off the critical path, and deliberately not awaited — the
                 // same treatment `record_transcription` got below, for the
@@ -3517,7 +3596,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 // refusal markers. On rejection → fall back to phase-1
                 // cleaned text + log to Sentry. Silent fallback (no UI
                 // popup mid-dictation, just slightly less-polished text).
-                match guard_polish(&cleaned_text, &result.polished) {
+                match guard_polish_with_context(&cleaned_text, &result.polished, &context_vocabulary) {
                     GuardVerdict::Accept => {
                         polish_detail = serde_json::json!({ "intent": format!("{:?}", result.intent) });
                         let mut data = std::collections::BTreeMap::new();
@@ -3592,6 +3671,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         "model": crate::transcription::polish::MODEL,
         "quota_ok": polish_quota_ok,
         "ms": polish_total_ms,
+        "screen_context": context_block.is_some(),
     });
     if let (Some(dst), Some(src)) = (polish_fields.as_object_mut(), polish_detail.as_object()) {
         for (k, v) in src {
@@ -3648,6 +3728,21 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         }),
     );
 
+    // Dictating right after a word ("Bonjour|") would otherwise paste as
+    // "Bonjourje voulais". Only when the paste still goes to the app the
+    // context was read from; history keeps the text without the space.
+    let joins_previous_word = screen_context.as_ref().is_some_and(|ctx| {
+        crate::screen_context::needs_leading_space(ctx, &final_text)
+            && ctx.bundle_id.is_some()
+            && ctx.bundle_id == crate::paste::frontmost_bundle_id()
+    });
+    let paste_text = if joins_previous_word {
+        trace.stage("screen_context.join", serde_json::json!({ "leading_space": true }));
+        format!(" {final_text}")
+    } else {
+        final_text.clone()
+    };
+
     // Stage 3: Paste into active app
     emit_progress(app, "pasting", "", None);
 
@@ -3660,7 +3755,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     let clipboard_guard = ClipboardGuard::new(app);
 
     let clip_span = crate::trace::Span::start();
-    if let Err(e) = clipboard_guard.write_text(&final_text) {
+    if let Err(e) = clipboard_guard.write_text(&paste_text) {
         // Transcription succeeded, polish succeeded, and the text is gone —
         // not even on the clipboard. This return wrote nothing to the trace,
         // so the dictation simply stopped mid-timeline with no finish line.
@@ -3733,7 +3828,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // for speed and mitigate by waiting CLIPBOARD_PASTE_RESTORE_DELAY_MS
     // (1500 ms) before restoring — long enough for slow Electron apps to
     // actually read the pasteboard after Cmd+V.
-    let use_direct_typing = final_text.chars().count() <= DIRECT_TYPING_MAX_CHARS;
+    let use_direct_typing = paste_text.chars().count() <= DIRECT_TYPING_MAX_CHARS;
 
     // `app` is the bundle identifier of the frontmost application — where the
     // text is about to go. Nothing on this path ever recorded it, which is why
@@ -3745,7 +3840,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         "paste.decision",
         serde_json::json!({
             "strategy": if use_direct_typing { "type" } else { "clipboard" },
-            "chars": final_text.chars().count(),
+            "chars": paste_text.chars().count(),
             "has_accessibility": has_accessibility,
             "app": target_app,
         }),
@@ -3797,7 +3892,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     let paste_span = crate::trace::Span::start();
     let paste_success = if has_accessibility {
         let paste_result = if use_direct_typing {
-            let text_for_typing = final_text.clone();
+            let text_for_typing = paste_text.clone();
             tauri::async_runtime::spawn_blocking(move || simulate_typing(&text_for_typing)).await
         } else {
             tauri::async_runtime::spawn_blocking(simulate_paste).await
@@ -3859,7 +3954,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                     app.clone(),
                     trace.clone(),
                     focused_before.clone(),
-                    final_text.chars().count(),
+                    paste_text.chars().count(),
                     verdict_slot.clone(),
                 );
 

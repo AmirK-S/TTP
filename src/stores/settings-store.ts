@@ -23,6 +23,8 @@ export interface HistoryEntry {
 /** Settings structure matching Rust backend */
 export interface Settings {
   ai_polish_enabled: boolean;
+  /** Send the text around the cursor to the polish model. Default true. */
+  screen_context_enabled: boolean;
   shortcut: string;
   fn_key_enabled: boolean;
   telemetry_enabled: boolean;
@@ -69,6 +71,7 @@ interface UsageStats {
 interface SettingsStore {
   // State
   aiPolishEnabled: boolean;
+  screenContextEnabled: boolean;
   shortcut: string;
   fnKeyEnabled: boolean;
   telemetryEnabled: boolean;
@@ -130,6 +133,7 @@ function applyLicenseInfo(info: LicenseInfo) {
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
   // Initial state
   aiPolishEnabled: true,
+  screenContextEnabled: true,
   shortcut: 'Alt+Space',
   fnKeyEnabled: false,
   telemetryEnabled: false,
@@ -166,6 +170,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       const settings = await safeInvoke<Settings>('get_settings');
       set({
         aiPolishEnabled: settings.ai_polish_enabled,
+        screenContextEnabled: settings.screen_context_enabled ?? true,
         shortcut: settings.shortcut || 'Alt+Space',
         fnKeyEnabled: settings.fn_key_enabled ?? false,
         telemetryEnabled: settings.telemetry_enabled ?? false,
@@ -191,6 +196,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     try {
       const currentSettings: Settings = {
         ai_polish_enabled: get().aiPolishEnabled,
+        screen_context_enabled: get().screenContextEnabled,
         shortcut: get().shortcut,
         fn_key_enabled: get().fnKeyEnabled,
         telemetry_enabled: get().telemetryEnabled,
@@ -215,6 +221,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       emit('settings-changed', newSettings);
       set({
         aiPolishEnabled: newSettings.ai_polish_enabled,
+        screenContextEnabled: newSettings.screen_context_enabled ?? true,
         shortcut: newSettings.shortcut,
         fnKeyEnabled: newSettings.fn_key_enabled,
         telemetryEnabled: newSettings.telemetry_enabled,
@@ -240,6 +247,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       await invoke('reset_settings');
       set({
         aiPolishEnabled: true,
+        screenContextEnabled: true,
         shortcut: 'Alt+Space',
         fnKeyEnabled: false,
         telemetryEnabled: false,
