@@ -126,7 +126,7 @@
     "nav": {
       "general": "Général",
       "capture": "Capture",
-      "pro": "TTP Pro",
+      "pro": "Soutenir TTP",
       "data": "Données",
       "advanced": "Avancé"
     },
@@ -306,6 +306,11 @@
       "words": "mots",
       "transcriptions": "{{count}} transcriptions",
       "followLinkedIn": "Suivre sur LinkedIn"
+    },
+    "advanced": {
+      "show": "Afficher les réglages avancés",
+      "hide": "Masquer les réglages avancés",
+      "recordingTitle": "Enregistrement"
     }
   },
   "onboarding": {

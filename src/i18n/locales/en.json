@@ -126,7 +126,7 @@
     "nav": {
       "general": "General",
       "capture": "Capture",
-      "pro": "TTP Pro",
+      "pro": "Support TTP",
       "data": "Data",
       "advanced": "Advanced"
     },
@@ -306,6 +306,11 @@
       "words": "words",
       "transcriptions": "{{count}} transcriptions",
       "followLinkedIn": "Follow on LinkedIn"
+    },
+    "advanced": {
+      "show": "Show advanced settings",
+      "hide": "Hide advanced settings",
+      "recordingTitle": "Recording"
     }
   },
   "onboarding": {

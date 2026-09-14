@@ -1,12 +1,13 @@
 // TTP - Talk To Paste
 // Settings window — configure app behavior, manage dictionary/history, manage
-// the Pro license. Five IA groups: General / Capture / Pro / Data / Advanced.
+// the licence. Five IA groups: General / Capture / Support / Data / Advanced,
+// the last one collapsed.
 
 import { useEffect, useState, useCallback, useRef, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Volume2,
   Copy, Check, Download, RefreshCw, Crown, ArrowRight, ExternalLink,
-  User, Mic, SlidersHorizontal, Database, BookOpen, Repeat,
+  User, Mic, SlidersHorizontal, Database, BookOpen, Repeat, ChevronRight,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { invoke } from '@tauri-apps/api/core';
@@ -347,6 +348,7 @@ export function Settings() {
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
   const [showUninstallConfirm, setShowUninstallConfirm] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   // No local autostart state and no `isAutostartEnabled()` call — the plugin's
   // is_enabled() is unreliable on macOS for product names with spaces. The UI
@@ -638,7 +640,7 @@ export function Settings() {
 
   return (
     <div className="h-screen flex bg-app-bg text-app-text bg-noise">
-      <SettingsSidebar />
+      <SettingsSidebar onSelectAdvanced={() => setAdvancedOpen(true)} />
       <main className="flex-1 min-w-0 overflow-y-auto">
         <div className="ttp-scroll max-w-2xl mx-auto px-8 pt-8 pb-12">
           <PermissionBanner />
@@ -668,36 +670,6 @@ export function Settings() {
               <UpdatesCard />
             </div>
 
-            <SettingsSection title={t('settings.privacy.title')}>
-              {showRestartBanner && (
-                <Banner
-                  tone="warning"
-                  className="mb-4"
-                  action={
-                    <Button variant="secondary" size="sm" onClick={() => relaunch().catch(console.error)}>
-                      {t('common.restartNow')}
-                    </Button>
-                  }
-                >
-                  {t('settings.privacy.restartHint')}
-                </Banner>
-              )}
-              <SettingsRow
-                label={t('settings.privacy.helpLabel')}
-                description={t('settings.privacy.helpDesc')}
-                control={<Toggle enabled={telemetryEnabled} onChange={handleTelemetryToggle} disabled={loading} />}
-              />
-              <div className="mt-4 p-3 bg-app-raised rounded-app-sm border border-app-border">
-                <p className="text-[12px] text-app-muted leading-relaxed">
-                  <span className="font-medium text-app-text">{t('settings.privacy.whatSentLabel')}</span>{' '}
-                  {t('settings.privacy.whatSentBody')}
-                </p>
-                <p className="text-[12px] text-app-muted leading-relaxed mt-2">
-                  <span className="font-medium text-app-text">{t('settings.privacy.neverSentLabel')}</span>{' '}
-                  {t('settings.privacy.neverSentBody')}
-                </p>
-              </div>
-            </SettingsSection>
           </div>
 
           {/* ===== CAPTURE ===== */}
@@ -739,36 +711,6 @@ export function Settings() {
             </SettingsSection>
 
             <SettingsSection title={t('settings.recordingMode.title')}>
-              <SettingsRow
-                label={t('settings.recordingMode.vadAutoStopLabel')}
-                description={t('settings.recordingMode.vadAutoStopDesc')}
-                control={<Toggle enabled={vadAutoStopEnabled} onChange={handleVadAutoStopToggle} disabled={loading} />}
-              />
-              {vadAutoStopEnabled && (
-                <div className="pl-1 py-2 flex items-center gap-3">
-                  <label
-                    htmlFor="vad-silence-secs"
-                    className="text-[12px] text-app-muted shrink-0"
-                  >
-                    {t('settings.recordingMode.vadSilenceSecsLabel')}
-                  </label>
-                  <input
-                    id="vad-silence-secs"
-                    type="range"
-                    min={1}
-                    max={10}
-                    step={1}
-                    value={vadSilenceSecs}
-                    onChange={(e) => handleVadSilenceSecsChange(Number(e.target.value))}
-                    disabled={loading}
-                    className="flex-1 accent-app-accent"
-                  />
-                  <span className="text-[12px] font-medium tabular-nums text-app-text w-10 text-right">
-                    {vadSilenceSecs}s
-                  </span>
-                </div>
-              )}
-              <div className="border-t border-app-border my-1" />
               <div className="py-2">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
@@ -804,7 +746,9 @@ export function Settings() {
             <div ref={transcriptionSectionRef} className="scroll-mt-6">
             <SettingsSection title={t('settings.transcription.title')}>
               <div className="space-y-3 mb-5">
-                <p className="text-[13px] font-medium text-app-text">{t('settings.transcription.groqLabel')}</p>
+                {hasGroqKey === true && (
+                  <p className="text-[13px] font-medium text-app-text">{t('settings.transcription.groqLabel')}</p>
+                )}
                 {hasGroqKey === true && (
                   <div className="flex items-center gap-3">
                     <span className="text-[13px] text-app-success">
@@ -1072,64 +1016,143 @@ export function Settings() {
 
           {/* ===== ADVANCED ===== */}
           <div id="advanced" data-section="advanced" className="scroll-mt-6">
-            <UpdateChannelCard />
-
-            <SettingsSection
-              title={t('settings.logs.title')}
-              description={t('settings.logs.desc')}
+            {/* Everything here is either rarely wanted or only wanted when
+                something is wrong. Collapsed so the page above reads as the
+                whole app, which it very nearly is. */}
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((o) => !o)}
+              aria-expanded={advancedOpen}
+              className="mb-4 flex w-full items-center gap-2 text-[13px] font-medium text-app-muted hover:text-app-text transition-colors"
             >
-              <SettingsRow
-                label={t('settings.diagnostics.label')}
-                description={t('settings.diagnostics.desc')}
-                control={<Toggle enabled={diagnosticsEnabled} onChange={handleDiagnosticsToggle} disabled={loading} />}
-              />
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    invoke('reveal_log_folder').catch((e) =>
-                      console.error('[Settings] reveal_log_folder failed:', e),
-                    );
-                  }}
-                >
-                  {t('settings.logs.button')}
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    invoke('reveal_recordings_folder').catch((e) =>
-                      console.error('[Settings] reveal_recordings_folder failed:', e),
-                    );
-                  }}
-                >
-                  {t('settings.logs.recordingsButton')}
-                </Button>
-              </div>
-            </SettingsSection>
+              <ChevronRight className={cn('size-4 transition-transform duration-hover', advancedOpen && 'rotate-90')} aria-hidden />
+              {advancedOpen ? t('settings.advanced.hide') : t('settings.advanced.show')}
+            </button>
+            {advancedOpen && (
+              <>
+                <SettingsSection title={t('settings.advanced.recordingTitle')}>
+                  <SettingsRow
+                    label={t('settings.recordingMode.vadAutoStopLabel')}
+                    description={t('settings.recordingMode.vadAutoStopDesc')}
+                    control={<Toggle enabled={vadAutoStopEnabled} onChange={handleVadAutoStopToggle} disabled={loading} />}
+                  />
+                  {vadAutoStopEnabled && (
+                    <div className="pl-1 py-2 flex items-center gap-3">
+                      <label
+                        htmlFor="vad-silence-secs"
+                        className="text-[12px] text-app-muted shrink-0"
+                      >
+                        {t('settings.recordingMode.vadSilenceSecsLabel')}
+                      </label>
+                      <input
+                        id="vad-silence-secs"
+                        type="range"
+                        min={1}
+                        max={10}
+                        step={1}
+                        value={vadSilenceSecs}
+                        onChange={(e) => handleVadSilenceSecsChange(Number(e.target.value))}
+                        disabled={loading}
+                        className="flex-1 accent-app-accent"
+                      />
+                      <span className="text-[12px] font-medium tabular-nums text-app-text w-10 text-right">
+                        {vadSilenceSecs}s
+                      </span>
+                    </div>
+                  )}
+                </SettingsSection>
 
-            <SettingsSection title={t('settings.reset.title')} description={t('settings.reset.desc')}>
-              <Button
-                variant="ghost"
-                onClick={() => setShowResetConfirm(true)}
-                className="text-app-danger hover:text-app-danger hover:bg-app-danger-tint border border-app-danger/30"
-              >
-                {t('settings.reset.button')}
-              </Button>
-            </SettingsSection>
+                <SettingsSection title={t('settings.privacy.title')}>
+                  {showRestartBanner && (
+                    <Banner
+                      tone="warning"
+                      className="mb-4"
+                      action={
+                        <Button variant="secondary" size="sm" onClick={() => relaunch().catch(console.error)}>
+                          {t('common.restartNow')}
+                        </Button>
+                      }
+                    >
+                      {t('settings.privacy.restartHint')}
+                    </Banner>
+                  )}
+                  <SettingsRow
+                    label={t('settings.privacy.helpLabel')}
+                    description={t('settings.privacy.helpDesc')}
+                    control={<Toggle enabled={telemetryEnabled} onChange={handleTelemetryToggle} disabled={loading} />}
+                  />
+                  <div className="mt-4 p-3 bg-app-raised rounded-app-sm border border-app-border">
+                    <p className="text-[12px] text-app-muted leading-relaxed">
+                      <span className="font-medium text-app-text">{t('settings.privacy.whatSentLabel')}</span>{' '}
+                      {t('settings.privacy.whatSentBody')}
+                    </p>
+                    <p className="text-[12px] text-app-muted leading-relaxed mt-2">
+                      <span className="font-medium text-app-text">{t('settings.privacy.neverSentLabel')}</span>{' '}
+                      {t('settings.privacy.neverSentBody')}
+                    </p>
+                  </div>
+                </SettingsSection>
 
-            {/* Danger zone — full uninstall. Bottom of Advanced so users
-                have to scroll past everything else to reach it. */}
-            <SettingsSection
-              title={t('settings.uninstall.title')}
-              description={t('settings.uninstall.desc')}
-            >
-              <Button
-                variant="danger"
-                onClick={() => setShowUninstallConfirm(true)}
-              >
-                {t('settings.uninstall.button')}
-              </Button>
-            </SettingsSection>
+                <UpdateChannelCard />
+
+                <SettingsSection
+                  title={t('settings.logs.title')}
+                  description={t('settings.logs.desc')}
+                >
+                  <SettingsRow
+                    label={t('settings.diagnostics.label')}
+                    description={t('settings.diagnostics.desc')}
+                    control={<Toggle enabled={diagnosticsEnabled} onChange={handleDiagnosticsToggle} disabled={loading} />}
+                  />
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        invoke('reveal_log_folder').catch((e) =>
+                          console.error('[Settings] reveal_log_folder failed:', e),
+                        );
+                      }}
+                    >
+                      {t('settings.logs.button')}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        invoke('reveal_recordings_folder').catch((e) =>
+                          console.error('[Settings] reveal_recordings_folder failed:', e),
+                        );
+                      }}
+                    >
+                      {t('settings.logs.recordingsButton')}
+                    </Button>
+                  </div>
+                </SettingsSection>
+
+                <SettingsSection title={t('settings.reset.title')} description={t('settings.reset.desc')}>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setShowResetConfirm(true)}
+                    className="text-app-danger hover:text-app-danger hover:bg-app-danger-tint border border-app-danger/30"
+                  >
+                    {t('settings.reset.button')}
+                  </Button>
+                </SettingsSection>
+
+                {/* Danger zone — full uninstall. Bottom of Advanced so users
+                    have to scroll past everything else to reach it. */}
+                <SettingsSection
+                  title={t('settings.uninstall.title')}
+                  description={t('settings.uninstall.desc')}
+                >
+                  <Button
+                    variant="danger"
+                    onClick={() => setShowUninstallConfirm(true)}
+                  >
+                    {t('settings.uninstall.button')}
+                  </Button>
+                </SettingsSection>
+              </>
+            )}
           </div>
 
           <ConfirmDialog
@@ -1338,7 +1361,7 @@ function ProInfoRow({ label, value }: { label: string; value: React.ReactNode })
 
 interface SidebarItem { id: string; labelKey: string; icon: typeof Crown; }
 
-function SettingsSidebar() {
+function SettingsSidebar({ onSelectAdvanced }: { onSelectAdvanced: () => void }) {
   const { t } = useTranslation();
   const [appVersion, setAppVersion] = useState('');
   const [active, setActive] = useState('general');
@@ -1373,6 +1396,7 @@ function SettingsSidebar() {
   ];
 
   const onSelect = (id: string) => {
+    if (id === 'advanced') onSelectAdvanced();
     const el = document.getElementById(id);
     if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); setActive(id); }
   };
