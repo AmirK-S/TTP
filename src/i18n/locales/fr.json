@@ -126,31 +126,19 @@
   },
   "settings": {
     "nav": {
-      "general": "Général",
-      "capture": "Capture",
-      "pro": "Soutenir TTP",
-      "data": "Données",
       "advanced": "Avancé"
-    },
-    "about": {
-      "subtitle": "Talk To Paste · v{{version}}",
-      "description": "TTP est une app gratuite et open-source que j'ai construite parce que j'en avais marre de taper. Tu appuies sur ton raccourci, tu parles, tes mots arrivent là où tu es. Groq transcrit. Un passage de polissage optionnel enlève les 'euh'."
     },
     "pro": {
       "title": "Soutenir TTP",
-      "badgeActive": "Active",
-      "descFree": "TTP est gratuit et complet — toutes les fonctionnalités, sans limite, sans abonnement. Si l'app te fait gagner du temps et que tu as envie de renvoyer quelque chose, une licence à vie est là pour ça. En remerciement, elle t'offre le Compagnon : des packs de sons pour le début et la fin de chaque dictée. Rien de ce qui fait marcher TTP n'en dépend.",
       "inputPlaceholder": "Colle ta clé de licence ici",
       "activate": "Activer la licence",
       "buyLink": "Acheter TTP Pro →",
       "labelKey": "Clé de licence",
-      "labelStatus": "Statut",
-      "labelValidity": "Validité",
-      "labelActivations": "Activations",
       "neverExpires": "N'expire jamais",
       "expiresOn": "Expire le {{date}}",
       "statusUnknown": "inconnu",
-      "deactivateDevice": "Désactiver cet appareil"
+      "activateShort": "Activer",
+      "deactivateShort": "Désactiver"
     },
     "companion": {
       "soundsLabel": "Voix",
@@ -197,45 +185,35 @@
       "fnEmojiButton": "Ouvrir les réglages Clavier",
       "capturePrompt": "Appuie sur la touche, le modificateur ou le bouton de souris de ton choix. Échap pour annuler.",
       "presets": "Choix rapides :",
-      "modifierHint": "Taper une touche pendant que tu le maintiens annule la dictée : tes raccourcis continuent de marcher."
+      "modifierHint": "Taper une touche pendant que tu le maintiens annule la dictée : tes raccourcis continuent de marcher.",
+      "hintShort": "Maintiens pour parler · double-tap pour les mains libres",
+      "captureShort": "Appuie sur ta touche… (Échap)"
     },
     "recordingMode": {
-      "title": "Comportement",
       "vadAutoStopLabel": "Arrêt auto après un silence",
       "vadAutoStopDesc": "Termine l'enregistrement automatiquement quand tu as fini de parler. Pratique quand tu oublies de relâcher le raccourci.",
       "vadSilenceSecsLabel": "Silence avant arrêt auto",
       "audioDeviceLabel": "Source audio",
-      "audioDeviceDesc": "Choisis le micro à utiliser. Revient à la source système si le périphérique est débranché.",
       "audioDeviceDefault": "Source système",
       "audioDeviceDefaultSuffix": "(par défaut)",
-      "launchStartupLabel": "Lancer au démarrage",
-      "launchStartupDesc": "Ouvre TTP automatiquement à la connexion."
+      "launchStartupLabel": "Lancer au démarrage"
     },
     "transcription": {
-      "title": "Transcription",
       "groqLabel": "Clé API Groq",
       "keyConfigured": "✓ Clé configurée",
       "keySaved": "Clé API validée et enregistrée.",
       "polishLabel": "Correction IA",
       "polishDesc": "Retire les hésitations et corrige la grammaire avec l'IA.",
       "languageLabel": "Langue de transcription",
-      "languageDesc": "Force Whisper sur une langue précise. Auto par défaut (Whisper détecte par enregistrement). Force en anglais ou français si Whisper se trompe parfois de langue.",
       "languageAuto": "Auto-détection",
       "languageEnglish": "Anglais",
-      "languageFrench": "Français"
+      "languageFrench": "Français",
+      "keyLabel": "Clé API"
     },
     "privacy": {
-      "title": "Confidentialité",
       "helpLabel": "Aide à améliorer TTP",
-      "helpDesc": "Envoie des rapports de crash anonymes à Sentry.",
       "restartHint": "Les changements prennent effet au redémarrage.",
-      "whatSentLabel": "Ce qui est envoyé :",
-      "whatSentBody": "Uniquement les rapports de crash (type d'erreur, OS, version de l'app, étape du pipeline). Aucune analytique d'usage n'est collectée.",
-      "neverSentLabel": "Jamais envoyé :",
-      "neverSentBody": "Le texte de tes transcriptions, tes clés API, les chemins de fichiers, ou aucune donnée personnelle."
-    },
-    "startup": {
-      "title": "Démarrage"
+      "whatSentBody": "Uniquement les rapports de crash (type d'erreur, OS, version de l'app, étape du pipeline). Aucune analytique d'usage n'est collectée."
     },
     "dictionary": {
       "title": "Dictionnaire",
@@ -243,10 +221,7 @@
       "labelCorrection": "Correction",
       "placeholderMisheard": "grok",
       "placeholderCorrection": "Groq",
-      "emptyTitle": "Aucune correction",
       "emptyState": "Tape un mot mal entendu au-dessus et la correction que TTP doit utiliser à la place.",
-      "tableOriginal": "Original",
-      "tableCorrection": "Correction",
       "bothRequired": "Les deux champs sont requis",
       "mustBeDifferent": "L'original et la correction doivent être différents",
       "copyTooltip": "Copier dans le presse-papiers"
@@ -255,41 +230,35 @@
       "title": "Historique",
       "clearButton": "Effacer l'historique",
       "saveLabel": "Enregistrer les transcriptions",
-      "saveDesc": "Quand désactivé, les nouvelles transcriptions ne sont pas sauvegardées.",
-      "emptyTitle": "Rien pour l'instant",
       "emptyEnabled": "Tes transcriptions apparaîtront ici.",
       "emptyDisabled": "Active « Enregistrer les transcriptions » pour garder un historique.",
       "replayTooltip": "Retape cette entrée dans l'app au premier plan"
     },
     "updateChannel": {
-      "title": "Canal de version",
-      "betaBadge": "Bêta",
       "labelBeta": "Bêta",
-      "labelStable": "Stable",
       "descBeta": "Tu testes les nouvelles versions avant la sortie publique.",
-      "descStable": "Tu reçois uniquement les versions stables et fiables.",
       "warning": "Les versions beta peuvent contenir des bugs. Tu pourras revenir en stable à tout moment."
     },
     "updates": {
       "title": "Mises à jour",
-      "checkButton": "Vérifier les mises à jour",
       "upToDate": "Tu es à jour. (v{{version}})",
       "checking": "Recherche…",
       "available": "Mise à jour disponible : v{{version}}",
-      "downloadInstall": "Télécharger et installer",
       "downloading": "Téléchargement… {{progress}}%",
       "ready": "Mise à jour téléchargée. Redémarre pour l'appliquer.",
-      "errorDefault": "Impossible de vérifier les mises à jour"
+      "errorDefault": "Impossible de vérifier les mises à jour",
+      "check": "Vérifier",
+      "install": "Installer"
     },
     "logs": {
       "title": "Diagnostics",
-      "desc": "Ouvre les dossiers contenant ttp.log, ttp-trace.log et les enregistrements conservés pour les joindre à un rapport de bug.",
       "button": "Afficher le dossier des journaux",
-      "recordingsButton": "Afficher le dossier des enregistrements"
+      "recordingsButton": "Afficher le dossier des enregistrements",
+      "buttonShort": "Journaux",
+      "recordingsButtonShort": "Enregistrements"
     },
     "diagnostics": {
-      "label": "Enregistrer le texte des transcriptions dans la trace",
-      "desc": "ttp-trace.log consigne toujours chaque étape d'une dictée — les temps, les verdicts des filtres, si les frappes ont bien atterri. Active ceci pour consigner aussi le texte à chaque étape, ce qu'il faut pour voir exactement quelle étape a fait disparaître une dictée. Tes transcriptions sont alors stockées en clair sur ce Mac."
+      "label": "Enregistrer le texte des transcriptions dans la trace"
     },
     "reset": {
       "title": "Réinitialisation",
@@ -299,7 +268,8 @@
     "uninstall": {
       "title": "Désinstaller TTP",
       "desc": "Supprime l'application et toutes tes données : paramètres, historique, dictionnaire, licence, entrées Keychain, et permissions macOS.",
-      "button": "Désinstaller TTP complètement"
+      "button": "Désinstaller TTP complètement",
+      "buttonShort": "Désinstaller"
     },
     "sidebar": {
       "thisMonth": "Ce mois",
@@ -309,8 +279,14 @@
     },
     "advanced": {
       "show": "Afficher les réglages avancés",
-      "hide": "Masquer les réglages avancés",
-      "recordingTitle": "Enregistrement"
+      "hide": "Masquer les réglages avancés"
+    },
+    "groups": {
+      "dictation": "Dictée",
+      "general": "Général"
+    },
+    "support": {
+      "hint": "TTP est gratuit. Une licence à vie débloque les packs de sons et soutient le projet."
     }
   },
   "onboarding": {

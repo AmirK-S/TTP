@@ -30,7 +30,8 @@ export const Toggle = forwardRef<HTMLButtonElement, ToggleProps>(function Toggle
         'transition-[background-color] duration-hover ease-app-out',
         'active:scale-[0.96] active:duration-press',
         track,
-        enabled ? 'bg-app-accent' : 'bg-app-raised',
+        // Off must still read as a switch on a light surface, not as a smudge.
+        enabled ? 'bg-app-accent' : 'bg-app-border-strong',
         disabled && 'opacity-50 cursor-not-allowed',
         className,
       )}

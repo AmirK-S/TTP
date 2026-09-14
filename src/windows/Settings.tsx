@@ -1,13 +1,13 @@
 // TTP - Talk To Paste
-// Settings window — configure app behavior, manage dictionary/history, manage
-// the licence. Five IA groups: General / Capture / Support / Data / Advanced,
-// the last one collapsed.
+// Settings window. One column of compact groups, macOS System Settings style:
+// a row per setting, label on the left, control on the right, a one-line hint
+// only where the label is not enough. Rarely wanted settings sit under a
+// collapsed Advanced group.
 
-import { useEffect, useState, useCallback, useRef, memo } from 'react';
+import { useEffect, useState, useCallback, useRef, memo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Volume2,
-  Copy, Check, Download, RefreshCw, Crown, ArrowRight, ExternalLink,
-  User, Mic, SlidersHorizontal, Database, BookOpen, Repeat, ChevronRight,
+import {
+  Volume2, Copy, Check, Download, RefreshCw, ArrowRight, Repeat, ChevronRight, Trash2,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { invoke } from '@tauri-apps/api/core';
@@ -23,10 +23,73 @@ import { FnEmojiNudge } from '../components/FnEmojiNudge';
 import { ApiKeyForm } from '../components/ApiKeyForm';
 import { TriggerPicker } from '../components/TriggerPicker';
 import WhatsNew from '../components/WhatsNew';
-import {
-  Button, Input, Banner, Spinner, Toggle, ConfirmDialog,
-  EmptyState, SettingsSection, SettingsRow, RadioOption, BrandTile,
-} from '../components/ui';
+import { Button, Input, Banner, Toggle, ConfirmDialog, BrandTile } from '../components/ui';
+
+/* ----------------------------------------------------------------------------
+   Layout primitives
+   ------------------------------------------------------------------------- */
+
+const SELECT = cn(
+  'h-7 max-w-[230px] rounded-app-sm border border-app-border bg-app-bg px-2',
+  'text-[12.5px] text-app-text focus:border-app-accent focus:outline-none',
+);
+
+/** A titled group of rows on one rounded surface. */
+function Group({ title, action, children, className }: {
+  title: string;
+  action?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={cn('mb-5', className)}>
+      <div className="mb-1.5 flex min-h-[22px] items-center justify-between px-1">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.06em] text-app-faint">{title}</h2>
+        {action}
+      </div>
+      <div className="overflow-hidden rounded-app-md border border-app-border bg-app-surface divide-y divide-app-border">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+/** One setting: label (and an optional one-line hint) left, control right. */
+function Row({ label, hint, children, htmlFor }: {
+  label: ReactNode;
+  hint?: ReactNode;
+  children?: ReactNode;
+  htmlFor?: string;
+}) {
+  return (
+    <div className="flex min-h-[44px] items-center justify-between gap-4 px-3.5 py-2">
+      <div className="min-w-0">
+        {htmlFor ? (
+          <label htmlFor={htmlFor} className="block text-[13px] text-app-text">{label}</label>
+        ) : (
+          <p className="text-[13px] text-app-text">{label}</p>
+        )}
+        {hint && <p className="mt-0.5 text-[11.5px] leading-snug text-app-muted">{hint}</p>}
+      </div>
+      {children && <div className="flex shrink-0 items-center gap-2">{children}</div>}
+    </div>
+  );
+}
+
+/** A row whose control is a switch, labelled for screen readers. */
+function ToggleRow({ label, hint, enabled, onChange, disabled }: {
+  label: string;
+  hint?: string;
+  enabled: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Row label={label} hint={hint}>
+      <Toggle size="sm" enabled={enabled} onChange={onChange} disabled={disabled} aria-label={label} />
+    </Row>
+  );
+}
 
 /* ----------------------------------------------------------------------------
    Small leaf components
@@ -34,13 +97,11 @@ import {
 
 function formatTimestamp(timestamp: number, locale: string): string {
   return new Date(timestamp).toLocaleString(locale, {
-    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
   });
 }
 
-/**
- * Dictionary table row — stable identity for memo via the `original` key.
- */
+/** Dictionary row — stable identity for memo via the `original` key. */
 const DictionaryRow = memo(function DictionaryRow({
   entry, onDelete,
 }: {
@@ -49,19 +110,20 @@ const DictionaryRow = memo(function DictionaryRow({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="group flex items-center gap-3 px-4 py-2.5 hover:bg-app-raised transition-colors duration-hover">
-      <div className="flex-1 min-w-0 grid grid-cols-2 gap-3 items-center">
-        <code className="text-[12px] text-app-muted font-mono truncate">{entry.original}</code>
-        <code className="text-[12px] text-app-text font-mono truncate">{entry.correction}</code>
+    <div className="group flex items-center gap-3 px-3.5 py-1.5 hover:bg-app-raised transition-colors duration-hover">
+      <div className="flex-1 min-w-0 flex items-center gap-2 text-[12.5px]">
+        <span className="text-app-muted truncate">{entry.original}</span>
+        <ArrowRight className="size-3 shrink-0 text-app-faint" aria-hidden />
+        <span className="text-app-text truncate">{entry.correction}</span>
       </div>
-      <Button
-        variant="ghost"
-        size="sm"
+      <button
+        type="button"
         onClick={() => onDelete(entry.original)}
-        className="opacity-0 group-hover:opacity-100 text-app-danger hover:text-app-danger hover:bg-app-danger-tint"
+        aria-label={t('common.delete')}
+        className="opacity-0 group-hover:opacity-100 rounded-app-sm p-1 text-app-faint hover:text-app-danger transition"
       >
-        {t('common.delete')}
-      </Button>
+        <Trash2 className="size-3.5" aria-hidden />
+      </button>
     </div>
   );
 });
@@ -97,30 +159,17 @@ const HistoryRow = memo(function HistoryRow({ entry }: { entry: HistoryEntry }) 
     }
   };
 
-  const preview = entry.text.length > 100 ? entry.text.slice(0, 100) + '…' : entry.text;
-
   return (
-    <div className="group flex items-start gap-3 px-4 py-3 hover:bg-app-raised transition-colors duration-hover">
-      <div className="flex-1 min-w-0">
-        <p className="text-[11px] text-app-faint mb-1 tabular-nums">{formatTimestamp(entry.timestamp, i18n.language)}</p>
-        <p className="text-[13px] text-app-text break-words leading-relaxed">{preview}</p>
-      </div>
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 shrink-0">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleReplay}
-          loading={replaying}
-          title={t('settings.history.replayTooltip')}
-        >
+    <div className="group flex items-start gap-3 px-3.5 py-2 hover:bg-app-raised transition-colors duration-hover">
+      <span className="shrink-0 whitespace-nowrap pt-px text-[11px] tabular-nums text-app-faint">
+        {formatTimestamp(entry.timestamp, i18n.language)}
+      </span>
+      <p className="flex-1 min-w-0 text-[12.5px] leading-snug text-app-text line-clamp-2 break-words">{entry.text}</p>
+      <div className="flex items-center opacity-0 group-hover:opacity-100 shrink-0">
+        <Button variant="ghost" size="sm" onClick={handleReplay} loading={replaying} title={t('settings.history.replayTooltip')}>
           <Repeat className="size-3.5" />
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleCopy}
-          title={t('settings.dictionary.copyTooltip')}
-        >
+        <Button variant="ghost" size="sm" onClick={handleCopy} title={t('settings.dictionary.copyTooltip')}>
           {copied ? <Check className="size-3.5 text-app-success" /> : <Copy className="size-3.5" />}
         </Button>
       </div>
@@ -129,171 +178,53 @@ const HistoryRow = memo(function HistoryRow({ entry }: { entry: HistoryEntry }) 
 });
 
 /* ----------------------------------------------------------------------------
-   Analytics — user's own usage stats. Local-only.
+   Updates — one row; the details only appear when there is something to do
    ------------------------------------------------------------------------- */
 
-interface AnalyticsWindowData { transcriptions: number; words: number; chars: number; }
-interface AnalyticsSummary {
-  week: AnalyticsWindowData;
-  month: AnalyticsWindowData;
-  all_time: AnalyticsWindowData;
-  daily: Array<{ date: string; transcriptions: number; words: number; chars: number }>;
-}
-
-/* The full analytics card (3-column week/month/all-time) was removed from the
-   Pro section in v2.1.3 — user feedback said it sat at the bottom of the
-   scroll where it never got read. SidebarStats (at the bottom of the sidebar)
-   shows a sleek one-line summary that's always visible instead. Type kept
-   above so SidebarStats can reuse the IPC return shape. */
-
-/* ----------------------------------------------------------------------------
-   Update channel (beta opt-in)
-   ------------------------------------------------------------------------- */
-
-function UpdateChannelCard() {
-  const { t } = useTranslation();
-  const { useBetaChannel, saveSettings, loading } = useSettingsStore();
-  const [appVersion, setAppVersion] = useState('...');
-  const [pendingDowngrade, setPendingDowngrade] = useState(false);
-
-  useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
-
-  const isOnBetaBuild = appVersion.includes('-beta');
-
-  const persist = async (enabled: boolean) => {
-    try {
-      await saveSettings({ use_beta_channel: enabled });
-    } catch (error) { console.error('Failed to save update channel setting:', error); }
-  };
-
-  const handleToggle = (enabled: boolean) => {
-    if (!enabled && isOnBetaBuild) { setPendingDowngrade(true); return; }
-    persist(enabled);
-  };
-
-  return (
-    <SettingsSection
-      title={t('settings.updateChannel.title')}
-      action={isOnBetaBuild ? (
-        <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-app-accent-tint text-app-accent">
-          {t('settings.updateChannel.betaBadge')}
-        </span>
-      ) : undefined}
-    >
-      <SettingsRow
-        label={useBetaChannel ? t('settings.updateChannel.labelBeta') : t('settings.updateChannel.labelStable')}
-        description={useBetaChannel ? t('settings.updateChannel.descBeta') : t('settings.updateChannel.descStable')}
-        control={<Toggle enabled={useBetaChannel} onChange={handleToggle} disabled={loading} />}
-      />
-      {useBetaChannel && (
-        <Banner tone="warning" className="mt-4">{t('settings.updateChannel.warning')}</Banner>
-      )}
-      <ConfirmDialog
-        open={pendingDowngrade}
-        title={t('dialog.downgradeBeta.title')}
-        message={t('dialog.downgradeBeta.message')}
-        confirmText={t('common.continue')}
-        cancelText={t('common.cancel')}
-        tone="warning"
-        onConfirm={() => { setPendingDowngrade(false); persist(false); }}
-        onCancel={() => setPendingDowngrade(false)}
-      />
-    </SettingsSection>
-  );
-}
-
-/* ----------------------------------------------------------------------------
-   Updates (check-for-update)
-   ------------------------------------------------------------------------- */
-
-function UpdatesCard() {
+function UpdatesRow() {
   const { t } = useTranslation();
   const { status, updateInfo, progress, error, checkForUpdates, downloadAndInstall, restartApp, dismiss } = useUpdater();
-  const [appVersion, setAppVersion] = useState('...');
-  const [buildSha, setBuildSha] = useState<string>('');
-  const [channel, setChannel] = useState<string>('stable');
+  const [appVersion, setAppVersion] = useState('…');
+  const [buildSha, setBuildSha] = useState('');
 
   useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
   useEffect(() => {
-    // Build info: marketing version + git SHA + channel. The SHA is the
-    // ground truth when the user is on a beta — marketing version stays
-    // "3.0.0" across betas since the Windows MSI bundler rejects non-numeric
-    // pre-release suffixes.
-    invoke<{ version: string; commit_sha: string; channel: string }>('get_build_info')
-      .then((info) => {
-        setBuildSha(info.commit_sha);
-        setChannel(info.channel);
-      })
+    // The SHA is the ground truth on a beta — the marketing version stays put
+    // across betas because the Windows MSI bundler rejects pre-release suffixes.
+    invoke<{ commit_sha: string }>('get_build_info')
+      .then((info) => setBuildSha(info.commit_sha))
       .catch(() => {});
   }, []);
   useTauriEvent('update-available', () => { checkForUpdates(); });
 
-  const versionLabel = (
-    <span className="text-[11px] text-app-faint tabular-nums">
-      v{appVersion}
-      {buildSha && buildSha !== 'unknown' ? ` · ${buildSha}` : ''}
-      {channel === 'beta' ? ' · beta' : ''}
-    </span>
-  );
+  const version = `v${appVersion}${buildSha && buildSha !== 'unknown' ? ` · ${buildSha}` : ''}`;
+
+  const hint =
+    status === 'up-to-date' ? t('settings.updates.upToDate', { version: appVersion })
+    : status === 'checking' ? t('settings.updates.checking')
+    : status === 'available' && updateInfo ? t('settings.updates.available', { version: updateInfo.version })
+    : status === 'downloading' ? t('settings.updates.downloading', { progress: Math.round(progress) })
+    : status === 'ready' ? t('settings.updates.ready')
+    : status === 'error' ? (error || t('settings.updates.errorDefault'))
+    : version;
 
   return (
-    <SettingsSection
-      title={t('settings.updates.title')}
-      action={versionLabel}
-    >
-      <div className="space-y-3">
-        {status === 'idle' && (
-          <Button variant="secondary" size="md" onClick={checkForUpdates} leftIcon={<RefreshCw className="size-3.5" />}>
-            {t('settings.updates.checkButton')}
+    <Row label={t('settings.updates.title')} hint={<span className={cn(status === 'error' && 'text-app-danger')}>{hint}</span>}>
+      {(status === 'idle' || status === 'up-to-date' || status === 'error') && (
+        <Button variant="secondary" size="sm" onClick={checkForUpdates} leftIcon={<RefreshCw className="size-3" />}>
+          {t('settings.updates.check')}
+        </Button>
+      )}
+      {status === 'available' && (
+        <>
+          <Button variant="ghost" size="sm" onClick={dismiss}>{t('common.later')}</Button>
+          <Button size="sm" onClick={downloadAndInstall} leftIcon={<Download className="size-3" />}>
+            {t('settings.updates.install')}
           </Button>
-        )}
-        {status === 'up-to-date' && (
-          <div className="flex items-center gap-2 text-[13px] text-app-success">
-            <Check className="size-4" /> {t('settings.updates.upToDate', { version: appVersion })}
-          </div>
-        )}
-        {status === 'checking' && (
-          <div className="flex items-center gap-2 text-[13px] text-app-muted">
-            <Spinner size={14} /> {t('settings.updates.checking')}
-          </div>
-        )}
-        {status === 'available' && updateInfo && (
-          <div className="space-y-3">
-            <Banner tone="info" title={t('settings.updates.available', { version: updateInfo.version })}>
-              {updateInfo.body}
-            </Banner>
-            <div className="flex gap-2">
-              <Button onClick={downloadAndInstall} leftIcon={<Download className="size-3.5" />}>
-                {t('settings.updates.downloadInstall')}
-              </Button>
-              <Button variant="secondary" onClick={dismiss}>{t('common.later')}</Button>
-            </div>
-          </div>
-        )}
-        {status === 'downloading' && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-[13px] text-app-muted">
-              <Spinner size={14} /> {t('settings.updates.downloading', { progress: Math.round(progress) })}
-            </div>
-            <div className="w-full h-1.5 rounded-full bg-app-raised overflow-hidden shadow-[inset_0_1px_2px_rgba(0,0,0,0.15)]">
-              <div className="h-full bg-app-accent rounded-full transition-[width] duration-300 ease-app-out" style={{ width: `${progress}%` }} />
-            </div>
-          </div>
-        )}
-        {status === 'ready' && (
-          <div className="space-y-3">
-            <p className="text-[13px] text-app-success">{t('settings.updates.ready')}</p>
-            <Button onClick={restartApp}>{t('common.restartNow')}</Button>
-          </div>
-        )}
-        {status === 'error' && (
-          <div className="space-y-2">
-            <p className="text-[13px] text-app-danger">{error || t('settings.updates.errorDefault')}</p>
-            <Button variant="ghost" onClick={checkForUpdates}>{t('common.tryAgain')}</Button>
-          </div>
-        )}
-      </div>
-    </SettingsSection>
+        </>
+      )}
+      {status === 'ready' && <Button size="sm" onClick={restartApp}>{t('common.restartNow')}</Button>}
+    </Row>
   );
 }
 
@@ -304,10 +235,10 @@ function UpdatesCard() {
 export function Settings() {
   const { t } = useTranslation();
   const {
-    aiPolishEnabled, telemetryEnabled, shortcut,
+    aiPolishEnabled, telemetryEnabled, shortcut, useBetaChannel,
     autostartEnabled, historyEnabled, vadAutoStopEnabled, vadSilenceSecs, audioDeviceName,
     transcriptionLanguage, diagnosticsEnabled, dictionary, history, loading, isPro, licenseKey,
-    licenseStatus, licenseExpiresAt, licenseActivationCount, licenseActivationLimit,
+    licenseStatus, licenseExpiresAt,
     licenseLoading, licenseError, soundPack,
     loadSettings, saveSettings, resetSettings, loadDictionary, deleteEntry,
     clearDictionary, loadHistory, clearHistory, loadLicense, activateLicense,
@@ -316,7 +247,6 @@ export function Settings() {
 
   const isMac = navigator.platform.startsWith('Mac');
   const [appVersion, setAppVersion] = useState('...');
-  const updateSectionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
 
@@ -327,10 +257,8 @@ export function Settings() {
     catch { /* not in Tauri (dev preview) */ }
   }, [t]);
 
-  useTauriEvent<{ version: string; body?: string }>('update-available', () => {
-    updateSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  });
-
+  // An update found in the background opens the Advanced-free part of the
+  // page anyway: the updates row is in General, near the top.
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showClearHistoryConfirm, setShowClearHistoryConfirm] = useState(false);
@@ -592,6 +520,7 @@ export function Settings() {
   // counting down to a paywall. Every feature is free and unlimited; a
   // licence is a thank-you, not a key.
 
+  // Windows/Linux only — macOS picks any key through TriggerPicker.
   const triggerOptions = [
     { value: 'Ctrl+Space', label: t('settings.recordingTrigger.optionCtrlSpace'), desc: t('settings.recordingTrigger.descRecommended'), recommended: true },
     { value: 'Ctrl+Shift+Space', label: t('settings.recordingTrigger.optionCtrlShiftSpace'), desc: '', recommended: false },
@@ -603,869 +532,484 @@ export function Settings() {
   const showShortcutError = translateIfKey(shortcutError);
   const showLicenseError = translateIfKey(licenseError);
 
+  const [pendingBetaDowngrade, setPendingBetaDowngrade] = useState(false);
+  const persistBeta = async (enabled: boolean) => {
+    try { await saveSettings({ use_beta_channel: enabled }); }
+    catch (error) { console.error('Failed to save update channel setting:', error); }
+  };
+  const handleBetaToggle = (enabled: boolean) => {
+    // Leaving the beta channel while running a beta build downgrades on the
+    // next update: say so first.
+    if (!enabled && appVersion.includes('-beta')) { setPendingBetaDowngrade(true); return; }
+    void persistBeta(enabled);
+  };
+
+  const selectedPack = soundPacks?.find((p) => p.id === soundPack) ?? soundPacks?.[0];
+
   return (
-    <div className="h-screen flex bg-app-bg text-app-text bg-noise">
-      <SettingsSidebar onSelectAdvanced={() => setAdvancedOpen(true)} />
-      <main className="flex-1 min-w-0 overflow-y-auto">
-        <div className="ttp-scroll max-w-2xl mx-auto px-8 pt-8 pb-12">
-          <PermissionBanner />
-
-          {/* ===== GENERAL ===== */}
-          <div id="general" data-section="general" className="scroll-mt-6">
-            <SettingsSection bare>
-              <div className="flex items-start gap-4 mb-4">
-                <BrandTile size="md" />
-                <div className="min-w-0">
-                  <h1 className="text-display-sm text-app-text">TTP by AmirKS</h1>
-                  <p className="text-[12px] text-app-accent font-medium">{t('settings.about.subtitle', { version: appVersion })}</p>
-                </div>
-              </div>
-              <p className="text-[13px] text-app-muted leading-relaxed">{t('settings.about.description')}</p>
-            </SettingsSection>
-
-            <SettingsSection title={t('settings.startup.title')}>
-              <SettingsRow
-                label={t('settings.recordingMode.launchStartupLabel')}
-                description={t('settings.recordingMode.launchStartupDesc')}
-                control={<Toggle enabled={autostartEnabled} onChange={handleAutostartToggle} disabled={loading} />}
-              />
-            </SettingsSection>
-
-            <div ref={updateSectionRef}>
-              <UpdatesCard />
-            </div>
-
+    <div className="h-screen overflow-y-auto bg-app-bg text-app-text bg-noise">
+      <div className="mx-auto max-w-[560px] px-6 pt-6 pb-10">
+        {/* Header: who this is, and what it has done for you this month. */}
+        <header className="mb-5 flex items-center gap-3 px-1">
+          <BrandTile size="sm" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[15px] font-semibold leading-tight text-app-text">TTP</p>
+            <p className="text-[11.5px] text-app-faint tabular-nums">v{appVersion}</p>
           </div>
+          <MonthStats />
+        </header>
 
-          {/* ===== CAPTURE ===== */}
-          <div id="capture" data-section="capture" className="scroll-mt-6">
-            <SettingsSection title={t('settings.recordingTrigger.title')} description={t('settings.recordingTrigger.desc')}>
-              {isMac ? (
-                <>
-                  <TriggerPicker />
-                  <FnEmojiNudge />
-                </>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    {triggerOptions.map((opt) => (
-                      <RadioOption
-                        key={opt.value}
-                        selected={shortcut === opt.value}
-                        onSelect={() => handleShortcutChange(opt.value)}
-                        label={<span className="font-mono">{opt.label}</span>}
-                        trailing={opt.desc ? <span className={opt.recommended ? 'text-app-accent font-medium' : undefined}>{opt.desc}</span> : undefined}
-                        disabled={loading}
-                      />
-                    ))}
-                  </div>
-                  {shortcutError && <p className="mt-4 text-[13px] text-app-danger">{showShortcutError}</p>}
-                  {shortcutSuccess && (
-                    <p className="mt-3 text-[13px] text-app-success">{t('settings.recordingTrigger.successUpdated')}</p>
-                  )}
-                </>
-              )}
-            </SettingsSection>
+        <PermissionBanner />
 
-            <SettingsSection title={t('settings.recordingMode.title')}>
-              <div className="py-2">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <label
-                      htmlFor="audio-device-select"
-                      className="text-[13px] font-medium text-app-text"
-                    >
-                      {t('settings.recordingMode.audioDeviceLabel')}
-                    </label>
-                    <p className="mt-0.5 text-[12px] text-app-muted leading-relaxed">
-                      {t('settings.recordingMode.audioDeviceDesc')}
-                    </p>
-                  </div>
-                  <select
-                    id="audio-device-select"
-                    value={audioDeviceName ?? ''}
-                    onChange={(e) => handleAudioDeviceChange(e.target.value)}
-                    onFocus={refreshAudioDevices}
-                    disabled={loading}
-                    className="h-8 rounded-app-md border border-app-border bg-app-surface px-2 text-[13px] text-app-text shrink-0 max-w-[55%] focus:border-app-accent focus:outline-none"
-                  >
-                    <option value="">{t('settings.recordingMode.audioDeviceDefault')}</option>
-                    {audioDevices.map((d) => (
-                      <option key={d.name} value={d.name}>
-                        {d.is_default ? `${d.name} ${t('settings.recordingMode.audioDeviceDefaultSuffix')}` : d.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </SettingsSection>
-
-            <div ref={transcriptionSectionRef} className="scroll-mt-6">
-            <SettingsSection title={t('settings.transcription.title')}>
-              <div className="space-y-3 mb-5">
-                {hasGroqKey === true && (
-                  <p className="text-[13px] font-medium text-app-text">{t('settings.transcription.groqLabel')}</p>
-                )}
-                {hasGroqKey === true && (
-                  <div className="flex items-center gap-3">
-                    <span className="text-[13px] text-app-success">
-                      {groqKeySuccess ? t('settings.transcription.keySaved') : t('settings.transcription.keyConfigured')}
-                    </span>
-                    <Button variant="ghost" size="sm" onClick={() => setHasGroqKey(false)}>
-                      {t('common.change')}
-                    </Button>
-                  </div>
-                )}
-                {hasGroqKey === false && (
-                  <ApiKeyForm compact onSuccess={handleGroqKeySaved} submitLabel={t('common.save')} />
-                )}
-              </div>
-              <div className="border-t border-app-border pt-4">
-                <SettingsRow
-                  label={t('settings.transcription.polishLabel')}
-                  description={t('settings.transcription.polishDesc')}
-                  control={<Toggle enabled={aiPolishEnabled} onChange={handlePolishToggle} disabled={loading} />}
-                />
-              </div>
-              <div className="border-t border-app-border pt-4 py-2">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <label
-                      htmlFor="transcription-language-select"
-                      className="text-[13px] font-medium text-app-text"
-                    >
-                      {t('settings.transcription.languageLabel')}
-                    </label>
-                    <p className="mt-0.5 text-[12px] text-app-muted leading-relaxed">
-                      {t('settings.transcription.languageDesc')}
-                    </p>
-                  </div>
-                  <select
-                    id="transcription-language-select"
-                    value={transcriptionLanguage}
-                    onChange={(e) =>
-                      saveSettings({
-                        transcription_language: e.target.value === 'auto' ? null : e.target.value,
-                      }).catch((err) =>
-                        console.error('Failed to save transcription_language:', err),
-                      )
-                    }
-                    disabled={loading}
-                    className="h-8 rounded-app-md border border-app-border bg-app-surface px-2 text-[13px] text-app-text shrink-0 focus:border-app-accent focus:outline-none"
-                  >
-                    <option value="auto">{t('settings.transcription.languageAuto')}</option>
-                    <option value="en">{t('settings.transcription.languageEnglish')}</option>
-                    <option value="fr">{t('settings.transcription.languageFrench')}</option>
-                  </select>
-                </div>
-              </div>
-            </SettingsSection>
-            </div>
-          </div>
-
-          {/* ===== PRO =====
-              Analytics moved to the sidebar footer (SidebarStats) — keeps
-              "your numbers" visible at all times without making the user
-              scroll past it. */}
-          <div id="pro" data-section="pro" className="scroll-mt-6">
-            <SettingsSection
-              title={t('settings.pro.title')}
-              action={
-                <div className="flex items-center gap-2">
-                  <Crown className={cn('size-4', isPro ? 'text-app-warning' : 'text-app-faint')} />
-                  {isPro && (
-                    <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-app-warning-tint text-app-warning">
-                      {t('settings.pro.badgeActive')}
-                    </span>
-                  )}
-                </div>
-              }
-            >
-              {!isPro ? (
-                <>
-                  <p className="text-[13px] text-app-muted mb-4">
-                    {t('settings.pro.descFree')}
-                  </p>
-                  <CompanionPanel
-                    t={t}
-                    packs={soundPacks}
-                    unlocked={cosmeticsUnlocked}
-                    error={companionError}
-                    onRetry={loadCompanion}
-                    selected={soundPack}
-                    onSelect={handleSelectPack}
-                    loading={loading}
-                  />
-                  <div className="space-y-2 mb-4">
-                    <Input
-                      type="text"
-                      value={licenseInput}
-                      onChange={(e) => setLicenseInput(e.target.value)}
-                      placeholder={t('settings.pro.inputPlaceholder')}
-                      spellCheck={false}
-                      disabled={licenseLoading}
-                      className="font-mono"
-                      onKeyDown={(e) => { if (e.key === 'Enter' && licenseInput.trim()) handleActivateLicense(); }}
-                      aria-label={t('settings.pro.labelKey')}
-                    />
-                    {licenseError && <p className="text-[12px] text-app-danger">{showLicenseError}</p>}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Button onClick={handleActivateLicense} disabled={licenseLoading || !licenseInput.trim()} loading={licenseLoading}>
-                      {t('settings.pro.activate')}
-                    </Button>
-                    <a
-                      href="https://amirks.lemonsqueezy.com/checkout/buy/23ded1c4-c862-4f8c-ada5-0bb3dc2e0060"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-[13px] font-medium text-app-accent hover:text-app-accent-hover"
-                    >
-                      {t('settings.pro.buyLink')}
-                      <ArrowRight className="size-3.5" />
-                    </a>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <CompanionPanel
-                    t={t}
-                    packs={soundPacks}
-                    unlocked={cosmeticsUnlocked}
-                    error={companionError}
-                    onRetry={loadCompanion}
-                    selected={soundPack}
-                    onSelect={handleSelectPack}
-                    loading={loading}
-                  />
-                  <div className="space-y-2 mb-4">
-                    <ProInfoRow label={t('settings.pro.labelKey')} value={<span className="font-mono">{maskedLicenseKey}</span>} />
-                    <ProInfoRow label={t('settings.pro.labelStatus')} value={<span className="capitalize">{licenseStatus ?? t('settings.pro.statusUnknown')}</span>} />
-                    <ProInfoRow label={t('settings.pro.labelValidity')} value={formatExpiry(licenseExpiresAt)} />
-                    {licenseActivationLimit !== null && (
-                      <ProInfoRow label={t('settings.pro.labelActivations')} value={`${licenseActivationCount ?? 0} / ${licenseActivationLimit}`} />
-                    )}
-                  </div>
-                  {licenseError && <p className="text-[12px] text-app-danger mb-3">{showLicenseError}</p>}
-                  <div className="flex items-center gap-3">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowDeactivateConfirm(true)}
-                      disabled={licenseLoading}
-                      className="text-app-danger hover:text-app-danger hover:bg-app-danger-tint"
-                    >
-                      {t('settings.pro.deactivateDevice')}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={validateLicense}
-                      disabled={licenseLoading}
-                      leftIcon={licenseLoading ? <Spinner size={12} /> : <RefreshCw className="size-3" />}
-                    >
-                      {t('common.refresh')}
-                    </Button>
-                  </div>
-                </>
-              )}
-            </SettingsSection>
-          </div>
-
-          {/* ===== DATA ===== */}
-          <div id="data" data-section="data" className="scroll-mt-6">
-            <SettingsSection
-              title={t('settings.dictionary.title')}
-              action={dictionary.length > 0 ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowClearConfirm(true)}
-                  className="text-app-danger hover:text-app-danger hover:bg-app-danger-tint"
-                >
-                  {t('common.clearAll')}
-                </Button>
-              ) : undefined}
-            >
-              <div className="mb-4 flex gap-2 items-end">
-                <div className="flex-1">
-                  <label htmlFor="dict-original" className="block text-[11px] text-app-muted mb-1 font-medium">{t('settings.dictionary.labelMisheard')}</label>
-                  <Input
-                    id="dict-original"
-                    type="text"
-                    value={newOriginal}
-                    onChange={(e) => setNewOriginal(e.target.value)}
-                    placeholder={t('settings.dictionary.placeholderMisheard')}
-                  />
-                </div>
-                <ArrowRight className="size-4 text-app-faint shrink-0 mb-2.5" aria-hidden />
-                <div className="flex-1">
-                  <label htmlFor="dict-correction" className="block text-[11px] text-app-muted mb-1 font-medium">{t('settings.dictionary.labelCorrection')}</label>
-                  <Input
-                    id="dict-correction"
-                    type="text"
-                    value={newCorrection}
-                    onChange={(e) => setNewCorrection(e.target.value)}
-                    placeholder={t('settings.dictionary.placeholderCorrection')}
-                  />
-                </div>
-                <Button onClick={handleAddEntry} disabled={!newOriginal.trim() || !newCorrection.trim()}>
-                  {t('common.add')}
-                </Button>
-              </div>
-              {addEntryError && <p className="text-[13px] text-app-danger mb-3">{addEntryError}</p>}
-
-              {dictionary.length === 0 ? (
-                <EmptyState
-                  icon={<BookOpen />}
-                  title={t('settings.dictionary.emptyTitle')}
-                  description={t('settings.dictionary.emptyState')}
-                />
-              ) : (
-                <div className="rounded-app-sm border border-app-border overflow-hidden">
-                  <div className="bg-app-raised border-b border-app-border px-4 py-2 grid grid-cols-2 gap-3">
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-app-faint">{t('settings.dictionary.tableOriginal')}</span>
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.06em] text-app-faint">{t('settings.dictionary.tableCorrection')}</span>
-                  </div>
-                  <div className="divide-y divide-app-border">
-                    {dictionary.map((entry) => (
-                      <DictionaryRow key={entry.original} entry={entry} onDelete={handleDeleteEntry} />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </SettingsSection>
-
-            <SettingsSection
-              title={t('settings.history.title')}
-              action={history.length > 0 ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowClearHistoryConfirm(true)}
-                  className="text-app-danger hover:text-app-danger hover:bg-app-danger-tint"
-                >
-                  {t('settings.history.clearButton')}
-                </Button>
-              ) : undefined}
-            >
-              <SettingsRow
-                label={t('settings.history.saveLabel')}
-                description={t('settings.history.saveDesc')}
-                control={<Toggle enabled={historyEnabled} onChange={handleHistoryEnabledToggle} disabled={loading} />}
-              />
-              <div className="border-t border-app-border mt-3 pt-3">
-                {history.length === 0 ? (
-                  <EmptyState
-                    icon={<Database />}
-                    title={t('settings.history.emptyTitle')}
-                    description={historyEnabled ? t('settings.history.emptyEnabled') : t('settings.history.emptyDisabled')}
-                  />
-                ) : (
-                  <div className="max-h-80 overflow-y-auto rounded-app-sm border border-app-border divide-y divide-app-border">
-                    {history.map((entry) => (
-                      <HistoryRow key={entry.timestamp} entry={entry} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            </SettingsSection>
-          </div>
-
-          {/* ===== ADVANCED ===== */}
-          <div id="advanced" data-section="advanced" className="scroll-mt-6">
-            {/* Everything here is either rarely wanted or only wanted when
-                something is wrong. Collapsed so the page above reads as the
-                whole app, which it very nearly is. */}
-            <button
-              type="button"
-              onClick={() => setAdvancedOpen((o) => !o)}
-              aria-expanded={advancedOpen}
-              className="mb-4 flex w-full items-center gap-2 text-[13px] font-medium text-app-muted hover:text-app-text transition-colors"
-            >
-              <ChevronRight className={cn('size-4 transition-transform duration-hover', advancedOpen && 'rotate-90')} aria-hidden />
-              {advancedOpen ? t('settings.advanced.hide') : t('settings.advanced.show')}
-            </button>
-            {advancedOpen && (
-              <>
-                <SettingsSection title={t('settings.advanced.recordingTitle')}>
-                  <SettingsRow
-                    label={t('settings.recordingMode.vadAutoStopLabel')}
-                    description={t('settings.recordingMode.vadAutoStopDesc')}
-                    control={<Toggle enabled={vadAutoStopEnabled} onChange={handleVadAutoStopToggle} disabled={loading} />}
-                  />
-                  {vadAutoStopEnabled && (
-                    <div className="pl-1 py-2 flex items-center gap-3">
-                      <label
-                        htmlFor="vad-silence-secs"
-                        className="text-[12px] text-app-muted shrink-0"
-                      >
-                        {t('settings.recordingMode.vadSilenceSecsLabel')}
-                      </label>
-                      <input
-                        id="vad-silence-secs"
-                        type="range"
-                        min={1}
-                        max={10}
-                        step={1}
-                        value={vadSilenceSecs}
-                        onChange={(e) => handleVadSilenceSecsChange(Number(e.target.value))}
-                        disabled={loading}
-                        className="flex-1 accent-app-accent"
-                      />
-                      <span className="text-[12px] font-medium tabular-nums text-app-text w-10 text-right">
-                        {vadSilenceSecs}s
-                      </span>
-                    </div>
-                  )}
-                </SettingsSection>
-
-                <SettingsSection title={t('settings.privacy.title')}>
-                  {showRestartBanner && (
-                    <Banner
-                      tone="warning"
-                      className="mb-4"
-                      action={
-                        <Button variant="secondary" size="sm" onClick={() => relaunch().catch(console.error)}>
-                          {t('common.restartNow')}
-                        </Button>
-                      }
-                    >
-                      {t('settings.privacy.restartHint')}
-                    </Banner>
-                  )}
-                  <SettingsRow
-                    label={t('settings.privacy.helpLabel')}
-                    description={t('settings.privacy.helpDesc')}
-                    control={<Toggle enabled={telemetryEnabled} onChange={handleTelemetryToggle} disabled={loading} />}
-                  />
-                  <div className="mt-4 p-3 bg-app-raised rounded-app-sm border border-app-border">
-                    <p className="text-[12px] text-app-muted leading-relaxed">
-                      <span className="font-medium text-app-text">{t('settings.privacy.whatSentLabel')}</span>{' '}
-                      {t('settings.privacy.whatSentBody')}
-                    </p>
-                    <p className="text-[12px] text-app-muted leading-relaxed mt-2">
-                      <span className="font-medium text-app-text">{t('settings.privacy.neverSentLabel')}</span>{' '}
-                      {t('settings.privacy.neverSentBody')}
-                    </p>
-                  </div>
-                </SettingsSection>
-
-                <UpdateChannelCard />
-
-                <SettingsSection
-                  title={t('settings.logs.title')}
-                  description={t('settings.logs.desc')}
-                >
-                  <SettingsRow
-                    label={t('settings.diagnostics.label')}
-                    description={t('settings.diagnostics.desc')}
-                    control={<Toggle enabled={diagnosticsEnabled} onChange={handleDiagnosticsToggle} disabled={loading} />}
-                  />
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        invoke('reveal_log_folder').catch((e) =>
-                          console.error('[Settings] reveal_log_folder failed:', e),
-                        );
-                      }}
-                    >
-                      {t('settings.logs.button')}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        invoke('reveal_recordings_folder').catch((e) =>
-                          console.error('[Settings] reveal_recordings_folder failed:', e),
-                        );
-                      }}
-                    >
-                      {t('settings.logs.recordingsButton')}
-                    </Button>
-                  </div>
-                </SettingsSection>
-
-                <SettingsSection title={t('settings.reset.title')} description={t('settings.reset.desc')}>
-                  <Button
-                    variant="ghost"
-                    onClick={() => setShowResetConfirm(true)}
-                    className="text-app-danger hover:text-app-danger hover:bg-app-danger-tint border border-app-danger/30"
-                  >
-                    {t('settings.reset.button')}
-                  </Button>
-                </SettingsSection>
-
-                {/* Danger zone — full uninstall. Bottom of Advanced so users
-                    have to scroll past everything else to reach it. */}
-                <SettingsSection
-                  title={t('settings.uninstall.title')}
-                  description={t('settings.uninstall.desc')}
-                >
-                  <Button
-                    variant="danger"
-                    onClick={() => setShowUninstallConfirm(true)}
-                  >
-                    {t('settings.uninstall.button')}
-                  </Button>
-                </SettingsSection>
-              </>
+        <Group title={t('settings.groups.dictation')}>
+          <Row
+            label={t('settings.recordingTrigger.title')}
+            hint={t('settings.recordingTrigger.hintShort')}
+          >
+            {isMac ? (
+              <TriggerPicker compact />
+            ) : (
+              <select
+                className={SELECT}
+                value={shortcut}
+                onChange={(e) => handleShortcutChange(e.target.value)}
+                disabled={loading}
+                aria-label={t('settings.recordingTrigger.title')}
+              >
+                {triggerOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+              </select>
             )}
-          </div>
+          </Row>
+          <Row label={t('settings.recordingMode.audioDeviceLabel')} htmlFor="audio-device-select">
+            <select
+              id="audio-device-select"
+              className={SELECT}
+              value={audioDeviceName ?? ''}
+              onChange={(e) => handleAudioDeviceChange(e.target.value)}
+              onFocus={refreshAudioDevices}
+              disabled={loading}
+            >
+              <option value="">{t('settings.recordingMode.audioDeviceDefault')}</option>
+              {audioDevices.map((d) => (
+                <option key={d.name} value={d.name}>
+                  {d.is_default ? `${d.name} ${t('settings.recordingMode.audioDeviceDefaultSuffix')}` : d.name}
+                </option>
+              ))}
+            </select>
+          </Row>
+          <Row label={t('settings.transcription.languageLabel')} htmlFor="transcription-language-select">
+            <select
+              id="transcription-language-select"
+              className={SELECT}
+              value={transcriptionLanguage}
+              onChange={(e) =>
+                saveSettings({
+                  transcription_language: e.target.value === 'auto' ? null : e.target.value,
+                }).catch((err) => console.error('Failed to save transcription_language:', err))
+              }
+              disabled={loading}
+            >
+              <option value="auto">{t('settings.transcription.languageAuto')}</option>
+              <option value="en">{t('settings.transcription.languageEnglish')}</option>
+              <option value="fr">{t('settings.transcription.languageFrench')}</option>
+            </select>
+          </Row>
+          <ToggleRow
+            label={t('settings.transcription.polishLabel')}
+            hint={t('settings.transcription.polishDesc')}
+            enabled={aiPolishEnabled}
+            onChange={handlePolishToggle}
+            disabled={loading}
+          />
+          {shortcutError && <p className="px-3.5 py-2 text-[12px] text-app-danger">{showShortcutError}</p>}
+          {shortcutSuccess && <p className="px-3.5 py-2 text-[12px] text-app-success">{t('settings.recordingTrigger.successUpdated')}</p>}
+        </Group>
 
-          <ConfirmDialog
-            open={showClearConfirm}
-            title={t('dialog.clearDictionary.title')}
-            message={t('dialog.clearDictionary.message')}
-            confirmText={t('dialog.clearDictionary.confirm')}
-            cancelText={t('common.cancel')}
-            onConfirm={handleClearDictionary}
-            onCancel={() => setShowClearConfirm(false)}
-          />
-          <ConfirmDialog
-            open={showResetConfirm}
-            title={t('dialog.reset.title')}
-            message={t('dialog.reset.message')}
-            confirmText={t('dialog.reset.confirm')}
-            cancelText={t('common.cancel')}
-            onConfirm={handleResetDefaults}
-            onCancel={() => setShowResetConfirm(false)}
-          />
-          <ConfirmDialog
-            open={showClearHistoryConfirm}
-            title={t('dialog.clearHistory.title')}
-            message={t('dialog.clearHistory.message')}
-            confirmText={t('dialog.clearHistory.confirm')}
-            cancelText={t('common.cancel')}
-            onConfirm={handleClearHistory}
-            onCancel={() => setShowClearHistoryConfirm(false)}
-          />
-          <ConfirmDialog
-            open={showUninstallConfirm}
-            title={t('dialog.uninstall.title')}
-            message={t('dialog.uninstall.message')}
-            confirmText={uninstalling ? t('dialog.uninstall.uninstalling') : t('dialog.uninstall.confirm')}
-            cancelText={t('common.cancel')}
-            tone="danger"
-            onConfirm={handleUninstall}
-            onCancel={() => !uninstalling && setShowUninstallConfirm(false)}
-          />
-          <ConfirmDialog
-            open={showDeactivateConfirm}
-            title={t('dialog.deactivateLicense.title')}
-            message={t('dialog.deactivateLicense.message')}
-            confirmText={t('dialog.deactivateLicense.confirm')}
-            cancelText={t('common.cancel')}
-            tone="warning"
-            onConfirm={handleDeactivateLicense}
-            onCancel={() => setShowDeactivateConfirm(false)}
-          />
+        {isMac && <FnEmojiNudge />}
 
-          <WhatsNew />
+        <div ref={transcriptionSectionRef} className="scroll-mt-6">
+          <Group title={t('settings.transcription.groqLabel')}>
+            {hasGroqKey === false ? (
+              <div className="px-3.5 py-3">
+                <ApiKeyForm compact onSuccess={handleGroqKeySaved} submitLabel={t('common.save')} />
+              </div>
+            ) : (
+              <Row
+                label={t('settings.transcription.keyLabel')}
+                hint={groqKeySuccess ? t('settings.transcription.keySaved') : undefined}
+              >
+                <span className="text-[12px] text-app-success">{hasGroqKey ? t('settings.transcription.keyConfigured') : '…'}</span>
+                <Button variant="ghost" size="sm" onClick={() => setHasGroqKey(false)}>{t('common.change')}</Button>
+              </Row>
+            )}
+          </Group>
         </div>
-      </main>
+
+        <Group title={t('settings.groups.general')}>
+          <ToggleRow
+            label={t('settings.recordingMode.launchStartupLabel')}
+            enabled={autostartEnabled}
+            onChange={handleAutostartToggle}
+            disabled={loading}
+          />
+          <UpdatesRow />
+        </Group>
+
+        <Group
+          title={t('settings.dictionary.title')}
+          action={dictionary.length > 0 ? (
+            <button type="button" onClick={() => setShowClearConfirm(true)} className="text-[11.5px] text-app-faint hover:text-app-danger transition-colors">
+              {t('common.clearAll')}
+            </button>
+          ) : undefined}
+        >
+          <form
+            className="flex items-center gap-2 px-3.5 py-2"
+            onSubmit={(e) => { e.preventDefault(); void handleAddEntry(); }}
+          >
+            <Input
+              value={newOriginal}
+              onChange={(e) => setNewOriginal(e.target.value)}
+              placeholder={t('settings.dictionary.placeholderMisheard')}
+              aria-label={t('settings.dictionary.labelMisheard')}
+              className="h-7 flex-1 text-[12.5px]"
+            />
+            <ArrowRight className="size-3.5 shrink-0 text-app-faint" aria-hidden />
+            <Input
+              value={newCorrection}
+              onChange={(e) => setNewCorrection(e.target.value)}
+              placeholder={t('settings.dictionary.placeholderCorrection')}
+              aria-label={t('settings.dictionary.labelCorrection')}
+              className="h-7 flex-1 text-[12.5px]"
+            />
+            <Button type="submit" size="sm" variant="secondary" disabled={!newOriginal.trim() || !newCorrection.trim()}>
+              {t('common.add')}
+            </Button>
+          </form>
+          {addEntryError && <p className="px-3.5 py-1.5 text-[12px] text-app-danger">{addEntryError}</p>}
+          {dictionary.length === 0 ? (
+            <p className="px-3.5 py-2.5 text-[12px] text-app-muted">{t('settings.dictionary.emptyState')}</p>
+          ) : (
+            <div className="max-h-44 overflow-y-auto">
+              {dictionary.map((entry) => (
+                <DictionaryRow key={entry.original} entry={entry} onDelete={handleDeleteEntry} />
+              ))}
+            </div>
+          )}
+        </Group>
+
+        <Group
+          title={t('settings.history.title')}
+          action={history.length > 0 ? (
+            <button type="button" onClick={() => setShowClearHistoryConfirm(true)} className="text-[11.5px] text-app-faint hover:text-app-danger transition-colors">
+              {t('settings.history.clearButton')}
+            </button>
+          ) : undefined}
+        >
+          <ToggleRow
+            label={t('settings.history.saveLabel')}
+            enabled={historyEnabled}
+            onChange={handleHistoryEnabledToggle}
+            disabled={loading}
+          />
+          {history.length === 0 ? (
+            <p className="px-3.5 py-2.5 text-[12px] text-app-muted">
+              {historyEnabled ? t('settings.history.emptyEnabled') : t('settings.history.emptyDisabled')}
+            </p>
+          ) : (
+            <div className="max-h-64 overflow-y-auto">
+              {history.map((entry) => <HistoryRow key={entry.timestamp} entry={entry} />)}
+            </div>
+          )}
+        </Group>
+
+        <Group title={t('settings.pro.title')}>
+          {companionError ? (
+            <div className="px-3.5 py-2.5">
+              <Banner
+                tone="warning"
+                title={t('error.companion_unreachable_title')}
+                action={<button type="button" onClick={loadCompanion} className="text-[12px] font-medium text-app-accent hover:underline">{t('error.retry')}</button>}
+              >
+                {t('error.companion_unreachable')}
+              </Banner>
+            </div>
+          ) : soundPacks && soundPacks.length > 0 && (
+            <Row
+              label={t('settings.companion.soundsLabel')}
+              hint={selectedPack ? t(`settings.companion.packs.${selectedPack.id}.desc`) : undefined}
+              htmlFor="sound-pack-select"
+            >
+              <select
+                id="sound-pack-select"
+                className={SELECT}
+                value={soundPack}
+                onChange={(e) => handleSelectPack(e.target.value)}
+                disabled={loading}
+              >
+                {soundPacks.map((pack) => {
+                  // `!== true`, not `!unlocked`: an unknown entitlement must
+                  // not be rendered as a lock.
+                  const locked = !pack.free && cosmeticsUnlocked !== true;
+                  return (
+                    <option key={pack.id} value={pack.id} disabled={locked}>
+                      {t(`settings.companion.packs.${pack.id}.name`)}{locked ? ' 🔒' : ''}
+                    </option>
+                  );
+                })}
+              </select>
+              <button
+                type="button"
+                onClick={() => { invoke('preview_sound_pack', { packId: soundPack }).catch(() => {}); }}
+                aria-label={t('settings.companion.preview')}
+                title={t('settings.companion.preview')}
+                className="rounded-app-sm p-1.5 text-app-muted hover:text-app-text hover:bg-app-raised transition-colors"
+              >
+                <Volume2 className="size-3.5" aria-hidden />
+              </button>
+            </Row>
+          )}
+          {!isPro ? (
+            <>
+              <div className="flex items-center gap-2 px-3.5 py-2">
+                <Input
+                  value={licenseInput}
+                  onChange={(e) => setLicenseInput(e.target.value)}
+                  placeholder={t('settings.pro.inputPlaceholder')}
+                  spellCheck={false}
+                  disabled={licenseLoading}
+                  className="h-7 flex-1 font-mono text-[12px]"
+                  onKeyDown={(e) => { if (e.key === 'Enter' && licenseInput.trim()) handleActivateLicense(); }}
+                  aria-label={t('settings.pro.labelKey')}
+                />
+                <Button size="sm" variant="secondary" onClick={handleActivateLicense} disabled={licenseLoading || !licenseInput.trim()} loading={licenseLoading}>
+                  {t('settings.pro.activateShort')}
+                </Button>
+              </div>
+              {licenseError && <p className="px-3.5 pb-2 text-[12px] text-app-danger">{showLicenseError}</p>}
+              <div className="flex items-center justify-between gap-3 px-3.5 py-2">
+                <p className="text-[11.5px] leading-snug text-app-muted">{t('settings.support.hint')}</p>
+                <a
+                  href="https://amirks.lemonsqueezy.com/checkout/buy/23ded1c4-c862-4f8c-ada5-0bb3dc2e0060"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 text-[12px] font-medium text-app-accent hover:text-app-accent-hover"
+                >
+                  {t('settings.pro.buyLink')}
+                </a>
+              </div>
+            </>
+          ) : (
+            <Row
+              label={<span className="inline-flex items-center gap-1.5">{t('settings.pro.labelKey')} <span className="font-mono text-app-muted">{maskedLicenseKey}</span></span>}
+              hint={`${licenseStatus ?? t('settings.pro.statusUnknown')} · ${formatExpiry(licenseExpiresAt)}`}
+            >
+              <Button variant="ghost" size="sm" onClick={validateLicense} disabled={licenseLoading} title={t('common.refresh')}>
+                <RefreshCw className="size-3" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setShowDeactivateConfirm(true)} disabled={licenseLoading} className="text-app-danger hover:text-app-danger">
+                {t('settings.pro.deactivateShort')}
+              </Button>
+            </Row>
+          )}
+        </Group>
+
+        {/* Rarely wanted, or only wanted when something is wrong. */}
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen((o) => !o)}
+          aria-expanded={advancedOpen}
+          className="mb-2 flex items-center gap-1.5 px-1 text-[12px] font-medium text-app-muted hover:text-app-text transition-colors"
+        >
+          <ChevronRight className={cn('size-3.5 transition-transform duration-hover', advancedOpen && 'rotate-90')} aria-hidden />
+          {advancedOpen ? t('settings.advanced.hide') : t('settings.advanced.show')}
+        </button>
+
+        {advancedOpen && (
+          <Group title={t('settings.nav.advanced')}>
+            <ToggleRow
+              label={t('settings.recordingMode.vadAutoStopLabel')}
+              hint={t('settings.recordingMode.vadAutoStopDesc')}
+              enabled={vadAutoStopEnabled}
+              onChange={handleVadAutoStopToggle}
+              disabled={loading}
+            />
+            {vadAutoStopEnabled && (
+              <Row label={t('settings.recordingMode.vadSilenceSecsLabel')} htmlFor="vad-silence-secs">
+                <input
+                  id="vad-silence-secs"
+                  type="range"
+                  min={1}
+                  max={10}
+                  step={1}
+                  value={vadSilenceSecs}
+                  onChange={(e) => handleVadSilenceSecsChange(Number(e.target.value))}
+                  disabled={loading}
+                  className="w-32 accent-app-accent"
+                />
+                <span className="w-7 text-right text-[12px] tabular-nums text-app-text">{vadSilenceSecs}s</span>
+              </Row>
+            )}
+            <ToggleRow
+              label={t('settings.privacy.helpLabel')}
+              hint={t('settings.privacy.whatSentBody')}
+              enabled={telemetryEnabled}
+              onChange={handleTelemetryToggle}
+              disabled={loading}
+            />
+            {showRestartBanner && (
+              <Row label={t('settings.privacy.restartHint')}>
+                <Button variant="secondary" size="sm" onClick={() => relaunch().catch(console.error)}>
+                  {t('common.restartNow')}
+                </Button>
+              </Row>
+            )}
+            <ToggleRow
+              label={t('settings.updateChannel.labelBeta')}
+              hint={useBetaChannel ? t('settings.updateChannel.warning') : t('settings.updateChannel.descBeta')}
+              enabled={useBetaChannel}
+              onChange={handleBetaToggle}
+              disabled={loading}
+            />
+            <ToggleRow
+              label={t('settings.diagnostics.label')}
+              enabled={diagnosticsEnabled}
+              onChange={handleDiagnosticsToggle}
+              disabled={loading}
+            />
+            <Row label={t('settings.logs.title')}>
+              <Button variant="secondary" size="sm" onClick={() => { invoke('reveal_log_folder').catch(console.error); }}>
+                {t('settings.logs.buttonShort')}
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => { invoke('reveal_recordings_folder').catch(console.error); }}>
+                {t('settings.logs.recordingsButtonShort')}
+              </Button>
+            </Row>
+            <Row label={t('settings.reset.title')} hint={t('settings.reset.desc')}>
+              <Button variant="secondary" size="sm" onClick={() => setShowResetConfirm(true)} className="text-app-danger">
+                {t('settings.reset.button')}
+              </Button>
+            </Row>
+            <Row label={t('settings.uninstall.title')} hint={t('settings.uninstall.desc')}>
+              <Button variant="danger" size="sm" onClick={() => setShowUninstallConfirm(true)}>
+                {t('settings.uninstall.buttonShort')}
+              </Button>
+            </Row>
+          </Group>
+        )}
+
+        <footer className="mt-6 flex items-center justify-center gap-3 text-[11px] text-app-faint">
+          <a href="https://amirks.eu" target="_blank" rel="noopener noreferrer" className="hover:text-app-text transition-colors">amirks.eu</a>
+          <span aria-hidden>·</span>
+          <a href="https://www.linkedin.com/in/amirks/" target="_blank" rel="noopener noreferrer" className="hover:text-app-text transition-colors">
+            {t('settings.sidebar.followLinkedIn')}
+          </a>
+        </footer>
+
+        <ConfirmDialog
+          open={showClearConfirm}
+          title={t('dialog.clearDictionary.title')}
+          message={t('dialog.clearDictionary.message')}
+          confirmText={t('dialog.clearDictionary.confirm')}
+          cancelText={t('common.cancel')}
+          onConfirm={handleClearDictionary}
+          onCancel={() => setShowClearConfirm(false)}
+        />
+        <ConfirmDialog
+          open={showResetConfirm}
+          title={t('dialog.reset.title')}
+          message={t('dialog.reset.message')}
+          confirmText={t('dialog.reset.confirm')}
+          cancelText={t('common.cancel')}
+          onConfirm={handleResetDefaults}
+          onCancel={() => setShowResetConfirm(false)}
+        />
+        <ConfirmDialog
+          open={showClearHistoryConfirm}
+          title={t('dialog.clearHistory.title')}
+          message={t('dialog.clearHistory.message')}
+          confirmText={t('dialog.clearHistory.confirm')}
+          cancelText={t('common.cancel')}
+          onConfirm={handleClearHistory}
+          onCancel={() => setShowClearHistoryConfirm(false)}
+        />
+        <ConfirmDialog
+          open={showUninstallConfirm}
+          title={t('dialog.uninstall.title')}
+          message={t('dialog.uninstall.message')}
+          confirmText={uninstalling ? t('dialog.uninstall.uninstalling') : t('dialog.uninstall.confirm')}
+          cancelText={t('common.cancel')}
+          tone="danger"
+          onConfirm={handleUninstall}
+          onCancel={() => !uninstalling && setShowUninstallConfirm(false)}
+        />
+        <ConfirmDialog
+          open={showDeactivateConfirm}
+          title={t('dialog.deactivateLicense.title')}
+          message={t('dialog.deactivateLicense.message')}
+          confirmText={t('dialog.deactivateLicense.confirm')}
+          cancelText={t('common.cancel')}
+          tone="warning"
+          onConfirm={handleDeactivateLicense}
+          onCancel={() => setShowDeactivateConfirm(false)}
+        />
+        <ConfirmDialog
+          open={pendingBetaDowngrade}
+          title={t('dialog.downgradeBeta.title')}
+          message={t('dialog.downgradeBeta.message')}
+          confirmText={t('common.continue')}
+          cancelText={t('common.cancel')}
+          tone="warning"
+          onConfirm={() => { setPendingBetaDowngrade(false); void persistBeta(false); }}
+          onCancel={() => setPendingBetaDowngrade(false)}
+        />
+
+        <WhatsNew />
+      </div>
     </div>
   );
 }
-
-/* ----------------------------------------------------------------------------
-   Misc inline helpers
-   ------------------------------------------------------------------------- */
 
 interface SoundPack {
   id: string;
   free: boolean;
 }
 
-/**
- * The Companion: sound packs.
- *
- * Nothing here changes what TTP does — see docs/ttp-pro-design.md. Previewing
- * works whether or not the packs are unlocked, because hearing what you might
- * buy is not the same as owning it. Selecting a locked pack is refused in the
- * backend too, so this UI is a courtesy, not the enforcement.
- */
-function CompanionPanel({
-  t, packs, unlocked, error, onRetry, selected, onSelect, loading,
-}: {
-  t: (k: string) => string;
-  /** `null` = not loaded yet. `[]` = the backend really has no packs. */
-  packs: SoundPack[] | null;
-  /** `null` = entitlement unknown. Never render a lock on an unknown. */
-  unlocked: boolean | null;
-  error: boolean;
-  onRetry: () => void;
-  selected: string;
-  onSelect: (id: string) => void;
-  loading: boolean;
-}) {
-  // The failure is louder than the empty state on purpose, and it says what it
-  // is: a broken call, not a verdict on what the user owns.
-  if (error) {
-    return (
-      <div className="mb-5">
-        <p className="text-[12px] font-medium text-app-text mb-2">{t('settings.companion.soundsLabel')}</p>
-        <Banner
-          tone="warning"
-          title={t('error.companion_unreachable_title')}
-          action={
-            <button
-              type="button"
-              onClick={onRetry}
-              className="text-[12px] font-medium text-app-accent hover:underline"
-            >
-              {t('error.retry')}
-            </button>
-          }
-        >
-          {t('error.companion_unreachable')}
-        </Banner>
-      </div>
-    );
-  }
-
-  // Not loaded yet, or genuinely empty. Neither is worth a message.
-  if (packs === null || packs.length === 0) return null;
-
-  return (
-    <div className="mb-5">
-      <p className="text-[12px] font-medium text-app-text mb-2">{t('settings.companion.soundsLabel')}</p>
-      <div className="space-y-1.5 mb-4">
-        {packs.map((pack) => {
-          // `unlocked === true`, not `!unlocked`: an unknown entitlement must
-          // not be rendered as a lock. Unknown cannot reach here today (the
-          // error branch above catches it) and this keeps it that way if a
-          // future caller passes a partial load.
-          const locked = !pack.free && unlocked !== true;
-          return (
-            // The preview control is a SIBLING of the RadioOption, not its
-            // `trailing`. RadioOption renders a <button>, so anything
-            // interactive passed into it becomes a button inside a button —
-            // invalid HTML, and browsers resolve it by swallowing the inner
-            // click roughly half the time. Passing `trailing` also suppresses
-            // the description, which is why the pack blurbs were invisible.
-            <div key={pack.id} className="flex items-center gap-2">
-              {/* Not RadioOption. That component lays label and description
-                  side by side in a justify-between row with shrink-0 on the
-                  description — it is built for a short trailing word like
-                  "Recommended", and a full sentence collides with the name,
-                  which is exactly what shipped. A sentence goes underneath. */}
-              <button
-                type="button"
-                onClick={() => !locked && onSelect(pack.id)}
-                disabled={locked || loading}
-                aria-pressed={selected === pack.id}
-                className={cn(
-                  'flex-1 min-w-0 flex items-start gap-3 px-4 py-3 text-left',
-                  'rounded-app-md border border-app-border bg-app-surface',
-                  'transition-[background-color,border-color] duration-hover ease-app-out',
-                  'hover:bg-app-raised hover:border-app-border-strong',
-                  selected === pack.id && 'border-app-accent bg-app-accent-tint',
-                  (locked || loading) && 'opacity-50 cursor-not-allowed',
-                )}
-              >
-                <span
-                  className={cn(
-                    'mt-0.5 size-4 rounded-full border-2 grid place-items-center shrink-0',
-                    selected === pack.id ? 'border-app-accent' : 'border-app-border-strong',
-                  )}
-                  aria-hidden
-                >
-                  {selected === pack.id && <span className="size-2 rounded-full bg-app-accent" />}
-                </span>
-                <span className="min-w-0">
-                  <span className={cn(
-                    'block text-[13px]',
-                    selected === pack.id ? 'text-app-accent font-medium' : 'text-app-text',
-                  )}>
-                    {t(`settings.companion.packs.${pack.id}.name`)}
-                  </span>
-                  <span className="block text-[12px] text-app-faint mt-0.5">
-                    {t(`settings.companion.packs.${pack.id}.desc`)}
-                  </span>
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => { invoke('preview_sound_pack', { packId: pack.id }).catch(() => {}); }}
-                aria-label={`${t('settings.companion.preview')} — ${t(`settings.companion.packs.${pack.id}.name`)}`}
-                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-app-sm border border-app-border
-                           text-[12px] font-medium text-app-muted
-                           hover:text-app-text hover:bg-app-raised active:scale-[0.97] transition"
-              >
-                <Volume2 className="size-3.5" />
-                {t('settings.companion.preview')}
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ProInfoRow({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between text-[13px]">
-      <span className="text-app-muted">{label}</span>
-      <span className="text-app-text">{value}</span>
-    </div>
-  );
-}
-
 /* ----------------------------------------------------------------------------
-   SettingsSidebar — five IA groups. Active tracking via IntersectionObserver.
+   MonthStats — this month's words, in the header. Refreshes when a
+   transcription completes.
    ------------------------------------------------------------------------- */
 
-interface SidebarItem { id: string; labelKey: string; icon: typeof Crown; }
-
-function SettingsSidebar({ onSelectAdvanced }: { onSelectAdvanced: () => void }) {
-  const { t } = useTranslation();
-  const [appVersion, setAppVersion] = useState('');
-  const [active, setActive] = useState('general');
-
-  useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
-
-  useEffect(() => {
-    const targets = document.querySelectorAll('[data-section]');
-    if (targets.length === 0) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const id = (entry.target as HTMLElement).dataset.section;
-            if (id) setActive(id);
-            break;
-          }
-        }
-      },
-      { rootMargin: '-20% 0px -60% 0px', threshold: 0.01 },
-    );
-    targets.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  }, []);
-
-  const items: SidebarItem[] = [
-    { id: 'general', labelKey: 'settings.nav.general', icon: User },
-    { id: 'capture', labelKey: 'settings.nav.capture', icon: Mic },
-    { id: 'pro', labelKey: 'settings.nav.pro', icon: Crown },
-    { id: 'data', labelKey: 'settings.nav.data', icon: Database },
-    { id: 'advanced', labelKey: 'settings.nav.advanced', icon: SlidersHorizontal },
-  ];
-
-  const onSelect = (id: string) => {
-    if (id === 'advanced') onSelectAdvanced();
-    const el = document.getElementById(id);
-    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); setActive(id); }
-  };
-
-  return (
-    <aside className="ttp-sidebar w-56 shrink-0 bg-app-dim border-r border-app-border flex flex-col h-screen sticky top-0">
-      <div className="px-5 pt-6 pb-4">
-        <div className="flex items-center gap-2.5">
-          <BrandTile size="sm" />
-          <div className="min-w-0">
-            <div className="text-[12px] font-semibold text-app-text leading-tight">TTP by AmirKS</div>
-            <div className="text-[10px] text-app-faint tabular-nums leading-tight">v{appVersion || '…'}</div>
-          </div>
-        </div>
-      </div>
-
-      <nav className="flex-1 overflow-y-auto px-2 py-2">
-        <ul className="space-y-px">
-          {items.map((it) => {
-            const Icon = it.icon;
-            const isActive = active === it.id;
-            return (
-              <li key={it.id}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(it.id)}
-                  className={cn(
-                    'w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-app-sm text-[12px] font-medium',
-                    'transition-colors duration-hover ease-app-out',
-                    isActive
-                      ? 'bg-app-surface text-app-text shine-sm'
-                      : 'text-app-muted hover:text-app-text hover:bg-app-surface',
-                  )}
-                >
-                  <Icon
-                    className={cn('size-3.5 shrink-0', isActive ? 'text-app-accent' : 'text-app-faint')}
-                    strokeWidth={1.75}
-                    aria-hidden
-                  />
-                  <span className="truncate text-left">{t(it.labelKey)}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
-
-      <SidebarStats />
-
-      <div className="border-t border-app-border px-4 py-3 bg-app-bg">
-        <div className="flex items-center justify-between gap-2 text-[11px] text-app-faint">
-          <a href="https://amirks.eu" target="_blank" rel="noopener noreferrer" className="hover:text-app-text transition-colors">
-            amirks.eu
-          </a>
-          <a
-            href="https://www.linkedin.com/in/amirks/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 hover:text-app-text transition-colors"
-          >
-            <span>{t('settings.sidebar.followLinkedIn')}</span>
-            <ExternalLink className="size-2.5" aria-hidden />
-          </a>
-        </div>
-      </div>
-    </aside>
-  );
+interface AnalyticsWindowData { transcriptions: number; words: number; chars: number; }
+interface AnalyticsSummary {
+  month: AnalyticsWindowData;
+  all_time: AnalyticsWindowData;
 }
 
-/* ----------------------------------------------------------------------------
-   SidebarStats — sleek mini display of this-month transcription activity.
-   Lives in the sidebar so users see their numbers at all times without
-   scrolling. Refreshes live when a transcription completes.
-   ------------------------------------------------------------------------- */
-
-function SidebarStats() {
+function MonthStats() {
   const { t, i18n } = useTranslation();
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
 
   const load = useCallback(() => {
-    invoke<AnalyticsSummary>('get_analytics_summary')
-      .then(setSummary)
-      .catch(() => {});
+    invoke<AnalyticsSummary>('get_analytics_summary').then(setSummary).catch(() => {});
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
   useTauriEvent<string>('recording-state-changed', (event) => {
     if (event.payload === 'Idle') setTimeout(load, 600);
   });
 
   if (!summary || summary.all_time.transcriptions === 0) return null;
-
   const fmt = new Intl.NumberFormat(i18n.language, { notation: 'compact', maximumFractionDigits: 1 }).format;
 
   return (
-    <div className="border-t border-app-border px-4 py-3 bg-app-bg/50">
-      <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-app-faint mb-1.5">
-        {t('settings.sidebar.thisMonth')}
+    <div className="text-right">
+      <p className="text-[15px] font-semibold leading-tight tabular-nums text-app-text">
+        {fmt(summary.month.words)} <span className="text-[11px] font-normal text-app-muted">{t('settings.sidebar.words')}</span>
       </p>
-      <div className="flex items-baseline gap-1.5">
-        <span className="text-[15px] font-semibold text-app-text tabular-nums leading-none tracking-[-0.01em]">
-          {fmt(summary.month.words)}
-        </span>
-        <span className="text-[10px] text-app-muted">{t('settings.sidebar.words')}</span>
-      </div>
-      <div className="mt-1 flex items-center gap-1.5 text-[10px] text-app-faint">
-        <span className="size-1 rounded-full bg-app-accent" aria-hidden />
-        <span className="tabular-nums">
-          {t('settings.sidebar.transcriptions', { count: summary.month.transcriptions })}
-        </span>
-      </div>
+      <p className="text-[11px] text-app-faint">
+        {t('settings.sidebar.thisMonth')} · {t('settings.sidebar.transcriptions', { count: summary.month.transcriptions })}
+      </p>
     </div>
   );
 }

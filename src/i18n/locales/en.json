@@ -126,31 +126,19 @@
   },
   "settings": {
     "nav": {
-      "general": "General",
-      "capture": "Capture",
-      "pro": "Support TTP",
-      "data": "Data",
       "advanced": "Advanced"
-    },
-    "about": {
-      "subtitle": "Talk To Paste · v{{version}}",
-      "description": "TTP is a free, open-source app I built because I got tired of typing. Press your hotkey, talk, your words land in whatever you're using. Groq does the transcription. An optional polish pass trims the 'uhms'."
     },
     "pro": {
       "title": "Support TTP",
-      "badgeActive": "Active",
-      "descFree": "TTP is free and complete — every feature, no limits, no subscription. If it saves you time and you feel like sending something back, a one-off licence is a way to do that. As a thank-you it brings the Companion: sound packs for the start and end of every dictation. Nothing TTP needs to work depends on it.",
       "inputPlaceholder": "Paste your license key here",
       "activate": "Activate License",
       "buyLink": "Buy TTP Pro →",
       "labelKey": "License key",
-      "labelStatus": "Status",
-      "labelValidity": "Validity",
-      "labelActivations": "Activations",
       "neverExpires": "Never expires",
       "expiresOn": "Expires {{date}}",
       "statusUnknown": "unknown",
-      "deactivateDevice": "Deactivate this device"
+      "activateShort": "Activate",
+      "deactivateShort": "Deactivate"
     },
     "companion": {
       "soundsLabel": "Voice",
@@ -197,45 +185,35 @@
       "fnEmojiButton": "Open Keyboard settings",
       "capturePrompt": "Press the key, modifier or mouse button you want. Esc to cancel.",
       "presets": "Quick picks:",
-      "modifierHint": "Typing a key while you hold it cancels the dictation, so it still works in your shortcuts."
+      "modifierHint": "Typing a key while you hold it cancels the dictation, so it still works in your shortcuts.",
+      "hintShort": "Hold to talk · double-tap for hands-free",
+      "captureShort": "Press your key… (Esc)"
     },
     "recordingMode": {
-      "title": "Behavior",
       "vadAutoStopLabel": "Auto-stop after silence",
       "vadAutoStopDesc": "End the recording automatically once you've stopped speaking. Useful when you forget to release the hotkey.",
       "vadSilenceSecsLabel": "Silence before auto-stop",
       "audioDeviceLabel": "Input device",
-      "audioDeviceDesc": "Pick the microphone to record from. Falls back to the system default if the device is unplugged.",
       "audioDeviceDefault": "System default",
       "audioDeviceDefaultSuffix": "(default)",
-      "launchStartupLabel": "Launch at startup",
-      "launchStartupDesc": "Open TTP automatically when you log in."
+      "launchStartupLabel": "Launch at startup"
     },
     "transcription": {
-      "title": "Transcription",
       "groqLabel": "Groq API key",
       "keyConfigured": "✓ Key configured",
       "keySaved": "API key validated and saved.",
       "polishLabel": "AI Polish",
       "polishDesc": "Trim filler words and fix grammar with AI.",
       "languageLabel": "Transcription language",
-      "languageDesc": "Pin Whisper to a specific language. Defaults to Auto (Whisper detects per recording). Pin to English or French if Whisper occasionally hears the wrong language.",
       "languageAuto": "Auto-detect",
       "languageEnglish": "English",
-      "languageFrench": "French"
+      "languageFrench": "French",
+      "keyLabel": "API key"
     },
     "privacy": {
-      "title": "Privacy",
       "helpLabel": "Help improve TTP",
-      "helpDesc": "Send anonymous crash reports to Sentry.",
       "restartHint": "Changes take effect after restart.",
-      "whatSentLabel": "What is sent:",
-      "whatSentBody": "Crash reports only (error type, OS, app version, pipeline stage). No usage analytics are collected.",
-      "neverSentLabel": "Never sent:",
-      "neverSentBody": "Your transcription text, API keys, file paths, or any personal data."
-    },
-    "startup": {
-      "title": "Startup"
+      "whatSentBody": "Crash reports only (error type, OS, app version, pipeline stage). No usage analytics are collected."
     },
     "dictionary": {
       "title": "Dictionary",
@@ -243,10 +221,7 @@
       "labelCorrection": "Correction",
       "placeholderMisheard": "grok",
       "placeholderCorrection": "Groq",
-      "emptyTitle": "No corrections yet",
       "emptyState": "Type a misheard word above and the correction TTP should use instead.",
-      "tableOriginal": "Original",
-      "tableCorrection": "Correction",
       "bothRequired": "Both fields are required",
       "mustBeDifferent": "Original and correction must be different",
       "copyTooltip": "Copy to clipboard"
@@ -255,41 +230,35 @@
       "title": "History",
       "clearButton": "Clear history",
       "saveLabel": "Save transcriptions",
-      "saveDesc": "When off, new transcriptions aren't saved to history.",
-      "emptyTitle": "Nothing here yet",
       "emptyEnabled": "Your transcriptions will show up here.",
       "emptyDisabled": "Turn on \"Save transcriptions\" to keep a history.",
       "replayTooltip": "Type this entry into the focused app"
     },
     "updateChannel": {
-      "title": "Release track",
-      "betaBadge": "Beta",
       "labelBeta": "Beta",
-      "labelStable": "Stable",
       "descBeta": "You test new releases before public launch.",
-      "descStable": "You only get stable, reliable releases.",
       "warning": "Beta builds may contain bugs. You can switch back to stable at any time."
     },
     "updates": {
       "title": "Updates",
-      "checkButton": "Check for updates",
       "upToDate": "You're up to date. (v{{version}})",
       "checking": "Checking…",
       "available": "Update available: v{{version}}",
-      "downloadInstall": "Download and install",
       "downloading": "Downloading… {{progress}}%",
       "ready": "Update downloaded. Restart to apply.",
-      "errorDefault": "Couldn't check for updates"
+      "errorDefault": "Couldn't check for updates",
+      "check": "Check",
+      "install": "Install"
     },
     "logs": {
       "title": "Diagnostics",
-      "desc": "Open the folders containing ttp.log, ttp-trace.log and any retained recordings so you can attach them to a bug report.",
       "button": "Show log folder",
-      "recordingsButton": "Show recordings folder"
+      "recordingsButton": "Show recordings folder",
+      "buttonShort": "Logs",
+      "recordingsButtonShort": "Recordings"
     },
     "diagnostics": {
-      "label": "Record transcription text in the trace",
-      "desc": "ttp-trace.log always records every dictation stage — timings, filter verdicts, whether the keystrokes actually landed. Turn this on to also record the text itself at each stage, which is what you need to see exactly which stage dropped a dictation. Your transcriptions are then stored in plain text on this Mac."
+      "label": "Record transcription text in the trace"
     },
     "reset": {
       "title": "Reset",
@@ -299,7 +268,8 @@
     "uninstall": {
       "title": "Uninstall TTP",
       "desc": "Remove the app and every trace of your data: settings, history, dictionary, license, Keychain credentials, and macOS permissions.",
-      "button": "Uninstall TTP completely"
+      "button": "Uninstall TTP completely",
+      "buttonShort": "Uninstall"
     },
     "sidebar": {
       "thisMonth": "This month",
@@ -309,8 +279,14 @@
     },
     "advanced": {
       "show": "Show advanced settings",
-      "hide": "Hide advanced settings",
-      "recordingTitle": "Recording"
+      "hide": "Hide advanced settings"
+    },
+    "groups": {
+      "dictation": "Dictation",
+      "general": "General"
+    },
+    "support": {
+      "hint": "TTP is free. A lifetime licence unlocks the sound packs and supports the project."
     }
   },
   "onboarding": {

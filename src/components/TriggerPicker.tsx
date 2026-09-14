@@ -23,7 +23,11 @@ const PRESETS: Trigger[] = [
   { kind: 'modifier', code: 61 }, // right option
 ];
 
-export function TriggerPicker() {
+/**
+ * `compact`: one line for a Settings row — the key, and Change. No presets and
+ * no hints; the onboarding shows the full version.
+ */
+export function TriggerPicker({ compact = false }: { compact?: boolean }) {
   const { t } = useTranslation();
   const { trigger, label, reload } = useTrigger();
   const [capturing, setCapturing] = useState(false);
@@ -90,6 +94,32 @@ export function TriggerPicker() {
     invoke('cancel_trigger_capture').catch(() => {});
     stopCapture();
   };
+
+  if (compact) {
+    return (
+      <div className="flex flex-col items-end gap-1" aria-live="polite">
+        <div className="flex items-center gap-2">
+          {capturing ? (
+            <span className="text-[12px] text-app-accent whitespace-nowrap">{t('settings.recordingTrigger.captureShort')}</span>
+          ) : (
+            <kbd className="inline-flex items-center h-6 px-2 rounded-app-sm bg-app-raised border border-app-border-strong text-[12px] font-mono font-semibold text-app-text">
+              {label || '…'}
+            </kbd>
+          )}
+          {capturing ? (
+            <Button variant="ghost" size="sm" onClick={cancelCapture}>{t('common.cancel')}</Button>
+          ) : (
+            <Button variant="secondary" size="sm" onClick={startCapture}>{t('common.change')}</Button>
+          )}
+        </div>
+        {message && (
+          <p className={cn('text-[11.5px] text-right max-w-[260px]', message.tone === 'error' ? 'text-app-danger' : 'text-app-success')}>
+            {message.text}
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
