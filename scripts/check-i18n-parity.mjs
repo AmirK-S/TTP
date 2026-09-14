@@ -55,6 +55,7 @@ const ALLOW_IDENTICAL = new Set([
   'settings.nav.pro',
   'settings.about.subtitle',
   // Apple / OS UI labels we keep as-is in French System Settings UX
+  'trigger.keys.tab',
   'onboarding.item.microphone',
   'onboarding.tour.spotlightHint',
   // Cognates that are literally the same word in FR/EN

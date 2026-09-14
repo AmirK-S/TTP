@@ -8,6 +8,7 @@
 //     set_state transitions back to Idle (state.rs), so there is no "restore
 //     on stop" code in this file.
 
+#[cfg(not(target_os = "macos"))]
 use crate::settings::get_settings;
 use crate::sounds::{play_start_sound, play_stop_sound};
 use crate::state::{AppState, RecordingState};
@@ -20,7 +21,9 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 /// Double-tap detection threshold in milliseconds
 const DOUBLE_TAP_THRESHOLD_MS: u128 = 300;
 
-/// Set up global keyboard shortcuts for recording control
+/// Set up global keyboard shortcuts for recording control (Windows/Linux;
+/// macOS reads every trigger through the event tap in `fnkey`).
+#[cfg(not(target_os = "macos"))]
 pub fn setup_shortcuts(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let settings = get_settings();
     let shortcut_str = settings.shortcut;

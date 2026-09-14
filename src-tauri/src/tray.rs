@@ -1,7 +1,6 @@
 // TTP - Talk To Paste
 // System tray setup and management
 
-use crate::settings::get_settings;
 use crate::sounds::{play_start_sound, play_stop_sound};
 use crate::state::{AppState, RecordingState};
 use std::sync::{Mutex, OnceLock};
@@ -151,16 +150,13 @@ pub fn refresh_tray(app: &AppHandle) {
     update_tray_menu(app, is_recording);
 }
 
-/// True when Fn is the active hotkey AND Input Monitoring is missing.
-/// Centralised so the icon picker and the menu builder agree on when to
-/// surface the warning state.
+/// True when Input Monitoring is missing. Every trigger goes through the event
+/// tap on macOS, so every trigger needs it. Centralised so the icon picker and
+/// the menu builder agree on when to surface the warning state.
 #[cfg(target_os = "macos")]
 fn input_monitoring_warning_active() -> bool {
-    if !get_settings().fn_key_enabled {
-        return false;
-    }
     // A tap this process gave up on is indistinguishable from a missing
-    // permission at the user's end: the Fn key does nothing. Same red dot.
+    // permission at the user's end: the trigger does nothing. Same red dot.
     !crate::fnkey::has_input_monitoring() || crate::fnkey::tap_abandoned()
 }
 #[cfg(not(target_os = "macos"))]
@@ -564,7 +560,7 @@ pub fn show_pill(app: &AppHandle) {
 }
 
 /// Rebuild the tray menu on every settings change, so items that depend on a
-/// setting (the Input Monitoring warning follows the chosen trigger) are
+/// setting (the permission warnings) are
 /// current immediately. The rebuild is cheap (it just re-runs
 /// `build_tray_menu`), so we don't bother filtering on which setting changed.
 pub fn setup_settings_listener(app: &AppHandle) {

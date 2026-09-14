@@ -4,7 +4,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useTranslation } from 'react-i18next';
 import { ExternalLink } from 'lucide-react';
 import { Banner, Button } from './ui';
-import { useSettingsStore } from '../stores/settings-store';
+import { useTrigger } from '../hooks/useTrigger';
 
 const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.startsWith('Mac');
 
@@ -20,7 +20,7 @@ const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.startsWith
  */
 export function FnEmojiNudge() {
   const { t } = useTranslation();
-  const shortcut = useSettingsStore((s) => s.shortcut);
+  const isFn = useTrigger().trigger?.kind === 'fn';
   const [intercepts, setIntercepts] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -32,7 +32,7 @@ export function FnEmojiNudge() {
   }, []);
 
   useEffect(() => {
-    if (!IS_MAC || shortcut !== 'FnKey') return;
+    if (!IS_MAC || !isFn) return;
     refresh();
     const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
       if (focused) refresh();
@@ -42,9 +42,9 @@ export function FnEmojiNudge() {
       unlisten.then((fn) => fn());
       window.clearInterval(id);
     };
-  }, [refresh, shortcut]);
+  }, [refresh, isFn]);
 
-  if (!IS_MAC || shortcut !== 'FnKey' || !intercepts) return null;
+  if (!IS_MAC || !isFn || !intercepts) return null;
 
   return (
     <Banner

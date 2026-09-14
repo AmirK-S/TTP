@@ -1,5 +1,12 @@
 // TTP - Talk To Paste
-// Fn key monitoring for macOS using NSTimer + NSEvent.modifierFlags
+// Dictation trigger monitoring for macOS: a CGEventTap + a 20 ms NSTimer.
+//
+// Named for the Fn key, which was the only trigger this module knew until
+// 2026-09-14. The trigger is now any key, sided modifier or mouse button (see
+// `crate::trigger`); the tap reports "held / not held" for whichever one is
+// configured and everything downstream — debounce, double-tap, hands-free,
+// the tap watchdog — is unchanged. The notes below describe the Fn case,
+// which keeps its extra defences.
 //
 // Uses a 20ms NSTimer on the main run loop to poll [NSEvent modifierFlags].
 // Detects the physical Fn/Globe key press/release for push-to-talk.
@@ -85,6 +92,18 @@ extern "C" {
     fn CFRelease(cf: *const std::ffi::c_void);
     fn CGEventGetIntegerValueField(event: CGEventRef, field: u32) -> i64;
     fn CGEventGetFlags(event: CGEventRef) -> u64;
+    fn CGEventSourceFlagsState(state: i32) -> u64;
+    fn CGEventSourceKeyState(state: i32, key: u16) -> bool;
+    fn CGEventSourceButtonState(state: i32, button: u32) -> bool;
+    fn CGEventCreateKeyboardEvent(source: *mut std::ffi::c_void, keycode: u16, key_down: bool) -> CGEventRef;
+    fn CGEventSetFlags(event: CGEventRef, flags: u64);
+    fn CGEventKeyboardGetUnicodeString(
+        event: CGEventRef,
+        max_len: std::ffi::c_ulong,
+        actual_len: *mut std::ffi::c_ulong,
+        buf: *mut u16,
+    );
+    fn CFRunLoopRun();
     static kCFRunLoopCommonModes: CFStringRef;
 }
 
@@ -102,7 +121,7 @@ const KCG_EVENT_KEY_UP: u32 = 11;
 const KCG_EVENT_FLAGS_CHANGED: u32 = 12;
 /// kCGEventTapDisabledByTimeout — the window server unhooked our tap because
 /// a callback took too long to return. Until the tap is re-armed it delivers
-/// NOTHING, which means `FN_KEY_PHYSICALLY_DOWN` freezes at whatever it was:
+/// NOTHING, which means `TRIGGER_PHYSICALLY_DOWN` freezes at whatever it was:
 /// stuck false → the Fn key silently stops starting recordings; stuck true →
 /// the FSM believes Fn is held forever AND the session keeps the Globe
 /// modifier set, so injected characters get routed to the Globe shortcut
@@ -112,10 +131,30 @@ const KCG_EVENT_TAP_DISABLED_BY_TIMEOUT: u32 = 0xFFFF_FFFE;
 /// kCGEventTapDisabledByUserInput — same consequence, different trigger.
 const KCG_EVENT_TAP_DISABLED_BY_USER_INPUT: u32 = 0xFFFF_FFFF;
 const KCG_KEYBOARD_EVENT_KEYCODE: u32 = 9;
-/// kVK_Function — virtual keycode of the physical Fn/Globe key. The single
-/// source of truth for "is the Fn key actually held?". Independent of any
-/// modifier flag inference.
-const KVK_FUNCTION: u16 = 0x3F;
+const KCG_KEYBOARD_EVENT_AUTOREPEAT: u32 = 8;
+const KCG_MOUSE_EVENT_BUTTON_NUMBER: u32 = 3;
+const KCG_SESSION_EVENT_TAP: u32 = 1;
+const KCG_HEAD_INSERT_EVENT_TAP: u32 = 0;
+const KCG_EVENT_TAP_OPTION_DEFAULT: u32 = 0;
+/// kCGEventSourceStateHIDSystemState — what the hardware says is held,
+/// independent of what any tap saw.
+const KCG_EVENT_SOURCE_STATE_HID: i32 = 1;
+
+/// The configured trigger, packed by `trigger::encode` so the tap callback
+/// reads it without a lock on every event system-wide.
+static TRIGGER: AtomicU64 = AtomicU64::new(1 << 56); // Trigger::Fn
+
+/// True while Settings is waiting for the user to press their new trigger.
+/// While set, events feed the capture instead of starting recordings.
+static CAPTURING: AtomicBool = AtomicBool::new(false);
+static CAPTURE: std::sync::Mutex<crate::trigger::Capture> =
+    std::sync::Mutex::new(crate::trigger::Capture::new());
+/// Bumped on every capture start, so a timeout can tell whether the capture it
+/// was armed for is still the one running.
+static CAPTURE_GENERATION: AtomicU64 = AtomicU64::new(0);
+/// A capture swallows every key system-wide. If the Settings window that asked
+/// for it goes away without cancelling, this is what gives the keyboard back.
+const CAPTURE_TIMEOUT_MS: u64 = 15_000;
 
 /// Whether Fn key is currently held (raw, before debounce)
 static FN_KEY_DOWN: AtomicBool = AtomicBool::new(false);
@@ -147,13 +186,12 @@ static LAST_FKEY_PRESS_MS: AtomicU64 = AtomicU64::new(0);
 /// Cleared by the KEY_UP event (or by a stale-keepalive check, see below).
 static FKEY_CURRENTLY_HELD: AtomicBool = AtomicBool::new(false);
 
-/// True when the physical Fn/Globe key is currently held, as reported by
-/// `kCGEventFlagsChanged` events with keycode `KVK_FUNCTION` (63). This is
-/// the single source of truth for Fn detection — F1..F12 never emit
-/// FlagsChanged with keycode 63, so the old modifier-flag inference race
-/// (timer reads `NSEvent.modifierFlags` showing Function set because an
-/// F-key bled the bit, the F-key veto callback hadn't run yet) is gone.
-static FN_KEY_PHYSICALLY_DOWN: AtomicBool = AtomicBool::new(false);
+/// True when the configured trigger is currently held, as reported by the tap
+/// (`trigger::held_change`). For Fn this is `kCGEventFlagsChanged` with keycode
+/// `KVK_FUNCTION` (63) — F1..F12 never emit FlagsChanged with keycode 63, so
+/// the old modifier-flag inference race (timer reads `NSEvent.modifierFlags`
+/// showing Function set because an F-key bled the bit) is gone.
+static TRIGGER_PHYSICALLY_DOWN: AtomicBool = AtomicBool::new(false);
 
 /// True while the app is recording in hands-free / toggle mode. Set by
 /// `shortcuts.rs` via [`set_hands_free_recording`]. When set, a single quick Fn
@@ -366,7 +404,7 @@ pub fn tap_abandoned() -> bool {
 /// caller but is no longer used — `NSEvent.modifierFlags` was the ambiguous
 /// source we just replaced.
 fn is_physical_fn_key(_flags: u64) -> bool {
-    FN_KEY_PHYSICALLY_DOWN.load(Ordering::Relaxed)
+    TRIGGER_PHYSICALLY_DOWN.load(Ordering::Relaxed)
 }
 
 /// Create the HID event tap, wire it into the current run loop, and enable it.
@@ -388,7 +426,9 @@ fn is_physical_fn_key(_flags: u64) -> bool {
 unsafe fn install_tap(reason: &str) -> bool {
     let mask: u64 = (1u64 << KCG_EVENT_FLAGS_CHANGED)
         | (1u64 << KCG_EVENT_KEY_DOWN)
-        | (1u64 << KCG_EVENT_KEY_UP);
+        | (1u64 << KCG_EVENT_KEY_UP)
+        | (1u64 << crate::trigger::EV_OTHER_MOUSE_DOWN)
+        | (1u64 << crate::trigger::EV_OTHER_MOUSE_UP);
     let tap = CGEventTapCreate(
         KCG_HID_EVENT_TAP,
         KCG_TAIL_APPEND_EVENT_TAP,
@@ -633,10 +673,11 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
 
             let flags: u64 = msg_send![class!(NSEvent), modifierFlags];
             let mut fn_held = is_physical_fn_key(flags);
+            let trigger = crate::trigger::decode(TRIGGER.load(Ordering::Relaxed));
 
             // Stale-flag resync.
             //
-            // `FN_KEY_PHYSICALLY_DOWN` is maintained purely by the tap, so a
+            // `TRIGGER_PHYSICALLY_DOWN` is maintained purely by the tap, so a
             // key-up that the tap never saw (it was disabled, or another
             // process swallowed the event) latches it at `true` forever. The
             // FSM then never fires StopRecording, and every keystroke TTP
@@ -651,12 +692,12 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
             // false-trigger bug. Forcing down has no such failure mode.
             let resync = fn_stale_check(
                 fn_held,
-                (flags & NS_EVENT_MODIFIER_FLAG_FUNCTION) != 0,
+                os_says_held(&trigger, flags),
                 FN_STALE_TICKS.load(Ordering::Relaxed),
             );
             FN_STALE_TICKS.store(resync.new_ticks, Ordering::Relaxed);
             if resync.clear_flag {
-                FN_KEY_PHYSICALLY_DOWN.store(false, Ordering::Relaxed);
+                TRIGGER_PHYSICALLY_DOWN.store(false, Ordering::Relaxed);
                 fn_held = false;
                 let stale_ms = FN_STALE_RESYNC_TICKS * 20;
                 fnlog!("[FnKey] stale Fn-down flag cleared (NSEvent disagreed for {}ms)", stale_ms);
@@ -723,6 +764,7 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
                         serde_json::json!({
                             "held_ms": now.saturating_sub(state.press_time_ms),
                             "flags": format!("0x{:X}", flags),
+                            "trigger": crate::trigger::slug(&trigger),
                         }),
                     );
                     if let Some(app) = APP_HANDLE.get() {
@@ -808,16 +850,36 @@ unsafe extern "C" fn fkey_tap_callback(
         return event;
     }
 
-    let keycode = CGEventGetIntegerValueField(event, KCG_KEYBOARD_EVENT_KEYCODE) as u16;
+    let raw = raw_event(event_type, event);
+    let keycode = raw.keycode;
 
-    // Primary signal: FlagsChanged events with the dedicated Fn keycode.
-    // This fires only when the *physical* Fn/Globe key changes state — not
-    // when an F-key sets the Function bit as a side effect.
-    if event_type == KCG_EVENT_FLAGS_CHANGED && keycode == KVK_FUNCTION {
-        let flags = CGEventGetFlags(event);
-        let fn_down = (flags & NS_EVENT_MODIFIER_FLAG_FUNCTION) != 0;
-        FN_KEY_PHYSICALLY_DOWN.store(fn_down, Ordering::Relaxed);
+    // Choosing a new trigger: the press belongs to the capture, and must not
+    // also start a recording with the old one.
+    if CAPTURING.load(Ordering::Relaxed) {
+        feed_capture(&raw);
         return event;
+    }
+
+    // Primary signal: the configured trigger changing state. For Fn this is a
+    // FlagsChanged event with the dedicated Fn keycode, which fires only when
+    // the *physical* Fn/Globe key changes state — not when an F-key sets the
+    // Function bit as a side effect.
+    let trigger = crate::trigger::decode(TRIGGER.load(Ordering::Relaxed));
+    if TRIGGER_PHYSICALLY_DOWN.load(Ordering::Relaxed) && crate::trigger::interrupts(&trigger, &raw) {
+        // A key typed while a modifier trigger is down: the modifier is part
+        // of a shortcut. Treat it as released; it takes a fresh press to
+        // count again.
+        TRIGGER_PHYSICALLY_DOWN.store(false, Ordering::Relaxed);
+        crate::trace::event(
+            "hotkey.interrupted",
+            serde_json::json!({ "trigger": crate::trigger::slug(&trigger) }),
+        );
+    }
+    if let Some(held) = crate::trigger::held_change(&trigger, &raw) {
+        TRIGGER_PHYSICALLY_DOWN.store(held, Ordering::Relaxed);
+        if matches!(trigger, crate::trigger::Trigger::Fn) {
+            return event;
+        }
     }
 
     // Defensive belt-and-suspenders: if the user's keyboard somehow doesn't
@@ -836,6 +898,228 @@ unsafe extern "C" fn fkey_tap_callback(
         }
     }
 
+    event
+}
+
+/// The fields `crate::trigger` needs from a tap event. The button number is
+/// read only from mouse events, where the field exists.
+unsafe fn raw_event(event_type: u32, event: CGEventRef) -> crate::trigger::RawEvent {
+    let is_mouse = matches!(
+        event_type,
+        crate::trigger::EV_OTHER_MOUSE_DOWN
+            | crate::trigger::EV_OTHER_MOUSE_UP
+            | crate::trigger::EV_OTHER_MOUSE_DRAGGED
+    );
+    crate::trigger::RawEvent {
+        event_type,
+        keycode: if is_mouse { 0 } else { CGEventGetIntegerValueField(event, KCG_KEYBOARD_EVENT_KEYCODE) as u16 },
+        flags: CGEventGetFlags(event),
+        autorepeat: !is_mouse && CGEventGetIntegerValueField(event, KCG_KEYBOARD_EVENT_AUTOREPEAT) != 0,
+        button: if is_mouse { CGEventGetIntegerValueField(event, KCG_MOUSE_EVENT_BUTTON_NUMBER) as u8 } else { 0 },
+    }
+}
+
+/// Whether the hardware, read independently of the tap, says the trigger is
+/// held. Feeds `fn_stale_check`, which only ever uses it to force a latched
+/// "held" down — so for Fn it stays `NSEvent.modifierFlags`, whose bleed from
+/// F-keys can only err towards "held" and is therefore harmless there.
+unsafe fn os_says_held(trigger: &crate::trigger::Trigger, nsevent_flags: u64) -> bool {
+    use crate::trigger::Trigger;
+    match *trigger {
+        Trigger::Fn => nsevent_flags & NS_EVENT_MODIFIER_FLAG_FUNCTION != 0,
+        Trigger::Modifier { code } => crate::trigger::modifier_side_bit(code)
+            .map(|bit| CGEventSourceFlagsState(KCG_EVENT_SOURCE_STATE_HID) & bit != 0)
+            .unwrap_or(false),
+        Trigger::Key { code, .. } => CGEventSourceKeyState(KCG_EVENT_SOURCE_STATE_HID, code),
+        Trigger::Mouse { button } => CGEventSourceButtonState(KCG_EVENT_SOURCE_STATE_HID, button as u32),
+    }
+}
+
+/// Feed one event to the capture in progress and report the outcome to the
+/// Settings window. A rejected key keeps the capture open for another try.
+fn feed_capture(raw: &crate::trigger::RawEvent) {
+    use crate::trigger::CaptureStep;
+    let Ok(mut capture) = CAPTURE.try_lock() else { return };
+    let step = capture.feed(raw);
+    drop(capture);
+    let payload = match step {
+        CaptureStep::Pending => return,
+        CaptureStep::Captured(trigger) => {
+            CAPTURING.store(false, Ordering::Relaxed);
+            serde_json::json!({ "status": "captured", "trigger": trigger })
+        }
+        CaptureStep::Rejected(reason) => serde_json::json!({ "status": "rejected", "reason": reason }),
+        CaptureStep::Cancelled => {
+            CAPTURING.store(false, Ordering::Relaxed);
+            serde_json::json!({ "status": "cancelled" })
+        }
+    };
+    crate::trace::event("hotkey.capture", payload.clone());
+    if let Some(app) = APP_HANDLE.get() {
+        use tauri::Emitter;
+        let _ = app.emit("trigger-captured", payload);
+    }
+}
+
+/// Start listening for the user's new trigger. Presses stop reaching the
+/// recorder until a trigger is captured, Escape is pressed, or
+/// [`cancel_trigger_capture`] runs.
+pub fn start_trigger_capture() {
+    if let Ok(mut capture) = CAPTURE.lock() {
+        *capture = crate::trigger::Capture::default();
+    }
+    ensure_swallow_tap();
+    let generation = CAPTURE_GENERATION.fetch_add(1, Ordering::Relaxed) + 1;
+    CAPTURING.store(true, Ordering::Relaxed);
+    crate::trace::event("hotkey.capture_started", serde_json::json!({}));
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(CAPTURE_TIMEOUT_MS));
+        if CAPTURE_GENERATION.load(Ordering::Relaxed) == generation && CAPTURING.swap(false, Ordering::Relaxed) {
+            let payload = serde_json::json!({ "status": "timed_out" });
+            crate::trace::event("hotkey.capture", payload.clone());
+            if let Some(app) = APP_HANDLE.get() {
+                use tauri::Emitter;
+                let _ = app.emit("trigger-captured", payload);
+            }
+        }
+    });
+}
+
+pub fn cancel_trigger_capture() {
+    if CAPTURING.swap(false, Ordering::Relaxed) {
+        crate::trace::event("hotkey.capture", serde_json::json!({ "status": "abandoned" }));
+    }
+}
+
+/// Make `trigger` the one the tap listens for. Resets the press state so a
+/// key held under the old trigger cannot leave the new one latched.
+pub fn set_trigger(trigger: crate::trigger::Trigger) {
+    TRIGGER.store(crate::trigger::encode(&trigger), Ordering::Relaxed);
+    TRIGGER_PHYSICALLY_DOWN.store(false, Ordering::Relaxed);
+    FN_KEY_DOWN.store(false, Ordering::Relaxed);
+    FN_RECORDING_ACTIVE.store(false, Ordering::Relaxed);
+    FN_PRESS_TIME_MS.store(0, Ordering::Relaxed);
+    LAST_FN_PRESS_TIME_MS.store(0, Ordering::Relaxed);
+    if matches!(trigger, crate::trigger::Trigger::Key { .. } | crate::trigger::Trigger::Mouse { .. }) {
+        ensure_swallow_tap();
+    }
+    crate::trace::event(
+        "hotkey.trigger_set",
+        serde_json::json!({ "trigger": crate::trigger::slug(&trigger) }),
+    );
+}
+
+/// The character a key types on the current keyboard layout, without
+/// modifiers — "A" on QWERTY and "Q" on AZERTY for the same keycode. Used only
+/// to label the trigger in the UI.
+pub fn key_chars(code: u16) -> String {
+    unsafe {
+        let event = CGEventCreateKeyboardEvent(std::ptr::null_mut(), code, true);
+        if event.is_null() {
+            return String::new();
+        }
+        CGEventSetFlags(event, 0);
+        let mut buf = [0u16; 8];
+        let mut len: std::ffi::c_ulong = 0;
+        CGEventKeyboardGetUnicodeString(event, buf.len() as std::ffi::c_ulong, &mut len, buf.as_mut_ptr());
+        CFRelease(event as *const std::ffi::c_void);
+        String::from_utf16_lossy(&buf[..(len as usize).min(buf.len())])
+    }
+}
+
+// ── The swallow tap ───────────────────────────────────────────────────────
+//
+// The HID tap above is listen-only: it can see a key but not stop it. A
+// trigger bound to F13 would still reach the focused app, and one bound to a
+// mouse button would still go Back in the browser. Stopping those events needs
+// an active tap, which is riskier: every event it covers waits for its
+// callback, so a callback stuck behind a busy main thread would lag the whole
+// keyboard. It therefore gets its own thread and run loop, covers only key and
+// other-mouse events, answers from two atomics, and is only created once a
+// trigger needs it. Creating it needs Accessibility, which TTP already asks
+// for to paste; without it the trigger still works, it just is not swallowed.
+
+static SWALLOW_TAP_RUNNING: AtomicBool = AtomicBool::new(false);
+/// Whether the bound key's last key-down was swallowed, so its key-up can be.
+static SWALLOWED_KEY_DOWN: AtomicBool = AtomicBool::new(false);
+static SWALLOW_PORT: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
+
+pub fn ensure_swallow_tap() {
+    if SWALLOW_TAP_RUNNING.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    let spawned = std::thread::Builder::new()
+        .name("ttp-trigger-swallow".into())
+        .spawn(|| unsafe {
+            let mask: u64 = (1u64 << KCG_EVENT_KEY_DOWN)
+                | (1u64 << KCG_EVENT_KEY_UP)
+                | (1u64 << crate::trigger::EV_OTHER_MOUSE_DOWN)
+                | (1u64 << crate::trigger::EV_OTHER_MOUSE_UP)
+                | (1u64 << crate::trigger::EV_OTHER_MOUSE_DRAGGED);
+            let tap = CGEventTapCreate(
+                KCG_SESSION_EVENT_TAP,
+                KCG_HEAD_INSERT_EVENT_TAP,
+                KCG_EVENT_TAP_OPTION_DEFAULT,
+                mask,
+                swallow_tap_callback,
+                std::ptr::null_mut(),
+            );
+            if tap.is_null() {
+                SWALLOW_TAP_RUNNING.store(false, Ordering::Relaxed);
+                crate::trace::event(
+                    "hotkey.swallow_tap_unavailable",
+                    serde_json::json!({ "accessibility": crate::paste::check_accessibility() }),
+                );
+                return;
+            }
+            SWALLOW_PORT.store(tap as *mut std::ffi::c_void, Ordering::Relaxed);
+            let source = CFMachPortCreateRunLoopSource(std::ptr::null_mut(), tap, 0);
+            CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
+            CGEventTapEnable(tap, 1);
+            crate::trace::event("hotkey.swallow_tap_armed", serde_json::json!({}));
+            CFRunLoopRun();
+        });
+    if spawned.is_err() {
+        SWALLOW_TAP_RUNNING.store(false, Ordering::Relaxed);
+    }
+}
+
+unsafe extern "C" fn swallow_tap_callback(
+    _proxy: CGEventTapProxy,
+    event_type: u32,
+    event: CGEventRef,
+    _user_info: *mut std::ffi::c_void,
+) -> CGEventRef {
+    if event_type == KCG_EVENT_TAP_DISABLED_BY_TIMEOUT
+        || event_type == KCG_EVENT_TAP_DISABLED_BY_USER_INPUT
+    {
+        let port = SWALLOW_PORT.load(Ordering::Relaxed) as CFMachPortRef;
+        if !port.is_null() {
+            CGEventTapEnable(port, 1);
+        }
+        crate::trace::event(
+            "hotkey.swallow_tap_rearmed",
+            serde_json::json!({
+                "reason": if event_type == KCG_EVENT_TAP_DISABLED_BY_TIMEOUT { "timeout" } else { "user_input" }
+            }),
+        );
+        return event;
+    }
+    // While capturing, the press is for Settings, not for the focused app.
+    if CAPTURING.load(Ordering::Relaxed) {
+        return std::ptr::null_mut();
+    }
+    let trigger = crate::trigger::decode(TRIGGER.load(Ordering::Relaxed));
+    let raw = raw_event(event_type, event);
+    let down_swallowed = raw.event_type == KCG_EVENT_KEY_UP && SWALLOWED_KEY_DOWN.load(Ordering::Relaxed);
+    if crate::trigger::swallows(&trigger, &raw, down_swallowed) {
+        match raw.event_type {
+            KCG_EVENT_KEY_DOWN => SWALLOWED_KEY_DOWN.store(true, Ordering::Relaxed),
+            KCG_EVENT_KEY_UP => SWALLOWED_KEY_DOWN.store(false, Ordering::Relaxed),
+            _ => {}
+        }
+        return std::ptr::null_mut();
+    }
     event
 }
 

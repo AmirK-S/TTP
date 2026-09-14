@@ -21,6 +21,7 @@ import { useSettingsStore, DictionaryEntry, HistoryEntry } from '../stores/setti
 import { PermissionBanner } from '../components/PermissionBanner';
 import { FnEmojiNudge } from '../components/FnEmojiNudge';
 import { ApiKeyForm } from '../components/ApiKeyForm';
+import { TriggerPicker } from '../components/TriggerPicker';
 import WhatsNew from '../components/WhatsNew';
 import {
   Button, Input, Banner, Spinner, Toggle, ConfirmDialog,
@@ -355,25 +356,6 @@ export function Settings() {
   // reads `autostartEnabled` from the store (settings.json); the LaunchAgent
   // plist is the OS side-effect that the toggle keeps in sync.
 
-  // Proactive Input Monitoring check when the saved shortcut is FnKey.
-  useEffect(() => {
-    if (shortcut !== 'FnKey') {
-      if (shortcutError.includes('Input Monitoring') || shortcutError === 'error.input_monitoring_required') {
-        setShortcutError('');
-      }
-      return;
-    }
-    invoke<boolean>('check_input_monitoring')
-      .then((hasPermission) => {
-        if (!hasPermission) setShortcutError('error.input_monitoring_required');
-        else if (shortcutError.includes('Input Monitoring') || shortcutError === 'error.input_monitoring_required') {
-          setShortcutError('');
-        }
-      })
-      .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shortcut]);
-
   const handleAutostartToggle = async (enabled: boolean) => {
     try {
       // Real OS effect: register/unregister LaunchAgent plist (mac) /
@@ -481,21 +463,12 @@ export function Settings() {
     setTimeout(() => setGroqKeySuccess(false), 3000);
   };
 
+  // Windows/Linux only: macOS uses TriggerPicker and the event tap.
   const handleShortcutChange = async (newShortcut: string) => {
     setShortcutError(''); setShortcutSuccess(false);
     try {
-      const isFnKey = newShortcut === 'FnKey';
-      if (isFnKey) {
-        const hasPermission = await invoke<boolean>('check_input_monitoring');
-        if (!hasPermission) { setShortcutError('error.input_monitoring_required'); return; }
-        try { await invoke('unregister_shortcuts_cmd'); } catch {}
-        await invoke('set_fn_key_enabled', { enabled: true });
-        await saveSettings({ shortcut: 'FnKey', fn_key_enabled: true });
-      } else {
-        await invoke('set_fn_key_enabled', { enabled: false });
-        await invoke('update_shortcut_cmd', { shortcut: newShortcut });
-        await saveSettings({ shortcut: newShortcut, fn_key_enabled: false });
-      }
+      await invoke('update_shortcut_cmd', { shortcut: newShortcut });
+      await saveSettings({ shortcut: newShortcut });
       setShortcutSuccess(true);
       setTimeout(() => setShortcutSuccess(false), 3000);
     } catch (error) {
@@ -619,24 +592,16 @@ export function Settings() {
   // counting down to a paywall. Every feature is free and unlimited; a
   // licence is a thank-you, not a key.
 
-  const triggerOptions = isMac
-    ? [
-        { value: 'FnKey', label: t('settings.recordingTrigger.optionFn'), desc: t('settings.recordingTrigger.descRecommended'), recommended: true },
-        { value: 'Alt+Space', label: t('settings.recordingTrigger.optionAltSpace'), desc: t('settings.recordingTrigger.descAltSpace'), recommended: false },
-        { value: 'CmdOrCtrl+Shift+R', label: t('settings.recordingTrigger.optionCmdShiftR'), desc: t('settings.recordingTrigger.descCmdShiftR'), recommended: false },
-      ]
-    : [
-        { value: 'Ctrl+Space', label: t('settings.recordingTrigger.optionCtrlSpace'), desc: t('settings.recordingTrigger.descRecommended'), recommended: true },
-        { value: 'Ctrl+Shift+Space', label: t('settings.recordingTrigger.optionCtrlShiftSpace'), desc: '', recommended: false },
-        { value: 'Super+J', label: t('settings.recordingTrigger.optionWinJ'), desc: t('settings.recordingTrigger.descNoConflicts'), recommended: false },
-      ];
+  const triggerOptions = [
+    { value: 'Ctrl+Space', label: t('settings.recordingTrigger.optionCtrlSpace'), desc: t('settings.recordingTrigger.descRecommended'), recommended: true },
+    { value: 'Ctrl+Shift+Space', label: t('settings.recordingTrigger.optionCtrlShiftSpace'), desc: '', recommended: false },
+    { value: 'Super+J', label: t('settings.recordingTrigger.optionWinJ'), desc: t('settings.recordingTrigger.descNoConflicts'), recommended: false },
+  ];
 
   const translateIfKey = (s: string | null): string =>
     s && (s.startsWith('error.') || s.startsWith('permission.')) ? t(s) : (s ?? '');
   const showShortcutError = translateIfKey(shortcutError);
   const showLicenseError = translateIfKey(licenseError);
-  const shortcutErrorIsInputMonitoring =
-    shortcutError.includes('Input Monitoring') || shortcutError === 'error.input_monitoring_required';
 
   return (
     <div className="h-screen flex bg-app-bg text-app-text bg-noise">
@@ -675,38 +640,30 @@ export function Settings() {
           {/* ===== CAPTURE ===== */}
           <div id="capture" data-section="capture" className="scroll-mt-6">
             <SettingsSection title={t('settings.recordingTrigger.title')} description={t('settings.recordingTrigger.desc')}>
-              <div className="space-y-2">
-                {triggerOptions.map((opt) => (
-                  <RadioOption
-                    key={opt.value}
-                    selected={shortcut === opt.value}
-                    onSelect={() => handleShortcutChange(opt.value)}
-                    label={<span className="font-mono">{opt.label}</span>}
-                    trailing={opt.desc ? <span className={opt.recommended ? 'text-app-accent font-medium' : undefined}>{opt.desc}</span> : undefined}
-                    disabled={loading}
-                  />
-                ))}
-              </div>
-
-              <FnEmojiNudge />
-
-              {shortcutError && (
-                <div className="mt-4 space-y-2">
-                  <p className="text-[13px] text-app-danger">{showShortcutError}</p>
-                  {shortcutErrorIsInputMonitoring && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => invoke('open_input_monitoring_settings').catch(console.error)}
-                      leftIcon={<ExternalLink className="size-3" />}
-                    >
-                      {t('settings.recordingTrigger.openInputMonitoring')}
-                    </Button>
+              {isMac ? (
+                <>
+                  <TriggerPicker />
+                  <FnEmojiNudge />
+                </>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    {triggerOptions.map((opt) => (
+                      <RadioOption
+                        key={opt.value}
+                        selected={shortcut === opt.value}
+                        onSelect={() => handleShortcutChange(opt.value)}
+                        label={<span className="font-mono">{opt.label}</span>}
+                        trailing={opt.desc ? <span className={opt.recommended ? 'text-app-accent font-medium' : undefined}>{opt.desc}</span> : undefined}
+                        disabled={loading}
+                      />
+                    ))}
+                  </div>
+                  {shortcutError && <p className="mt-4 text-[13px] text-app-danger">{showShortcutError}</p>}
+                  {shortcutSuccess && (
+                    <p className="mt-3 text-[13px] text-app-success">{t('settings.recordingTrigger.successUpdated')}</p>
                   )}
-                </div>
-              )}
-              {shortcutSuccess && (
-                <p className="mt-3 text-[13px] text-app-success">{t('settings.recordingTrigger.successUpdated')}</p>
+                </>
               )}
             </SettingsSection>
 

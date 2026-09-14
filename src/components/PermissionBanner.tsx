@@ -35,18 +35,16 @@ export function PermissionBanner() {
       return;
     }
     try {
-      const [mic, ax, im, settings] = await Promise.all([
+      const [mic, ax, im] = await Promise.all([
         invoke<PermissionStatus>('check_microphone_permission'),
         invoke<PermissionStatus>('check_accessibility_permission'),
         invoke<boolean>('check_input_monitoring_permission'),
-        invoke<{ fn_key_enabled?: boolean }>('get_settings').catch(() => ({ fn_key_enabled: false })),
       ]);
       const out: PermKey[] = [];
       if (mic !== 'Granted') out.push('microphone');
       if (ax !== 'Granted') out.push('accessibility');
-      // Only flag Input Monitoring when the user actually depends on Fn —
-      // otherwise it's noise (other hotkeys don't need this permission).
-      if (settings?.fn_key_enabled && !im) out.push('inputMonitoring');
+      // Every trigger is read through the event tap, which needs it.
+      if (!im) out.push('inputMonitoring');
       setMissing(out);
     } catch (e) {
       console.error('PermissionBanner: refresh failed', e);

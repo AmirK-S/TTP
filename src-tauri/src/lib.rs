@@ -37,6 +37,7 @@ mod state;
 mod telemetry;
 mod trace;
 mod trace_api;
+mod trigger;
 // `pub`, not `pub(crate)`: `tests/polish_golden.rs` is an integration test and
 // therefore an external crate. It was `pub(crate)` for a long time, which meant
 // that file did not compile — and because `cargo test --lib` never builds
@@ -90,6 +91,58 @@ fn unregister_shortcuts_cmd(app: AppHandle) -> Result<(), String> {
         .unregister_all()
         .map_err(|e| format!("Failed to unregister shortcuts: {}", e))?;
     Ok(())
+}
+
+/// The dictation trigger: what Settings shows, and on macOS what the tap
+/// listens for.
+#[tauri::command]
+fn get_trigger() -> trigger::Trigger {
+    settings::store::effective_trigger(&settings::get_settings())
+}
+
+/// Make `trigger` the dictation trigger and persist it. Refuses a trigger that
+/// would take a character away from the user (a bare letter) with a
+/// translation key the Settings window resolves.
+#[tauri::command]
+fn set_trigger(app: AppHandle, trigger: trigger::Trigger) -> Result<(), String> {
+    if let Err(reason) = trigger::validate(&trigger) {
+        let slug = serde_json::to_value(reason)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default();
+        return Err(format!("error.trigger_{}", slug));
+    }
+    settings::set_settings(serde_json::json!({ "trigger": trigger }), app)?;
+    #[cfg(target_os = "macos")]
+    fnkey::set_trigger(trigger);
+    Ok(())
+}
+
+/// Listen for the user's next key, modifier or mouse button. The result
+/// arrives as a `trigger-captured` event.
+#[tauri::command]
+fn start_trigger_capture() {
+    #[cfg(target_os = "macos")]
+    fnkey::start_trigger_capture();
+}
+
+#[tauri::command]
+fn cancel_trigger_capture() {
+    #[cfg(target_os = "macos")]
+    fnkey::cancel_trigger_capture();
+}
+
+/// What `code` types on the current keyboard layout, for labelling a key
+/// trigger ("Q" on AZERTY where QWERTY has "A").
+#[tauri::command]
+fn trigger_key_chars(code: u16) -> String {
+    #[cfg(target_os = "macos")]
+    return fnkey::key_chars(code);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = code;
+        String::new()
+    }
 }
 
 /// Tauri command to toggle Fn key monitoring
@@ -889,15 +942,17 @@ pub fn run() {
                 }
             }
 
-            // Set up global keyboard shortcuts
+            // Windows/Linux: global shortcuts through the plugin.
+            #[cfg(not(target_os = "macos"))]
             shortcuts::setup_shortcuts(app.handle())?;
 
-            // Start Fn key monitor (macOS only, always running but toggled via settings)
+            // macOS: every trigger — Fn, a key, a modifier, a mouse button —
+            // goes through the event tap. The plugin's Carbon hotkeys can do
+            // none of the last three, so it is not used here.
             #[cfg(target_os = "macos")]
             {
                 fnkey::start_fn_key_monitor(app.handle());
-                let fn_enabled = settings::get_settings().fn_key_enabled;
-                fnkey::set_fn_key_enabled(fn_enabled);
+                fnkey::set_trigger(settings::store::effective_trigger(&settings::get_settings()));
             }
 
             // Best-effort: clear the macOS quarantine xattr after a self-update so
@@ -1007,6 +1062,11 @@ pub fn run() {
             update_shortcut_cmd,
             unregister_shortcuts_cmd,
             set_fn_key_enabled,
+            get_trigger,
+            set_trigger,
+            start_trigger_capture,
+            cancel_trigger_capture,
+            trigger_key_chars,
             check_input_monitoring,
             check_input_monitoring_permission,
             request_input_monitoring_permission,

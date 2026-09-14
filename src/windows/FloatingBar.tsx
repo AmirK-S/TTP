@@ -26,6 +26,7 @@ import { useRecordingState } from '../hooks/useRecordingState';
 import { useRecordingMode } from '../hooks/useRecordingMode';
 import { useTranscription } from '../hooks/useTranscription';
 import { usePasteCompletion } from '../hooks/usePasteCompletion';
+import { useTrigger } from '../hooks/useTrigger';
 import { TutorialPill } from '../components/TutorialPill';
 import { DarkPill } from '../components/ui';
 import { treatmentFor, type OutcomeMark } from '../lib/pasteOutcome';
@@ -74,6 +75,7 @@ function formatElapsed(ms: number): string {
 export function FloatingBar() {
   const { t } = useTranslation();
   const recordingState = useRecordingState();
+  const { label: triggerLabel } = useTrigger();
 
   useEffect(() => {
     document.documentElement.style.background = 'transparent';
@@ -255,7 +257,7 @@ export function FloatingBar() {
 
   return (
     <div className="flex h-screen w-screen flex-col items-center justify-end pb-1 bg-transparent pointer-events-none">
-      {showTutorial && isIdle && <TutorialPill shortcutText="FN" />}
+      {showTutorial && isIdle && <TutorialPill shortcutText={triggerLabel || 'fn'} />}
 
       <DarkPill
         tone={pillTone}

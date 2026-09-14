@@ -46,7 +46,7 @@
     "recording_already_in_progress": "Enregistrement déjà en cours. Arrête-le d'abord.",
     "microphone_generic": "Erreur micro : {{error}}",
     "audio_stream_interrupted": "Une autre app a pris le micro. Réessaie.",
-    "input_monitoring_required": "Input Monitoring requis pour la touche Fn. Ouvre Réglages Système → Confidentialité et sécurité → Input Monitoring, active TTP, puis redémarre l'app.",
+    "input_monitoring_required": "TTP a besoin de la Surveillance des entrées pour entendre ton raccourci. Ouvre Réglages Système → Confidentialité et sécurité → Surveillance des entrées, active TTP, puis redémarre l'app.",
     "license_key_empty": "La clé de licence ne peut pas être vide",
     "license_none_to_deactivate": "Aucune licence à désactiver",
     "license_activation_failed": "Activation échouée. Réessaie ou vérifie ta clé.",
@@ -55,7 +55,9 @@
     "license_server_error": "Serveur de licence injoignable. Réessaie plus tard.",
     "companion_unreachable_title": "Impossible de charger ton Compagnon",
     "companion_unreachable": "L'app n'a pas réussi à joindre son propre backend. Ça ne dit rien de ce que tu possèdes — si tu as acheté le Compagnon, il est toujours à toi.",
-    "retry": "Réessayer"
+    "retry": "Réessayer",
+    "trigger_types_a_character": "Cette touche tape un caractère. Ajoute ⌃, ⌥ ou ⌘, ou choisis une touche F, un modificateur seul ou un bouton de souris.",
+    "trigger_caps_lock": "Verr. Maj ne peut pas servir de raccourci : elle bascule au lieu de signaler l'appui et le relâchement."
   },
   "progress": {
     "transcribing": "Transcription…",
@@ -182,22 +184,20 @@
     },
     "recordingTrigger": {
       "title": "Raccourci",
-      "desc": "Maintiens pour enregistrer, relâche pour arrêter. Double-tap pour basculer en mode mains libres.",
-      "optionFn": "Fn",
-      "optionAltSpace": "⌥ Espace",
-      "optionCmdShiftR": "⌘⇧ R",
+      "desc": "Maintiens pour parler, relâche pour arrêter. Double-tap pour les mains libres.",
       "optionCtrlSpace": "Ctrl + Espace",
       "optionCtrlShiftSpace": "Ctrl + Maj + Espace",
       "optionWinJ": "Win + J",
       "descRecommended": "Recommandé",
-      "descAltSpace": "Option + Espace",
-      "descCmdShiftR": "Cmd + Maj + R",
       "descNoConflicts": "Sans conflit",
       "openInputMonitoring": "Ouvrir les réglages Input Monitoring",
       "successUpdated": "Raccourci mis à jour !",
       "fnEmojiTitle": "La touche 🌐 ouvre le sélecteur d'emoji",
       "fnEmojiDesc": "macOS ouvre le sélecteur d'emoji à chaque appui sur Fn. Mets la touche 🌐 sur « Ne rien faire » pour que le Fn serve juste à dicter. Ton raccourci continue de marcher.",
-      "fnEmojiButton": "Ouvrir les réglages Clavier"
+      "fnEmojiButton": "Ouvrir les réglages Clavier",
+      "capturePrompt": "Appuie sur la touche, le modificateur ou le bouton de souris de ton choix. Échap pour annuler.",
+      "presets": "Choix rapides :",
+      "modifierHint": "Taper une touche pendant que tu le maintiens annule la dictée : tes raccourcis continuent de marcher."
     },
     "recordingMode": {
       "title": "Comportement",
@@ -429,5 +429,18 @@
       "3-0-3": "Nudge guidé pour la touche Globe / sélecteur emoji.\n• Si tu utilises Fn pour parler mais que macOS affiche le sélecteur emoji à la place, TTP te propose maintenant un guide étape par étape pour basculer Globe vers \"Aucune action\" dans Réglages Système → Clavier.\n• Le nudge n'apparaît qu'une fois et reste désactivable. Pas d'action si Fn fonctionne déjà.",
       "3-0-2": "Fix sélecteur emoji avec Fn + stop hands-free en simple tap.\n• Sur macOS Sequoia, presser Fn lançait parfois le sélecteur emoji au lieu de l'enregistrement. Patché côté event tap : on consomme l'event avant que le système ne le routes vers l'IME.\n• En mode hands-free, un seul tap de Fn arrête maintenant la session (au lieu de devoir double-tap pour sortir)."
     }
+  },
+  "trigger": {
+    "side": {
+      "left": "{{key}} gauche",
+      "right": "{{key}} droit"
+    },
+    "keys": {
+      "space": "Espace",
+      "return": "Entrée",
+      "tab": "Tab"
+    },
+    "mouseMiddle": "Clic molette",
+    "mouseButton": "Bouton de souris {{n}}"
   }
 }

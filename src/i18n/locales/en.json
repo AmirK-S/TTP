@@ -46,7 +46,7 @@
     "recording_already_in_progress": "Already recording. Stop the current session first.",
     "microphone_generic": "Mic error: {{error}}",
     "audio_stream_interrupted": "Another app grabbed the mic. Try again.",
-    "input_monitoring_required": "Input Monitoring is needed for the Fn key. Open System Settings → Privacy & Security → Input Monitoring, enable TTP, then restart the app.",
+    "input_monitoring_required": "TTP needs Input Monitoring to hear your trigger. Open System Settings → Privacy & Security → Input Monitoring, turn TTP on, then restart the app.",
     "license_key_empty": "License key cannot be empty",
     "license_none_to_deactivate": "No license to deactivate",
     "license_activation_failed": "Activation failed. Try again or double-check the key.",
@@ -55,7 +55,9 @@
     "license_server_error": "License server unreachable. Try again later.",
     "companion_unreachable_title": "Couldn't load your Companion",
     "companion_unreachable": "The app couldn't reach its own backend. This says nothing about what you own — if you've bought the Companion, it's still yours.",
-    "retry": "Try again"
+    "retry": "Try again",
+    "trigger_types_a_character": "That key types a character. Add ⌃, ⌥ or ⌘, or pick an F-key, a modifier on its own, or a mouse button.",
+    "trigger_caps_lock": "Caps Lock can't be the trigger: it toggles instead of reporting press and release."
   },
   "progress": {
     "transcribing": "Transcribing…",
@@ -182,22 +184,20 @@
     },
     "recordingTrigger": {
       "title": "Shortcut",
-      "desc": "Hold to record, release to stop. Double-tap to toggle hands-free mode.",
-      "optionFn": "Fn",
-      "optionAltSpace": "⌥ Space",
-      "optionCmdShiftR": "⌘⇧ R",
+      "desc": "Hold to talk, release to stop. Double-tap for hands-free.",
       "optionCtrlSpace": "Ctrl + Space",
       "optionCtrlShiftSpace": "Ctrl + Shift + Space",
       "optionWinJ": "Win + J",
       "descRecommended": "Recommended",
-      "descAltSpace": "Option + Space",
-      "descCmdShiftR": "Cmd + Shift + R",
       "descNoConflicts": "No conflicts",
       "openInputMonitoring": "Open Input Monitoring settings",
       "successUpdated": "Shortcut updated!",
       "fnEmojiTitle": "The 🌐 key opens the emoji picker",
       "fnEmojiDesc": "macOS pops the emoji picker every time you press Fn. Set the 🌐 key to \"Do Nothing\" so Fn just records. Your shortcut keeps working.",
-      "fnEmojiButton": "Open Keyboard settings"
+      "fnEmojiButton": "Open Keyboard settings",
+      "capturePrompt": "Press the key, modifier or mouse button you want. Esc to cancel.",
+      "presets": "Quick picks:",
+      "modifierHint": "Typing a key while you hold it cancels the dictation, so it still works in your shortcuts."
     },
     "recordingMode": {
       "title": "Behavior",
@@ -429,5 +429,18 @@
       "3-0-3": "Guided nudge for the Globe key emoji picker.\n• If you use Fn to talk but macOS pops the emoji picker instead, TTP now offers a step-by-step guide to switch Globe to \"No action\" under System Settings → Keyboard.\n• The nudge shows once and stays dismissable. No-op if Fn already works.",
       "3-0-2": "Fn emoji-picker fix + single-tap hands-free stop.\n• On macOS Sequoia, pressing Fn sometimes launched the emoji picker instead of recording. Patched at the event-tap layer: we consume the event before the system routes it to the IME.\n• In hands-free mode, a single Fn tap now ends the session (was: had to double-tap to exit)."
     }
+  },
+  "trigger": {
+    "side": {
+      "left": "left {{key}}",
+      "right": "right {{key}}"
+    },
+    "keys": {
+      "space": "Space",
+      "return": "Return",
+      "tab": "Tab"
+    },
+    "mouseMiddle": "Middle click",
+    "mouseButton": "Mouse button {{n}}"
   }
 }

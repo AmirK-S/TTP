@@ -17,9 +17,15 @@ pub struct Settings {
     /// Global keyboard shortcut for recording (e.g., "Alt+Space", "Ctrl+Shift+R")
     #[serde(default = "default_shortcut")]
     pub shortcut: String,
-    /// Use Fn key as push-to-talk trigger (macOS only)
+    /// Use Fn key as push-to-talk trigger (macOS only). Superseded on macOS by
+    /// `trigger`; kept for Windows/Linux, where `shortcut` still applies.
     #[serde(default)]
     pub fn_key_enabled: bool,
+    /// The dictation trigger on macOS: any key, sided modifier or mouse
+    /// button (see `crate::trigger`). `None` in a file written before
+    /// triggers existed — `effective_trigger` then derives it from `shortcut`.
+    #[serde(default)]
+    pub trigger: Option<crate::trigger::Trigger>,
     /// Telemetry opt-in: controls error reporting (Sentry) and usage analytics (Aptabase)
     /// Default is OFF -- user must explicitly enable
     #[serde(default)]
@@ -124,6 +130,7 @@ impl Default for Settings {
             fn_key_enabled: true,
             #[cfg(not(target_os = "macos"))]
             fn_key_enabled: false,
+            trigger: None,
             telemetry_enabled: false,
             autostart_enabled: false,
             history_enabled: true,
@@ -137,6 +144,14 @@ impl Default for Settings {
             unknown: serde_json::Map::new(),
         }
     }
+}
+
+/// The trigger this install uses: the stored one, or the one its old
+/// `shortcut` string meant.
+pub fn effective_trigger(settings: &Settings) -> crate::trigger::Trigger {
+    settings
+        .trigger
+        .unwrap_or_else(|| crate::trigger::from_legacy_shortcut(&settings.shortcut))
 }
 
 // In-memory cache so get_settings() doesn't re-read + re-parse the JSON

@@ -24,6 +24,7 @@ import {
 import { Button, Card, BrandTile, DarkPill } from '../components/ui';
 import { ApiKeyForm } from '../components/ApiKeyForm';
 import { cn } from '../lib/cn';
+import { useTrigger } from '../hooks/useTrigger';
 
 type PermissionStatus = 'Granted' | 'Denied' | 'Undetermined';
 type PermKey = 'microphone' | 'accessibility' | 'inputMonitoring';
@@ -449,7 +450,8 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
  */
 function TourStep() {
   const { t } = useTranslation();
-  const shortcutKey = IS_MAC ? 'fn' : 'Ctrl';
+  const { label } = useTrigger();
+  const shortcutKey = IS_MAC ? label || 'fn' : 'Ctrl';
   return (
     <section className="anim-fade-up max-w-md mx-auto">
       <h2 className="text-display-sm text-app-text">{t('onboarding.wizard.tourTitle')}</h2>
@@ -464,7 +466,7 @@ function TourStep() {
             <div className="flex items-center justify-center gap-2 px-5 py-4 bg-app-raised border border-app-border rounded-app-md">
               <span className="text-[11px] text-app-muted">{t('onboarding.tour.pressLabel')}</span>
               <kbd className="inline-flex items-center justify-center min-w-[36px] h-[28px] px-2 rounded-app-sm bg-app-surface border border-app-border-strong text-[12px] font-mono font-semibold text-app-text shadow-[inset_0_-1px_0_var(--border-strong)]">
-                {shortcutKey.toUpperCase()}
+                {shortcutKey}
               </kbd>
             </div>
           }
