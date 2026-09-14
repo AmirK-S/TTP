@@ -251,11 +251,14 @@ struct Frame {
 }
 
 /// The System Settings main window, in global top-left points — but only while
-/// System Settings or TTP itself is the frontmost app, so the panel does not
-/// hover over whatever the user switched to.
+/// System Settings or TTP itself is in front, so the panel does not hover over
+/// whatever the user switched to.
 ///
 /// Window owners and bounds are readable without Screen Recording permission;
-/// only titles are not, and nothing here reads a title.
+/// only titles are not, and nothing here reads a title. "In front" is read
+/// from the window list itself (it comes back front-to-back) rather than from
+/// `NSWorkspace`, whose accessors want the main thread — and this runs on the
+/// tracker's own thread.
 unsafe fn settings_window_frame() -> Option<Frame> {
     use cocoa::base::{id, nil};
     use cocoa::foundation::{NSAutoreleasePool, NSString};
@@ -270,12 +273,6 @@ unsafe fn settings_window_frame() -> Option<Frame> {
 
     let pool = NSAutoreleasePool::new(nil);
     let result = (|| {
-        let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
-        let front: id = msg_send![workspace, frontmostApplication];
-        if front == nil {
-            return None;
-        }
-        let front_pid: i32 = msg_send![front, processIdentifier];
         let own_pid = std::process::id() as i32;
 
         let bundle_id = NSString::alloc(nil).init_str(SETTINGS_BUNDLE_ID);
@@ -286,9 +283,6 @@ unsafe fn settings_window_frame() -> Option<Frame> {
         }
         let settings_app: id = msg_send![apps, objectAtIndex: 0usize];
         let settings_pid: i32 = msg_send![settings_app, processIdentifier];
-        if front_pid != settings_pid && front_pid != own_pid {
-            return None;
-        }
 
         let windows = CGWindowListCopyWindowInfo(ON_SCREEN_ONLY | EXCLUDE_DESKTOP, 0);
         if windows == nil {
@@ -309,10 +303,18 @@ unsafe fn settings_window_frame() -> Option<Frame> {
         };
 
         let mut best: Option<Frame> = None;
+        let mut front_pid: Option<i32> = None;
         let n: usize = msg_send![windows, count];
         for i in 0..n {
             let info: id = msg_send![windows, objectAtIndex: i];
-            if number(info, key_pid) as i32 != settings_pid || number(info, key_layer) as i32 != 0 {
+            let pid = number(info, key_pid) as i32;
+            let layer = number(info, key_layer) as i32;
+            // The list is front-to-back, so the first ordinary window belongs
+            // to whatever the user is looking at.
+            if layer == 0 && front_pid.is_none() {
+                front_pid = Some(pid);
+            }
+            if pid != settings_pid || layer != 0 {
                 continue;
             }
             let bounds: id = msg_send![info, objectForKey: key_bounds];
@@ -330,7 +332,10 @@ unsafe fn settings_window_frame() -> Option<Frame> {
             }
         }
         let _: () = msg_send![windows, release];
-        best
+        match front_pid {
+            Some(pid) if pid == settings_pid || pid == own_pid => best,
+            _ => None,
+        }
     })();
     pool.drain();
     result
