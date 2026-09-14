@@ -346,34 +346,6 @@
       "optionLight": "Light",
       "optionDark": "Dark"
     },
-    "appearance": {
-      "title": "Coat",
-      "desc": "Light and dark decide how the room is lit. The coat decides what the animal looks like in it.",
-      "lockedNote": "These four arrive with the Companion.",
-      "footnote": "Coats are decorative. A Talk-To-Paste in any of them hears exactly as well as one in any other.",
-      "coats": {
-        "wild": {
-          "name": "Wild type",
-          "desc": "The form it arrives in. Nobody bred this one."
-        },
-        "roan": {
-          "name": "Roan",
-          "desc": "White hairs through a warm base. Paper, a serif, and a wide margin."
-        },
-        "piebald": {
-          "name": "Piebald",
-          "desc": "Two tones with a hard edge between them. Square corners, and nothing floats."
-        },
-        "merle": {
-          "name": "Merle",
-          "desc": "Mottled blue-grey. The panels let the background through and nothing is in a hurry."
-        },
-        "tortie": {
-          "name": "Tortoiseshell",
-          "desc": "Ginger and black, kept close together. More window, less margin."
-        }
-      }
-    },
     "sidebar": {
       "thisMonth": "This month",
       "words": "words",

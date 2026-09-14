@@ -346,34 +346,6 @@
       "optionLight": "Clair",
       "optionDark": "Sombre"
     },
-    "appearance": {
-      "title": "Robe",
-      "desc": "Le mode clair ou sombre décide de l'éclairage de la pièce. La robe décide de l'allure de l'animal dedans.",
-      "lockedNote": "Ces quatre-là arrivent avec le Compagnon.",
-      "footnote": "Les robes sont ornementales. Un Talk-To-Paste entend exactement aussi bien dans chacune d'entre elles.",
-      "coats": {
-        "wild": {
-          "name": "Type sauvage",
-          "desc": "La forme dans laquelle il arrive. Personne ne l'a sélectionnée."
-        },
-        "roan": {
-          "name": "Rouan",
-          "desc": "Des poils blancs sur un fond chaud. Du papier, une serif et de grandes marges."
-        },
-        "piebald": {
-          "name": "Pie",
-          "desc": "Deux tons et une frontière nette entre eux. Angles droits, et rien ne flotte."
-        },
-        "merle": {
-          "name": "Arlequin",
-          "desc": "Gris-bleu marbré. Les panneaux laissent passer le fond et rien ne se presse."
-        },
-        "tortie": {
-          "name": "Écaille de tortue",
-          "desc": "Roux et noir, serrés l'un contre l'autre. Plus de fenêtre, moins de marge."
-        }
-      }
-    },
     "sidebar": {
       "thisMonth": "Ce mois",
       "words": "mots",

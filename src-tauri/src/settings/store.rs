@@ -94,26 +94,6 @@ pub struct Settings {
     /// resolves to the house sounds — see `cosmetics::effective_sound_pack`.
     #[serde(default)]
     pub sound_pack: Option<String>,
-    /// Which coat the app wears — the Pro aesthetic's palette, type stack,
-    /// radius and motion character, all selected together. `None` means the
-    /// house coat (`wild`).
-    ///
-    /// Stored opaquely on purpose. The catalogue lives in
-    /// `src/lib/theme-coats.ts` next to `src/styles/coats.css`, which is the
-    /// only place that can actually implement a coat, and `effectiveCoat`
-    /// there falls back to `wild` for any id it does not recognise — the same
-    /// silent, total degradation `cosmetics::effective_sound_pack` gives
-    /// sounds. A second copy of the id list here would be a second thing to
-    /// forget to update, and it would let Rust reject a coat the frontend can
-    /// paint perfectly well.
-    ///
-    /// This used to live in `localStorage` alone, which meant it did not
-    /// survive clearing site data. `localStorage` is still written, but now as
-    /// a MIRROR — the anti-flash script in `index.html` runs before any of our
-    /// code and cannot await an IPC call, so it needs a synchronous copy. This
-    /// field is the source of truth; the mirror is repaired from it on boot.
-    #[serde(default)]
-    pub coat: Option<String>,
     /// Every key in `settings.json` that this build has no field for.
     ///
     /// Not decoration — see the `payload_merge_tests` module for the failure
@@ -172,7 +152,6 @@ impl Default for Settings {
             transcription_language: None,
             diagnostics_enabled: false,
             sound_pack: None,
-            coat: None,
             unknown: serde_json::Map::new(),
         }
     }
@@ -455,9 +434,8 @@ fn report_unknown_fields(unknown: &[String]) {
 /// command argument straight into the struct — which is what this did until
 /// the P1 debt payoff — applied two silent edits to the caller's intent: an
 /// unrecognised key vanished, and a key the caller simply did not mention was
-/// reset to its default. The second is what kept the coat out of this store
-/// entirely (`src/lib/theme-coats.ts` names the reason): every field the UI
-/// does not send would have needed hand-written carry-forward code.
+/// reset to its default, so every field a partial payload did not send was
+/// silently wiped.
 #[tauri::command]
 pub fn set_settings(settings: serde_json::Value, app: AppHandle) -> Result<(), String> {
     let path = get_settings_path().ok_or("Could not determine config directory")?;
@@ -619,15 +597,11 @@ mod tests {
 // `set_settings` used to take a `Settings` directly, which meant serde applied
 // two silent transformations to whatever the frontend sent:
 //
-//   1. A key the struct has never heard of was DISCARDED. That is the reason
-//      `src/lib/theme-coats.ts` refused to persist the coat here at all and
-//      routed around the settings store into `localStorage` instead — the
-//      comment at the top of that file says so in as many words.
+//   1. A key the struct has never heard of was DISCARDED, so a setting
+//      written by a newer build vanished the first time an older one saved.
 //   2. A key the struct DOES know but the payload omitted was reset to its
-//      `#[serde(default)]`. The frontend's `Settings` type does not carry
-//      `coat`, so every unrelated toggle in the Settings window would have
-//      wiped it — and every field added after it would have needed the same
-//      hand-written carry-forward.
+//      `#[serde(default)]`, so a partial payload — `{ "sound_pack": "bowl" }`
+//      from the pack picker — wiped every other field.
 //
 // Both are the polite-degradation shape `docs/engineering-standards.md` was
 // written about: the store quietly did something other than what it was asked,
@@ -676,20 +650,18 @@ mod payload_merge_tests {
 
     #[test]
     fn an_omitted_field_keeps_its_stored_value() {
-        // THE COAT BUG. The frontend's payload has no `coat` key, because its
-        // TypeScript interface has no such field. Under the old
-        // `settings: Settings` signature this deserialised to `None` and the
-        // user's coat was gone the next time they toggled anything at all.
+        // Under the old `settings: Settings` signature a partial payload
+        // deserialised every missing field to its default, so picking a sound
+        // pack reset the user's microphone.
         let mut stored = Settings::default();
-        stored.coat = Some("merle".to_string());
+        stored.audio_device_name = Some("Yeti".to_string());
 
-        let (out, unknown) = merged(&stored, frontend_payload());
+        let (out, unknown) = merged(&stored, json!({ "sound_pack": "bowl" }));
 
-        assert_eq!(out.coat.as_deref(), Some("merle"));
-        assert!(unknown.is_empty(), "the frontend payload is all known fields");
-        // and the fields it did send are applied
+        assert_eq!(out.audio_device_name.as_deref(), Some("Yeti"));
+        assert!(unknown.is_empty(), "sound_pack is a known field");
+        // and the field it did send is applied
         assert_eq!(out.sound_pack.as_deref(), Some("bowl"));
-        assert_eq!(out.language.as_deref(), Some("fr"));
     }
 
     #[test]
@@ -699,11 +671,11 @@ mod payload_merge_tests {
         // system default audio device again could never get back to `None`.
         let mut stored = Settings::default();
         stored.audio_device_name = Some("Yeti".to_string());
-        stored.coat = Some("roan".to_string());
+        stored.sound_pack = Some("bowl".to_string());
 
         let (out, _) = merged(&stored, json!({ "audio_device_name": null }));
         assert_eq!(out.audio_device_name, None);
-        assert_eq!(out.coat.as_deref(), Some("roan"), "untouched by an unrelated clear");
+        assert_eq!(out.sound_pack.as_deref(), Some("bowl"), "untouched by an unrelated clear");
     }
 
     #[test]
@@ -714,7 +686,7 @@ mod payload_merge_tests {
         // the normal state"). The older binary must not eat the newer one's
         // settings.
         let stored = Settings::default();
-        let (out, unknown) = merged(&stored, json!({ "coat": "piebald", "gait": "ambling" }));
+        let (out, unknown) = merged(&stored, json!({ "sound_pack": "felt", "gait": "ambling" }));
 
         assert_eq!(unknown, vec!["gait".to_string()]);
         let written = serde_json::to_value(&out).expect("serialises");
@@ -772,91 +744,8 @@ mod payload_merge_tests {
         // somebody added a field, and every new field would then be reported
         // as unknown by the very machinery meant to catch unknown fields.
         let names = known_field_names();
-        assert!(names.contains("coat"));
+        assert!(names.contains("sound_pack"));
         assert!(names.contains("ai_polish_enabled"));
         assert!(!names.contains("unknown"), "the catch-all map is not itself a field");
-    }
-}
-
-#[cfg(test)]
-mod coat_persistence_tests {
-    use super::*;
-    use std::fs;
-
-    fn temp_path(label: &str) -> std::path::PathBuf {
-        let mut p = std::env::temp_dir();
-        p.push(format!(
-            "ttp_coat_test_{}_{}_{}",
-            label,
-            std::process::id(),
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
-        ));
-        fs::create_dir_all(&p).expect("create tempdir");
-        p.join("settings.json")
-    }
-
-    #[test]
-    fn the_coat_survives_a_write_and_a_read() {
-        // The whole point of debt item 1: a coat in localStorage does not
-        // survive clearing site data. A coat in settings.json does.
-        let path = temp_path("roundtrip");
-        let mut s = Settings::default();
-        s.coat = Some("tortie".to_string());
-        write_settings_atomic(&path, &s).expect("write");
-
-        let back: Settings =
-            serde_json::from_str(&fs::read_to_string(&path).unwrap()).expect("parse");
-        assert_eq!(back.coat.as_deref(), Some("tortie"));
-        let _ = fs::remove_dir_all(path.parent().unwrap());
-    }
-
-    #[test]
-    fn a_settings_file_written_before_coats_existed_still_loads() {
-        // Every existing user's settings.json. If this failed, the upgrade
-        // would take everyone through `recover_from_backup` to defaults.
-        let json = r#"{
-            "ai_polish_enabled": true,
-            "shortcut": "FnKey",
-            "fn_key_enabled": true
-        }"#;
-        let s: Settings = serde_json::from_str(json).expect("an old file must still parse");
-        assert_eq!(s.coat, None);
-        assert!(s.unknown.is_empty());
-    }
-
-    #[test]
-    fn an_unknown_field_on_disk_is_not_erased_by_writing_the_file_back() {
-        let path = temp_path("preserve");
-        let json = r#"{
-            "ai_polish_enabled": true,
-            "shortcut": "FnKey",
-            "fn_key_enabled": true,
-            "gait": "ambling"
-        }"#;
-        let s: Settings = serde_json::from_str(json).expect("parse");
-        assert_eq!(s.unknown.get("gait"), Some(&serde_json::json!("ambling")));
-
-        write_settings_atomic(&path, &s).expect("write");
-        let raw = fs::read_to_string(&path).unwrap();
-        assert!(raw.contains("\"gait\""), "written file lost the field: {}", raw);
-        let _ = fs::remove_dir_all(path.parent().unwrap());
-    }
-
-    #[test]
-    fn the_coat_is_stored_opaquely_and_validated_where_the_catalogue_lives() {
-        // Rust does not keep a second copy of the coat catalogue. The ids live
-        // in `src/lib/theme-coats.ts` (COATS) next to the CSS that implements
-        // them, and `effectiveCoat` falls back to `wild` for anything it does
-        // not recognise, exactly as `cosmetics::effective_sound_pack` does for
-        // packs. Storing an id Rust cannot vet is therefore fine and must not
-        // become an error — a hand-edited file should wear the house coat, not
-        // fail to load.
-        let s: Settings = serde_json::from_str(r#"{
-            "ai_polish_enabled": true,
-            "shortcut": "FnKey",
-            "fn_key_enabled": true,
-            "coat": "gingham"
-        }"#).expect("an unknown coat id is data, not a parse error");
-        assert_eq!(s.coat.as_deref(), Some("gingham"));
     }
 }
