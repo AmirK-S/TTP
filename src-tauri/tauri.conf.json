@@ -29,19 +29,6 @@
         "skipTaskbar": true
       },
       {
-        "label": "setup",
-        "title": "TTP",
-        "width": 480,
-        "height": 620,
-        "minWidth": 480,
-        "minHeight": 620,
-        "maxWidth": 480,
-        "maxHeight": 620,
-        "resizable": false,
-        "visible": false,
-        "center": true
-      },
-      {
         "label": "onboarding",
         "title": "TTP",
         "width": 480,

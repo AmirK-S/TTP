@@ -19,7 +19,6 @@
   },
   "windowTitle": {
     "main": "TTP",
-    "setup": "TTP by AmirKS · Setup",
     "onboarding": "Welcome to Talk To Paste",
     "settings": "TTP by AmirKS · Settings"
   },
@@ -225,9 +224,7 @@
       "title": "Transcription",
       "groqLabel": "Groq API key",
       "keyConfigured": "✓ Key configured",
-      "keyPlaceholder": "gsk_…",
       "keySaved": "API key validated and saved.",
-      "getKeyAt": "Get your free key at",
       "polishLabel": "AI Polish",
       "polishDesc": "Trim filler words and fix grammar with AI.",
       "languageLabel": "Transcription language",
@@ -404,18 +401,9 @@
       "permissionsSubtitle": "TTP needs these macOS permissions to record and paste. We'll take you straight to the right Settings pane.",
       "apiKeyTitle": "Connect to Groq",
       "apiKeySubtitle": "Free transcription API. Groq's free tier covers tens of thousands of dictations per month.",
-      "preferencesTitle": "A few quick choices",
-      "preferencesSubtitle": "Set the basics now. All of these live in Settings if you change your mind later.",
       "tourTitle": "Here's how it works",
       "tourSubtitle": "Three things to know before you go. Take ten seconds.",
       "stepIndicatorLabel": "Step {{current}} of {{total}}"
-    },
-    "preferences": {
-      "autostartLabel": "Launch TTP at startup",
-      "autostartDesc": "Wakes up with your Mac so the shortcut is ready when you are.",
-      "telemetryLabel": "Share anonymous crash reports",
-      "telemetryDesc": "Only crash signals. Never your transcripts.",
-      "footnote": "You can change all of these any time in Settings."
     },
     "tour": {
       "pressLabel": "Hold",
@@ -430,11 +418,6 @@
       "spotlightHint": "Spotlight",
       "closeReassurance": "You can close this window with ×. TTP keeps running."
     }
-  },
-  "setup": {
-    "title": "Welcome to TTP by AmirKS",
-    "description": "Talk To Paste needs a free API key from Groq to transcribe your voice.",
-    "localStorage": "Your key is stored locally and never leaves your machine. Your voice goes to Groq for transcription."
   },
   "form": {
     "apiKey": {

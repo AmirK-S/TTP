@@ -19,7 +19,6 @@
   },
   "windowTitle": {
     "main": "TTP",
-    "setup": "TTP by AmirKS · Configuration",
     "onboarding": "Bienvenue dans Talk To Paste",
     "settings": "TTP by AmirKS · Paramètres"
   },
@@ -225,9 +224,7 @@
       "title": "Transcription",
       "groqLabel": "Clé API Groq",
       "keyConfigured": "✓ Clé configurée",
-      "keyPlaceholder": "gsk_…",
       "keySaved": "Clé API validée et enregistrée.",
-      "getKeyAt": "Récupère ta clé gratuite sur",
       "polishLabel": "Correction IA",
       "polishDesc": "Retire les hésitations et corrige la grammaire avec l'IA.",
       "languageLabel": "Langue de transcription",
@@ -404,18 +401,9 @@
       "permissionsSubtitle": "TTP a besoin de ces permissions macOS pour enregistrer et coller. On t'amène directement au bon panneau des Réglages.",
       "apiKeyTitle": "Connecter à Groq",
       "apiKeySubtitle": "API de transcription gratuite. Le tier gratuit de Groq couvre des dizaines de milliers de dictées par mois.",
-      "preferencesTitle": "Quelques choix rapides",
-      "preferencesSubtitle": "Les bases maintenant. Tout ça se retrouve dans Paramètres si tu changes d'avis.",
       "tourTitle": "Voici comment ça marche",
       "tourSubtitle": "Trois choses à savoir avant de partir. Ça prend dix secondes.",
       "stepIndicatorLabel": "Étape {{current}} sur {{total}}"
-    },
-    "preferences": {
-      "autostartLabel": "Lancer TTP au démarrage",
-      "autostartDesc": "S'éveille avec ton Mac pour que le raccourci soit prêt quand tu l'es.",
-      "telemetryLabel": "Partager les crash reports anonymes",
-      "telemetryDesc": "Uniquement les signaux de crash. Jamais tes transcriptions.",
-      "footnote": "Tu peux modifier tout ça à tout moment dans Paramètres."
     },
     "tour": {
       "pressLabel": "Maintiens",
@@ -430,11 +418,6 @@
       "spotlightHint": "Spotlight",
       "closeReassurance": "Tu peux fermer cette fenêtre avec ×. TTP continue de tourner."
     }
-  },
-  "setup": {
-    "title": "Bienvenue dans TTP by AmirKS",
-    "description": "Talk To Paste a besoin d'une clé API gratuite de Groq pour transcrire ta voix.",
-    "localStorage": "Ta clé est stockée localement et ne quitte jamais ta machine. Ta voix est envoyée à Groq pour la transcription."
   },
   "form": {
     "apiKey": {

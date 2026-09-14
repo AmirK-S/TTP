@@ -20,6 +20,7 @@ import { useUpdater } from '../hooks/useUpdater';
 import { useSettingsStore, DictionaryEntry, HistoryEntry } from '../stores/settings-store';
 import { PermissionBanner } from '../components/PermissionBanner';
 import { FnEmojiNudge } from '../components/FnEmojiNudge';
+import { ApiKeyForm } from '../components/ApiKeyForm';
 import WhatsNew from '../components/WhatsNew';
 import {
   Button, Input, Banner, Spinner, Toggle, ConfirmDialog,
@@ -335,11 +336,11 @@ export function Settings() {
   const [showClearHistoryConfirm, setShowClearHistoryConfirm] = useState(false);
   const [shortcutError, setShortcutError] = useState('');
   const [shortcutSuccess, setShortcutSuccess] = useState(false);
-  const [groqApiKey, setGroqApiKey] = useState('');
-  const [hasGroqKey, setHasGroqKey] = useState(false);
-  const [groqKeySaving, setGroqKeySaving] = useState(false);
+  // `null` until the keychain has answered, so a missing key is never
+  // announced (or scrolled to) on a guess.
+  const [hasGroqKey, setHasGroqKey] = useState<boolean | null>(null);
   const [groqKeySuccess, setGroqKeySuccess] = useState(false);
-  const [groqKeyError, setGroqKeyError] = useState('');
+  const transcriptionSectionRef = useRef<HTMLDivElement>(null);
   const [newOriginal, setNewOriginal] = useState('');
   const [newCorrection, setNewCorrection] = useState('');
   const [addEntryError, setAddEntryError] = useState('');
@@ -468,16 +469,18 @@ export function Settings() {
     [saveSettings],
   );
 
-  const handleGroqKeySave = async () => {
-    if (!groqApiKey.trim()) return;
-    setGroqKeySaving(true); setGroqKeyError(''); setGroqKeySuccess(false);
-    try {
-      await invoke('validate_groq_api_key', { key: groqApiKey });
-      await invoke('set_groq_api_key', { key: groqApiKey });
-      setHasGroqKey(true); setGroqApiKey(''); setGroqKeySuccess(true);
-      setTimeout(() => setGroqKeySuccess(false), 3000);
-    } catch (error) { setGroqKeyError(String(error)); }
-    finally { setGroqKeySaving(false); }
+  // Settings is where TTP sends a user with no key (at launch, or from a
+  // dictation that could not run), so take them straight to the form.
+  const scrolledToKey = useRef(false);
+  useEffect(() => {
+    if (hasGroqKey !== false || scrolledToKey.current) return;
+    scrolledToKey.current = true;
+    transcriptionSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [hasGroqKey]);
+
+  const handleGroqKeySaved = () => {
+    setHasGroqKey(true); setGroqKeySuccess(true);
+    setTimeout(() => setGroqKeySuccess(false), 3000);
   };
 
   const handleShortcutChange = async (newShortcut: string) => {
@@ -806,45 +809,22 @@ export function Settings() {
               </div>
             </SettingsSection>
 
+            <div ref={transcriptionSectionRef} className="scroll-mt-6">
             <SettingsSection title={t('settings.transcription.title')}>
               <div className="space-y-3 mb-5">
                 <p className="text-[13px] font-medium text-app-text">{t('settings.transcription.groqLabel')}</p>
-                {hasGroqKey ? (
+                {hasGroqKey === true && (
                   <div className="flex items-center gap-3">
-                    <span className="text-[13px] text-app-success">{t('settings.transcription.keyConfigured')}</span>
+                    <span className="text-[13px] text-app-success">
+                      {groqKeySuccess ? t('settings.transcription.keySaved') : t('settings.transcription.keyConfigured')}
+                    </span>
                     <Button variant="ghost" size="sm" onClick={() => setHasGroqKey(false)}>
                       {t('common.change')}
                     </Button>
                   </div>
-                ) : (
-                  <>
-                    <div className="flex gap-2">
-                      <Input
-                        type="password"
-                        value={groqApiKey}
-                        onChange={(e) => setGroqApiKey(e.target.value)}
-                        placeholder={t('settings.transcription.keyPlaceholder')}
-                        className="flex-1"
-                        aria-label={t('form.apiKey.label')}
-                        autoComplete="off"
-                      />
-                      <Button
-                        onClick={handleGroqKeySave}
-                        disabled={groqKeySaving || !groqApiKey.trim()}
-                        loading={groqKeySaving}
-                      >
-                        {groqKeySaving ? t('common.validating') : t('common.save')}
-                      </Button>
-                    </div>
-                    {groqKeySuccess && <p className="text-[13px] text-app-success">{t('settings.transcription.keySaved')}</p>}
-                    {groqKeyError && <p className="text-[13px] text-app-danger">{groqKeyError}</p>}
-                    <p className="text-[12px] text-app-muted">
-                      {t('settings.transcription.getKeyAt')}{' '}
-                      <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-app-accent hover:underline">
-                        console.groq.com
-                      </a>
-                    </p>
-                  </>
+                )}
+                {hasGroqKey === false && (
+                  <ApiKeyForm compact onSuccess={handleGroqKeySaved} submitLabel={t('common.save')} />
                 )}
               </div>
               <div className="border-t border-app-border pt-4">
@@ -887,6 +867,7 @@ export function Settings() {
                 </div>
               </div>
             </SettingsSection>
+            </div>
           </div>
 
           {/* ===== PRO =====

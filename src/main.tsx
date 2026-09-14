@@ -21,10 +21,9 @@ import { useSettingsStore } from './stores/settings-store';
 import './index.css';
 
 // Lazy chunks: each window only fetches its own JS. The pill in particular
-// stays tiny — no Settings, no Onboarding, no ApiKeySetup baggage.
+// stays tiny — no Settings, no Onboarding baggage.
 const App = lazy(() => import('./App'));
 const FloatingBar = lazy(() => import('./windows/FloatingBar'));
-const ApiKeySetup = lazy(() => import('./windows/ApiKeySetup'));
 const Onboarding = lazy(() => import('./windows/Onboarding'));
 const Settings = lazy(() => import('./windows/Settings'));
 
@@ -37,11 +36,10 @@ function onBoundaryError(error: Error) {
  * Get the current window and render the appropriate component.
  * - floating-bar: Renders the transparent recording indicator
  * - onboarding: Renders the first-launch permission onboarding
- * - setup: Renders the first-run API key setup window
  * - main (or others): Renders the main App component (hidden for tray app)
  */
 function main() {
-  // `?preview=onboarding|settings|pill|setup` is a dev-only override that
+  // `?preview=onboarding|settings|pill` is a dev-only override that
   // lets us inspect a window's UI in a plain browser (vite dev, screenshots,
   // visual diffs). When set, we skip every Tauri IPC + window probe — those
   // throw in a non-Tauri runtime and would crash the bootstrap. Production
@@ -118,9 +116,6 @@ function main() {
   } else if (windowLabel === 'onboarding') {
     // Onboarding window - first-launch permission setup
     renderWindow(<Onboarding />);
-  } else if (windowLabel === 'setup') {
-    // Setup window - first-run API key configuration
-    renderWindow(<ApiKeySetup />);
   } else if (windowLabel === 'settings') {
     // Settings window - app configuration and dictionary management
     renderWindow(<Settings />);

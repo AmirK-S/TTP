@@ -1,19 +1,15 @@
 // TTP - Talk To Paste
 // First-launch onboarding wizard.
 //
-// Five steps: Welcome → Permissions → API key → Preferences → Tour. Gating is
-// intentionally soft: only Microphone and the API key are required to advance.
+// Four steps: Welcome → Permissions → API key → Tour. Gating is intentionally
+// soft: only Microphone and the API key are required to advance.
 // Accessibility + Input Monitoring are strong recommendations but skippable.
-// Preferences default to the safe choices; Tour is purely informational.
+// Tour is purely informational.
 
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useTranslation } from 'react-i18next';
-import {
-  enable as enableAutostart,
-  disable as disableAutostart,
-} from '@tauri-apps/plugin-autostart';
 import {
   Mic,
   Accessibility as AccessibilityIcon,
@@ -24,19 +20,16 @@ import {
   ExternalLink,
   Sparkles,
   Search,
-  Power,
-  Bug,
 } from 'lucide-react';
-import { Button, Card, BrandTile, Toggle, DarkPill } from '../components/ui';
+import { Button, Card, BrandTile, DarkPill } from '../components/ui';
 import { ApiKeyForm } from '../components/ApiKeyForm';
-import { useSettingsStore } from '../stores/settings-store';
 import { cn } from '../lib/cn';
 
 type PermissionStatus = 'Granted' | 'Denied' | 'Undetermined';
 type PermKey = 'microphone' | 'accessibility' | 'inputMonitoring';
-type StepIndex = 0 | 1 | 2 | 3 | 4;
+type StepIndex = 0 | 1 | 2 | 3;
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 4;
 const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.startsWith('Mac');
 
 const SETTINGS_COMMAND: Record<PermKey, string> = {
@@ -58,7 +51,7 @@ export default function Onboarding() {
     if (typeof window === 'undefined') return 0;
     const p = new URLSearchParams(window.location.search).get('step');
     const n = p ? Number(p) : NaN;
-    return n >= 0 && n <= 4 ? (n as StepIndex) : 0;
+    return n >= 0 && n <= 3 ? (n as StepIndex) : 0;
   })();
   const [step, setStep] = useState<StepIndex>(initialStep);
   // `?trial=1` forces the post-save success view for screenshots.
@@ -166,7 +159,7 @@ export default function Onboarding() {
   };
 
   const micGranted = permStatus.microphone === 'Granted';
-  const advance = () => setStep((s) => Math.min(4, s + 1) as StepIndex);
+  const advance = () => setStep((s) => Math.min(3, s + 1) as StepIndex);
   const back = () => setStep((s) => Math.max(0, s - 1) as StepIndex);
 
   return (
@@ -190,8 +183,7 @@ export default function Onboarding() {
           {step === 2 && (
             <ApiKeyStep hasApiKey={hasApiKey} onSaved={() => setHasApiKey(true)} />
           )}
-          {step === 3 && <PreferencesStep />}
-          {step === 4 && <TourStep />}
+          {step === 3 && <TourStep />}
         </div>
       </div>
 
@@ -231,11 +223,6 @@ export default function Onboarding() {
               </Button>
             )}
             {step === 3 && (
-              <Button size="md" rightIcon={<ChevronRight className="size-4" />} onClick={advance}>
-                {t('onboarding.wizard.next')}
-              </Button>
-            )}
-            {step === 4 && (
               <Button size="md" onClick={finish}>
                 {t('onboarding.wizard.finish')}
               </Button>
@@ -451,116 +438,7 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
   );
 }
 
-/* -------------------------- Step 3: Preferences --------------------------- */
-
-/**
- * Two opt-in toggles surfaced up-front so users don't have to dig into
- * Settings later. Telemetry default OFF (privacy first), autostart default OFF
- * (don't squat in the user's launchd unless they ask).
- *
- * Each toggle persists immediately; no save button. The pattern matches the
- * Settings panel so muscle-memory transfers.
- */
-function PreferencesStep() {
-  const { t } = useTranslation();
-  // Route through the store so saveSettings merges with the current Settings
-  // object before invoking the Rust command. The Rust `set_settings` expects
-  // the FULL Settings struct; calling it with a partial corrupts the file
-  // and silently fails — which is exactly the bug v2.1.2 shipped with.
-  const {
-    telemetryEnabled, autostartEnabled, loadSettings, saveSettings,
-  } = useSettingsStore();
-
-  // Hydrate from the actual app state so the toggles reflect reality if the
-  // user navigates back to this step after changing something.
-  useEffect(() => {
-    loadSettings();
-  }, [loadSettings]);
-
-  const onAutostart = async (v: boolean) => {
-    // Two things have to happen: register/unregister the LaunchAgent
-    // (real OS side-effect) AND persist the user's intent to settings.json
-    // (what Settings UI reads). We can't trust the autostart plugin's
-    // `isEnabled()` on macOS — for product names with spaces it returns
-    // false even when the plist is on disk and loaded. So we cache.
-    try {
-      if (v) await enableAutostart(); else await disableAutostart();
-      await saveSettings({ autostart_enabled: v });
-    } catch (e) {
-      console.error('Failed to toggle autostart:', e);
-    }
-  };
-
-  const onTelemetry = async (v: boolean) => {
-    try { await saveSettings({ telemetry_enabled: v }); }
-    catch (e) { console.error('Failed to save telemetry:', e); }
-  };
-
-  return (
-    <section className="anim-fade-up max-w-md mx-auto">
-      <h2 className="text-display-sm text-app-text">{t('onboarding.wizard.preferencesTitle')}</h2>
-      <p className="mt-2 text-[13px] text-app-muted leading-relaxed">
-        {t('onboarding.wizard.preferencesSubtitle')}
-      </p>
-
-      <div className="mt-7 space-y-2.5">
-        <PrefRow
-          icon={<Power className="size-4" strokeWidth={1.75} />}
-          tile="bg-app-success-tint text-app-success"
-          label={t('onboarding.preferences.autostartLabel')}
-          desc={t('onboarding.preferences.autostartDesc')}
-          enabled={autostartEnabled}
-          onChange={onAutostart}
-          delay={0}
-        />
-        <PrefRow
-          icon={<Bug className="size-4" strokeWidth={1.75} />}
-          tile="bg-app-warning-tint text-app-warning"
-          label={t('onboarding.preferences.telemetryLabel')}
-          desc={t('onboarding.preferences.telemetryDesc')}
-          enabled={telemetryEnabled}
-          onChange={onTelemetry}
-          delay={1}
-        />
-      </div>
-
-      <p className="mt-5 text-[11px] text-app-faint text-center">
-        {t('onboarding.preferences.footnote')}
-      </p>
-    </section>
-  );
-}
-
-function PrefRow({
-  icon, tile, label, desc, enabled, onChange, delay,
-}: {
-  icon: React.ReactNode;
-  tile: string;
-  label: string;
-  desc: string;
-  enabled: boolean;
-  onChange: (v: boolean) => void;
-  delay: number;
-}) {
-  return (
-    <Card
-      elevation="sm"
-      className="anim-fade-up flex items-center gap-4 px-5 py-4"
-      style={{ animationDelay: `${0.06 + delay * 0.05}s` }}
-    >
-      <div className={cn('shrink-0 size-9 rounded-app-md grid place-items-center', tile)}>
-        {icon}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-medium text-app-text tracking-[-0.005em]">{label}</p>
-        <p className="mt-1 text-[12px] text-app-muted leading-snug">{desc}</p>
-      </div>
-      <Toggle enabled={enabled} onChange={onChange} />
-    </Card>
-  );
-}
-
-/* ----------------------------- Step 4: Tour ------------------------------- */
+/* ----------------------------- Step 3: Tour ------------------------------- */
 
 /**
  * Three illustrated cards walking through the actual usage flow. Replaces the

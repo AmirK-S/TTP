@@ -959,24 +959,21 @@ pub fn run() {
                 // Show onboarding window (permission check flow)
                 let _ = onboarding::show_onboarding(app.handle().clone());
             } else {
-                // Not first launch - check if Groq API key exists, show setup window if not
+                // Not first launch but no Groq key (cleared, or a new
+                // keychain): open Settings, which shows the key form.
                 let has_groq = credentials::get_groq_api_key_internal(app.handle())
                     .map(|k| k.is_some())
                     .unwrap_or(false);
 
                 if !has_groq {
-                    // Show setup window for first-run experience
-                    if let Some(window) = app.get_webview_window("setup") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+                    let _ = settings::open_settings_window(app.handle().clone());
                 }
             }
 
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Prevent app from quitting when setup/settings windows close
+            // Prevent app from quitting when settings/onboarding windows close
             // TTP is a tray app — it should keep running in background
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();

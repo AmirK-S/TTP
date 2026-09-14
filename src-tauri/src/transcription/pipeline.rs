@@ -3037,10 +3037,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             let _ = std::fs::remove_file(&audio_path);
             if use_converted { let _ = std::fs::remove_file(&converted_path); }
             emit_progress(app, "error", "error.no_api_key", None);
-            if let Some(window) = app.get_webview_window("setup") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            let _ = crate::settings::open_settings_window(app.clone());
             trace.abort("no_api_key", serde_json::Value::Null);
             set_state(app, RecordingState::Idle);
             return Err("No Groq API key configured".to_string());
