@@ -563,77 +563,13 @@ pub fn show_pill(app: &AppHandle) {
     }
 }
 
-/// Hide the pill window
-pub fn hide_pill(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("pill") {
-        let _ = window.hide();
-    }
-}
-
-/// Determine if the pill should be visible based on recording state and settings
-/// - Shows during active recording regardless of setting
-/// - Shows during processing (including errors) regardless of setting
-/// - Shows during idle if hide_pill_when_inactive is false
-/// - Hides during idle if hide_pill_when_inactive is true
-pub fn should_show_pill(app: &AppHandle) -> bool {
-    let state = match app.try_state::<Mutex<AppState>>() {
-        Some(s) => s,
-        None => return true,
-    };
-
-    let Ok(app_state) = state.try_lock() else {
-        // Mutex already locked (called from set_state) — fall back to settings-only check
-        return should_show_pill_for_state(&RecordingState::Idle);
-    };
-
-    should_show_pill_for_state(&app_state.recording_state)
-}
-
-/// Check pill visibility based on a known recording state (no mutex needed).
-/// Called from set_state() where the mutex is already held.
-pub fn should_show_pill_for_state(recording_state: &RecordingState) -> bool {
-    // Show during recording and processing (including errors)
-    if *recording_state == RecordingState::Recording || *recording_state == RecordingState::Processing {
-        return true;
-    }
-
-    // Check setting for idle state
-    let settings = get_settings();
-    !settings.hide_pill_when_inactive
-}
-
-/// Set up listener for settings changes to update pill visibility and hands-free mode
-///
-/// Also rebuilds the tray menu on every settings change so a language switch
-/// retranslates every label and tooltip immediately — without this the tray
-/// menu would only pick up the new locale on the next recording transition.
-/// The rebuild is cheap (it just re-runs `build_tray_menu`), so we don't
-/// bother filtering on which setting actually changed.
+/// Rebuild the tray menu on every settings change, so items that depend on a
+/// setting (the Input Monitoring warning follows the chosen trigger) are
+/// current immediately. The rebuild is cheap (it just re-runs
+/// `build_tray_menu`), so we don't bother filtering on which setting changed.
 pub fn setup_settings_listener(app: &AppHandle) {
     let app_handle = app.clone();
     app.listen("settings-changed", move |_event| {
-        // Update pill visibility based on new settings
-        if should_show_pill(&app_handle) {
-            show_pill(&app_handle);
-        } else {
-            hide_pill(&app_handle);
-        }
-
-        // Sync the persisted hands-free preference into AppState. We can
-        // safely refresh it any time the user is idle; we deliberately avoid
-        // touching it mid-recording so a settings tweak can't yank the
-        // current session out of its established mode. Transient overrides
-        // live in `session_hands_free` and are unaffected.
-        let settings = get_settings();
-        if let Some(state) = app_handle.try_state::<Mutex<AppState>>() {
-            if let Ok(mut app_state) = state.try_lock() {
-                if app_state.is_idle() {
-                    app_state.set_persistent_hands_free(settings.hands_free_mode);
-                }
-            }
-        }
-
-        // Rebuild the tray menu so labels reflect the (possibly new) language.
         // Read the current recording state under a try_lock — if we can't get
         // the lock (e.g. mid-transition) we default to is_recording = false,
         // which matches the menu state shown to the user 99% of the time.

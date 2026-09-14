@@ -1,26 +1,11 @@
 // TTP - Talk To Paste
 // Application state management.
 //
-// Separates the PERSISTED hands-free preference (`hands_free_mode`, mirrored
-// from settings.json and surfaced in Settings UI) from the TRANSIENT
-// per-session override (`session_hands_free`, set when the user enters
-// hands-free for a single recording via Fn double-tap or the tray "Start
-// recording" item). Previously both shared a single field, which meant:
-//
-//   - A double-tap that lit `hands_free_mode = true` had to be manually
-//     reset to `settings_hands_free` on stop, in every code path that
-//     observed the stop. Miss one path (a crash, an early return, a future
-//     refactor) and the user's persistent preference silently flipped on
-//     them for the rest of the session.
-//   - Reading "is this session hands-free?" required knowing whether
-//     `hands_free_mode` was currently in "persisted" or "override" mode,
-//     which is exactly the kind of disambiguation a type system is for.
-//
-// The new contract: `hands_free_mode` always reflects the persisted setting.
-// `session_hands_free` is `Some(true)` only for the duration of a single
-// hands-free recording, and is cleared automatically on every transition
-// back to Idle. Callers read `effective_hands_free()` instead of the raw
-// field.
+// Hands-free is per recording, never a setting. `session_hands_free` is
+// `Some(true)` only for the duration of a single hands-free recording —
+// entered by a double-tap of the hotkey or the tray "Start recording" item —
+// and is cleared automatically on every transition back to Idle, so it can
+// never leak into the next press. Callers read `effective_hands_free()`.
 
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
@@ -35,11 +20,6 @@ pub enum RecordingState {
 
 pub struct AppState {
     pub recording_state: RecordingState,
-    /// Persistent user preference, mirrored from `settings.hands_free_mode`.
-    /// Mutate ONLY when settings change (see `tray::sync_from_settings` and
-    /// `lib.rs::set_fn_key_enabled`). Per-recording overrides go through
-    /// `session_hands_free` below.
-    pub hands_free_mode: bool,
     /// Transient hands-free override active for the current recording only.
     /// Set to `Some(true)` when the user enters hands-free via Fn double-tap
     /// or the tray "Start" menu item. Cleared back to `None` automatically
@@ -57,7 +37,6 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             recording_state: RecordingState::Idle,
-            hands_free_mode: false,
             session_hands_free: None,
             last_shortcut_time: None,
             recording_started_at: None,
@@ -172,19 +151,9 @@ impl AppState {
             }
         }
 
-        // Handle pill visibility when transitioning to Idle.
-        //
-        // CAREFUL: we are holding `&mut self` (the AppState mutex is locked
-        // by the caller). `should_show_pill_for_state` and `hide_pill` MUST
-        // NOT re-enter AppState — they currently only read settings / call
-        // window APIs. If anyone refactors `hide_pill` to take the AppState
-        // lock or do async work that re-enters here, this becomes a deadlock.
-        // Verified safe 2026-05-07, re-verified 2026-06-10.
-        if old_state != RecordingState::Idle && state == RecordingState::Idle {
-            if !crate::tray::should_show_pill_for_state(&state) {
-                crate::tray::hide_pill(app);
-            }
-        }
+        // No pill hide on Idle. The pill window hides itself once it has
+        // finished drawing the outcome (a tick, an error) — Rust does not
+        // know how long that frame lasts, and hiding here would cut it off.
 
         app.emit("recording-state-changed", &state).ok();
     }
@@ -202,10 +171,8 @@ impl AppState {
     }
 
     /// Whether the current (or upcoming) recording session is hands-free.
-    /// Session overrides always win over the persisted preference; absent a
-    /// transient override the persisted value applies.
     pub fn effective_hands_free(&self) -> bool {
-        self.session_hands_free.unwrap_or(self.hands_free_mode)
+        self.session_hands_free.unwrap_or(false)
     }
 
     /// Mark the next-or-current recording as hands-free for this session
@@ -214,12 +181,6 @@ impl AppState {
         self.session_hands_free = Some(true);
     }
 
-    /// Push a refreshed value from settings.json into the persisted field.
-    /// Use this at the boundary where settings actually change; never mutate
-    /// `hands_free_mode` to express a transient state.
-    pub fn set_persistent_hands_free(&mut self, value: bool) {
-        self.hands_free_mode = value;
-    }
 }
 
 #[cfg(test)]
@@ -237,31 +198,11 @@ mod tests {
     }
 
     #[test]
-    fn effective_hands_free_falls_back_to_persisted_when_no_session_override() {
-        let mut s = AppState::default();
-        s.set_persistent_hands_free(true);
-        assert!(s.effective_hands_free());
-
-        s.set_persistent_hands_free(false);
-        assert!(!s.effective_hands_free());
-    }
-
-    #[test]
-    fn session_override_wins_over_persisted_value() {
-        let mut s = AppState::default();
-        s.set_persistent_hands_free(false);
-        s.enter_hands_free_session();
-        assert!(s.effective_hands_free());
-        // Persisted field is untouched.
-        assert!(!s.hands_free_mode);
-    }
-
-    #[test]
-    fn enter_hands_free_session_sets_only_the_override_field() {
+    fn entering_a_hands_free_session_makes_it_effective() {
         let mut s = AppState::default();
         s.enter_hands_free_session();
         assert_eq!(s.session_hands_free, Some(true));
-        assert!(!s.hands_free_mode);
+        assert!(s.effective_hands_free());
     }
 
     #[test]
@@ -271,16 +212,5 @@ mod tests {
         assert!(s.is_processing());
         assert!(!s.is_recording());
         assert!(!s.is_idle());
-    }
-
-    #[test]
-    fn set_persistent_does_not_clobber_session_override() {
-        let mut s = AppState::default();
-        s.enter_hands_free_session();
-        s.set_persistent_hands_free(false);
-        // Session override is still active even after the persisted field
-        // was updated — this is the documented contract.
-        assert_eq!(s.session_hands_free, Some(true));
-        assert!(s.effective_hands_free());
     }
 }

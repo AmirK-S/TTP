@@ -26,8 +26,6 @@ export interface Settings {
   shortcut: string;
   fn_key_enabled: boolean;
   telemetry_enabled: boolean;
-  hands_free_mode: boolean;
-  hide_pill_when_inactive: boolean;
   autostart_enabled: boolean;
   history_enabled: boolean;
   use_beta_channel: boolean;
@@ -74,8 +72,6 @@ interface SettingsStore {
   shortcut: string;
   fnKeyEnabled: boolean;
   telemetryEnabled: boolean;
-  handsFreeMode: boolean;
-  hidePillWhenInactive: boolean;
   autostartEnabled: boolean;
   historyEnabled: boolean;
   useBetaChannel: boolean;
@@ -137,8 +133,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   shortcut: 'Alt+Space',
   fnKeyEnabled: false,
   telemetryEnabled: false,
-  handsFreeMode: false,
-  hidePillWhenInactive: false,
   autostartEnabled: false,
   historyEnabled: true,
   useBetaChannel: false,
@@ -175,8 +169,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         shortcut: settings.shortcut || 'Alt+Space',
         fnKeyEnabled: settings.fn_key_enabled ?? false,
         telemetryEnabled: settings.telemetry_enabled ?? false,
-        handsFreeMode: settings.hands_free_mode ?? false,
-        hidePillWhenInactive: settings.hide_pill_when_inactive ?? false,
         autostartEnabled: settings.autostart_enabled ?? false,
         historyEnabled: settings.history_enabled ?? true,
         useBetaChannel: settings.use_beta_channel ?? false,
@@ -202,8 +194,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         shortcut: get().shortcut,
         fn_key_enabled: get().fnKeyEnabled,
         telemetry_enabled: get().telemetryEnabled,
-        hands_free_mode: get().handsFreeMode,
-        hide_pill_when_inactive: get().hidePillWhenInactive,
         autostart_enabled: get().autostartEnabled,
         history_enabled: get().historyEnabled,
         use_beta_channel: get().useBetaChannel,
@@ -228,8 +218,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         shortcut: newSettings.shortcut,
         fnKeyEnabled: newSettings.fn_key_enabled,
         telemetryEnabled: newSettings.telemetry_enabled,
-        handsFreeMode: newSettings.hands_free_mode,
-        hidePillWhenInactive: newSettings.hide_pill_when_inactive,
         autostartEnabled: newSettings.autostart_enabled,
         historyEnabled: newSettings.history_enabled,
         useBetaChannel: newSettings.use_beta_channel,
@@ -255,8 +243,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         shortcut: 'Alt+Space',
         fnKeyEnabled: false,
         telemetryEnabled: false,
-        handsFreeMode: false,
-        hidePillWhenInactive: false,
         autostartEnabled: false,
         historyEnabled: true,
         useBetaChannel: false,

@@ -211,10 +211,6 @@
     },
     "recordingMode": {
       "title": "Comportement",
-      "handsFreeLabel": "Mode mains libres (bascule)",
-      "handsFreeDesc": "Appuie une fois pour démarrer, appuie de nouveau pour arrêter.",
-      "hidePillLabel": "Masquer la pill quand inactive",
-      "hidePillDesc": "N'affiche l'indicateur que pendant un enregistrement.",
       "vadAutoStopLabel": "Arrêt auto après un silence",
       "vadAutoStopDesc": "Termine l'enregistrement automatiquement quand tu as fini de parler. Pratique quand tu oublies de relâcher le raccourci.",
       "vadSilenceSecsLabel": "Silence avant arrêt auto",
@@ -415,8 +411,6 @@
       "stepIndicatorLabel": "Étape {{current}} sur {{total}}"
     },
     "preferences": {
-      "hidePillLabel": "Cacher le pill quand tu n'enregistres pas",
-      "hidePillDesc": "L'indicateur flottant disparaît jusqu'à ce que tu appuies sur ton raccourci.",
       "autostartLabel": "Lancer TTP au démarrage",
       "autostartDesc": "S'éveille avec ton Mac pour que le raccourci soit prêt quand tu l'es.",
       "telemetryLabel": "Partager les crash reports anonymes",

@@ -24,7 +24,6 @@ import {
   ExternalLink,
   Sparkles,
   Search,
-  EyeOff,
   Power,
   Bug,
 } from 'lucide-react';
@@ -455,10 +454,9 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
 /* -------------------------- Step 3: Preferences --------------------------- */
 
 /**
- * Three opt-in toggles surfaced up-front so users don't have to dig into
+ * Two opt-in toggles surfaced up-front so users don't have to dig into
  * Settings later. Telemetry default OFF (privacy first), autostart default OFF
- * (don't squat in the user's launchd unless they ask), hide-pill default OFF
- * (visible feedback while they're new to the app — they can hide it later).
+ * (don't squat in the user's launchd unless they ask).
  *
  * Each toggle persists immediately; no save button. The pattern matches the
  * Settings panel so muscle-memory transfers.
@@ -470,7 +468,7 @@ function PreferencesStep() {
   // the FULL Settings struct; calling it with a partial corrupts the file
   // and silently fails — which is exactly the bug v2.1.2 shipped with.
   const {
-    hidePillWhenInactive, telemetryEnabled, autostartEnabled, loadSettings, saveSettings,
+    telemetryEnabled, autostartEnabled, loadSettings, saveSettings,
   } = useSettingsStore();
 
   // Hydrate from the actual app state so the toggles reflect reality if the
@@ -478,11 +476,6 @@ function PreferencesStep() {
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
-
-  const onHidePill = async (v: boolean) => {
-    try { await saveSettings({ hide_pill_when_inactive: v }); }
-    catch (e) { console.error('Failed to save hide_pill:', e); }
-  };
 
   const onAutostart = async (v: boolean) => {
     // Two things have to happen: register/unregister the LaunchAgent
@@ -512,22 +505,13 @@ function PreferencesStep() {
 
       <div className="mt-7 space-y-2.5">
         <PrefRow
-          icon={<EyeOff className="size-4" strokeWidth={1.75} />}
-          tile="bg-app-accent-tint text-app-accent"
-          label={t('onboarding.preferences.hidePillLabel')}
-          desc={t('onboarding.preferences.hidePillDesc')}
-          enabled={hidePillWhenInactive}
-          onChange={onHidePill}
-          delay={0}
-        />
-        <PrefRow
           icon={<Power className="size-4" strokeWidth={1.75} />}
           tile="bg-app-success-tint text-app-success"
           label={t('onboarding.preferences.autostartLabel')}
           desc={t('onboarding.preferences.autostartDesc')}
           enabled={autostartEnabled}
           onChange={onAutostart}
-          delay={1}
+          delay={0}
         />
         <PrefRow
           icon={<Bug className="size-4" strokeWidth={1.75} />}
@@ -536,7 +520,7 @@ function PreferencesStep() {
           desc={t('onboarding.preferences.telemetryDesc')}
           enabled={telemetryEnabled}
           onChange={onTelemetry}
-          delay={2}
+          delay={1}
         />
       </div>
 

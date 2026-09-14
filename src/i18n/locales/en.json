@@ -211,10 +211,6 @@
     },
     "recordingMode": {
       "title": "Behavior",
-      "handsFreeLabel": "Hands-free mode (toggle)",
-      "handsFreeDesc": "Press once to start, press again to stop.",
-      "hidePillLabel": "Hide pill when inactive",
-      "hidePillDesc": "Only show the recording indicator while you're recording.",
       "vadAutoStopLabel": "Auto-stop after silence",
       "vadAutoStopDesc": "End the recording automatically once you've stopped speaking. Useful when you forget to release the hotkey.",
       "vadSilenceSecsLabel": "Silence before auto-stop",
@@ -415,8 +411,6 @@
       "stepIndicatorLabel": "Step {{current}} of {{total}}"
     },
     "preferences": {
-      "hidePillLabel": "Hide the pill when you're not recording",
-      "hidePillDesc": "The floating indicator stays out of sight until you press your shortcut.",
       "autostartLabel": "Launch TTP at startup",
       "autostartDesc": "Wakes up with your Mac so the shortcut is ready when you are.",
       "telemetryLabel": "Share anonymous crash reports",

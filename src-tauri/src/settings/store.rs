@@ -24,12 +24,6 @@ pub struct Settings {
     /// Default is OFF -- user must explicitly enable
     #[serde(default)]
     pub telemetry_enabled: bool,
-    /// Hands-free mode (double-tap to toggle) - persists across app restarts
-    #[serde(default)]
-    pub hands_free_mode: bool,
-    /// Hide the recording indicator pill when not recording
-    #[serde(default)]
-    pub hide_pill_when_inactive: bool,
     /// Cached "user wants autostart" intent. The actual side effect is the
     /// LaunchAgent plist managed by `tauri-plugin-autostart`; this field is
     /// what the Settings UI reads, because the plugin's `is_enabled()` is
@@ -131,8 +125,6 @@ impl Default for Settings {
             #[cfg(not(target_os = "macos"))]
             fn_key_enabled: false,
             telemetry_enabled: false,
-            hands_free_mode: false,
-            hide_pill_when_inactive: false,
             autostart_enabled: false,
             history_enabled: true,
             use_beta_channel: false,
@@ -399,8 +391,8 @@ fn merge_payload(
 /// Say out loud that a field arrived that this build does not know.
 ///
 /// Preserving it silently would be the same anti-pattern in a nicer coat: the
-/// data would survive, and a typo'd field name — `hide_pill_when_idle` for
-/// `hide_pill_when_inactive` — would still look like a save that worked. So it
+/// data would survive, and a typo'd field name — `history_enable` for
+/// `history_enabled` — would still look like a save that worked. So it
 /// is both: preserved AND reported, with the field named, because a count
 /// tells you something is wrong and nothing about what.
 fn report_unknown_fields(unknown: &[String]) {
@@ -622,8 +614,6 @@ mod payload_merge_tests {
             "shortcut": "FnKey",
             "fn_key_enabled": true,
             "telemetry_enabled": false,
-            "hands_free_mode": false,
-            "hide_pill_when_inactive": false,
             "autostart_enabled": false,
             "history_enabled": true,
             "use_beta_channel": false,

@@ -17,6 +17,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle, Check, CheckCheck } from 'lucide-react';
 import { safeInvoke } from '../lib/safeInvoke';
@@ -161,6 +162,22 @@ export function FloatingBar() {
       setShowTutorial(false);
     }
   }, [stage, showTutorial]);
+
+  /* The window hides itself. ------------------------------------------------
+     Rust shows the pill when a recording starts and never hides it: only this
+     window knows how long the tick or the error it is drawing needs to stay
+     up. Once there is nothing left to draw — and the first-launch hint is not
+     showing — the window goes away. The short delay absorbs the one-frame
+     gaps between states (processing → completion) that would otherwise
+     flicker the window off and back on. */
+  const hasNothingToShow = isIdle && !showTutorial;
+  useEffect(() => {
+    if (!hasNothingToShow) return;
+    const id = window.setTimeout(() => {
+      try { getCurrentWindow().hide().catch(() => {}); } catch { /* not in Tauri */ }
+    }, 200);
+    return () => window.clearTimeout(id);
+  }, [hasNothingToShow]);
 
   /* Voice-reactive waveform, driven by audio-level events from Rust. --------
    *

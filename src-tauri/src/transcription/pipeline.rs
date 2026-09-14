@@ -2691,7 +2691,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 "transcription_language": s.transcription_language.as_deref().unwrap_or("auto"),
                 "vad_auto_stop": s.vad_auto_stop_enabled,
                 "vad_silence_secs": s.vad_silence_secs,
-                "hands_free": s.hands_free_mode,
                 "history": s.history_enabled,
                 "diagnostics": s.diagnostics_enabled,
                 "audio_device_pinned": s.audio_device_name.is_some(),

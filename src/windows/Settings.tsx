@@ -303,7 +303,7 @@ function UpdatesCard() {
 export function Settings() {
   const { t } = useTranslation();
   const {
-    aiPolishEnabled, telemetryEnabled, shortcut, handsFreeMode, hidePillWhenInactive,
+    aiPolishEnabled, telemetryEnabled, shortcut,
     autostartEnabled, historyEnabled, vadAutoStopEnabled, vadSilenceSecs, audioDeviceName,
     transcriptionLanguage, diagnosticsEnabled, dictionary, history, loading, isPro, licenseKey,
     licenseStatus, licenseExpiresAt, licenseActivationCount, licenseActivationLimit,
@@ -413,7 +413,7 @@ export function Settings() {
 
   /* ---- Generic toggle factory: cuts 7 near-identical handlers down to 1 --- */
   const makeToggle = useCallback(
-    <K extends 'ai_polish_enabled' | 'telemetry_enabled' | 'hands_free_mode' | 'hide_pill_when_inactive' | 'history_enabled' | 'vad_auto_stop_enabled' | 'diagnostics_enabled'>(
+    <K extends 'ai_polish_enabled' | 'telemetry_enabled' | 'history_enabled' | 'vad_auto_stop_enabled' | 'diagnostics_enabled'>(
       key: K,
       sideEffect?: () => void,
     ) => async (enabled: boolean) => {
@@ -428,8 +428,6 @@ export function Settings() {
 
   const handlePolishToggle = makeToggle('ai_polish_enabled');
   const handleTelemetryToggle = makeToggle('telemetry_enabled', () => setShowRestartBanner(true));
-  const handleHandsFreeModeToggle = makeToggle('hands_free_mode');
-  const handleHidePillWhenInactiveToggle = makeToggle('hide_pill_when_inactive');
   const handleHistoryEnabledToggle = makeToggle('history_enabled');
   const handleVadAutoStopToggle = makeToggle('vad_auto_stop_enabled');
   const handleDiagnosticsToggle = makeToggle('diagnostics_enabled');
@@ -746,18 +744,6 @@ export function Settings() {
             </SettingsSection>
 
             <SettingsSection title={t('settings.recordingMode.title')}>
-              <SettingsRow
-                label={t('settings.recordingMode.handsFreeLabel')}
-                description={t('settings.recordingMode.handsFreeDesc')}
-                control={<Toggle enabled={handsFreeMode} onChange={handleHandsFreeModeToggle} disabled={loading} />}
-              />
-              <div className="border-t border-app-border my-1" />
-              <SettingsRow
-                label={t('settings.recordingMode.hidePillLabel')}
-                description={t('settings.recordingMode.hidePillDesc')}
-                control={<Toggle enabled={hidePillWhenInactive} onChange={handleHidePillWhenInactiveToggle} disabled={loading} />}
-              />
-              <div className="border-t border-app-border my-1" />
               <SettingsRow
                 label={t('settings.recordingMode.vadAutoStopLabel')}
                 description={t('settings.recordingMode.vadAutoStopDesc')}

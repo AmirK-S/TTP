@@ -936,22 +936,6 @@ pub fn run() {
                 }
             }
 
-            // Load persisted hands_free_mode from settings into the
-            // persisted-only field. The session override stays `None` until
-            // a per-recording event sets it (Fn double-tap / tray start).
-            let hands_free_mode = settings::get_settings().hands_free_mode;
-            if let Some(state) = app.try_state::<Mutex<AppState>>() {
-                if let Ok(mut app_state) = state.try_lock() {
-                    app_state.set_persistent_hands_free(hands_free_mode);
-                }
-            }
-
-            // Respect the `hide_pill_when_inactive` setting at startup — without this,
-            // the pill always reappeared after a relaunch even when the user had hidden it.
-            if tray::should_show_pill(app.handle()) {
-                tray::show_pill(app.handle());
-            }
-
             // Pre-warm the Groq TLS connection so the first push-to-talk after
             // launch doesn't pay the full TCP+TLS handshake (~300-600ms on the
             // user's RTT). Fire-and-forget HEAD into the shared HTTP client's
@@ -968,6 +952,10 @@ pub fn run() {
             // Check if this is the first launch
             let is_first = permissions::is_first_launch();
             if is_first {
+                // The pill carries the first-launch "press Fn" hint, so it is
+                // shown at rest this once. It hides itself after the first
+                // dictation dismisses the hint.
+                tray::show_pill(app.handle());
                 // Show onboarding window (permission check flow)
                 let _ = onboarding::show_onboarding(app.handle().clone());
             } else {

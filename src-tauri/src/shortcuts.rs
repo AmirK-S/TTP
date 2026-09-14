@@ -2,19 +2,16 @@
 // Global keyboard shortcut handling with push-to-talk and double-tap toggle
 //
 // Hands-free semantics:
-//   * Settings toggle `hands_free_mode` = persistent preference. When true,
-//     every single press is a toggle (press to start, press to stop).
-//   * Double-tap = TRANSIENT override for one recording. Sets the AppState
-//     `session_hands_free` override only — never touches the persisted
-//     setting. The override is cleared automatically when set_state
-//     transitions back to Idle (state.rs), so there is no "restore on
-//     stop" code in this file: it would be redundant and a future refactor
-//     hazard.
+//   * Hold = push-to-talk.
+//   * Double-tap = hands-free for one recording. Sets the AppState
+//     `session_hands_free` override, which is cleared automatically when
+//     set_state transitions back to Idle (state.rs), so there is no "restore
+//     on stop" code in this file.
 
 use crate::settings::get_settings;
 use crate::sounds::{play_start_sound, play_stop_sound};
 use crate::state::{AppState, RecordingState};
-use crate::tray::{set_recording_icon, should_show_pill, show_pill, hide_pill};
+use crate::tray::{set_recording_icon, show_pill};
 use std::sync::Mutex;
 use std::time::Instant;
 use tauri::{AppHandle, Manager};
@@ -190,11 +187,9 @@ pub fn handle_fn_stop(app: &AppHandle) {
     }
 }
 
-/// Handle shortcut key press - implements double-tap detection and settings-based toggle mode
+/// Handle shortcut key press - implements double-tap detection
 fn handle_shortcut_pressed(state: &mut AppState, app: &AppHandle) {
     let now = Instant::now();
-    let settings = get_settings();
-    let settings_hands_free = settings.hands_free_mode;
 
     let is_double_tap = state
         .last_shortcut_time
@@ -224,9 +219,6 @@ fn handle_shortcut_pressed(state: &mut AppState, app: &AppHandle) {
             _ => {}
         }
     } else {
-        // Keep the persisted preference in sync with the settings cache so
-        // any UI change made while we were idle is reflected now.
-        state.set_persistent_hands_free(settings_hands_free);
         if state.is_idle() {
             start_recording(state, app);
         } else if state.is_recording() && state.effective_hands_free() {
@@ -257,17 +249,11 @@ fn start_recording(state: &mut AppState, app: &AppHandle) {
 }
 
 /// Stop recording: update state to Processing, play sound
-/// Pill visibility is determined by should_show_pill() during Processing state
 fn stop_recording(state: &mut AppState, app: &AppHandle) {
     state.set_state(RecordingState::Processing, app);
     set_recording_icon(app, false);
     play_stop_sound(app);
     #[cfg(target_os = "macos")]
     crate::fnkey::set_hands_free_recording(false);
-    // During Processing, show pill if setting allows (shows during processing regardless of hide setting)
-    if should_show_pill(app) {
-        show_pill(app);
-    } else {
-        hide_pill(app);
-    }
+    show_pill(app);
 }
