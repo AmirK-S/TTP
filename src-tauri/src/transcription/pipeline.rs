@@ -3545,11 +3545,29 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     };
     // Only what this dictation can use is sent; most send nothing and pay
     // no latency for the feature (see `ScreenContext::for_polish`).
-    let sent_context = screen_context.as_ref().and_then(|c| c.for_polish(&cleaned_text));
-    if let Some(ctx) = &screen_context {
+    //
+    // The spellings in the user's dictionary join the screen's terms, so a
+    // variant the dictionary has no entry for ("Kelou" when it maps "Kélou")
+    // still reaches the right spelling. They travel under the same rule —
+    // only when they sound like something dictated — and the dictionary pass
+    // after polish still has the last word.
+    let dictionary_terms: Vec<String> = crate::dictionary::store::get_dictionary()
+        .into_iter()
+        .map(|e| e.correction)
+        .collect();
+    let candidates = if polish_quota_ok {
+        let base = screen_context.clone().unwrap_or_default();
+        Some(base.with_leading_terms(&dictionary_terms))
+    } else {
+        None
+    };
+    let sent_context = candidates.as_ref().and_then(|c| c.for_polish(&cleaned_text));
+    if let Some(ctx) = &candidates {
         trace.stage(
             "screen_context.relevance",
             serde_json::json!({
+                "dictionary_terms": dictionary_terms.len(),
+                "screen_captured": screen_context.is_some(),
                 "terms_available": ctx.terms.len(),
                 "terms_sent": sent_context.as_ref().map_or(0, |s| s.terms.len()),
                 "continues_sentence": sent_context.as_ref().is_some_and(|s| s.before_cursor.is_some()),

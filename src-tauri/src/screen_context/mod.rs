@@ -174,6 +174,21 @@ impl ScreenContext {
 }
 
 impl ScreenContext {
+    /// This context with `extra` terms placed first, duplicates (ignoring
+    /// case) dropped. Used for the dictionary's spellings, which outrank
+    /// anything read off the screen.
+    pub fn with_leading_terms(mut self, extra: &[String]) -> Self {
+        let mut seen = std::collections::HashSet::new();
+        let terms = extra
+            .iter()
+            .chain(self.terms.iter())
+            .filter(|t| !t.trim().is_empty() && seen.insert(t.to_lowercase()))
+            .cloned()
+            .collect();
+        self.terms = terms;
+        self
+    }
+
     /// The part of this context worth a polish request, or `None` when none
     /// of it is.
     ///
@@ -731,6 +746,22 @@ mod tests {
         assert_eq!(relevant, vec!["Kellou", "Tauri", "Claude Code"]);
         // Already spelled right: nothing to fix, nothing to send.
         assert!(relevant_terms(&terms, "on en parle sur Slack").is_empty());
+    }
+
+    #[test]
+    fn dictionary_spellings_come_first_and_reach_the_model_alone() {
+        let screen = ScreenContext {
+            terms: vec!["tauri".into(), "Slack".into()],
+            ..Default::default()
+        };
+        let merged = screen.with_leading_terms(&["Tauri".into(), "Kellou".into()]);
+        assert_eq!(merged.terms, vec!["Tauri", "Kellou", "Slack"]);
+
+        // No screen at all: the dictionary alone still corrects a variant.
+        let dictionary_only = ScreenContext::default().with_leading_terms(&["Kellou".into()]);
+        let sent = dictionary_only.for_polish("merci Kelou").unwrap();
+        assert_eq!(sent.terms, vec!["Kellou"]);
+        assert!(sent.render_block().unwrap().contains("Kellou"));
     }
 
     #[test]
