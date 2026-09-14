@@ -53,7 +53,7 @@ describe('WhatsNew', () => {
     expect(await screen.findByText(/What's new in v3\.1\.7/)).toBeInTheDocument();
     // A line from the middle of the real 3.1.7 entry, so this fails if the
     // body is empty, truncated, or the wrong version's.
-    expect(screen.getByText(/the pill has a face/)).toBeInTheDocument();
+    expect(screen.getByText(/The Companion: sound packs/)).toBeInTheDocument();
   });
 
   it('renders the French note when the app is in French', async () => {
@@ -64,7 +64,7 @@ describe('WhatsNew', () => {
     render(<WhatsNew />);
     // The old Rust dispatcher had to be told about each French entry by hand
     // and could fall through to English. i18next just resolves the key.
-    expect(await screen.findByText(/la pilule a un visage/)).toBeInTheDocument();
+    expect(await screen.findByText(/Le Compagnon : des packs de sons/)).toBeInTheDocument();
     // `beforeEach` puts it back; switching here would re-render outside act().
   });
 
