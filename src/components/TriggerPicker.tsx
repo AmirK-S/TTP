@@ -72,6 +72,10 @@ export function TriggerPicker() {
   };
 
   useTauriEvent<CaptureResult>('trigger-captured', (event) => {
+    // Every open window with a picker hears the event (Settings and
+    // onboarding can both be up); only the one that started the capture acts,
+    // or the trigger is saved twice.
+    if (!capturingRef.current) return;
     const result = event.payload;
     if (result.status === 'rejected') {
       // Still listening: say why and let them press something else.

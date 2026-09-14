@@ -574,12 +574,11 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
     let _ = APP_HANDLE.set(app.clone());
     FN_MONITORING_ACTIVE.store(true, Ordering::Relaxed);
 
+    // Asking for Input Monitoring is the caller's decision (lib.rs skips it
+    // while the onboarding is pending). Without it the tap fails to create and
+    // the watchdog below keeps retrying until it is granted.
     if !has_input_monitoring() {
-        fnlog!("[FnKey] Input Monitoring permission not granted — requesting...");
-        let granted = request_input_monitoring();
-        if !granted {
-            fnlog!("[FnKey] Input Monitoring denied — Fn key won't work");
-        }
+        fnlog!("[FnKey] Input Monitoring permission not granted — the trigger will not work until it is");
     }
 
     unsafe {

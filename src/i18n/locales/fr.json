@@ -432,7 +432,7 @@
     "mouseButton": "Bouton de souris {{n}}"
   },
   "permissionHelper": {
-    "instruction": "Glisse TTP dans la liste au-dessus pour autoriser {{permission}}",
-    "dragHint": "Glisse-moi"
+    "instruction": "Glisse dans la liste ci-dessus",
+    "dragHint": "pour autoriser : {{permission}}"
   }
 }

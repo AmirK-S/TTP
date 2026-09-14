@@ -107,11 +107,14 @@
   box-decoration-break: clone;
 }
 
-/* The floating-bar / pill window stays transparent; every other window
-   inherits the token bg from :root. */
+/* The floating-bar / pill window and the permission helper stay transparent;
+   every other window inherits the token bg from :root. */
 html.floating-bar,
 html.floating-bar body,
-html.floating-bar #root {
+html.floating-bar #root,
+html.transparent-window,
+html.transparent-window body,
+html.transparent-window #root {
   background: transparent !important;
 }
 

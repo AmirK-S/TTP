@@ -27,8 +27,8 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, LogicalPosition, Manager, WebviewUrl, WebviewWindowBuilder};
 
 const LABEL: &str = "permission-helper";
-const WIDTH: f64 = 460.0;
-const HEIGHT: f64 = 92.0;
+const WIDTH: f64 = 420.0;
+const HEIGHT: f64 = 96.0;
 /// Width of the System Settings sidebar; the panel centres on the content area
 /// to its right, which is where the list it points at lives.
 const SIDEBAR_WIDTH: f64 = 215.0;
@@ -47,13 +47,17 @@ pub enum PermissionKind {
 }
 
 impl PermissionKind {
+    /// The Ventura-and-later form, which is what Codex opens. The legacy
+    /// `com.apple.preference.security` form landed on the Privacy & Security
+    /// root instead of the list on Amir's Mac (2026-09-14), with nothing to
+    /// drop the icon into.
     fn pane_url(self) -> &'static str {
         match self {
             Self::Accessibility => {
-                "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+                "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility"
             }
             Self::InputMonitoring => {
-                "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"
+                "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_ListenEvent"
             }
         }
     }
@@ -112,12 +116,7 @@ pub fn show_permission_helper(app: AppHandle, kind: PermissionKind) -> Result<St
         return Ok("granted".into());
     }
 
-    {
-        use tauri_plugin_opener::OpenerExt;
-        app.opener()
-            .open_url(kind.pane_url(), None::<&str>)
-            .map_err(|e| e.to_string())?;
-    }
+    open_pane(kind)?;
 
     let bundle = bundle_path();
     let bundle_str = bundle.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
@@ -180,6 +179,27 @@ pub fn show_permission_helper(app: AppHandle, kind: PermissionKind) -> Result<St
         .map_err(|e| e.to_string())?;
 
     Ok("panel".into())
+}
+
+/// Open System Settings on `kind`'s list.
+///
+/// When System Settings is already running, a deep link can bring it forward
+/// without navigating — it stays on whatever page it was showing. So the link
+/// is sent a second time once the app is in front, which is when it is honoured.
+fn open_pane(kind: PermissionKind) -> Result<(), String> {
+    let url = kind.pane_url();
+    let open = || {
+        std::process::Command::new("open")
+            .args(["-b", SETTINGS_BUNDLE_ID, url])
+            .status()
+            .map_err(|e| format!("Failed to open System Settings: {}", e))
+    };
+    open()?;
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(700));
+        let _ = std::process::Command::new("open").args(["-b", SETTINGS_BUNDLE_ID, url]).status();
+    });
+    Ok(())
 }
 
 #[tauri::command]

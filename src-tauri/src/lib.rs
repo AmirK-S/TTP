@@ -916,9 +916,17 @@ pub fn run() {
             // Set up settings change listener for pill visibility updates
             tray::setup_settings_listener(app.handle());
 
+            // On first launch the onboarding asks for every permission, one at
+            // a time and with the drag panel. Firing the system prompts here as
+            // well put macOS's own "TTP would like to control this computer"
+            // dialog on top of the onboarding before it had said a word
+            // (seen 2026-09-14 on the first signed build of the new flow).
+            #[cfg(target_os = "macos")]
+            let onboarding_pending = permissions::is_first_launch();
+
             // Check accessibility permission (needed for paste simulation on macOS)
             #[cfg(target_os = "macos")]
-            {
+            if !onboarding_pending {
                 let api_trusted = paste::check_accessibility();
                 let actually_works = paste::probe_accessibility();
 
@@ -956,6 +964,9 @@ pub fn run() {
             // none of the last three, so it is not used here.
             #[cfg(target_os = "macos")]
             {
+                if !onboarding_pending && !fnkey::has_input_monitoring() {
+                    fnkey::request_input_monitoring();
+                }
                 fnkey::start_fn_key_monitor(app.handle());
                 fnkey::set_trigger(settings::store::effective_trigger(&settings::get_settings()));
             }
