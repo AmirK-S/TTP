@@ -3817,6 +3817,13 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 // first command `docs/tracing.md` teaches. It is the single
                 // most useful line next to a suspect `paste.verify`, so it now
                 // belongs to the dictation.
+                let deferred_ms = crate::paste::last_injection_deferred_ms();
+                if deferred_ms > 0 {
+                    trace.stage(
+                        "paste.deferred",
+                        serde_json::json!({ "waited_ms": deferred_ms, "reason": "next_dictation_key_held" }),
+                    );
+                }
                 let held = crate::paste::last_injection_modifiers();
                 if held != 0 {
                     trace.stage(

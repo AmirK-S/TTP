@@ -8,7 +8,18 @@
 // never leak into the next press. Callers read `effective_hands_free()`.
 
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
+
+/// Mirror of `recording_state == Recording`, readable without the AppState
+/// lock — by the paste injector, which runs on a blocking thread in the middle
+/// of a dictation and must not take that lock.
+static RECORDING: AtomicBool = AtomicBool::new(false);
+
+/// Whether a recording is in progress right now.
+pub fn recording_in_progress() -> bool {
+    RECORDING.load(Ordering::Relaxed)
+}
 use tauri::{AppHandle, Emitter};
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -48,6 +59,7 @@ impl AppState {
     pub fn set_state(&mut self, state: RecordingState, app: &AppHandle) {
         let old_state = self.recording_state.clone();
         self.recording_state = state.clone();
+        RECORDING.store(state == RecordingState::Recording, Ordering::Relaxed);
 
         // The state machine is the thing that gets stuck. `handle_shortcut_pressed`
         // only acts from Idle or Recording, so a session that never leaves

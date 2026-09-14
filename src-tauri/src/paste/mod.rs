@@ -20,4 +20,7 @@ pub use clipboard::ClipboardGuard;
 pub use permissions::check_accessibility;
 #[cfg(target_os = "macos")]
 pub use permissions::{check_accessibility_with_prompt, probe_accessibility, reset_accessibility_tcc};
-pub use simulate::{describe_held_modifiers, last_injection_modifiers, simulate_paste, simulate_typing};
+pub use simulate::{
+    describe_held_modifiers, last_injection_deferred_ms, last_injection_modifiers, simulate_paste,
+    simulate_typing,
+};

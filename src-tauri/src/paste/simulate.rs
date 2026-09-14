@@ -79,6 +79,12 @@ mod mac {
     /// latency to every dictation.
     pub const MODIFIER_SETTLE_MAX_MS: u64 = 250;
 
+    /// How long to hold an injection back while the user is holding a
+    /// modifier *to record the next dictation*. That is not a stuck flag — it
+    /// is a real key that will come up when they finish talking — so it is
+    /// worth waiting for, up to the recording cap (five minutes).
+    pub const NEXT_DICTATION_MAX_WAIT_MS: u64 = 300_000;
+
     /// Poll interval while waiting for modifiers to clear.
     const MODIFIER_POLL_MS: u64 = 10;
 
@@ -205,6 +211,15 @@ mod mac {
 static LAST_INJECTION_MODIFIERS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 
+/// How long the most recent injection was held back for the next dictation's
+/// key to come up. Zero when it was not.
+static LAST_INJECTION_DEFERRED_MS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+pub fn last_injection_deferred_ms() -> u64 {
+    LAST_INJECTION_DEFERRED_MS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Modifier bits held when the most recent injection went out — zero when the
 /// coast was clear. Read immediately after `simulate_typing` / `simulate_paste`
 /// returns; one injection runs at a time (the state machine is in Processing
@@ -237,11 +252,35 @@ pub fn describe_held_modifiers(bits: u64) -> String {
 fn settle_before_injection() -> u64 {
     thread::sleep(Duration::from_millis(FOCUS_SETTLE_MS));
 
+    LAST_INJECTION_DEFERRED_MS.store(0, std::sync::atomic::Ordering::Relaxed);
+
     #[cfg(target_os = "macos")]
     let stuck = {
-        let stuck = mac::wait_for_modifiers_release(Duration::from_millis(
+        let mut stuck = mac::wait_for_modifiers_release(Duration::from_millis(
             mac::MODIFIER_SETTLE_MAX_MS,
         ));
+        // The user started the next dictation while this one was still on its
+        // way, and is holding Fn (or ⌘, ⌥…) to talk. Typing now would put
+        // this text into the app with that modifier physically down — seen
+        // four times in the trace as `paste.modifiers {"held":"Fn/Globe"}`,
+        // every one unverifiable. The pinned flags below are the defence
+        // against a *stuck* modifier; against a real one, wait for the release
+        // that ends the recording, then type.
+        if stuck != 0 && crate::state::recording_in_progress() {
+            let started = std::time::Instant::now();
+            let deadline = started + Duration::from_millis(mac::NEXT_DICTATION_MAX_WAIT_MS);
+            while stuck != 0 && crate::state::recording_in_progress() && std::time::Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(20));
+                stuck = mac::held_modifiers();
+            }
+            // Let the target app see the key-up before the first character.
+            thread::sleep(Duration::from_millis(FOCUS_SETTLE_MS));
+            stuck = mac::held_modifiers();
+            LAST_INJECTION_DEFERRED_MS.store(
+                started.elapsed().as_millis() as u64,
+                std::sync::atomic::Ordering::Relaxed,
+            );
+        }
         if stuck != 0 {
             // WARN, not INFO: release builds filter at Warn, and this is
             // exactly the state we need to see in a user-submitted log.
