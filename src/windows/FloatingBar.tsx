@@ -1,8 +1,8 @@
 // TTP - Talk To Paste
-// Floating bar component - dark pill overlay with voice-reactive waveform,
-// elapsed timer and discrete state-driven appearance (idle / recording /
-// transcribing / completing / error). Lives in the transparent floating-bar
-// window.
+// Floating bar component - dark pill overlay, hidden at rest. Recording: a red
+// dot, a voice-reactive waveform and a timer. Then a spinner while it
+// transcribes, a tick when the text lands, or the error in the pill itself.
+// Lives in the transparent pill window, which hides itself when idle.
 //
 // The completion frame is new, and it is the point of workstream Z3. Until
 // Polaris the pill had *no* completion state at all: `stage === 'complete'`
@@ -35,9 +35,9 @@ import { Lock } from 'lucide-react';
 
 const TUTORIAL_DISMISSED_KEY = 'tutorial_pill_dismissed';
 
-const BAR_COUNT = 14;
-const MIN_HEIGHT = 2;
-const MAX_HEIGHT = 16;
+const BAR_COUNT = 16;
+const MIN_HEIGHT = 3;
+const MAX_HEIGHT = 18;
 
 /**
  * Subscribe to `prefers-reduced-motion` rather than reading it once.
@@ -113,10 +113,6 @@ export function FloatingBar() {
   const isDanger = isError || treatment?.tone === 'danger';
 
   const isIdle = !isRecording && !isProcessing && !isError && !isCompleting;
-  /* Everything that makes the pill grow to 28px and take its working padding.
-     The completion frame is one of them, so a finished dictation shrinks once,
-     when it is finished, rather than shrinking and then having to grow again. */
-  const isWorking = isRecording || isProcessing || isError || isCompleting;
 
   /* Dead microphone, announced while there is still time to act on it. -------
      Emitted by audio_monitor once a capture has passed its grace period with
@@ -249,123 +245,141 @@ export function FloatingBar() {
     };
   }, [isRecording, prefersReducedMotion]);
 
-  const pillTone: 'idle' | 'active' | 'danger' = isDanger
-    ? 'danger'
-    : isRecording || isProcessing || isCompleting
-      ? 'active'
-      : 'idle';
+  /* Which frame the pill is drawing. Recording wins over everything: a new
+     dictation can start while the previous one is still transcribing, and the
+     person holding the key needs to see that they are being heard. */
+  const phase: 'recording' | 'processing' | 'outcome' | 'error' | null = isRecording
+    ? 'recording'
+    : isError
+      ? 'error'
+      : isCompleting
+        ? 'outcome'
+        : isProcessing
+          ? 'processing'
+          : null;
 
   return (
-    <div className="flex h-screen w-screen flex-col items-center justify-end pb-1 bg-transparent pointer-events-none">
+    <div className="flex h-screen w-screen flex-col items-center justify-end pb-3 bg-transparent pointer-events-none">
       {showTutorial && isIdle && <TutorialPill shortcutText={triggerLabel || 'fn'} />}
 
-      <DarkPill
-        tone={pillTone}
+      {/* Nothing is drawn at rest: the window hides itself (see above), and
+          the fade here is what the eye sees in the 200 ms before it does. */}
+      <div
         className={cn(
-          'flex items-center gap-2 transition-[background-color,color,padding] duration-200 ease-app-out',
-          isWorking ? 'px-3.5 py-1.5' : 'px-4 py-1.5',
-          /* The shake is spent on errors and on a swallowed paste, and on
-             nothing else — an unverified paste is not an error and must never
-             shake. Clamped to 0.01ms by the
-             `prefers-reduced-motion` block in `src/index.css`. */
-          isDanger && 'anim-shake',
+          'transition-[opacity,transform] duration-200 ease-app-out',
+          phase ? 'opacity-100 scale-100' : 'opacity-0 scale-95',
         )}
-        /* The body's colour is `DarkPill`'s business and it already reads the
-           coat. Nothing here overrides it — a second declaration in this file
-           would win on the style spread and silently undo it. */
-        style={{ minHeight: isWorking ? 28 : 16 }}
-        role="status"
-        aria-live="polite"
       >
-        {isRecording && (
-          <>
-            <span className="flex items-end gap-[2px] h-[16px]" aria-hidden>
-              {Array.from({ length: BAR_COUNT }).map((_, i) => (
-                <span
-                  key={i}
-                  ref={(el) => { barRefs.current[i] = el; }}
-                  className="w-[2px] rounded-full bg-white/90"
-                  style={{
-                    height: `${MAX_HEIGHT}px`,
-                    // Anchor the scale at the bottom so the bar grows up, not from center.
-                    transformOrigin: 'bottom',
-                    // Start collapsed; the RAF loop overrides this once recording begins.
-                    transform: `scaleY(${MIN_HEIGHT / MAX_HEIGHT})`,
-                    // Hint the compositor — keeps the layer hot for smoother updates.
-                    willChange: 'transform',
-                  }}
-                />
-              ))}
-            </span>
-            {deadInput ? (
-              // Replaces the timer rather than sitting beside it: a counter
-              // ticking up next to "no sound" reads as though the recording is
-              // fine, which is the impression we are trying to correct.
-              <span className="text-[11px] font-medium text-app-warning whitespace-nowrap">
-                {t('floatingBar.deadInput')}
-              </span>
-            ) : (
-              <span className="text-[11px] font-medium tabular-nums text-white/90 tracking-tight">
-                {formatElapsed(elapsedMs)}
-              </span>
-            )}
-            {isHandsFree && (
-              <Lock
-                className="size-3 text-white/80 shrink-0"
-                aria-label={t('floatingBar.handsFreeIndicatorLabel')}
+        <DarkPill
+          tone={isDanger ? 'danger' : 'active'}
+          className={cn(
+            'flex h-9 min-w-[88px] items-center justify-center gap-2.5 px-4',
+            /* The shake is spent on errors and on a swallowed paste, and on
+               nothing else — an unverified paste is not an error and must
+               never shake. Clamped to 0.01ms by the
+               `prefers-reduced-motion` block in `src/index.css`. */
+            isDanger && 'anim-shake',
+          )}
+          role="status"
+          aria-live="polite"
+        >
+          {phase === 'recording' && (
+            <>
+              <span
+                className={cn('block size-2 shrink-0 rounded-full bg-[#ff453a]', !prefersReducedMotion && 'anim-pulse')}
+                aria-hidden
               />
-            )}
-          </>
-        )}
+              <span className="flex items-center gap-[2px] h-[18px]" aria-hidden>
+                {Array.from({ length: BAR_COUNT }).map((_, i) => (
+                  <span
+                    key={i}
+                    ref={(el) => { barRefs.current[i] = el; }}
+                    className="w-[3px] rounded-full bg-white/90"
+                    style={{
+                      height: `${MAX_HEIGHT}px`,
+                      // Scale from the centre so the bars breathe symmetrically.
+                      transformOrigin: 'center',
+                      // Start collapsed; the RAF loop overrides this once recording begins.
+                      transform: `scaleY(${MIN_HEIGHT / MAX_HEIGHT})`,
+                      // Hint the compositor — keeps the layer hot for smoother updates.
+                      willChange: 'transform',
+                    }}
+                  />
+                ))}
+              </span>
+              {deadInput ? (
+                // Replaces the timer rather than sitting beside it: a counter
+                // ticking up next to "no sound" reads as though the recording is
+                // fine, which is the impression we are trying to correct.
+                <span className="text-[12px] font-medium text-app-warning whitespace-nowrap">
+                  {t('floatingBar.deadInput')}
+                </span>
+              ) : (
+                <span className="text-[12px] font-medium tabular-nums text-white/90">
+                  {formatElapsed(elapsedMs)}
+                </span>
+              )}
+              {isHandsFree && (
+                <Lock
+                  className="size-3.5 text-white/80 shrink-0"
+                  aria-label={t('floatingBar.handsFreeIndicatorLabel')}
+                />
+              )}
+            </>
+          )}
 
-        {isProcessing && !isRecording && !isError && !isCompleting && (
-          <>
-            <span
-              className="block size-2 rounded-full bg-white/90 anim-pulse"
-              aria-hidden
-            />
-            <span className="text-xs font-medium text-white/95 whitespace-nowrap">
-              {t('floatingBar.statusTranscribing')}
-            </span>
-          </>
-        )}
-
-        {treatment && !isError && (
-          <>
-            <CompletionMark mark={treatment.mark} reducedMotion={prefersReducedMotion} />
-            {treatment.line && (
+          {phase === 'processing' && (
+            <>
               <span
                 className={cn(
-                  'text-xs font-medium whitespace-nowrap',
-                  /* 70% on the unverified line, full white on the danger one.
-                     A caption and a warning are different volumes, and the
-                     state a user meets several times a day on a dictation
-                     where nothing went wrong gets the caption. */
-                  treatment.tone === 'danger' ? 'text-white' : 'text-white/70',
+                  'block size-3.5 shrink-0 rounded-full border-2 border-white/25 border-t-white/90',
+                  !prefersReducedMotion && 'animate-spin',
                 )}
-              >
-                {t(treatment.line)}
+                aria-hidden
+              />
+              <span className="text-[12px] font-medium text-white/90 whitespace-nowrap">
+                {t('floatingBar.statusTranscribing')}
               </span>
-            )}
-            {/* The asymmetry, stated on purpose. A sighted user can look at
-                their own text field, which is a better verifier than any
-                Accessibility read, so the visual channel gets a mark and at
-                most four words. A screen-reader user cannot look, so the live
-                region gets the whole sentence — for every outcome, including
-                the one that draws nothing. */}
-            <span className="sr-only">{t(treatment.announcement)}</span>
-          </>
-        )}
+            </>
+          )}
 
-        {isError && (
-          <>
-            <AlertCircle className="size-3.5 text-white" aria-hidden />
-            <span className="text-xs font-medium text-white whitespace-nowrap">
-              {translatedMessage || t('floatingBar.errorFallback')}
-            </span>
-          </>
-        )}
-      </DarkPill>
+          {phase === 'outcome' && treatment && (
+            <>
+              <CompletionMark mark={treatment.mark} reducedMotion={prefersReducedMotion} />
+              {treatment.line && (
+                <span
+                  className={cn(
+                    'text-[12px] font-medium whitespace-nowrap',
+                    /* 70% on the unverified line, full white on the danger one.
+                       A caption and a warning are different volumes, and the
+                       state a user meets several times a day on a dictation
+                       where nothing went wrong gets the caption. */
+                    treatment.tone === 'danger' ? 'text-white' : 'text-white/70',
+                  )}
+                >
+                  {t(treatment.line)}
+                </span>
+              )}
+              {/* The asymmetry, stated on purpose. A sighted user can look at
+                  their own text field, which is a better verifier than any
+                  Accessibility read, so the visual channel gets a mark and at
+                  most four words. A screen-reader user cannot look, so the live
+                  region gets the whole sentence — for every outcome, including
+                  the one that draws nothing. */}
+              <span className="sr-only">{t(treatment.announcement)}</span>
+            </>
+          )}
+
+          {phase === 'error' && (
+            <>
+              <AlertCircle className="size-4 shrink-0 text-white" aria-hidden />
+              <span className="max-w-[300px] truncate text-[12px] font-medium text-white">
+                {translatedMessage || t('floatingBar.errorFallback')}
+              </span>
+            </>
+          )}
+        </DarkPill>
+      </div>
     </div>
   );
 }
@@ -391,7 +405,7 @@ function CompletionMark({
   if (mark === 'alert') {
     return (
       <AlertCircle
-        className={cn('size-3.5 shrink-0 text-white', !reducedMotion && 'anim-fade-in')}
+        className={cn('size-4 shrink-0 text-white', !reducedMotion && 'anim-fade-in')}
         aria-hidden
       />
     );
@@ -399,7 +413,7 @@ function CompletionMark({
   if (mark === 'arrived') {
     return (
       <CheckCheck
-        className={cn('size-3.5 shrink-0 text-white', !reducedMotion && 'anim-check-pop')}
+        className={cn('size-4 shrink-0 text-white', !reducedMotion && 'anim-check-pop')}
         aria-hidden
         data-ttp-mark="arrived"
       />
@@ -410,7 +424,7 @@ function CompletionMark({
      mark next to a 70% line reads as an alert badge with an excuse attached. */
   return (
     <Check
-      className={cn('size-3.5 shrink-0 text-white/70', !reducedMotion && 'anim-fade-in')}
+      className={cn('size-4 shrink-0 text-white/70', !reducedMotion && 'anim-fade-in')}
       aria-hidden
       data-ttp-mark="sent"
     />
