@@ -9,16 +9,12 @@
     "restartNow": "Restart Now",
     "tryAgain": "Try again",
     "refresh": "Refresh",
-    "loading": "Loading…",
     "validating": "Validating…",
     "later": "Later",
     "getStarted": "Get Started",
-    "openSettings": "Open Settings",
-    "active": "Active",
     "continue": "Continue"
   },
   "windowTitle": {
-    "main": "TTP",
     "onboarding": "Welcome to Talk To Paste",
     "settings": "TTP by AmirKS · Settings"
   },
@@ -136,15 +132,11 @@
     },
     "about": {
       "subtitle": "Talk To Paste · v{{version}}",
-      "description": "TTP is a free, open-source app I built because I got tired of typing. Press your hotkey, talk, your words land in whatever you're using. Groq does the transcription. An optional polish pass trims the 'uhms'.",
-      "author": "Built by Amir KELLOU--SIDHOUM. If you find it useful, feel free to share it or connect with me!",
-      "privacyLabel": "Privacy:",
-      "privacyBody": "TTP collects none of your data. Your API key is stored locally on your machine. Audio is sent directly from your device to Groq's servers for transcription. I never see, store, or have access to any of it. Same for AI Polish: your text goes straight to Groq, not through me. Everything stays between you and your API provider."
+      "description": "TTP is a free, open-source app I built because I got tired of typing. Press your hotkey, talk, your words land in whatever you're using. Groq does the transcription. An optional polish pass trims the 'uhms'."
     },
     "pro": {
       "title": "Support TTP",
       "badgeActive": "Active",
-      "refreshTitle": "Re-validate with server",
       "descFree": "TTP is free and complete — every feature, no limits, no subscription. If it saves you time and you feel like sending something back, a one-off licence is a way to do that. As a thank-you it brings the Companion: sound packs for the start and end of every dictation. Nothing TTP needs to work depends on it.",
       "inputPlaceholder": "Paste your license key here",
       "activate": "Activate License",
@@ -156,8 +148,7 @@
       "neverExpires": "Never expires",
       "expiresOn": "Expires {{date}}",
       "statusUnknown": "unknown",
-      "deactivateDevice": "Deactivate this device",
-      "deactivateHelp": "Deactivating frees an activation slot so you can use this license on another device."
+      "deactivateDevice": "Deactivate this device"
     },
     "companion": {
       "soundsLabel": "Voice",
@@ -270,20 +261,6 @@
       "emptyDisabled": "Turn on \"Save transcriptions\" to keep a history.",
       "replayTooltip": "Type this entry into the focused app"
     },
-    "analytics": {
-      "title": "Your usage",
-      "desc": "Local stats from your transcription history. Nothing leaves your machine.",
-      "loading": "Loading…",
-      "emptyTitle": "No stats yet",
-      "empty": "Numbers show up after your first dictation.",
-      "thisWeek": "Week",
-      "thisMonth": "Month",
-      "allTime": "All time",
-      "words": "words",
-      "wordsHint": "words transcribed",
-      "transcriptions": "transcriptions",
-      "chars": "characters"
-    },
     "updateChannel": {
       "title": "Release track",
       "betaBadge": "Beta",
@@ -302,8 +279,7 @@
       "downloadInstall": "Download and install",
       "downloading": "Downloading… {{progress}}%",
       "ready": "Update downloaded. Restart to apply.",
-      "errorDefault": "Couldn't check for updates",
-      "currentVersion": "Current version: v{{version}}"
+      "errorDefault": "Couldn't check for updates"
     },
     "logs": {
       "title": "Diagnostics",
@@ -333,8 +309,6 @@
     }
   },
   "onboarding": {
-    "title": "Welcome to Talk To Paste",
-    "subtitle": "Let's get you set up",
     "item": {
       "microphone": "Microphone",
       "accessibility": "Accessibility",
@@ -347,16 +321,6 @@
       "inputMonitoring": "Lets TTP detect when you press the Fn / Globe key for push-to-talk. Without it, only the keyboard-shortcut mode works.",
       "apikey": "Groq's free tier covers tens of thousands of transcriptions per month. You won't see a bill from typical usage."
     },
-    "apiKey": {
-      "saved": "Key saved",
-      "missing": "No key",
-      "stepSignup": "Sign up at",
-      "stepSignupSuffix": "(free, no credit card)",
-      "stepCreate": "Click \"API Keys\" → \"Create API Key\"",
-      "stepCopy": "Copy the key starting with",
-      "stepCopySuffix": "and paste it below",
-      "enterValid": "Enter a valid key"
-    },
     "status": {
       "enabled": "Enabled",
       "denied": "Denied. Tap to open Settings.",
@@ -365,8 +329,7 @@
     },
     "button": {
       "enable": "Enable",
-      "openSettings": "Open Settings",
-      "checking": "…"
+      "openSettings": "Open Settings"
     },
     "ready": {
       "title": "You're all set",
@@ -376,17 +339,8 @@
       "perkDictionary": "Custom dictionary",
       "perkHistory": "History of your transcriptions"
     },
-    "whereToFind": {
-      "title": "TTP keeps running in your menu bar.",
-      "menubar": "The pill is one shortcut away. Click the menu bar icon to reopen Settings.",
-      "spotlight": "Or search \"TTP\" in Spotlight (⌘Space).",
-      "closeReassurance": "Close this window with ×. TTP stays active."
-    },
     "cta": {
-      "getStarted": "Get started",
-      "completeSteps": "Complete all steps",
-      "stillMissing": "Still missing: {{items}}",
-      "reopenHint": "You can reopen settings anytime by right-clicking the TTP icon in the menu bar."
+      "stillMissing": "Still missing: {{items}}"
     },
     "wizard": {
       "back": "Back",
@@ -407,7 +361,6 @@
     },
     "tour": {
       "pressLabel": "Hold",
-      "orLabel": "or",
       "step1Title": "Hold your shortcut to talk",
       "step1Body": "Press and hold. Speak. Release. TTP records while the key is down.",
       "step2Title": "Watch the pill at the bottom",

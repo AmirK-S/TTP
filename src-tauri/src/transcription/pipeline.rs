@@ -2665,8 +2665,6 @@ mod hallucination_tests {
 ///
 /// Emits progress events throughout for frontend updates.
 pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<String, String> {
-    let pipeline_start = std::time::Instant::now();
-
     // One trace per dictation. Every `return Err` below is a path where the
     // user pressed the hotkey, spoke, and got nothing — and until this
     // existed, all of them were indistinguishable from the outside. The
@@ -2708,7 +2706,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         Err(e) => {
             trace.abort("audio_file_missing", serde_json::json!({ "error": e.to_string() }));
             emit_progress(app, "error", "error.audio_file_not_found", None);
-            crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "api_error", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
             set_state(app, RecordingState::Idle);
             return Err(format!("Audio file error: {}", e));
         }
@@ -2725,10 +2722,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             serde_json::json!({ "error": msg.clone(), "wav_bytes": file_size }),
         );
         emit_progress(app, "error", "error.audio_corrupt", None);
-        crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({
-            "error_category": "corrupt_audio",
-            "duration_seconds": pipeline_start.elapsed().as_secs_f64()
-        })));
         set_state(app, RecordingState::Idle);
         return Err(msg);
     }
@@ -2751,12 +2744,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             let _ = std::fs::remove_file(&audio_path);
             emit_progress(app, "error", "error.recording_empty", None);
             notify(app, &crate::i18n::tr("notification.recordingEmpty"));
-            crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({
-                "error_category": "recording_empty",
-                "duration_seconds": pipeline_start.elapsed().as_secs_f64(),
-                "wav_bytes": file_size,
-                "wav_audio_secs": secs,
-            })));
             trace.abort(
                 "recording_empty",
                 serde_json::json!({ "secs": secs, "wav_bytes": file_size }),
@@ -2812,12 +2799,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             let _ = std::fs::remove_file(&audio_path);
             emit_progress(app, "error", "error.recording_empty", None);
             notify(app, &crate::i18n::tr("notification.recordingEmpty"));
-            crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({
-                "error_category": "dead_capture",
-                "duration_seconds": pipeline_start.elapsed().as_secs_f64(),
-                "samples": stats.samples,
-                "wav_bytes": file_size,
-            })));
             trace.abort(
                 "dead_capture",
                 serde_json::json!({
@@ -2839,11 +2820,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             ));
             let _ = std::fs::remove_file(&audio_path);
             emit_progress(app, "error", "error.no_speech", None);
-            crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({
-                "error_category": "silent_audio",
-                "duration_seconds": pipeline_start.elapsed().as_secs_f64(),
-                "avg_rms": stats.rms,
-            })));
             trace.abort(
                 "silent_audio",
                 serde_json::json!({
@@ -2921,10 +2897,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             Some(serde_json::json!({ "mb": mb_str })),
         );
         notify(app, &crate::i18n::tr("notification.recordingTooLong"));
-        crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({
-            "error_category": "too_long",
-            "duration_seconds": pipeline_start.elapsed().as_secs_f64()
-        })));
         trace.abort("audio_too_large", serde_json::json!({ "mb": original_mb, "converted": false }));
         set_state(app, RecordingState::Idle);
         log_error(&format!("Conversion failed and original too large: {:.1}MB exceeds {}MB limit", original_mb, MAX_AUDIO_SIZE / 1_000_000));
@@ -2970,7 +2942,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             Some(serde_json::json!({ "mb": mb_str })),
         );
         notify(app, &crate::i18n::tr("notification.recordingTooLong"));
-        crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "too_long", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
         trace.abort("audio_too_large", serde_json::json!({ "mb": final_mb, "converted": use_converted }));
         set_state(app, RecordingState::Idle);
         log_error(&format!("Audio too large after conversion: {:.1}MB exceeds {}MB limit", final_mb, MAX_AUDIO_SIZE / 1_000_000));
@@ -3049,20 +3020,15 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         Ok(path) => Some(path),
         Err(e) => {
             // Local log keeps the full error (incl. paths) for the user's
-            // own debugging; analytics gets only the error category to
-            // avoid leaking filesystem paths off-device.
+            // own debugging; the trace gets only the error category.
             crate::logging::log_warn(&format!("Audio backup failed: {}", e));
             let category = if e.contains("Permission") { "permission_denied" }
                 else if e.contains("space") || e.contains("No space") { "disk_full" }
                 else if e.contains("dir") { "create_dir_failed" }
                 else { "other" };
-            crate::telemetry::analytics::track(app, "backup_failed", Some(serde_json::json!({
-                "category": category
-            })));
-            // Analytics only leaves the machine when telemetry is on, and
-            // telemetry is off by default. Locally this was a log_warn nobody
-            // reads. It matters: with no backup, a later API failure loses the
-            // audio the user would have wanted to retry.
+            // A log_warn nobody reads is not enough. It matters: with no
+            // backup, a later API failure loses the audio the user would
+            // have wanted to retry.
             trace.degraded(
                 "backup.audio",
                 serde_json::json!({ "category": category, "retryable": false }),
@@ -3137,8 +3103,8 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 backup_path.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "no backup".into())
             ));
 
-            // Classify error for analytics — capture HTTP status alongside the category
-            // so Sentry can split the catch-all "api_error" bucket by code.
+            // Classify the error — capture HTTP status alongside the category
+            // so the trace can split the catch-all "api_error" bucket by code.
             let (error_category, status_code) = classify_transcription_error(&e);
 
             // User-facing translation key + optional interpolation params,
@@ -3156,14 +3122,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
             emit_progress(app, "error", user_key, user_params);
             notify(app, &crate::i18n::tr("notification.transcriptionFailed"));
-            let mut payload = serde_json::json!({
-                "error_category": error_category,
-                "duration_seconds": pipeline_start.elapsed().as_secs_f64(),
-            });
-            if let Some(code) = status_code {
-                payload["status_code"] = code.into();
-            }
-            crate::telemetry::analytics::track(app, "transcription_failed", Some(payload));
             trace.abort(
                 "whisper_error",
                 serde_json::json!({
@@ -3230,7 +3188,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         if let Some(ref bp) = backup_path { super::backup::remove_backup(bp); }
         emit_progress(app, "error", "error.no_speech", None);
         notify(app, &crate::i18n::tr("notification.noSpeech"));
-        crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
         trace.abort("no_speech", serde_json::json!({ "after_retry": true }));
         set_state(app, RecordingState::Idle);
         return Err("No speech detected".to_string());
@@ -3283,7 +3240,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             // this is a branch that decides they said nothing. It is reclaimed
             // by `sweep_stale_audio` after 24 h like every other backup.
             emit_progress(app, "error", "error.filtered_not_speech", None);
-            crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
             trace.abort(
                 "glossary_ghost",
                 serde_json::json!({
@@ -3339,11 +3295,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             // this is a branch that decides they said nothing. It is reclaimed
             // by `sweep_stale_audio` after 24 h like every other backup.
             emit_progress(app, "error", "error.filtered_not_speech", None);
-            crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({
-                "error_category": "no_speech",
-                "duration_seconds": pipeline_start.elapsed().as_secs_f64(),
-                "sub_category": "prompt_introducer_leak",
-            })));
             trace.abort(
                 "prompt_introducer_leak",
                 serde_json::json!({
@@ -3406,7 +3357,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         // said, and this is the branch most likely to be wrong about whether
         // they said anything. `sweep_stale_audio` reclaims it after 24 h.
         emit_progress(app, "error", "error.filtered_not_speech", None);
-        crate::telemetry::analytics::track(app, "transcription_failed", Some(serde_json::json!({"error_category": "no_speech", "duration_seconds": pipeline_start.elapsed().as_secs_f64()})));
         // The single most opaque drop in the pipeline: Whisper returned real
         // characters and we deleted all of them. The `whisper.response` line
         // above holds what was dropped (text included when diagnostics are on).
@@ -3568,11 +3518,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                             data,
                             ..Default::default()
                         });
-                        crate::telemetry::analytics::track(
-                            app,
-                            "polish_guard_rejected",
-                            Some(serde_json::json!({ "reason": reason })),
-                        );
                         polish_outcome = "guard_rejected";
                         cleaned_text.clone()
                     }
@@ -3589,9 +3534,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 if category == "polish_failed" {
                     emit_progress(app, "pasting", "error.polish_unavailable", None);
                 }
-                crate::telemetry::analytics::track(app, "polish_failed", Some(serde_json::json!({
-                    "category": category
-                })));
                 polish_outcome = "failed";
                 cleaned_text.clone()
             }

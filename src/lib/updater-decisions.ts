@@ -10,20 +10,6 @@
 // without renderHook + Tauri event mocks.
 
 /**
- * Strip user-identifying paths from an update error message before sending
- * it via `update_failed` telemetry. The Rust side has its own regex
- * scrubber (`src/lib/sentry.ts::scrubMessage`); this one focuses on the
- * specific `/Users/<name>` and `/home/<name>` patterns that download
- * failures often carry.
- */
-export function scrubUpdateError(msg: string): string {
-  return msg
-    .replace(/\/Users\/[^\s/"']+/g, '[USER]')
-    .replace(/\/home\/[^\s/"']+/g, '[USER]')
-    .slice(0, 200);
-}
-
-/**
  * Decide whether to surface the "Update available" UI to the user.
  *
  * Three guards:

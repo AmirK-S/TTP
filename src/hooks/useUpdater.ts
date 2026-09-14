@@ -5,11 +5,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { relaunch } from '@tauri-apps/plugin-process';
-import { getVersion } from '@tauri-apps/api/app';
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { trackEvent } from '../lib/analytics';
 import {
-  scrubUpdateError,
   shouldAutoInstall,
   shouldAutoRestart,
   shouldNotifyUpdate,
@@ -135,15 +132,6 @@ export function useUpdater(options?: UseUpdaterOptions) {
           lastFoundVersionRef.current = result.version;
           setDismissed(false);
         }
-
-        getVersion()
-          .then((currentVersion) => {
-            trackEvent('update_prompted', {
-              from_version: currentVersion,
-              to_version: result.version,
-            });
-          })
-          .catch(() => {});
         return true;
       }
 
@@ -154,10 +142,6 @@ export function useUpdater(options?: UseUpdaterOptions) {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('[Updater] Check failed:', msg);
-      trackEvent('update_failed', {
-        stage: 'check',
-        error: scrubUpdateError(msg),
-      });
       setError(msg);
       setStatus('error');
       // Drop back to idle so the user can hit "Check" again — without this
@@ -233,15 +217,6 @@ export function useUpdater(options?: UseUpdaterOptions) {
       } catch (e) {
         console.warn('[Updater] mark_update_ready failed:', e);
       }
-
-      getVersion()
-        .then((currentVersion) => {
-          trackEvent('update_completed', {
-            from_version: currentVersion,
-            to_version: installedVersion,
-          });
-        })
-        .catch(() => {});
     } catch (e) {
       // Tear down listeners if the IPC threw mid-flight.
       if (progressUnlistenRef.current) {
@@ -255,10 +230,6 @@ export function useUpdater(options?: UseUpdaterOptions) {
 
       const msg = e instanceof Error ? e.message : String(e);
       console.error('[Updater] Download failed:', msg);
-      trackEvent('update_failed', {
-        stage: 'download',
-        error: scrubUpdateError(msg),
-      });
       setError(msg);
       setStatus('error');
       scheduleIdleReset(5000);

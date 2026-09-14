@@ -15,7 +15,6 @@ import { useTauriEvent } from '../hooks/useTauriEvent';
 import { getVersion } from '@tauri-apps/api/app';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { enable as enableAutostart, disable as disableAutostart } from '@tauri-apps/plugin-autostart';
-import { trackEvent } from '../lib/analytics';
 import { useUpdater } from '../hooks/useUpdater';
 import { useSettingsStore, DictionaryEntry, HistoryEntry } from '../stores/settings-store';
 import { PermissionBanner } from '../components/PermissionBanner';
@@ -162,7 +161,6 @@ function UpdateChannelCard() {
   const persist = async (enabled: boolean) => {
     try {
       await saveSettings({ use_beta_channel: enabled });
-      trackEvent('setting_changed', { setting_name: 'use_beta_channel', new_value: String(enabled) });
     } catch (error) { console.error('Failed to save update channel setting:', error); }
   };
 
@@ -382,7 +380,6 @@ export function Settings() {
       // Persist the user's intent to settings.json so the UI doesn't depend
       // on the plugin's flaky is_enabled() readback.
       await saveSettings({ autostart_enabled: enabled });
-      trackEvent('setting_changed', { setting_name: 'autostart_enabled', new_value: String(enabled) });
     } catch (error) { console.error('Failed to update autostart:', error); }
   };
 
@@ -420,7 +417,6 @@ export function Settings() {
     ) => async (enabled: boolean) => {
       try {
         await saveSettings({ [key]: enabled } as Partial<Record<K, boolean>>);
-        trackEvent('setting_changed', { setting_name: key, new_value: String(enabled) });
         sideEffect?.();
       } catch (error) { console.error(`Failed to save ${key}:`, error); }
     },
@@ -493,12 +489,10 @@ export function Settings() {
         try { await invoke('unregister_shortcuts_cmd'); } catch {}
         await invoke('set_fn_key_enabled', { enabled: true });
         await saveSettings({ shortcut: 'FnKey', fn_key_enabled: true });
-        trackEvent('setting_changed', { setting_name: 'shortcut', new_value: 'FnKey' });
       } else {
         await invoke('set_fn_key_enabled', { enabled: false });
         await invoke('update_shortcut_cmd', { shortcut: newShortcut });
         await saveSettings({ shortcut: newShortcut, fn_key_enabled: false });
-        trackEvent('setting_changed', { setting_name: 'shortcut', new_value: newShortcut });
       }
       setShortcutSuccess(true);
       setTimeout(() => setShortcutSuccess(false), 3000);
@@ -545,14 +539,12 @@ export function Settings() {
     if (!key) return;
     try {
       await activateLicense(key); setLicenseInput('');
-      trackEvent('license_activated', {});
     } catch (error) { console.error('Activation failed:', error); }
   };
 
   const handleDeactivateLicense = async () => {
     try {
       await deactivateLicense(); setShowDeactivateConfirm(false);
-      trackEvent('license_deactivated', {});
     } catch (error) { console.error('Deactivation failed:', error); }
   };
 

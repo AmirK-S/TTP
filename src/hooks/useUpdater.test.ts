@@ -18,9 +18,6 @@ vi.mock('@tauri-apps/api/app', () => ({
 vi.mock('@tauri-apps/plugin-process', () => ({
   relaunch: vi.fn(async () => {}),
 }));
-vi.mock('../lib/analytics', () => ({
-  trackEvent: vi.fn(),
-}));
 
 // useRecordingState reads from a Tauri event. We mock the hook itself so
 // each test can pin the state without firing simulated events.

@@ -9,16 +9,12 @@
     "restartNow": "Redémarrer",
     "tryAgain": "Réessayer",
     "refresh": "Rafraîchir",
-    "loading": "Chargement…",
     "validating": "Validation…",
     "later": "Plus tard",
     "getStarted": "Commencer",
-    "openSettings": "Ouvrir les Réglages",
-    "active": "Active",
     "continue": "Continuer"
   },
   "windowTitle": {
-    "main": "TTP",
     "onboarding": "Bienvenue dans Talk To Paste",
     "settings": "TTP by AmirKS · Paramètres"
   },
@@ -136,15 +132,11 @@
     },
     "about": {
       "subtitle": "Talk To Paste · v{{version}}",
-      "description": "TTP est une app gratuite et open-source que j'ai construite parce que j'en avais marre de taper. Tu appuies sur ton raccourci, tu parles, tes mots arrivent là où tu es. Groq transcrit. Un passage de polissage optionnel enlève les 'euh'.",
-      "author": "Conçu par Amir KELLOU--SIDHOUM. Si tu trouves ça utile, n'hésite pas à partager ou à me contacter !",
-      "privacyLabel": "Confidentialité :",
-      "privacyBody": "TTP ne collecte aucune de tes données. Ta clé API est stockée localement sur ta machine. L'audio est envoyé directement depuis ton appareil vers les serveurs de Groq pour la transcription. Je n'y ai jamais accès, je ne vois ni ne stocke rien. Idem pour la Correction IA : ton texte va directement à Groq, pas par moi. Tout reste entre toi et ton fournisseur d'API."
+      "description": "TTP est une app gratuite et open-source que j'ai construite parce que j'en avais marre de taper. Tu appuies sur ton raccourci, tu parles, tes mots arrivent là où tu es. Groq transcrit. Un passage de polissage optionnel enlève les 'euh'."
     },
     "pro": {
       "title": "Soutenir TTP",
       "badgeActive": "Active",
-      "refreshTitle": "Revalider avec le serveur",
       "descFree": "TTP est gratuit et complet — toutes les fonctionnalités, sans limite, sans abonnement. Si l'app te fait gagner du temps et que tu as envie de renvoyer quelque chose, une licence à vie est là pour ça. En remerciement, elle t'offre le Compagnon : des packs de sons pour le début et la fin de chaque dictée. Rien de ce qui fait marcher TTP n'en dépend.",
       "inputPlaceholder": "Colle ta clé de licence ici",
       "activate": "Activer la licence",
@@ -156,8 +148,7 @@
       "neverExpires": "N'expire jamais",
       "expiresOn": "Expire le {{date}}",
       "statusUnknown": "inconnu",
-      "deactivateDevice": "Désactiver cet appareil",
-      "deactivateHelp": "Désactiver libère un slot d'activation pour utiliser cette licence sur un autre appareil."
+      "deactivateDevice": "Désactiver cet appareil"
     },
     "companion": {
       "soundsLabel": "Voix",
@@ -270,20 +261,6 @@
       "emptyDisabled": "Active « Enregistrer les transcriptions » pour garder un historique.",
       "replayTooltip": "Retape cette entrée dans l'app au premier plan"
     },
-    "analytics": {
-      "title": "Tes statistiques",
-      "desc": "Stats locales calculées depuis ton historique. Rien ne sort de ta machine.",
-      "loading": "Chargement…",
-      "emptyTitle": "Aucune stat",
-      "empty": "Les chiffres apparaîtront après ta première dictée.",
-      "thisWeek": "Semaine",
-      "thisMonth": "Mois",
-      "allTime": "Total",
-      "words": "mots",
-      "wordsHint": "mots transcrits",
-      "transcriptions": "transcriptions",
-      "chars": "caractères"
-    },
     "updateChannel": {
       "title": "Canal de version",
       "betaBadge": "Bêta",
@@ -302,8 +279,7 @@
       "downloadInstall": "Télécharger et installer",
       "downloading": "Téléchargement… {{progress}}%",
       "ready": "Mise à jour téléchargée. Redémarre pour l'appliquer.",
-      "errorDefault": "Impossible de vérifier les mises à jour",
-      "currentVersion": "Version actuelle : v{{version}}"
+      "errorDefault": "Impossible de vérifier les mises à jour"
     },
     "logs": {
       "title": "Diagnostics",
@@ -333,8 +309,6 @@
     }
   },
   "onboarding": {
-    "title": "Bienvenue dans Talk To Paste",
-    "subtitle": "On te configure ça",
     "item": {
       "microphone": "Microphone",
       "accessibility": "Accessibilité",
@@ -347,16 +321,6 @@
       "inputMonitoring": "Permet à TTP de détecter quand tu appuies sur la touche Fn / Globe pour le push-to-talk. Sans ça, seul le mode raccourci clavier marche.",
       "apikey": "Le tier gratuit de Groq couvre des dizaines de milliers de transcriptions par mois. Tu ne verras pas de facture à l'usage normal."
     },
-    "apiKey": {
-      "saved": "Clé enregistrée",
-      "missing": "Pas de clé",
-      "stepSignup": "Inscris-toi sur",
-      "stepSignupSuffix": "(gratuit, sans carte bancaire)",
-      "stepCreate": "Clique sur « API Keys » → « Create API Key »",
-      "stepCopy": "Copie la clé qui commence par",
-      "stepCopySuffix": "et colle-la ci-dessous",
-      "enterValid": "Saisis une clé valide"
-    },
     "status": {
       "enabled": "Activé",
       "denied": "Refusé. Clique pour ouvrir les Réglages.",
@@ -365,8 +329,7 @@
     },
     "button": {
       "enable": "Activer",
-      "openSettings": "Ouvrir les Réglages",
-      "checking": "…"
+      "openSettings": "Ouvrir les Réglages"
     },
     "ready": {
       "title": "Tu es prêt",
@@ -376,17 +339,8 @@
       "perkDictionary": "Dictionnaire perso",
       "perkHistory": "Historique de tes transcriptions"
     },
-    "whereToFind": {
-      "title": "TTP continue de tourner dans ta barre de menu.",
-      "menubar": "Le pill est à un raccourci. Clique l'icône dans la barre de menu pour rouvrir Paramètres.",
-      "spotlight": "Ou cherche \"TTP\" dans Spotlight (⌘Espace).",
-      "closeReassurance": "Ferme cette fenêtre avec ×. TTP reste actif."
-    },
     "cta": {
-      "getStarted": "Commencer",
-      "completeSteps": "Termine toutes les étapes",
-      "stillMissing": "Il manque encore : {{items}}",
-      "reopenHint": "Tu peux rouvrir les paramètres à tout moment en cliquant droit sur l'icône TTP dans la barre de menus."
+      "stillMissing": "Il manque encore : {{items}}"
     },
     "wizard": {
       "back": "Retour",
@@ -407,7 +361,6 @@
     },
     "tour": {
       "pressLabel": "Maintiens",
-      "orLabel": "ou",
       "step1Title": "Maintiens ton raccourci pour parler",
       "step1Body": "Appuie et maintiens. Parle. Relâche. TTP enregistre tant que la touche est enfoncée.",
       "step2Title": "Regarde le pill en bas",

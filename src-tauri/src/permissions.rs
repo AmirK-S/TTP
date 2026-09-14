@@ -59,12 +59,6 @@ pub fn mark_first_launch_complete() -> Result<(), String> {
         .map_err(|e| format!("Failed to mark first launch complete: {}", e))
 }
 
-/// Tauri command to mark first launch complete
-#[command]
-pub fn mark_first_launch_complete_cmd() -> Result<(), String> {
-    mark_first_launch_complete()
-}
-
 /// Request microphone permission - triggers the native macOS permission prompt
 #[command]
 pub fn request_microphone_permission() -> Result<PermissionStatus, String> {

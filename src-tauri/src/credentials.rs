@@ -176,11 +176,6 @@ pub fn get_groq_api_key_internal(_app: &tauri::AppHandle) -> Result<Option<Strin
 }
 
 #[tauri::command]
-pub async fn get_groq_api_key(_app: tauri::AppHandle) -> Result<Option<String>, String> {
-    Ok(read_groq_key())
-}
-
-#[tauri::command]
 pub async fn set_groq_api_key(_app: tauri::AppHandle, key: String) -> Result<(), String> {
     keychain_set(GROQ_KEY_ACCOUNT, &key)?;
     // Before returning, not after: the next dictation must not be able to

@@ -34,7 +34,7 @@ function onBoundaryError(error: Error) {
 
 /**
  * Get the current window and render the appropriate component.
- * - floating-bar: Renders the transparent recording indicator
+ * - pill: Renders the transparent recording indicator
  * - onboarding: Renders the first-launch permission onboarding
  * - main (or others): Renders the main App component (hidden for tray app)
  */
@@ -110,7 +110,7 @@ function main() {
     );
   };
 
-  if (windowLabel === 'floating-bar' || windowLabel === 'pill') {
+  if (windowLabel === 'pill') {
     // Floating bar / pill window - transparent recording indicator
     renderWindow(<FloatingBar />);
   } else if (windowLabel === 'onboarding') {

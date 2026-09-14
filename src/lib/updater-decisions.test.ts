@@ -1,42 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
-  scrubUpdateError,
   shouldNotifyUpdate,
   shouldResetDismissOnVersionChange,
   shouldAutoInstall,
   shouldAutoRestart,
 } from './updater-decisions';
-
-describe('scrubUpdateError', () => {
-  // The regex replaces ONLY the `/Users/<name>` and `/home/<name>` segments,
-  // leaving the rest of the path intact. That preserves enough context to
-  // triage (which subdirectory failed) without leaking the username.
-  it('replaces /Users/<name> with [USER], keeps subpath', () => {
-    expect(scrubUpdateError('Failed to write /Users/alice/Library/foo'))
-      .toBe('Failed to write [USER]/Library/foo');
-  });
-
-  it('replaces /home/<name> on Linux, keeps subpath', () => {
-    expect(scrubUpdateError('Failed to write /home/bob/.config/foo'))
-      .toBe('Failed to write [USER]/.config/foo');
-  });
-
-  it('truncates at 200 chars to cap telemetry payload size', () => {
-    const long = 'x'.repeat(500);
-    expect(scrubUpdateError(long).length).toBe(200);
-  });
-
-  it('leaves short generic errors unchanged', () => {
-    expect(scrubUpdateError('network timeout')).toBe('network timeout');
-  });
-
-  it('handles multiple usernames in one message', () => {
-    const out = scrubUpdateError('move /Users/a/foo to /Users/b/bar');
-    expect(out).not.toContain('/Users/a');
-    expect(out).not.toContain('/Users/b');
-    expect(out.match(/\[USER\]/g)?.length).toBe(2);
-  });
-});
 
 describe('shouldNotifyUpdate', () => {
   it('notifies when info present, idle, not dismissed', () => {

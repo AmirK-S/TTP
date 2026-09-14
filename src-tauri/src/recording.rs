@@ -23,15 +23,6 @@ pub fn get_recording_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .map_err(|e| format!("Failed to get app data dir: {}", e))
 }
 
-/// Get the path to the most recent recording (for debugging/testing)
-#[tauri::command]
-pub fn get_recordings_dir(app: tauri::AppHandle) -> Result<String, String> {
-    let dir = get_recording_dir(&app)?;
-    dir.to_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| "Invalid path".to_string())
-}
-
 /// Open the recordings directory in the OS file manager.
 ///
 /// Useful when a user reports "the transcription failed but my audio was

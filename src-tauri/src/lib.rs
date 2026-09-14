@@ -50,7 +50,7 @@ mod vad;
 mod whatsnew;
 
 use credentials::{
-    delete_groq_api_key, get_groq_api_key, has_groq_api_key, set_groq_api_key,
+    delete_groq_api_key, has_groq_api_key, set_groq_api_key,
     validate_groq_api_key,
 };
 use dictionary::{add_dictionary_entry, clear_dictionary, delete_dictionary_entry, get_dictionary};
@@ -60,11 +60,11 @@ use licensing::{
 };
 use onboarding::{close_onboarding, show_onboarding};
 use permissions::{
-    check_microphone_permission, is_first_launch_cmd, mark_first_launch_complete_cmd,
+    check_microphone_permission, is_first_launch_cmd,
     check_accessibility_permission, request_accessibility_permission,
     reset_accessibility_permission, PermissionStatus,
 };
-use recording::{get_recordings_dir, RecordingContext};
+use recording::RecordingContext;
 use settings::{get_settings, reset_settings, set_settings, open_settings_window};
 use state::AppState;
 use transcription::process_audio;
@@ -981,12 +981,10 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            get_groq_api_key,
             set_groq_api_key,
             has_groq_api_key,
             delete_groq_api_key,
             validate_groq_api_key,
-            get_recordings_dir,
             recording::reveal_recordings_folder,
             cosmetics::list_sound_packs,
             cosmetics::cosmetics_unlocked,
@@ -1025,7 +1023,6 @@ pub fn run() {
             get_build_info,
             check_microphone_permission,
             is_first_launch_cmd,
-            mark_first_launch_complete_cmd,
             permissions::request_microphone_permission,
             check_accessibility_permission,
             request_accessibility_permission,
@@ -1051,14 +1048,7 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(move |handler, event| {
-            match event {
-                tauri::RunEvent::Ready { .. } => {
-                    telemetry::analytics::track(handler, "app_started", None);
-                }
-                _ => {}
-            }
-        });
+        .run(|_, _| {});
 }
 
 
