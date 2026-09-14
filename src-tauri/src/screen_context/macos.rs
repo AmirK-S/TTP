@@ -77,6 +77,10 @@ const WALK_TEXT_MAX: usize = 300;
 /// around the cursor through `AXStringForRange` instead of in full.
 const FIELD_FULL_READ_MAX: usize = 20_000;
 
+/// How long the tree of a just-woken Electron app is given to build. The
+/// capture runs while the user talks, so this costs them nothing.
+const ELECTRON_WAKE_WAIT: Duration = Duration::from_millis(600);
+
 /// Apps whose screen is never read: password managers, the system's own
 /// credential prompts, and TTP itself.
 const EXCLUDED_BUNDLES: &[&str] = &[
@@ -280,8 +284,10 @@ fn frontmost() -> Option<Frontmost> {
 /// tree only when asked. `AXManualAccessibility` is the switch Electron
 /// documents for tools that are not screen readers; unlike
 /// `AXEnhancedUserInterface` it does not change how windows animate. Asked
-/// once per process. The tree builds asynchronously, so the dictation that
-/// flips it may still see an empty window.
+/// once per process. The tree builds asynchronously: on 2026-09-14 the first
+/// dictation into the Claude desktop app right after the switch saw 13 nodes,
+/// no focused field and no text. `capture` waits [`ELECTRON_WAKE_WAIT`] after
+/// flipping it.
 fn wake_electron(app: &El, pid: i32) -> bool {
     static WOKEN: Mutex<Option<HashSet<i32>>> = Mutex::new(None);
     let Ok(mut woken) = WOKEN.lock() else {
@@ -324,8 +330,9 @@ pub fn capture() -> Captured {
     let Some(app) = (unsafe { El::owned(AXUIElementCreateApplication(front.pid)) }) else {
         return Captured::Skipped("no_app_element");
     };
-    if front.electron {
-        wake_electron(&app, front.pid);
+    let woke_electron = front.electron && wake_electron(&app, front.pid);
+    if woke_electron {
+        std::thread::sleep(ELECTRON_WAKE_WAIT);
     }
 
     let mut ctx = ScreenContext {
@@ -335,6 +342,8 @@ pub fn capture() -> Captured {
     };
     let mut stats = CaptureStats {
         field: "none",
+        electron: front.electron,
+        woke_electron,
         ..Default::default()
     };
     // Field text with no known cursor still names things worth spelling.
@@ -358,7 +367,9 @@ pub fn capture() -> Captured {
 
     let mut window_texts = Vec::new();
     if let Some(window) = &window {
-        match walk_window(window, started, &mut stats) {
+        // Budget counted from here, not from `started`: the Electron wait
+        // above would otherwise have spent it.
+        match walk_window(window, Instant::now(), &mut stats) {
             Walk::Texts(texts) => window_texts = texts,
             Walk::Secure => return Captured::Skipped("secure_field"),
         }

@@ -80,6 +80,10 @@ pub struct CaptureStats {
     pub window_chars: usize,
     /// The window walk stopped on its time or node budget.
     pub window_truncated: bool,
+    /// The app is built on Electron.
+    pub electron: bool,
+    /// This capture switched the app's accessibility tree on and waited for it.
+    pub woke_electron: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

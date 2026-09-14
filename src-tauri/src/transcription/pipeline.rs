@@ -2728,6 +2728,8 @@ async fn take_screen_context(
                     "window_nodes": stats.window_nodes,
                     "window_chars": stats.window_chars,
                     "window_truncated": stats.window_truncated,
+                    "electron": stats.electron,
+                    "woke_electron": stats.woke_electron,
                     "app": ctx.bundle_id,
                 }),
             );
