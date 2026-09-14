@@ -340,6 +340,11 @@ pub fn extract_terms(texts: &[&str]) -> Vec<String> {
         let mut sentence_start = true;
         for raw in text.split_whitespace() {
             let word = clean_word(raw);
+            // A lone « or — says nothing about where a sentence starts:
+            // "exemple : « Je parle" still opens one at "Je".
+            if word.is_empty() && !raw.ends_with(['.', '!', '?', ':', '…', ',', ';']) {
+                continue;
+            }
             let ends_sentence = raw.ends_with(['.', '!', '?', ':', '…']);
             let breaks_run = raw.ends_with([',', ';', ')', '"', '»']) || ends_sentence;
 
@@ -554,6 +559,12 @@ mod tests {
     #[test]
     fn a_lone_capital_opening_a_sentence_is_grammar() {
         assert!(extract_terms(&["Bonjour tout le monde. Merci pour hier."]).is_empty());
+    }
+
+    #[test]
+    fn a_quote_mark_does_not_hide_a_sentence_start() {
+        let terms = extract_terms(&["par exemple : « Je parle avec Kellou »."]);
+        assert_eq!(terms, vec!["Kellou"]);
     }
 
     #[test]
