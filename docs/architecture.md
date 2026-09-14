@@ -11,13 +11,12 @@ TTP is a Tauri 2 desktop app: Rust backend (`src-tauri/`) talks to a React
 frontend (`src/`) via Tauri's IPC bridge. The Rust side owns every OS
 boundary (microphone, keyboard, clipboard, accessibility, networking,
 filesystem). The React side renders three independent windows (Settings,
-Onboarding, FloatingBar pill) plus an invisible host that handles the
-ApiKeySetup modal.
+Onboarding, FloatingBar pill) plus an invisible host that runs the updater.
 
 ```
             ┌──────────────────────────────────────────────────┐
             │            React (windows + hooks)               │
-            │  Settings · Onboarding · FloatingBar · ApiKey    │
+            │  Settings · Onboarding · FloatingBar             │
             │                                                  │
             │  hooks/useRecordingControl ◀── recording-state-* │
             │  hooks/useTranscription    ◀── transcription-*   │
@@ -81,23 +80,18 @@ bucket. Reset to 0 happens on every `start_recording` (no leak) and on
 
 ## State management contract
 
-`AppState` (`src-tauri/src/state.rs`) carries five pieces of state:
+`AppState` (`src-tauri/src/state.rs`) carries four pieces of state:
 
 | Field                     | Type             | Meaning                                                       |
 | ------------------------- | ---------------- | ------------------------------------------------------------- |
 | `recording_state`         | enum             | `Idle` / `Recording` / `Processing`                           |
-| `hands_free_mode`         | `bool`           | PERSISTED preference, mirrored from `settings.hands_free_mode`|
 | `session_hands_free`      | `Option<bool>`   | TRANSIENT override for the current session                    |
 | `last_shortcut_time`      | `Option<Instant>`| Used by `shortcuts.rs` double-tap detection                   |
 | `recording_started_at`    | `Option<Instant>`| Wall-clock start; cleared on Idle                             |
 
-The split between `hands_free_mode` (persistent) and `session_hands_free`
-(transient) exists to fix a v2.x bug where a Fn-double-tap permanently
-mutated the persistent setting until a manual reset. Read via
-`effective_hands_free()`. Write only:
-
-* `set_persistent_hands_free()` at the settings-load boundary.
-* `enter_hands_free_session()` from shortcuts / tray entry points.
+Hands-free is never a setting: a double-tap of the hotkey or the tray
+"Start recording" item enters it for one recording. Read via
+`effective_hands_free()`; write only through `enter_hands_free_session()`.
 
 `set_state` clears `session_hands_free` and `recording_started_at` on every
 Idle transition automatically — consumers don't have to remember to reset.
