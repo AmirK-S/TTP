@@ -2695,7 +2695,6 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                 "history": s.history_enabled,
                 "diagnostics": s.diagnostics_enabled,
                 "audio_device_pinned": s.audio_device_name.is_some(),
-                "companion_face": s.companion_face_enabled,
             }),
         );
     }

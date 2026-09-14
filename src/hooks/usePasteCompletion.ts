@@ -17,10 +17,9 @@
 //
 //   1. **A settled event.** Rust must emit the verdict again when the verifier
 //      concludes, not only at `complete`. See `PASTE_VERIFIED_EVENT`.
-//   2. **A 140 ms hold before committing.** Which is not a number invented
-//      here: `REACTION_DELAY_MS` is the Companion's Law 3 delay, already
-//      applied to every reaction caused by the app's own result rather than by
-//      the user's key. The median verdict (44 ms) lands comfortably inside it,
+//   2. **A 140 ms hold before committing.** Short enough to read as the pill
+//      noticing the result rather than lagging behind the key. The median
+//      verdict (44 ms) lands comfortably inside it,
 //      so the majority of dictations resolve before anything is drawn, and the
 //      delay costs nothing because the frame was going to be late anyway.
 //
@@ -45,7 +44,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useTauriEvent } from './useTauriEvent';
-import { REACTION_DELAY_MS } from '../components/ui/companion-timing';
 import { asPasteOutcome, treatmentFor, type PasteOutcome } from '../lib/pasteOutcome';
 
 /**
@@ -59,8 +57,8 @@ import { asPasteOutcome, treatmentFor, type PasteOutcome } from '../lib/pasteOut
  */
 export const PASTE_VERIFIED_EVENT = 'paste-verified';
 
-/** How long to wait for a settled verdict before drawing. Law 3's 140 ms. */
-export const SETTLE_MS = REACTION_DELAY_MS;
+/** How long to wait for a settled verdict before drawing. */
+export const SETTLE_MS = 140;
 
 interface PasteVerifiedPayload {
   outcome?: unknown;

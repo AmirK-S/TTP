@@ -311,7 +311,7 @@ export function Settings() {
     autostartEnabled, historyEnabled, vadAutoStopEnabled, vadSilenceSecs, audioDeviceName,
     transcriptionLanguage, diagnosticsEnabled, language, theme, dictionary, history, loading, isPro, licenseKey,
     licenseStatus, licenseExpiresAt, licenseActivationCount, licenseActivationLimit,
-    licenseLoading, licenseError, soundPack, companionFaceEnabled, companionName,
+    licenseLoading, licenseError, soundPack,
     loadSettings, saveSettings, resetSettings, loadDictionary, deleteEntry,
     clearDictionary, loadHistory, clearHistory, loadLicense, activateLicense,
     deactivateLicense, validateLicense, loadUsage,
@@ -417,7 +417,7 @@ export function Settings() {
 
   /* ---- Generic toggle factory: cuts 7 near-identical handlers down to 1 --- */
   const makeToggle = useCallback(
-    <K extends 'ai_polish_enabled' | 'telemetry_enabled' | 'hands_free_mode' | 'hide_pill_when_inactive' | 'history_enabled' | 'vad_auto_stop_enabled' | 'diagnostics_enabled' | 'companion_face_enabled'>(
+    <K extends 'ai_polish_enabled' | 'telemetry_enabled' | 'hands_free_mode' | 'hide_pill_when_inactive' | 'history_enabled' | 'vad_auto_stop_enabled' | 'diagnostics_enabled'>(
       key: K,
       sideEffect?: () => void,
     ) => async (enabled: boolean) => {
@@ -596,9 +596,6 @@ export function Settings() {
   const [soundPacks, setSoundPacks] = useState<SoundPack[] | null>(null);
   const [cosmeticsUnlocked, setCosmeticsUnlocked] = useState<boolean | null>(null);
   const [companionError, setCompanionError] = useState(false);
-  const [nameDraft, setNameDraft] = useState(companionName);
-
-  useEffect(() => { setNameDraft(companionName); }, [companionName]);
 
   const loadCompanion = useCallback(() => {
     setCompanionError(false);
@@ -626,15 +623,6 @@ export function Settings() {
   const handleSelectPack = useCallback(async (id: string) => {
     try { await saveSettings({ sound_pack: id }); } catch (e) { console.error('sound_pack:', e); }
   }, [saveSettings]);
-
-  const handleCompanionFaceToggle = makeToggle('companion_face_enabled');
-
-  const commitCompanionName = useCallback(async () => {
-    const next = nameDraft.trim();
-    if (next === companionName) return;
-    try { await saveSettings({ companion_name: next || null }); }
-    catch (e) { console.error('companion_name:', e); }
-  }, [nameDraft, companionName, saveSettings]);
 
   // No caps, so no "at cap" states, no trial countdown, and no x/y rows
   // counting down to a paywall. Every feature is free and unlimited; a
@@ -1031,11 +1019,6 @@ export function Settings() {
                     onRetry={loadCompanion}
                     selected={soundPack}
                     onSelect={handleSelectPack}
-                    faceEnabled={companionFaceEnabled}
-                    onFaceToggle={handleCompanionFaceToggle}
-                    nameDraft={nameDraft}
-                    setNameDraft={setNameDraft}
-                    commitName={commitCompanionName}
                     loading={loading}
                   />
                   <div className="space-y-2 mb-4">
@@ -1077,11 +1060,6 @@ export function Settings() {
                     onRetry={loadCompanion}
                     selected={soundPack}
                     onSelect={handleSelectPack}
-                    faceEnabled={companionFaceEnabled}
-                    onFaceToggle={handleCompanionFaceToggle}
-                    nameDraft={nameDraft}
-                    setNameDraft={setNameDraft}
-                    commitName={commitCompanionName}
                     loading={loading}
                   />
                   <div className="space-y-2 mb-4">
@@ -1345,7 +1323,7 @@ interface SoundPack {
 }
 
 /**
- * The Companion: sound packs, a face, a name.
+ * The Companion: sound packs.
  *
  * Nothing here changes what TTP does — see docs/ttp-pro-design.md. Previewing
  * works whether or not the packs are unlocked, because hearing what you might
@@ -1353,8 +1331,7 @@ interface SoundPack {
  * backend too, so this UI is a courtesy, not the enforcement.
  */
 function CompanionPanel({
-  t, packs, unlocked, error, onRetry, selected, onSelect, faceEnabled, onFaceToggle,
-  nameDraft, setNameDraft, commitName, loading,
+  t, packs, unlocked, error, onRetry, selected, onSelect, loading,
 }: {
   t: (k: string) => string;
   /** `null` = not loaded yet. `[]` = the backend really has no packs. */
@@ -1365,11 +1342,6 @@ function CompanionPanel({
   onRetry: () => void;
   selected: string;
   onSelect: (id: string) => void;
-  faceEnabled: boolean;
-  onFaceToggle: (v: boolean) => void;
-  nameDraft: string;
-  setNameDraft: (v: string) => void;
-  commitName: () => void;
   loading: boolean;
 }) {
   // The failure is louder than the empty state on purpose, and it says what it
@@ -1473,33 +1445,6 @@ function CompanionPanel({
           );
         })}
       </div>
-
-      <SettingsRow
-        label={t('settings.companion.faceLabel')}
-        description={t('settings.companion.faceDesc')}
-        control={
-          <Toggle
-            enabled={faceEnabled}
-            onChange={onFaceToggle}
-            disabled={unlocked !== true || loading}
-          />
-        }
-      />
-
-      {faceEnabled && unlocked === true && (
-        <div className="mt-3">
-          <p className="text-[12px] font-medium text-app-text mb-1.5">{t('settings.companion.nameLabel')}</p>
-          <Input
-            type="text"
-            value={nameDraft}
-            onChange={(e) => setNameDraft(e.target.value)}
-            onBlur={commitName}
-            onKeyDown={(e) => { if (e.key === 'Enter') commitName(); }}
-            placeholder={t('settings.companion.namePlaceholder')}
-            maxLength={24}
-          />
-        </div>
-      )}
     </div>
   );
 }

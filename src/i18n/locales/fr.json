@@ -146,7 +146,7 @@
       "title": "Soutenir TTP",
       "badgeActive": "Active",
       "refreshTitle": "Revalider avec le serveur",
-      "descFree": "TTP est gratuit et complet — toutes les fonctionnalités, sans limite, sans abonnement. Si l'app te fait gagner du temps et que tu as envie de renvoyer quelque chose, une licence à vie est là pour ça. En remerciement, elle t'offre le Compagnon : des voix et des visages pour ta pilule. Rien de ce qui fait marcher TTP n'en dépend.",
+      "descFree": "TTP est gratuit et complet — toutes les fonctionnalités, sans limite, sans abonnement. Si l'app te fait gagner du temps et que tu as envie de renvoyer quelque chose, une licence à vie est là pour ça. En remerciement, elle t'offre le Compagnon : des packs de sons pour le début et la fin de chaque dictée. Rien de ce qui fait marcher TTP n'en dépend.",
       "inputPlaceholder": "Colle ta clé de licence ici",
       "activate": "Activer la licence",
       "buyLink": "Acheter TTP Pro →",
@@ -163,34 +163,6 @@
     "companion": {
       "soundsLabel": "Voix",
       "preview": "Écouter",
-      "faceLabel": "Lui donner un visage",
-      "faceDesc": "Deux marques qui clignent quand il ne se passe rien, restent immobiles pendant qu'elle travaille, et marquent l'instant où tes mots arrivent. Chaque variété est discrète par défaut, et aucune ne te demande jamais rien.",
-      "faceOff": "Aucun",
-      "previewFace": "Regarder",
-      "faces": {
-        "house": {
-          "name": "Maison",
-          "desc": "Celui avec lequel elle est née. Tu cesses de le voir vers le troisième jour, et tu remarquerais s'il partait."
-        },
-        "shut": {
-          "name": "Fermé",
-          "desc": "Les yeux fermés jusqu'à ce que tu appuies. Tout ce qu'il a tient dans le cinquième de seconde où ils s'ouvrent."
-        },
-        "drowsy": {
-          "name": "Somnolent",
-          "desc": "Paupières lourdes, un clignement long et lent, toujours un temps derrière toi. Il ne te fait jamais sursauter."
-        },
-        "quick": {
-          "name": "Vif",
-          "desc": "Des clignements courts et nets, souvent deux d'affilée. Bonne compagnie pour une dictée de quatre secondes, mauvaise pour un après-midi d'écriture."
-        },
-        "bead": {
-          "name": "Perle",
-          "desc": "Deux petits points aussi écartés que le corps le permet. Immobile dix secondes, deux clignements, immobile à nouveau."
-        }
-      },
-      "nameLabel": "Son nom",
-      "namePlaceholder": "Donne un nom à ton Talk-To-Paste",
       "packs": {
         "default": {
           "name": "Maison",

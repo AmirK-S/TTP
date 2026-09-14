@@ -27,13 +27,6 @@ import { useTranscription } from '../hooks/useTranscription';
 import { usePasteCompletion } from '../hooks/usePasteCompletion';
 import { TutorialPill } from '../components/TutorialPill';
 import { DarkPill } from '../components/ui';
-import { CompanionFace } from '../components/ui/CompanionFace';
-import {
-  DEFAULT_FACE_VARIETY,
-  asFaceVariety,
-  type FaceState,
-  type FaceVarietyId,
-} from '../components/ui/companion-timing';
 import { treatmentFor, type OutcomeMark } from '../lib/pasteOutcome';
 import { cn } from '../lib/cn';
 import { Lock } from 'lucide-react';
@@ -80,38 +73,6 @@ function formatElapsed(ms: number): string {
 export function FloatingBar() {
   const { t } = useTranslation();
   const recordingState = useRecordingState();
-
-  /* The Companion's face, and which variety of it. Off unless the user both
-     owns and chose one — asked once at mount and refreshed when settings
-     change, because this window has no settings store of its own.
-
-     Two shapes of setting are accepted on purpose. `companion_face` is a
-     variety id (or null for off) and is what the picker writes; the older
-     `companion_face_enabled` boolean is only consulted when the newer field is
-     absent entirely, so an install that predates the cast shows `house` rather
-     than nothing, and an install that has the field never has a stale boolean
-     resurrect a face the user turned off. */
-  const [face, setFace] = useState<FaceVarietyId | null>(null);
-  useEffect(() => {
-    const refresh = async () => {
-      const [settings, unlocked] = await Promise.all([
-        safeInvoke<{ companion_face_enabled?: boolean; companion_face?: string | null }>(
-          'get_settings',
-        ),
-        safeInvoke<boolean>('cosmetics_unlocked'),
-      ]);
-      const chosen =
-        settings && 'companion_face' in settings
-          ? asFaceVariety(settings.companion_face)
-          : settings?.companion_face_enabled
-            ? DEFAULT_FACE_VARIETY
-            : null;
-      setFace(unlocked ? chosen : null);
-    };
-    refresh();
-    const un = listen('settings-changed', refresh);
-    return () => { un.then((f) => f()); };
-  }, []);
 
   useEffect(() => {
     document.documentElement.style.background = 'transparent';
@@ -269,43 +230,6 @@ export function FloatingBar() {
     };
   }, [isRecording, prefersReducedMotion]);
 
-  /* The face's state.
-     `resolving` is the beat when the words land — 140 ms late, because it is a
-     reaction to the app's own result rather than to the user's key, and that
-     delay is the whole difference between a status light and a thing that
-     noticed. `stage === 'complete'` holds for 500 ms (useTranscription), which
-     comfortably contains the 400 ms beat. */
-  /* The resolve beat is a claim, so it is now spent only where there is
-     evidence for it.
-
-     It is the face's 140 ms-late overshoot — "the thing that noticed" — and it
-     used to fire on `stage === 'complete'`, which is to say on all four
-     outcomes including the swallowed ones. That is the concealment expressed
-     in animation: the Companion nodding at a paste nobody watched arrive.
-     `pasted` keeps the nod. `pasted_unverified` simply does not get one: the
-     face returns to rest, having done the work and not seen the result. A
-     withheld gesture costs no pixels, no milliseconds and no attention, and a
-     person who dictates fifty times a day will feel its absence.
-
-     A swallow wears the error face, because that is what it is. */
-  const faceState: FaceState = isError || completion === 'paste_swallowed'
-    ? 'error'
-    : completion === 'pasted'
-      ? 'resolving'
-      : completion !== null
-        ? 'idle'
-        : stage === 'complete'
-          ? 'resolving' // no outcome on the wire: unchanged behaviour
-          : isProcessing
-            ? 'thinking'
-            : isRecording
-              ? 'listening'
-              : 'idle';
-
-  /* At rest with a face on there is nothing else in the pill, so the pill can
-     stop being a bar with a face in it and become the face's body. */
-  const faceIsThePill = face !== null && isIdle;
-
   const pillTone: 'idle' | 'active' | 'danger' = isDanger
     ? 'danger'
     : isRecording || isProcessing || isCompleting
@@ -320,21 +244,10 @@ export function FloatingBar() {
         tone={pillTone}
         className={cn(
           'flex items-center gap-2 transition-[background-color,color,padding] duration-200 ease-app-out',
-          isWorking
-            ? 'px-3.5 py-1.5'
-            : /* At rest with a face on, the face IS the pill: the padding comes
-                 off so the 16px box sets the height exactly, and the sides pull
-                 in so the body hugs it. Rendered at 1x and looked at — with the
-                 old `py-1.5` the idle pill stood 28px tall for two 3px marks
-                 floating in the middle of it, which is what made the face read
-                 as a decal on a bar rather than as a head. */
-              faceIsThePill
-              ? 'px-[7px] py-0'
-              : 'px-4 py-1.5',
-          /* The tremble. `docs/companion-manual.md`: "This is the entire
-             emotional range of the animal." It is spent on errors and on a
-             swallowed paste, and on nothing else — an unverified paste is not
-             an error and must never shake. Clamped to 0.01ms by the
+          isWorking ? 'px-3.5 py-1.5' : 'px-4 py-1.5',
+          /* The shake is spent on errors and on a swallowed paste, and on
+             nothing else — an unverified paste is not an error and must never
+             shake. Clamped to 0.01ms by the
              `prefers-reduced-motion` block in `src/index.css`. */
           isDanger && 'anim-shake',
         )}
@@ -345,14 +258,6 @@ export function FloatingBar() {
         role="status"
         aria-live="polite"
       >
-        {face && (
-          <CompanionFace
-            state={faceState}
-            reducedMotion={prefersReducedMotion}
-            variety={face}
-          />
-        )}
-
         {isRecording && (
           <>
             <span className="flex items-end gap-[2px] h-[16px]" aria-hidden>
@@ -448,18 +353,14 @@ export function FloatingBar() {
 
 /**
  * The mark the completion frame draws, and the only place the four outcomes
- * differ visually for a user who has no Companion face turned on — which is
- * most users, since the face is off by default. Whatever the honest treatment
- * is, it cannot live in the face alone.
+ * differ visually.
  *
- * `arrived` pops and `sent` fades, which is the same distinction the face
- * makes with its resolve beat, restated for the faceless pill: a paste we
- * watched arrive is acknowledged, a paste we merely posted is not. Both
+ * `arrived` pops and `sent` fades: a paste we watched arrive is acknowledged,
+ * a paste we merely posted is not. Both
  * animations are single-shot CSS on a 14px glyph — no RAF, nothing that
  * outlives the frame — and `src/index.css`'s `prefers-reduced-motion` block
  * clamps them to 0.01 ms. The `reducedMotion` prop drops the class outright
- * rather than relying on that; the states survive, only the motion goes,
- * which is the rule `CompanionFace` already follows.
+ * rather than relying on that; the states survive, only the motion goes.
  */
 function CompletionMark({
   mark,

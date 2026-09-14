@@ -803,13 +803,6 @@ pub fn run() {
                 }),
             );
 
-            // Where the Companion stood at this session boundary. Rotation can
-            // age out the event that turned the face off; a state line per
-            // launch means the retained window always shows the configuration
-            // the dictations in it were made under. See
-            // `docs/companion-faces-design.md` §2.2.
-            settings::trace_companion_state();
-
             // Pay the keychain's one-time ACL evaluation now, on a blocking
             // thread nobody waits on, rather than during the first dictation
             // with the user watching an empty text field. See

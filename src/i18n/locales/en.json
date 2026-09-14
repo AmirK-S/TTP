@@ -59,7 +59,7 @@
     "license_validation_failed": "Validation failed. Check your connection.",
     "license_server_error": "License server unreachable. Try again later.",
     "companion_unreachable_title": "Couldn't load your Companion",
-    "companion_unreachable": "The app couldn't reach its own backend. This says nothing about what you own \u2014 if you've bought the Companion, it's still yours.",
+    "companion_unreachable": "The app couldn't reach its own backend. This says nothing about what you own — if you've bought the Companion, it's still yours.",
     "retry": "Try again"
   },
   "progress": {
@@ -146,7 +146,7 @@
       "title": "Support TTP",
       "badgeActive": "Active",
       "refreshTitle": "Re-validate with server",
-      "descFree": "TTP is free and complete — every feature, no limits, no subscription. If it saves you time and you feel like sending something back, a one-off licence is a way to do that. As a thank-you it brings the Companion: voices and faces for your pill. Nothing TTP needs to work depends on it.",
+      "descFree": "TTP is free and complete — every feature, no limits, no subscription. If it saves you time and you feel like sending something back, a one-off licence is a way to do that. As a thank-you it brings the Companion: sound packs for the start and end of every dictation. Nothing TTP needs to work depends on it.",
       "inputPlaceholder": "Paste your license key here",
       "activate": "Activate License",
       "buyLink": "Buy TTP Pro →",
@@ -163,34 +163,6 @@
     "companion": {
       "soundsLabel": "Voice",
       "preview": "Listen",
-      "faceLabel": "Give it a face",
-      "faceDesc": "Two marks that blink when nothing is happening, hold still while it works, and mark the moment your words land. Every variety is subtle by default, and none of them ever ask you for anything.",
-      "faceOff": "None",
-      "previewFace": "Watch",
-      "faces": {
-        "house": {
-          "name": "House",
-          "desc": "The one it was born with. You stop seeing it around the third day, and you would notice if it left."
-        },
-        "shut": {
-          "name": "Shut",
-          "desc": "Eyes closed until you press the key. Everything it has is in the fifth of a second where they open."
-        },
-        "drowsy": {
-          "name": "Drowsy",
-          "desc": "Heavy lids, a long slow blink, and always a beat behind you. It never once startles you."
-        },
-        "quick": {
-          "name": "Quick",
-          "desc": "Short sharp blinks, often two at a time. Good company for a four-second dictation and bad company for an afternoon of writing."
-        },
-        "bead": {
-          "name": "Bead",
-          "desc": "Two small dots set as wide as the body allows. Still for ten seconds, two blinks, still again."
-        }
-      },
-      "nameLabel": "Its name",
-      "namePlaceholder": "Name your Talk-To-Paste",
       "packs": {
         "default": {
           "name": "House",

@@ -201,7 +201,6 @@ anything from a missing launch line.
 | `correction_window.started` | Carries `armed`. It used to be written unconditionally, including on the path that skipped arming. |
 | `vad.armed` / `vad.fired` / `vad.disarmed` | The auto-stop watchdog: when it started, whether it cut the recording, and whether the stop that ended it was its own or the user's. |
 | `hotkey.tap_health` | **The event tap is alive.** Every five minutes while healthy, and immediately after a recovery. The absence of `hotkey.tap_*` lines used to be ambiguous between "fine" and "not running"; this settles it and bounds any outage to five minutes. |
-| `companion.face` / `companion.named` / `companion.pill_hidden` / `companion.state` | The Companion survival test — see `docs/companion-faces-design.md` §2. Booleans, lengths and day counts; never the name. |
 | `permission.tcc_reset` | **We are about to destroy the user's granted Accessibility permission.** `tccutil reset` is run when a stale-TCC state is detected, and until Polaris it left one `log_warn` and no trace line at all — so a user who was suddenly re-prompted had nothing explaining why. Emitted *before* the command runs, from the one function that runs it, carrying the two probe values that justified the decision (`api_trusted`, `ax_probe_ok`) plus the `bundle_id` and `version`. |
 | `permission.tcc_reset_result` | What `tccutil` said. `ok:true`, or `ok:false` with `stderr` / `error`. The grant is gone either way; this separates "reset and re-prompted" from "asked to reset and was refused". |
 | `permission.notify` / `permission.notify_failed` | The UI was told a permission is missing. Both fire during Tauri `setup()`, when the webview may not have mounted, so the banner can be emitted to nobody. `notify` with `emitted:true` is not proof a window received it — that limit is real, which is why the line carries the `event` name rather than only an outcome. |
@@ -672,8 +671,7 @@ What remains:
   remaining hole: nothing in `src/` writes to the trace.
 - **When a setting changed.** `settings.snapshot` now records the
   configuration each dictation ran under, so two dictations can be compared —
-  but the trace still does not record the moment a user flipped a switch. The
-  `companion.*` events are the exception, and only for the fields they cover.
+  but the trace still does not record the moment a user flipped a switch.
 - **Anything before the panic hook is installed.** That is now the boundary,
   not `app.launched`: the hook goes in ahead of `tauri::Builder`, so a panic
   during Tauri `setup()` leaves an `app.panic` line even though no
