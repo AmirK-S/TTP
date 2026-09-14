@@ -47,6 +47,38 @@ preserve that property.
 - **F2 — manual as an object.** PDF / page / bundle. Blocked on C deciding
   where a visitor encounters it.
 
+## Wave 5 — the simplification, 2026-09-14
+
+Amir, 2026-09-14: "une personne veut juste cliquer sur un bouton et
+retranscrire." The audit that followed (settings inventory, hotkey and pill
+code, nine competitors) turned into one session of work, all on
+`polaris/v3.0.0`:
+
+**Cut.** The Companion's face (its pre-registered 14-day falsifier came back
+*no* on its verdict date — `docs/companion-faces-design.md` §2.4), the five
+coats, the UI-language and light/dark settings (both follow macOS now), the
+hands-free and hide-pill toggles, the Preferences onboarding step, the `setup`
+window and two duplicate API-key forms, the Aptabase no-op shims and their ~25
+call sites, three unused commands, ~40 orphan translation keys. Rare settings
+moved into a collapsed Advanced section. ~5,800 lines net.
+
+**Fixed.** Back-to-back dictation: a finishing dictation's `set_state(Idle)`
+turned a *newer* `Recording` into `Idle`, reclaimed that capture as an orphan
+and left the frontend believing it was still recording, so the next press
+beeped and captured nothing. Traced three times (09-11 16:13 and 17:20, 09-14
+13:07). And an injection now waits for the next dictation's modifier to come
+up before typing.
+
+**Built.** Any-key trigger (`src-tauri/src/trigger.rs`: keys, sided modifiers,
+Fn, mouse buttons, with a second active tap that swallows the bound key), the
+pill as one sober indicator hidden at rest, onboarding in three steps ending
+in a real dictation, and drag-to-authorize for Accessibility / Input
+Monitoring (`src-tauri/src/permission_helper.rs`, research in
+`docs/permission-drag-research.md`).
+
+**Untested on a real build at the time of writing.** The event tap, the drag
+drop and the TCC grants can only be exercised on Amir's machine.
+
 ## DONE
 
 **G0 — keychain test debt: closed 2026-08-31.** Root cause was
