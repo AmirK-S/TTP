@@ -370,13 +370,45 @@ fn notify(app: &AppHandle, message: &str) {
     }
 }
 
-/// Set the app state (updates frontend via event)
+/// Whether the pipeline may move the state machine from `current` to `target`.
+/// Split out of `set_state` so the rule is testable without an `AppHandle`.
+fn pipeline_may_transition(current: &RecordingState, target: &RecordingState) -> bool {
+    !(*target == RecordingState::Idle && *current == RecordingState::Recording)
+}
+
+/// Set the app state from the pipeline (updates frontend via event).
+///
+/// The pipeline hands the hotkey back as soon as it has the audio (see the
+/// top of `process_recording`), so by the time a dictation finishes the user
+/// may already be recording the next one. Every `set_state(Idle)` below means
+/// "this dictation is done", never "stop whatever is happening now" — so it
+/// must not turn a newer `Recording` into `Idle`.
+///
+/// It used to. `Recording → Idle` made `AppState::set_state` reclaim the new
+/// capture as an orphan (mic closed, audio deleted) while the key was still
+/// held, and left the frontend believing it was still recording, so the next
+/// press beeped and recorded nothing. Traced three times on 2026-09-11/14:
+/// `capture.orphan_reclaimed` right after `dictation.finish`, then
+/// `capture.stop_failed` on the following press.
 fn set_state(app: &AppHandle, state: RecordingState) {
-    if let Some(app_state) = app.try_state::<Mutex<AppState>>() {
-        if let Ok(mut guard) = app_state.try_lock() {
-            guard.set_state(state, app);
-        }
+    let Some(app_state) = app.try_state::<Mutex<AppState>>() else { return };
+    let Ok(mut guard) = app_state.try_lock() else {
+        // Contended: the transition is dropped. Rare, but a dropped Idle is a
+        // state machine parked in Processing, so it must be visible.
+        crate::trace::event(
+            "state.transition_dropped",
+            serde_json::json!({ "to": format!("{:?}", state), "at": "pipeline" }),
+        );
+        return;
+    };
+    if !pipeline_may_transition(&guard.recording_state, &state) {
+        crate::trace::event(
+            "state.idle_skipped",
+            serde_json::json!({ "reason": "newer_recording_in_progress" }),
+        );
+        return;
     }
+    guard.set_state(state, app);
 }
 
 /// Normalize a string for hallucination matching.
@@ -2696,8 +2728,18 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         );
     }
 
-    // Set state to Processing
-    set_state(app, RecordingState::Processing);
+    // The audio is in hand, so the hotkey is free again: the user can start
+    // the next dictation while this one transcribes. This used to happen by
+    // accident — the pipeline re-set `Processing`, and the frontend answered
+    // a `Processing` it had not asked for with `reset_to_idle`. It is stated
+    // here instead, and `set_state` above keeps the rest of this function from
+    // interrupting that next dictation.
+    //
+    // The progress event goes first so the pill, which hides itself when it
+    // has nothing to draw, is already showing "Transcribing" when the state
+    // reads Idle.
+    emit_progress(app, "transcribing", "progress.transcribing", None);
+    set_state(app, RecordingState::Idle);
 
     // Check if audio file exists
     let audio_file = Path::new(&audio_path);
@@ -4320,3 +4362,18 @@ pub async fn process_audio(app: AppHandle, audio_path: String) -> Result<String,
     process_recording(&app, audio_path_str).await
 }
 
+#[cfg(test)]
+mod pipeline_state_tests {
+    use super::*;
+
+    #[test]
+    fn a_finishing_dictation_does_not_end_a_newer_recording() {
+        assert!(!pipeline_may_transition(&RecordingState::Recording, &RecordingState::Idle));
+    }
+
+    #[test]
+    fn a_finishing_dictation_still_returns_processing_to_idle() {
+        assert!(pipeline_may_transition(&RecordingState::Processing, &RecordingState::Idle));
+        assert!(pipeline_may_transition(&RecordingState::Idle, &RecordingState::Idle));
+    }
+}

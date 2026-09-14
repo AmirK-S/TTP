@@ -224,6 +224,14 @@ fn handle_shortcut_pressed(state: &mut AppState, app: &AppHandle) {
         } else if state.is_recording() && state.effective_hands_free() {
             // Single press while recording in hands-free mode → stop
             stop_recording(state, app);
+        } else if !state.is_recording() {
+            // Pressed while the previous capture is still being stopped (the
+            // ~0.4 s between release and the pipeline taking the audio). The
+            // press is dropped; say so rather than leave a bare hotkey.press.
+            crate::trace::event(
+                "hotkey.ignored",
+                serde_json::json!({ "state": format!("{:?}", state.recording_state) }),
+            );
         }
     }
 }

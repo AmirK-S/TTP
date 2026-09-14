@@ -122,7 +122,14 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
   // — that churn was the suspected cause of TTP-5.
   useTauriEvent<RecordingState>('recording-state-changed', async (event) => {
     const state = event.payload;
-    if (state === 'Recording' && !isRecordingRef.current) {
+    if (state === 'Idle' && isRecordingRef.current) {
+      // Rust ended this recording without a stop from us (a reset, or a
+      // reclaimed capture). Rust has already closed the microphone; if we
+      // kept believing we were recording, the next `Recording` would be
+      // skipped and that press would beep and capture nothing.
+      isRecordingRef.current = false;
+      recordingStartTime.current = null;
+    } else if (state === 'Recording' && !isRecordingRef.current) {
       await handleStartRecording();
     } else if (state === 'Processing') {
       if (isRecordingRef.current) {

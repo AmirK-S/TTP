@@ -316,7 +316,7 @@ export function FloatingBar() {
           </>
         )}
 
-        {isProcessing && !isError && !isCompleting && (
+        {isProcessing && !isRecording && !isError && !isCompleting && (
           <>
             <span
               className="block size-2 rounded-full bg-white/90 anim-pulse"
