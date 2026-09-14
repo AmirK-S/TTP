@@ -173,6 +173,150 @@ impl ScreenContext {
     }
 }
 
+impl ScreenContext {
+    /// The part of this context worth a polish request, or `None` when none
+    /// of it is.
+    ///
+    /// Sending everything cost latency: on 2026-09-14 short dictations went
+    /// from 350–530 ms of polish to 750–980 ms with ~30 terms attached,
+    /// whether or not any of them was ever used. So only two things travel:
+    ///
+    ///   * terms that sound like something in `transcript` ("Kellou" for a
+    ///     dictated "Kélou") — see [`sounds_like`];
+    ///   * the text around the cursor, only when the cursor sits mid-sentence
+    ///     and the model needs it to continue that sentence.
+    ///
+    /// Most dictations have neither and send no block at all.
+    pub fn for_polish(&self, transcript: &str) -> Option<ScreenContext> {
+        let terms = relevant_terms(&self.terms, transcript);
+        let continues = self
+            .before_cursor
+            .as_deref()
+            .is_some_and(ends_mid_sentence)
+            && self.selected.is_none();
+        if terms.is_empty() && !continues {
+            return None;
+        }
+        Some(ScreenContext {
+            bundle_id: self.bundle_id.clone(),
+            app_name: self.app_name.clone(),
+            window_title: None,
+            before_cursor: if continues { self.before_cursor.as_deref().map(|b| tail_chars(b, CONTINUE_MAX)) } else { None },
+            after_cursor: if continues { self.after_cursor.clone() } else { None },
+            selected: None,
+            terms,
+        })
+    }
+}
+
+/// Characters of text before the cursor sent to continue a sentence.
+pub const CONTINUE_MAX: usize = 200;
+
+/// The text ends inside a sentence: its last visible character is a letter,
+/// a digit or a comma.
+pub fn ends_mid_sentence(text: &str) -> bool {
+    text.trim_end()
+        .chars()
+        .last()
+        .is_some_and(|c| c.is_alphanumeric() || c == ',')
+}
+
+/// Terms from the screen that sound like words in the transcript but are
+/// not already spelled that way.
+pub fn relevant_terms(terms: &[String], transcript: &str) -> Vec<String> {
+    let words: Vec<&str> = transcript
+        .split(|c: char| !c.is_alphanumeric() && c != '\'' && c != '’' && c != '-')
+        .flat_map(|w| w.split(['\'', '’']))
+        .filter(|w| !w.is_empty())
+        .collect();
+    terms
+        .iter()
+        .filter(|term| {
+            let parts: Vec<&str> = term.split(' ').collect();
+            let n = parts.len();
+            if n == 0 || words.len() < n {
+                return false;
+            }
+            words.windows(n).any(|window| {
+                let spoken = window.join(" ");
+                spoken != **term && sounds_like(&spoken, term)
+            })
+        })
+        .cloned()
+        .collect()
+}
+
+/// Whether two spellings plausibly came out of the same sounds.
+///
+/// Both go through [`sound_key`] (accents off, the French and English
+/// spellings of one sound folded together). Keys of up to four letters must
+/// then be equal — "code" is one edit from "Claude" and is not a mishearing
+/// of it — five or six may differ by one edit, longer ones by two. Keys under
+/// three letters never match: "de" and "Dé" say nothing.
+pub fn sounds_like(spoken: &str, term: &str) -> bool {
+    let a = sound_key(spoken);
+    let b = sound_key(term);
+    let shortest = a.chars().count().min(b.chars().count());
+    if shortest < 3 {
+        return false;
+    }
+    // Different first sound is a different word: "tori" is not "mori".
+    if a.chars().next() != b.chars().next() {
+        return false;
+    }
+    let allowed = match shortest {
+        0..=4 => 0,
+        5..=6 => 1,
+        _ => 2,
+    };
+    levenshtein(&a, &b) <= allowed
+}
+
+/// A rough phonetic key: lowercase, no accents, no spaces, and spellings of
+/// the same sound folded ("eau"/"au" → "o", "ou" → "u", "c"/"q"/"ck" → "k",
+/// "ph" → "f", "y" → "i", silent "h", doubled letters, a final "e" or "s").
+pub fn sound_key(text: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    let plain: String = text
+        .nfkd()
+        .filter(|c| !unicode_normalization::char::is_combining_mark(*c))
+        .flat_map(char::to_lowercase)
+        .filter(|c| c.is_alphanumeric())
+        .collect();
+    let folded = plain
+        .replace("eau", "o")
+        .replace("au", "o")
+        .replace("ou", "u")
+        .replace("ph", "f")
+        .replace("qu", "k")
+        .replace("ck", "k")
+        .replace(['c', 'q'], "k")
+        .replace('y', "i")
+        .replace('h', "");
+    let mut chars: Vec<char> = folded.chars().collect();
+    chars.dedup();
+    let mut s: String = chars.into_iter().collect();
+    while s.len() > 3 && (s.ends_with('e') || s.ends_with('s')) {
+        s.pop();
+    }
+    s
+}
+
+fn levenshtein(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.iter().enumerate() {
+        let mut row = vec![i + 1];
+        for (j, cb) in b.iter().enumerate() {
+            let cost = usize::from(ca != cb);
+            row.push((prev[j] + cost).min(prev[j + 1] + 1).min(row[j] + 1));
+        }
+        prev = row;
+    }
+    prev[b.len()]
+}
+
 /// Break anything that could read as one of the polish request's own tags.
 fn neutralise_tags(text: &str) -> String {
     text.replace("<screen_context", "< screen_context")
@@ -559,6 +703,65 @@ mod tests {
     #[test]
     fn a_lone_capital_opening_a_sentence_is_grammar() {
         assert!(extract_terms(&["Bonjour tout le monde. Merci pour hier."]).is_empty());
+    }
+
+    #[test]
+    fn misheard_names_sound_like_their_screen_spelling() {
+        assert!(sounds_like("Kélou", "Kellou"));
+        assert!(sounds_like("Tori", "Tauri"));
+        assert!(sounds_like("cloud code", "Claude Code"));
+        assert!(sounds_like("typescript", "TypeScript"));
+    }
+
+    #[test]
+    fn ordinary_words_do_not_sound_like_names() {
+        assert!(!sounds_like("code", "Claude"));
+        assert!(!sounds_like("mori", "Tauri"));
+        assert!(!sounds_like("de", "Dé"));
+        assert!(!sounds_like("merci", "Mercedes"));
+    }
+
+    #[test]
+    fn only_terms_the_speaker_said_are_relevant() {
+        let terms: Vec<String> = ["Kellou", "Tauri", "Slack", "Claude Code", "Notion"]
+            .iter()
+            .map(|t| t.to_string())
+            .collect();
+        let relevant = relevant_terms(&terms, "je parle avec Kélou de Tori dans cloud code");
+        assert_eq!(relevant, vec!["Kellou", "Tauri", "Claude Code"]);
+        // Already spelled right: nothing to fix, nothing to send.
+        assert!(relevant_terms(&terms, "on en parle sur Slack").is_empty());
+    }
+
+    #[test]
+    fn a_context_with_nothing_relevant_is_not_sent() {
+        let ctx = ScreenContext {
+            app_name: Some("Notes".into()),
+            window_title: Some("Réunion".into()),
+            before_cursor: Some("Réunion avec Kellou.".into()),
+            terms: vec!["Kellou".into(), "Tauri".into()],
+            ..Default::default()
+        };
+        assert_eq!(ctx.for_polish("merci pour tout"), None);
+
+        let sent = ctx.for_polish("je parle avec Kélou").unwrap();
+        assert_eq!(sent.terms, vec!["Kellou"]);
+        // The sentence before the cursor is finished: no need to send it.
+        assert_eq!(sent.before_cursor, None);
+        assert_eq!(sent.window_title, None);
+    }
+
+    #[test]
+    fn the_text_before_the_cursor_travels_only_mid_sentence() {
+        let ctx = ScreenContext {
+            before_cursor: Some(format!("{} et donc", "mot ".repeat(100))),
+            ..Default::default()
+        };
+        let sent = ctx.for_polish("on avance bien").unwrap();
+        let before = sent.before_cursor.unwrap();
+        assert!(before.ends_with("et donc"));
+        assert!(before.chars().count() <= CONTINUE_MAX);
+        assert!(sent.terms.is_empty());
     }
 
     #[test]

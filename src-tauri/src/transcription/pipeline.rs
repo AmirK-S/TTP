@@ -3543,12 +3543,26 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     } else {
         None
     };
-    let context_block = screen_context.as_ref().and_then(|c| c.render_block());
+    // Only what this dictation can use is sent; most send nothing and pay
+    // no latency for the feature (see `ScreenContext::for_polish`).
+    let sent_context = screen_context.as_ref().and_then(|c| c.for_polish(&cleaned_text));
+    if let Some(ctx) = &screen_context {
+        trace.stage(
+            "screen_context.relevance",
+            serde_json::json!({
+                "terms_available": ctx.terms.len(),
+                "terms_sent": sent_context.as_ref().map_or(0, |s| s.terms.len()),
+                "continues_sentence": sent_context.as_ref().is_some_and(|s| s.before_cursor.is_some()),
+                "sent": sent_context.is_some(),
+            }),
+        );
+    }
+    let context_block = sent_context.as_ref().and_then(|c| c.render_block());
     if let Some(block) = &context_block {
         trace.text_stage("screen_context.block", block, serde_json::json!({}));
     }
     // The guard only knows the screen's words if the model was shown them.
-    let context_vocabulary = match (&screen_context, &context_block) {
+    let context_vocabulary = match (&sent_context, &context_block) {
         (Some(ctx), Some(_)) => ctx.vocabulary(),
         _ => std::collections::HashSet::new(),
     };
