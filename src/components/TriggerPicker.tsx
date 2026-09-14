@@ -8,10 +8,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, X } from 'lucide-react';
 import { Button } from './ui';
 import { useTauriEvent } from '../hooks/useTauriEvent';
-import { useTrigger } from '../hooks/useTrigger';
+import { useTrigger, type TriggerSlot } from '../hooks/useTrigger';
 import { cn } from '../lib/cn';
 import { triggerLabel, type CaptureResult, type Trigger } from '../lib/trigger';
 
@@ -26,10 +26,13 @@ const PRESETS: Trigger[] = [
 /**
  * `compact`: one line for a Settings row — the key, and Change. No presets and
  * no hints; the onboarding shows the full version.
+ *
+ * `slot`: the main trigger, or the optional second one (compact only), which
+ * can be empty and can be removed.
  */
-export function TriggerPicker({ compact = false }: { compact?: boolean }) {
+export function TriggerPicker({ compact = false, slot = 'main' }: { compact?: boolean; slot?: TriggerSlot }) {
   const { t } = useTranslation();
-  const { trigger, label, reload } = useTrigger();
+  const { trigger, label, reload } = useTrigger(slot);
   const [capturing, setCapturing] = useState(false);
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
   const [inputMonitoringMissing, setInputMonitoringMissing] = useState(false);
@@ -47,9 +50,9 @@ export function TriggerPicker({ compact = false }: { compact?: boolean }) {
     if (capturingRef.current) invoke('cancel_trigger_capture').catch(() => {});
   }, []);
 
-  const save = useCallback(async (next: Trigger) => {
+  const save = useCallback(async (next: Trigger | null) => {
     try {
-      await invoke('set_trigger', { trigger: next });
+      await invoke(slot === 'main' ? 'set_trigger' : 'set_secondary_trigger', { trigger: next });
       await reload();
       setMessage({ tone: 'success', text: t('settings.recordingTrigger.successUpdated') });
       setTimeout(() => setMessage(null), 3000);
@@ -57,7 +60,7 @@ export function TriggerPicker({ compact = false }: { compact?: boolean }) {
       const key = String(e);
       setMessage({ tone: 'error', text: key.startsWith('error.') ? t(key) : key });
     }
-  }, [reload, t]);
+  }, [reload, slot, t]);
 
   const startCapture = async () => {
     setMessage(null);
@@ -101,7 +104,7 @@ export function TriggerPicker({ compact = false }: { compact?: boolean }) {
         <div className="flex items-center gap-2">
           {capturing ? (
             <span className="text-[12px] text-app-accent whitespace-nowrap">{t('settings.recordingTrigger.captureShort')}</span>
-          ) : (
+          ) : (trigger || slot === 'main') && (
             <kbd className="inline-flex items-center h-6 px-2 rounded-app-sm bg-app-raised border border-app-border-strong text-[12px] font-mono font-semibold text-app-text">
               {label || '…'}
             </kbd>
@@ -109,7 +112,20 @@ export function TriggerPicker({ compact = false }: { compact?: boolean }) {
           {capturing ? (
             <Button variant="ghost" size="sm" onClick={cancelCapture}>{t('common.cancel')}</Button>
           ) : (
-            <Button variant="secondary" size="sm" onClick={startCapture}>{t('common.change')}</Button>
+            <Button variant="secondary" size="sm" onClick={startCapture}>
+              {trigger || slot === 'main' ? t('common.change') : t('common.add')}
+            </Button>
+          )}
+          {!capturing && slot === 'second' && trigger && (
+            <button
+              type="button"
+              onClick={() => void save(null)}
+              aria-label={t('common.delete')}
+              title={t('common.delete')}
+              className="rounded-app-sm p-1 text-app-faint hover:text-app-danger transition-colors"
+            >
+              <X className="size-3.5" aria-hidden />
+            </button>
           )}
         </div>
         {message && (

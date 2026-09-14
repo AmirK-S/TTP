@@ -121,7 +121,7 @@ const KCG_EVENT_KEY_UP: u32 = 11;
 const KCG_EVENT_FLAGS_CHANGED: u32 = 12;
 /// kCGEventTapDisabledByTimeout — the window server unhooked our tap because
 /// a callback took too long to return. Until the tap is re-armed it delivers
-/// NOTHING, which means `TRIGGER_PHYSICALLY_DOWN` freezes at whatever it was:
+/// NOTHING, which means `SLOT_DOWN` freezes at whatever it was:
 /// stuck false → the Fn key silently stops starting recordings; stuck true →
 /// the FSM believes Fn is held forever AND the session keeps the Globe
 /// modifier set, so injected characters get routed to the Globe shortcut
@@ -140,9 +140,24 @@ const KCG_EVENT_TAP_OPTION_DEFAULT: u32 = 0;
 /// independent of what any tap saw.
 const KCG_EVENT_SOURCE_STATE_HID: i32 = 1;
 
-/// The configured trigger, packed by `trigger::encode` so the tap callback
-/// reads it without a lock on every event system-wide.
-static TRIGGER: AtomicU64 = AtomicU64::new(1 << 56); // Trigger::Fn
+/// The configured triggers, packed by `trigger::encode` so the tap callback
+/// reads them without a lock on every event system-wide. Slot 0 is the main
+/// trigger (Fn by default); slot 1 is an optional second one — for an external
+/// keyboard whose Fn never reaches the Mac — and 0 means "none" (`encode`
+/// never produces 0).
+static TRIGGERS: [AtomicU64; 2] = [AtomicU64::new(1 << 56), AtomicU64::new(0)];
+
+/// The triggers currently configured, with their slot.
+fn configured_triggers() -> impl Iterator<Item = (usize, crate::trigger::Trigger)> {
+    (0..2).filter_map(|slot| {
+        let packed = TRIGGERS[slot].load(Ordering::Relaxed);
+        (packed != 0).then(|| (slot, crate::trigger::decode(packed)))
+    })
+}
+
+fn any_trigger_down() -> bool {
+    SLOT_DOWN.iter().any(|d| d.load(Ordering::Relaxed))
+}
 
 /// True while Settings is waiting for the user to press their new trigger.
 /// While set, events feed the capture instead of starting recordings.
@@ -191,7 +206,9 @@ static FKEY_CURRENTLY_HELD: AtomicBool = AtomicBool::new(false);
 /// `KVK_FUNCTION` (63) — F1..F12 never emit FlagsChanged with keycode 63, so
 /// the old modifier-flag inference race (timer reads `NSEvent.modifierFlags`
 /// showing Function set because an F-key bled the bit) is gone.
-static TRIGGER_PHYSICALLY_DOWN: AtomicBool = AtomicBool::new(false);
+///
+/// One per trigger slot; the recorder sees "held" while either is.
+static SLOT_DOWN: [AtomicBool; 2] = [AtomicBool::new(false), AtomicBool::new(false)];
 
 /// True while the app is recording in hands-free / toggle mode. Set by
 /// `shortcuts.rs` via [`set_hands_free_recording`]. When set, a single quick Fn
@@ -404,7 +421,7 @@ pub fn tap_abandoned() -> bool {
 /// caller but is no longer used — `NSEvent.modifierFlags` was the ambiguous
 /// source we just replaced.
 fn is_physical_fn_key(_flags: u64) -> bool {
-    TRIGGER_PHYSICALLY_DOWN.load(Ordering::Relaxed)
+    any_trigger_down()
 }
 
 /// Create the HID event tap, wire it into the current run loop, and enable it.
@@ -623,10 +640,9 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
             // key trigger typing into the focused app until the next settings
             // change. `ensure_swallow_tap` is a no-op once it is running.
             if tick % TAP_WATCHDOG_TICKS == 0
-                && matches!(
-                    crate::trigger::decode(TRIGGER.load(Ordering::Relaxed)),
-                    crate::trigger::Trigger::Key { .. } | crate::trigger::Trigger::Mouse { .. }
-                )
+                && configured_triggers().any(|(_, t)| {
+                    matches!(t, crate::trigger::Trigger::Key { .. } | crate::trigger::Trigger::Mouse { .. })
+                })
             {
                 ensure_swallow_tap();
             }
@@ -685,11 +701,16 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
 
             let flags: u64 = msg_send![class!(NSEvent), modifierFlags];
             let mut fn_held = is_physical_fn_key(flags);
-            let trigger = crate::trigger::decode(TRIGGER.load(Ordering::Relaxed));
+            // The trigger being held, for the trace; the main one when neither is.
+            let trigger = configured_triggers()
+                .find(|(slot, _)| SLOT_DOWN[*slot].load(Ordering::Relaxed))
+                .or_else(|| configured_triggers().next())
+                .map(|(_, t)| t)
+                .unwrap_or_default();
 
             // Stale-flag resync.
             //
-            // `TRIGGER_PHYSICALLY_DOWN` is maintained purely by the tap, so a
+            // `SLOT_DOWN` is maintained purely by the tap, so a
             // key-up that the tap never saw (it was disabled, or another
             // process swallowed the event) latches it at `true` forever. The
             // FSM then never fires StopRecording, and every keystroke TTP
@@ -704,12 +725,12 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
             // false-trigger bug. Forcing down has no such failure mode.
             let resync = fn_stale_check(
                 fn_held,
-                os_says_held(&trigger, flags),
+                configured_triggers().any(|(_, t)| os_says_held(&t, flags)),
                 FN_STALE_TICKS.load(Ordering::Relaxed),
             );
             FN_STALE_TICKS.store(resync.new_ticks, Ordering::Relaxed);
             if resync.clear_flag {
-                TRIGGER_PHYSICALLY_DOWN.store(false, Ordering::Relaxed);
+                SLOT_DOWN.iter().for_each(|d| d.store(false, Ordering::Relaxed));
                 fn_held = false;
                 let stale_ms = FN_STALE_RESYNC_TICKS * 20;
                 fnlog!("[FnKey] stale Fn-down flag cleared (NSEvent disagreed for {}ms)", stale_ms);
@@ -876,22 +897,25 @@ unsafe extern "C" fn fkey_tap_callback(
     // FlagsChanged event with the dedicated Fn keycode, which fires only when
     // the *physical* Fn/Globe key changes state — not when an F-key sets the
     // Function bit as a side effect.
-    let trigger = crate::trigger::decode(TRIGGER.load(Ordering::Relaxed));
-    if TRIGGER_PHYSICALLY_DOWN.load(Ordering::Relaxed) && crate::trigger::interrupts(&trigger, &raw) {
-        // A key typed while a modifier trigger is down: the modifier is part
-        // of a shortcut. Treat it as released; it takes a fresh press to
-        // count again.
-        TRIGGER_PHYSICALLY_DOWN.store(false, Ordering::Relaxed);
-        crate::trace::event(
-            "hotkey.interrupted",
-            serde_json::json!({ "trigger": crate::trigger::slug(&trigger) }),
-        );
-    }
-    if let Some(held) = crate::trigger::held_change(&trigger, &raw) {
-        TRIGGER_PHYSICALLY_DOWN.store(held, Ordering::Relaxed);
-        if matches!(trigger, crate::trigger::Trigger::Fn) {
-            return event;
+    let mut fn_event = false;
+    for (slot, trigger) in configured_triggers() {
+        if SLOT_DOWN[slot].load(Ordering::Relaxed) && crate::trigger::interrupts(&trigger, &raw) {
+            // A key typed while a modifier trigger is down: the modifier is
+            // part of a shortcut. Treat it as released; it takes a fresh press
+            // to count again.
+            SLOT_DOWN[slot].store(false, Ordering::Relaxed);
+            crate::trace::event(
+                "hotkey.interrupted",
+                serde_json::json!({ "trigger": crate::trigger::slug(&trigger) }),
+            );
         }
+        if let Some(held) = crate::trigger::held_change(&trigger, &raw) {
+            SLOT_DOWN[slot].store(held, Ordering::Relaxed);
+            fn_event |= matches!(trigger, crate::trigger::Trigger::Fn);
+        }
+    }
+    if fn_event {
+        return event;
     }
 
     // Defensive belt-and-suspenders: if the user's keyboard somehow doesn't
@@ -1003,21 +1027,28 @@ pub fn cancel_trigger_capture() {
     }
 }
 
-/// Make `trigger` the one the tap listens for. Resets the press state so a
-/// key held under the old trigger cannot leave the new one latched.
-pub fn set_trigger(trigger: crate::trigger::Trigger) {
-    TRIGGER.store(crate::trigger::encode(&trigger), Ordering::Relaxed);
-    TRIGGER_PHYSICALLY_DOWN.store(false, Ordering::Relaxed);
+/// Set the trigger in `slot` (0 = main, 1 = second; `None` clears the second).
+/// Resets the press state so a key held under the old trigger cannot leave
+/// the new one latched.
+pub fn set_trigger(slot: usize, trigger: Option<crate::trigger::Trigger>) {
+    let slot = slot.min(1);
+    // The main trigger always exists.
+    let trigger = if slot == 0 { Some(trigger.unwrap_or_default()) } else { trigger };
+    TRIGGERS[slot].store(trigger.as_ref().map(crate::trigger::encode).unwrap_or(0), Ordering::Relaxed);
+    SLOT_DOWN.iter().for_each(|d| d.store(false, Ordering::Relaxed));
     FN_KEY_DOWN.store(false, Ordering::Relaxed);
     FN_RECORDING_ACTIVE.store(false, Ordering::Relaxed);
     FN_PRESS_TIME_MS.store(0, Ordering::Relaxed);
     LAST_FN_PRESS_TIME_MS.store(0, Ordering::Relaxed);
-    if matches!(trigger, crate::trigger::Trigger::Key { .. } | crate::trigger::Trigger::Mouse { .. }) {
+    if matches!(trigger, Some(crate::trigger::Trigger::Key { .. } | crate::trigger::Trigger::Mouse { .. })) {
         ensure_swallow_tap();
     }
     crate::trace::event(
         "hotkey.trigger_set",
-        serde_json::json!({ "trigger": crate::trigger::slug(&trigger) }),
+        serde_json::json!({
+            "slot": if slot == 0 { "main" } else { "second" },
+            "trigger": trigger.as_ref().map(crate::trigger::slug),
+        }),
     );
 }
 
@@ -1052,8 +1083,9 @@ pub fn key_chars(code: u16) -> String {
 // for to paste; without it the trigger still works, it just is not swallowed.
 
 static SWALLOW_TAP_RUNNING: AtomicBool = AtomicBool::new(false);
-/// Whether the bound key's last key-down was swallowed, so its key-up can be.
-static SWALLOWED_KEY_DOWN: AtomicBool = AtomicBool::new(false);
+/// Per slot: whether the bound key's last key-down was swallowed, so its
+/// key-up can be.
+static SWALLOWED_KEY_DOWN: [AtomicBool; 2] = [AtomicBool::new(false), AtomicBool::new(false)];
 static SWALLOW_PORT: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
 
 pub fn ensure_swallow_tap() {
@@ -1121,16 +1153,17 @@ unsafe extern "C" fn swallow_tap_callback(
     if CAPTURING.load(Ordering::Relaxed) {
         return std::ptr::null_mut();
     }
-    let trigger = crate::trigger::decode(TRIGGER.load(Ordering::Relaxed));
     let raw = raw_event(event_type, event);
-    let down_swallowed = raw.event_type == KCG_EVENT_KEY_UP && SWALLOWED_KEY_DOWN.load(Ordering::Relaxed);
-    if crate::trigger::swallows(&trigger, &raw, down_swallowed) {
-        match raw.event_type {
-            KCG_EVENT_KEY_DOWN => SWALLOWED_KEY_DOWN.store(true, Ordering::Relaxed),
-            KCG_EVENT_KEY_UP => SWALLOWED_KEY_DOWN.store(false, Ordering::Relaxed),
-            _ => {}
+    for (slot, trigger) in configured_triggers() {
+        let down_swallowed = raw.event_type == KCG_EVENT_KEY_UP && SWALLOWED_KEY_DOWN[slot].load(Ordering::Relaxed);
+        if crate::trigger::swallows(&trigger, &raw, down_swallowed) {
+            match raw.event_type {
+                KCG_EVENT_KEY_DOWN => SWALLOWED_KEY_DOWN[slot].store(true, Ordering::Relaxed),
+                KCG_EVENT_KEY_UP => SWALLOWED_KEY_DOWN[slot].store(false, Ordering::Relaxed),
+                _ => {}
+            }
+            return std::ptr::null_mut();
         }
-        return std::ptr::null_mut();
     }
     event
 }

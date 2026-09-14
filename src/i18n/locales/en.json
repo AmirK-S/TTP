@@ -57,7 +57,8 @@
     "companion_unreachable": "The app couldn't reach its own backend. This says nothing about what you own — if you've bought the Companion, it's still yours.",
     "retry": "Try again",
     "trigger_types_a_character": "That key types a character. Add ⌃, ⌥ or ⌘, or pick an F-key, a modifier on its own, or a mouse button.",
-    "trigger_caps_lock": "Caps Lock can't be the trigger: it toggles instead of reporting press and release."
+    "trigger_caps_lock": "Caps Lock can't be the trigger: it toggles instead of reporting press and release.",
+    "trigger_same_as_main": "That's already your main shortcut."
   },
   "progress": {
     "transcribing": "Transcribing…",
@@ -187,7 +188,9 @@
       "presets": "Quick picks:",
       "modifierHint": "Typing a key while you hold it cancels the dictation, so it still works in your shortcuts.",
       "hintShort": "Hold to talk · double-tap for hands-free",
-      "captureShort": "Press your key… (Esc)"
+      "captureShort": "Press your key… (Esc)",
+      "secondaryTitle": "Second shortcut",
+      "secondaryHint": "For an external keyboard whose Fn key doesn't reach the Mac"
     },
     "recordingMode": {
       "vadAutoStopLabel": "Auto-stop after silence",

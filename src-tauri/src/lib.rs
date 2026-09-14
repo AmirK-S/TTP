@@ -102,21 +102,58 @@ fn get_trigger() -> trigger::Trigger {
     settings::store::effective_trigger(&settings::get_settings())
 }
 
+#[tauri::command]
+fn get_secondary_trigger() -> Option<trigger::Trigger> {
+    settings::get_settings().trigger_secondary
+}
+
+fn trigger_error(trigger: &trigger::Trigger) -> Result<(), String> {
+    trigger::validate(trigger).map_err(|reason| {
+        let slug = serde_json::to_value(reason)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default();
+        format!("error.trigger_{}", slug)
+    })
+}
+
 /// Make `trigger` the dictation trigger and persist it. Refuses a trigger that
 /// would take a character away from the user (a bare letter) with a
 /// translation key the Settings window resolves.
 #[tauri::command]
 fn set_trigger(app: AppHandle, trigger: trigger::Trigger) -> Result<(), String> {
-    if let Err(reason) = trigger::validate(&trigger) {
-        let slug = serde_json::to_value(reason)
-            .ok()
-            .and_then(|v| v.as_str().map(str::to_string))
-            .unwrap_or_default();
-        return Err(format!("error.trigger_{}", slug));
-    }
-    settings::set_settings(serde_json::json!({ "trigger": trigger }), app)?;
+    trigger_error(&trigger)?;
+    let secondary = settings::get_settings().trigger_secondary;
+    // The same trigger in both slots is one trigger: drop the second.
+    let clear_secondary = secondary == Some(trigger);
+    let payload = if clear_secondary {
+        serde_json::json!({ "trigger": trigger, "trigger_secondary": null })
+    } else {
+        serde_json::json!({ "trigger": trigger })
+    };
+    settings::set_settings(payload, app)?;
     #[cfg(target_os = "macos")]
-    fnkey::set_trigger(trigger);
+    {
+        fnkey::set_trigger(0, Some(trigger));
+        if clear_secondary {
+            fnkey::set_trigger(1, None);
+        }
+    }
+    Ok(())
+}
+
+/// Set or clear (`None`) the second trigger.
+#[tauri::command]
+fn set_secondary_trigger(app: AppHandle, trigger: Option<trigger::Trigger>) -> Result<(), String> {
+    if let Some(t) = &trigger {
+        trigger_error(t)?;
+        if *t == settings::store::effective_trigger(&settings::get_settings()) {
+            return Err("error.trigger_same_as_main".into());
+        }
+    }
+    settings::set_settings(serde_json::json!({ "trigger_secondary": trigger }), app)?;
+    #[cfg(target_os = "macos")]
+    fnkey::set_trigger(1, trigger);
     Ok(())
 }
 
@@ -968,7 +1005,11 @@ pub fn run() {
                     fnkey::request_input_monitoring();
                 }
                 fnkey::start_fn_key_monitor(app.handle());
-                fnkey::set_trigger(settings::store::effective_trigger(&settings::get_settings()));
+                let s = settings::get_settings();
+                fnkey::set_trigger(0, Some(settings::store::effective_trigger(&s)));
+                if s.trigger_secondary.is_some() {
+                    fnkey::set_trigger(1, s.trigger_secondary);
+                }
             }
 
             // Best-effort: clear the macOS quarantine xattr after a self-update so
@@ -1080,6 +1121,8 @@ pub fn run() {
             set_fn_key_enabled,
             get_trigger,
             set_trigger,
+            get_secondary_trigger,
+            set_secondary_trigger,
             start_trigger_capture,
             cancel_trigger_capture,
             trigger_key_chars,

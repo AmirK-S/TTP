@@ -57,7 +57,8 @@
     "companion_unreachable": "L'app n'a pas réussi à joindre son propre backend. Ça ne dit rien de ce que tu possèdes — si tu as acheté le Compagnon, il est toujours à toi.",
     "retry": "Réessayer",
     "trigger_types_a_character": "Cette touche tape un caractère. Ajoute ⌃, ⌥ ou ⌘, ou choisis une touche F, un modificateur seul ou un bouton de souris.",
-    "trigger_caps_lock": "Verr. Maj ne peut pas servir de raccourci : elle bascule au lieu de signaler l'appui et le relâchement."
+    "trigger_caps_lock": "Verr. Maj ne peut pas servir de raccourci : elle bascule au lieu de signaler l'appui et le relâchement.",
+    "trigger_same_as_main": "C'est déjà ton raccourci principal."
   },
   "progress": {
     "transcribing": "Transcription…",
@@ -187,7 +188,9 @@
       "presets": "Choix rapides :",
       "modifierHint": "Taper une touche pendant que tu le maintiens annule la dictée : tes raccourcis continuent de marcher.",
       "hintShort": "Maintiens pour parler · double-tap pour les mains libres",
-      "captureShort": "Appuie sur ta touche… (Échap)"
+      "captureShort": "Appuie sur ta touche… (Échap)",
+      "secondaryTitle": "Deuxième raccourci",
+      "secondaryHint": "Pour un clavier externe dont la touche Fn n'arrive pas au Mac"
     },
     "recordingMode": {
       "vadAutoStopLabel": "Arrêt auto après un silence",

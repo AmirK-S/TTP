@@ -26,6 +26,11 @@ pub struct Settings {
     /// triggers existed — `effective_trigger` then derives it from `shortcut`.
     #[serde(default)]
     pub trigger: Option<crate::trigger::Trigger>,
+    /// An optional second trigger that works alongside `trigger` — for an
+    /// external keyboard whose Fn key never reaches the Mac (Logitech handles
+    /// it in firmware). `None` means there is only the main one.
+    #[serde(default)]
+    pub trigger_secondary: Option<crate::trigger::Trigger>,
     /// Telemetry opt-in: controls error reporting (Sentry) and usage analytics (Aptabase)
     /// Default is OFF -- user must explicitly enable
     #[serde(default)]
@@ -131,6 +136,7 @@ impl Default for Settings {
             #[cfg(not(target_os = "macos"))]
             fn_key_enabled: false,
             trigger: None,
+            trigger_secondary: None,
             telemetry_enabled: false,
             autostart_enabled: false,
             history_enabled: true,

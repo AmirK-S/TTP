@@ -580,6 +580,14 @@ export function Settings() {
               </select>
             )}
           </Row>
+          {isMac && (
+            <Row
+              label={t('settings.recordingTrigger.secondaryTitle')}
+              hint={t('settings.recordingTrigger.secondaryHint')}
+            >
+              <TriggerPicker compact slot="second" />
+            </Row>
+          )}
           <Row label={t('settings.recordingMode.audioDeviceLabel')} htmlFor="audio-device-select">
             <select
               id="audio-device-select"
