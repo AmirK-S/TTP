@@ -619,6 +619,19 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
 
             let tick = TIMER_TICKS.fetch_add(1, Ordering::Relaxed);
 
+            // The swallow tap needs Accessibility, which the user may grant
+            // after launch. Retry on the watchdog's pace rather than leaving a
+            // key trigger typing into the focused app until the next settings
+            // change. `ensure_swallow_tap` is a no-op once it is running.
+            if tick % TAP_WATCHDOG_TICKS == 0
+                && matches!(
+                    crate::trigger::decode(TRIGGER.load(Ordering::Relaxed)),
+                    crate::trigger::Trigger::Key { .. } | crate::trigger::Trigger::Mouse { .. }
+                )
+            {
+                ensure_swallow_tap();
+            }
+
             // Watchdog. A tap that macOS disabled without us seeing the
             // notification is indistinguishable from "the user isn't
             // pressing anything", so the only way to detect it is to ask.
