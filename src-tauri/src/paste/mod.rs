@@ -9,7 +9,7 @@ pub mod permissions;
 pub mod simulate;
 
 pub use accessibility::{
-    classify, probe_focused_text, read_focused_text, FocusSnapshot, FocusSource, PasteVerdict,
+    account_for_cleared_field, classify, probe_focused_text, read_focused_text, FocusSnapshot, FocusSource, PasteVerdict,
     Verification,
 };
 pub use frontmost::frontmost_bundle_id;

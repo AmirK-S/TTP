@@ -268,6 +268,28 @@ pub fn classify(before: &FocusSnapshot, after: &FocusSnapshot) -> Verification {
     }
 }
 
+/// Correct a `Swallowed` verdict when the field was seen to grow in between.
+///
+/// `classify` compares the first and last reads only. A chat composer that
+/// sends or queues the message the moment it arrives ends exactly where it
+/// started — empty, placeholder showing — and that pair reads as a swallow.
+/// Seen 2026-09-14 in the Claude desktop app: 508 characters typed, the field
+/// changed 37 ms later, was back to its 28-character placeholder by 422 ms,
+/// and the message sat queued in the conversation while the pill said nothing
+/// had arrived. `peak_delta` is the largest growth any intermediate read saw;
+/// growth is something only the injection produces, so it overrules the
+/// matching endpoints.
+pub fn account_for_cleared_field(verification: Verification, peak_delta: Option<i64>) -> Verification {
+    if verification.verdict == PasteVerdict::Swallowed && peak_delta.is_some_and(|d| d > 0) {
+        return Verification {
+            verdict: PasteVerdict::Observed,
+            evidence: "text",
+            reason: "cleared_after_landing",
+        };
+    }
+    verification
+}
+
 #[cfg(target_os = "macos")]
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
@@ -531,6 +553,20 @@ pub fn read_focused_text() -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_field_that_grew_then_emptied_received_the_text() {
+        let swallowed = classify(&text("Tapez / pour les commandes."), &text("Tapez / pour les commandes."));
+        assert_eq!(swallowed.verdict, PasteVerdict::Swallowed);
+
+        let fixed = account_for_cleared_field(swallowed, Some(480));
+        assert_eq!(fixed.verdict, PasteVerdict::Observed);
+        assert_eq!(fixed.reason, "cleared_after_landing");
+
+        // No growth ever seen: the accusation stands.
+        assert_eq!(account_for_cleared_field(swallowed, Some(0)).verdict, PasteVerdict::Swallowed);
+        assert_eq!(account_for_cleared_field(swallowed, None).verdict, PasteVerdict::Swallowed);
+    }
+
     use super::*;
 
     fn text(t: &str) -> FocusSnapshot {

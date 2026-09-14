@@ -221,6 +221,8 @@ anything from a missing launch line.
 
 ## `paste.verify` is the important one
 
+`verdict: "observed"` with `reason: "cleared_after_landing"` means the field grew (`peak_delta_chars` > 0) and then went back to how it started — a chat app that sent or queued the message as soon as it arrived. Before 2026-09-14 that read as `swallowed` and the pill claimed nothing had been pasted.
+
 `paste.result {"ok":true}` only means the events were handed to the window
 server. `CGEventPost` returns `void`: it reports success even when every event
 is dropped. `paste.verify` reads the focused text field back and compares it to

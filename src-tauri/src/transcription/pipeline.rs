@@ -4299,12 +4299,15 @@ fn spawn_paste_verification(
         let mut after: Option<FocusSnapshot> = None;
         let mut first_change_ms: Option<u64> = None;
         let mut settled_ms: u64 = 0;
+        // Largest growth any read saw — see `account_for_cleared_field`.
+        let mut peak_delta: Option<i64> = None;
         let mut reads: u32 = 0;
         let mut retries: u32 = 0;
 
         if focused_before.observable() {
             let mut snapshot = crate::paste::probe_focused_text();
             reads += 1;
+            peak_delta = delta_of(&snapshot);
 
             // Poll until the target has consumed everything we sent, not until
             // it first reacts. We inject in chunks, so the first read after the
@@ -4339,6 +4342,9 @@ fn spawn_paste_verification(
 
                 let next = crate::paste::probe_focused_text();
                 reads += 1;
+                if let Some(d) = delta_of(&next) {
+                    peak_delta = Some(peak_delta.map_or(d, |p| p.max(d)));
+                }
                 if next != snapshot {
                     settled_ms = started.elapsed().as_millis() as u64;
                     first_change_ms.get_or_insert(settled_ms);
@@ -4352,9 +4358,9 @@ fn spawn_paste_verification(
         // returns `no_baseline` before it looks at it — so passing the
         // baseline itself is honest rather than clever: it says "there was
         // never a pair here".
-        let verification = crate::paste::classify(
-            &focused_before,
-            after.as_ref().unwrap_or(&focused_before),
+        let verification = crate::paste::account_for_cleared_field(
+            crate::paste::classify(&focused_before, after.as_ref().unwrap_or(&focused_before)),
+            peak_delta,
         );
         crate::paste::record_verdict(&slot, verification);
 
@@ -4398,6 +4404,7 @@ fn spawn_paste_verification(
                 "before_chars": focused_before.chars,
                 "after_chars": after.as_ref().and_then(|a| a.chars),
                 "delta_chars": after.as_ref().and_then(delta_of),
+                "peak_delta_chars": peak_delta,
                 "expected_chars": expected_chars,
                 // How fast the target reacted at all, vs when it stopped
                 // changing. A large gap between them means a slow consumer;
