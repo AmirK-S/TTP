@@ -6,19 +6,17 @@
 //     chunk; the pill never pulls in Settings's ~70KB.
 //   - `@sentry/react` is dynamically imported inside `initSentryIfConsented`,
 //     not statically here — keeps it off the pill bundle entirely.
-//   - i18n is initialised synchronously with a 'system'-resolved locale so
-//     first paint never waits on the `get_settings` IPC round-trip; we patch
-//     the persisted choice in afterwards if it differs.
+//   - i18n is initialised synchronously from the system locale, so first
+//     paint never waits on IPC. Language and appearance both follow macOS.
 
 import React, { Suspense, lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ErrorBoundary } from './lib/ErrorBoundary';
 import { captureExceptionIfActive, initSentryIfConsented } from './lib/sentry';
-import { initI18n, setLanguage, resolveLanguage, type LanguageChoice } from './i18n/config';
-import { applyTheme, installSystemThemeListener, type ThemeChoice } from './lib/theme';
+import { initI18n } from './i18n/config';
+import { followSystemTheme } from './lib/theme';
 import { useSettingsStore } from './stores/settings-store';
 import './index.css';
 
@@ -51,39 +49,10 @@ function main() {
   const previewLabel = new URLSearchParams(window.location.search).get('preview');
   const isPreview = previewLabel !== null;
 
-  // Initialise i18n synchronously with the system-resolved locale so first
-  // paint never blocks on IPC. The persisted choice (if it differs) is
-  // patched in below — but the pill almost never shows translated text on
-  // the very first frame anyway, so the visual difference is nil.
-  const systemLang = resolveLanguage('system');
-  initI18n(systemLang);
-
-  // Live theme tracker — the matchMedia listener in lib/theme.ts checks this
-  // before re-applying `color-scheme` so it only acts when we're in "system"
-  // mode. Mutated below by the settings reconciliation + cross-window sync.
-  let currentTheme: ThemeChoice = 'system';
-  installSystemThemeListener(() => currentTheme);
+  initI18n('system');
+  followSystemTheme();
 
   if (!isPreview) {
-    // Reconcile with the persisted language + theme choice in the background.
-    // The anti-flash <script> in index.html already painted the right theme
-    // from localStorage; this round-trip catches the case where the on-disk
-    // setting was changed by another install (rare) or by `reset_settings`.
-    invoke<{ language?: string | null; theme?: string | null }>('get_settings')
-      .then((s) => {
-        const stored = (s?.language ?? 'system') as LanguageChoice;
-        const resolved = resolveLanguage(stored);
-        if (resolved !== systemLang) {
-          setLanguage(stored);
-        }
-        const storedTheme = (s?.theme ?? 'system') as ThemeChoice;
-        currentTheme = storedTheme;
-        applyTheme(storedTheme);
-      })
-      .catch(() => {
-        // get_settings may fail on very first launch — defaults stay in place.
-      });
-
     // Cross-window settings sync: every window has its own Zustand instance
     // (separate webview = separate JS context = separate store), so when one
     // window saves a setting, the others would stay stale until their own
@@ -101,14 +70,8 @@ function main() {
       history_enabled?: boolean;
       use_beta_channel?: boolean;
       shortcut?: string;
-      language?: string | null;
-      theme?: string | null;
     }>('settings-changed', (event) => {
       const p = event.payload;
-      setLanguage((p?.language ?? 'system') as LanguageChoice);
-      const nextTheme = (p?.theme ?? 'system') as ThemeChoice;
-      currentTheme = nextTheme;
-      applyTheme(nextTheme);
       // Mirror the full payload into the Zustand store so toggles UI in
       // every open window reflects reality immediately.
       useSettingsStore.setState({
@@ -121,8 +84,6 @@ function main() {
         ...(p?.history_enabled !== undefined && { historyEnabled: p.history_enabled }),
         ...(p?.use_beta_channel !== undefined && { useBetaChannel: p.use_beta_channel }),
         ...(p?.shortcut !== undefined && { shortcut: p.shortcut }),
-        ...(p?.language !== undefined && { language: (p.language ?? 'system') as LanguageChoice }),
-        ...(p?.theme !== undefined && { theme: nextTheme }),
       });
     }).catch(() => {});
 

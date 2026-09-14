@@ -46,14 +46,6 @@ pub struct Settings {
     /// When true, the updater queries `latest-beta.json` instead of `latest.json`.
     #[serde(default)]
     pub use_beta_channel: bool,
-    /// User language preference: "en", "fr", or "system". None means system
-    /// (follow navigator.language at first launch — resolved to en or fr in JS).
-    #[serde(default)]
-    pub language: Option<String>,
-    /// User theme preference: "system", "light", or "dark". None means system
-    /// (follow the OS `prefers-color-scheme` media query — resolved in JS).
-    #[serde(default)]
-    pub theme: Option<String>,
     /// Auto-stop recording after a sustained silence (Voice Activity Detection).
     /// Default OFF — opt-in because some workflows (dictation pauses while
     /// reading source material) intentionally include long silences.
@@ -70,8 +62,8 @@ pub struct Settings {
     #[serde(default)]
     pub audio_device_name: Option<String>,
     /// Language sent to Whisper as the `language` API parameter. Decoupled
-    /// from the UI language: a French-speaker using TTP in English will
-    /// still get correct transcription if they pick "fr" here.
+    /// from the UI language (which follows macOS): a French speaker on an
+    /// English Mac still gets correct transcription if they pick "fr" here.
     ///
     /// Accepted values: `"auto"` (default — Whisper auto-detects, NOT the
     /// UI language fallback, because the v3.1.2 fix that pinned the
@@ -144,8 +136,6 @@ impl Default for Settings {
             autostart_enabled: false,
             history_enabled: true,
             use_beta_channel: false,
-            language: None,
-            theme: None,
             vad_auto_stop_enabled: false,
             vad_silence_secs: default_vad_silence_secs(),
             audio_device_name: None,
@@ -642,9 +632,7 @@ mod payload_merge_tests {
             "audio_device_name": null,
             "transcription_language": null,
             "diagnostics_enabled": false,
-            "sound_pack": "bowl",
-            "language": "fr",
-            "theme": "dark"
+            "sound_pack": "bowl"
         })
     }
 

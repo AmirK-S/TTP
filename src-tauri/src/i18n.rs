@@ -10,11 +10,8 @@
 // and no async overhead — `tr()` is a synchronous, allocation-light call
 // suitable for any call site (notification builders, menu builders, etc.).
 //
-// Resolution order for the current language:
-//   1. `settings.language == Some("fr"|"en")` — explicit user choice wins.
-//   2. `settings.language == Some("system")` or `None` — sniff the
-//      $LANG / $LC_ALL / $LC_MESSAGES env vars and pick `fr` if any starts
-//      with "fr", else `en`.
+// The language follows the system: there is no in-app language setting.
+// See `system_locale_language` for how the system is read.
 //
 // Fallback for missing keys: `fr` → `en` → the key string itself. Returning
 // the key (rather than empty) is intentional — a missing key shows up
@@ -54,23 +51,14 @@ fn fr_tree() -> &'static serde_json::Value {
     })
 }
 
-/// Resolve the active language ("en" or "fr") from user settings, falling
-/// back to environment locale variables when the user has chosen "system"
-/// (or hasn't picked anything yet).
+/// The active language ("en" or "fr"), read from the system.
 ///
 /// Returns a `&'static str` so callers can use it without allocating.
 pub fn current_language() -> &'static str {
-    let lang = crate::settings::get_settings().language;
-    match lang.as_deref() {
-        Some("fr") => "fr",
-        Some("en") => "en",
-        // "system" or None: sniff env locale. Honoured in priority order
-        // matching POSIX: LC_ALL > LC_MESSAGES > LANG.
-        _ => system_locale_language(),
-    }
+    system_locale_language()
 }
 
-/// Detect the user's preferred language for "system" / unset settings.
+/// Detect the user's preferred language from the system.
 ///
 /// On macOS, POSIX env vars (`LANG`, `LC_ALL`) are almost always unset for
 /// apps launched from the GUI — Finder doesn't inherit them. As a result, the

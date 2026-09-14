@@ -332,20 +332,6 @@
       "desc": "Supprime l'application et toutes tes données : paramètres, historique, dictionnaire, licence, entrées Keychain, et permissions macOS.",
       "button": "Désinstaller TTP complètement"
     },
-    "language": {
-      "title": "Langue",
-      "desc": "Choisis la langue utilisée dans TTP. Affecte toutes les fenêtres et le menu de la barre.",
-      "optionSystem": "Système",
-      "optionEnglish": "English",
-      "optionFrench": "Français"
-    },
-    "theme": {
-      "title": "Apparence",
-      "desc": "Choisis le thème clair, sombre, ou suis le réglage macOS.",
-      "optionSystem": "Système",
-      "optionLight": "Clair",
-      "optionDark": "Sombre"
-    },
     "sidebar": {
       "thisMonth": "Ce mois",
       "words": "mots",

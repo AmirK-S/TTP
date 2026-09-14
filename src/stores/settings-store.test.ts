@@ -1,17 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { mockInvoke } from '../test/setup';
 
-// Stub the i18n + theme side-effects: settings-store calls setLanguage() and
-// applyTheme() inside loadSettings/saveSettings. Both touch the DOM and the
-// i18next runtime which we don't want to wire up for a state-store test.
-vi.mock('../i18n/config', () => ({
-  setLanguage: vi.fn(),
-}));
-vi.mock('../lib/theme', () => ({
-  applyTheme: vi.fn(),
-}));
-
-// Import AFTER the mocks so the store picks them up.
 import { useSettingsStore } from './settings-store';
 
 const defaultRustSettings = {
@@ -27,8 +16,6 @@ const defaultRustSettings = {
   vad_auto_stop_enabled: false,
   vad_silence_secs: 3,
   audio_device_name: null,
-  language: 'en',
-  theme: 'dark',
 };
 
 describe('settings-store', () => {
@@ -44,8 +31,6 @@ describe('settings-store', () => {
       autostartEnabled: false,
       historyEnabled: true,
       useBetaChannel: false,
-      language: 'system',
-      theme: 'system',
       dictionary: [],
       history: [],
       loading: false,
@@ -62,8 +47,6 @@ describe('settings-store', () => {
     expect(s.aiPolishEnabled).toBe(true);
     expect(s.shortcut).toBe('FnKey');
     expect(s.fnKeyEnabled).toBe(true);
-    expect(s.language).toBe('en');
-    expect(s.theme).toBe('dark');
     expect(s.loading).toBe(false);
     expect(mockInvoke).toHaveBeenCalledWith('get_settings', undefined);
   });
@@ -83,8 +66,6 @@ describe('settings-store', () => {
     expect(s.fnKeyEnabled).toBe(false);
     expect(s.telemetryEnabled).toBe(false);
     expect(s.historyEnabled).toBe(true);
-    expect(s.language).toBe('system');
-    expect(s.theme).toBe('system');
   });
 
   it('loadSettings clears the loading flag even on IPC error', async () => {
@@ -151,8 +132,6 @@ describe('settings-store', () => {
       aiPolishEnabled: false,
       shortcut: 'Ctrl+Space',
       telemetryEnabled: true,
-      language: 'fr',
-      theme: 'dark',
     });
     mockInvoke.mockResolvedValueOnce(undefined);
 
@@ -166,8 +145,6 @@ describe('settings-store', () => {
         ai_polish_enabled: true, // overridden
         shortcut: 'Ctrl+Space',
         telemetry_enabled: true,
-        language: 'fr',
-        theme: 'dark',
       }),
     });
 
@@ -180,8 +157,6 @@ describe('settings-store', () => {
       aiPolishEnabled: false,
       shortcut: 'Ctrl+Space',
       telemetryEnabled: true,
-      language: 'fr',
-      theme: 'dark',
     });
     mockInvoke.mockResolvedValueOnce(undefined);
 
@@ -191,8 +166,6 @@ describe('settings-store', () => {
     expect(s.aiPolishEnabled).toBe(true);
     expect(s.shortcut).toBe('Alt+Space');
     expect(s.telemetryEnabled).toBe(false);
-    expect(s.language).toBe('system');
-    expect(s.theme).toBe('system');
   });
 
   it('saveSettings propagates errors so callers can show "Couldn\'t save"', async () => {

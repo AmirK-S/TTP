@@ -20,8 +20,6 @@ import { useUpdater } from '../hooks/useUpdater';
 import { useSettingsStore, DictionaryEntry, HistoryEntry } from '../stores/settings-store';
 import { PermissionBanner } from '../components/PermissionBanner';
 import { FnEmojiNudge } from '../components/FnEmojiNudge';
-import type { LanguageChoice } from '../i18n/config';
-import type { ThemeChoice } from '../lib/theme';
 import WhatsNew from '../components/WhatsNew';
 import {
   Button, Input, Banner, Spinner, Toggle, ConfirmDialog,
@@ -307,7 +305,7 @@ export function Settings() {
   const {
     aiPolishEnabled, telemetryEnabled, shortcut, handsFreeMode, hidePillWhenInactive,
     autostartEnabled, historyEnabled, vadAutoStopEnabled, vadSilenceSecs, audioDeviceName,
-    transcriptionLanguage, diagnosticsEnabled, language, theme, dictionary, history, loading, isPro, licenseKey,
+    transcriptionLanguage, diagnosticsEnabled, dictionary, history, loading, isPro, licenseKey,
     licenseStatus, licenseExpiresAt, licenseActivationCount, licenseActivationLimit,
     licenseLoading, licenseError, soundPack,
     loadSettings, saveSettings, resetSettings, loadDictionary, deleteEntry,
@@ -645,18 +643,6 @@ export function Settings() {
   const shortcutErrorIsInputMonitoring =
     shortcutError.includes('Input Monitoring') || shortcutError === 'error.input_monitoring_required';
 
-  const languageOptions: { value: LanguageChoice; label: string }[] = [
-    { value: 'system', label: t('settings.language.optionSystem') },
-    { value: 'en', label: t('settings.language.optionEnglish') },
-    { value: 'fr', label: t('settings.language.optionFrench') },
-  ];
-
-  const themeOptions: { value: ThemeChoice; label: string }[] = [
-    { value: 'system', label: t('settings.theme.optionSystem') },
-    { value: 'light', label: t('settings.theme.optionLight') },
-    { value: 'dark', label: t('settings.theme.optionDark') },
-  ];
-
   return (
     <div className="h-screen flex bg-app-bg text-app-text bg-noise">
       <SettingsSidebar />
@@ -675,46 +661,6 @@ export function Settings() {
                 </div>
               </div>
               <p className="text-[13px] text-app-muted leading-relaxed">{t('settings.about.description')}</p>
-            </SettingsSection>
-
-            <SettingsSection title={t('settings.language.title')} description={t('settings.language.desc')}>
-              <div className="space-y-2">
-                {languageOptions.map((opt) => (
-                  <RadioOption
-                    key={opt.value}
-                    selected={language === opt.value}
-                    onSelect={async () => {
-                      if (language === opt.value) return;
-                      try {
-                        await saveSettings({ language: opt.value });
-                        trackEvent('setting_changed', { setting_name: 'language', new_value: opt.value });
-                      } catch (error) { console.error('Failed to save language setting:', error); }
-                    }}
-                    label={opt.label}
-                    disabled={loading}
-                  />
-                ))}
-              </div>
-            </SettingsSection>
-
-            <SettingsSection title={t('settings.theme.title')} description={t('settings.theme.desc')}>
-              <div className="space-y-2">
-                {themeOptions.map((opt) => (
-                  <RadioOption
-                    key={opt.value}
-                    selected={theme === opt.value}
-                    onSelect={async () => {
-                      if (theme === opt.value) return;
-                      try {
-                        await saveSettings({ theme: opt.value });
-                        trackEvent('setting_changed', { setting_name: 'theme', new_value: opt.value });
-                      } catch (error) { console.error('Failed to save theme setting:', error); }
-                    }}
-                    label={opt.label}
-                    disabled={loading}
-                  />
-                ))}
-              </div>
             </SettingsSection>
 
             <SettingsSection title={t('settings.startup.title')}>

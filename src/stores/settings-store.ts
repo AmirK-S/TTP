@@ -5,8 +5,6 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { safeInvoke } from '../lib/safeInvoke';
 import { emit } from '@tauri-apps/api/event';
-import { setLanguage, type LanguageChoice } from '../i18n/config';
-import { applyTheme, type ThemeChoice } from '../lib/theme';
 
 /** Dictionary entry structure matching Rust backend */
 export interface DictionaryEntry {
@@ -33,10 +31,6 @@ export interface Settings {
   autostart_enabled: boolean;
   history_enabled: boolean;
   use_beta_channel: boolean;
-  /** 'en' | 'fr' | 'system' | null. null is treated as 'system' (autodetect). */
-  language: string | null;
-  /** 'system' | 'light' | 'dark' | null. null is treated as 'system' (follow OS). */
-  theme: string | null;
   /** Auto-stop recording after sustained silence. Default false. */
   vad_auto_stop_enabled: boolean;
   /** Seconds of continuous silence before auto-stop fires. Bounded [1, 10]. */
@@ -91,8 +85,6 @@ interface SettingsStore {
   transcriptionLanguage: string;
   diagnosticsEnabled: boolean;
   soundPack: string;
-  language: LanguageChoice;
-  theme: ThemeChoice;
   dictionary: DictionaryEntry[];
   history: HistoryEntry[];
   loading: boolean;
@@ -156,8 +148,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   transcriptionLanguage: 'auto',
   diagnosticsEnabled: false,
   soundPack: 'default',
-  language: 'system',
-  theme: 'system',
   dictionary: [],
   history: [],
   loading: false,
@@ -180,8 +170,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ loading: true });
     try {
       const settings = await safeInvoke<Settings>('get_settings');
-      const lang = (settings.language ?? 'system') as LanguageChoice;
-      const theme = (settings.theme ?? 'system') as ThemeChoice;
       set({
         aiPolishEnabled: settings.ai_polish_enabled,
         shortcut: settings.shortcut || 'Alt+Space',
@@ -198,11 +186,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         transcriptionLanguage: settings.transcription_language ?? 'auto',
         diagnosticsEnabled: settings.diagnostics_enabled ?? false,
         soundPack: settings.sound_pack ?? 'default',
-        language: lang,
-        theme,
       });
-      setLanguage(lang);
-      applyTheme(theme);
     } catch (error) {
       console.error('Failed to load settings:', error);
     } finally {
@@ -229,8 +213,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         transcription_language: get().transcriptionLanguage === 'auto' ? null : get().transcriptionLanguage,
         diagnostics_enabled: get().diagnosticsEnabled,
         sound_pack: get().soundPack,
-        language: get().language,
-        theme: get().theme,
       };
 
       const newSettings: Settings = {
@@ -241,8 +223,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       await invoke('set_settings', { settings: newSettings });
       // Emit event so other components (like pill, other windows) can react to settings changes
       emit('settings-changed', newSettings);
-      const newLang = (newSettings.language ?? 'system') as LanguageChoice;
-      const newTheme = (newSettings.theme ?? 'system') as ThemeChoice;
       set({
         aiPolishEnabled: newSettings.ai_polish_enabled,
         shortcut: newSettings.shortcut,
@@ -259,11 +239,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         transcriptionLanguage: newSettings.transcription_language ?? 'auto',
         diagnosticsEnabled: newSettings.diagnostics_enabled ?? false,
         soundPack: newSettings.sound_pack ?? 'default',
-        language: newLang,
-        theme: newTheme,
       });
-      setLanguage(newLang);
-      applyTheme(newTheme);
     } catch (error) {
       console.error('Failed to save settings:', error);
       throw error;
@@ -290,11 +266,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         transcriptionLanguage: 'auto',
         diagnosticsEnabled: false,
         soundPack: 'default',
-        language: 'system',
-        theme: 'system',
       }); // Default values
-      setLanguage('system');
-      applyTheme('system');
     } catch (error) {
       console.error('Failed to reset settings:', error);
       throw error;

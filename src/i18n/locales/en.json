@@ -332,20 +332,6 @@
       "desc": "Remove the app and every trace of your data: settings, history, dictionary, license, Keychain credentials, and macOS permissions.",
       "button": "Uninstall TTP completely"
     },
-    "language": {
-      "title": "Language",
-      "desc": "Pick the language used across TTP. Affects every window and the tray menu.",
-      "optionSystem": "System default",
-      "optionEnglish": "English",
-      "optionFrench": "Français"
-    },
-    "theme": {
-      "title": "Appearance",
-      "desc": "Use light, dark, or follow your macOS system setting.",
-      "optionSystem": "System",
-      "optionLight": "Light",
-      "optionDark": "Dark"
-    },
     "sidebar": {
       "thisMonth": "This month",
       "words": "words",
