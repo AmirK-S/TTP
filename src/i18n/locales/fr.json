@@ -126,9 +126,6 @@
     }
   },
   "settings": {
-    "nav": {
-      "advanced": "Avancé"
-    },
     "pro": {
       "title": "Soutenir TTP",
       "inputPlaceholder": "Colle ta clé de licence ici",
@@ -277,19 +274,24 @@
     "sidebar": {
       "thisMonth": "Ce mois",
       "words": "mots",
-      "transcriptions": "{{count}} transcriptions",
-      "followLinkedIn": "Suivre sur LinkedIn"
-    },
-    "advanced": {
-      "show": "Afficher les réglages avancés",
-      "hide": "Masquer les réglages avancés"
+      "transcriptions": "{{count}} transcriptions"
     },
     "groups": {
-      "dictation": "Dictée",
-      "general": "Général"
+      "shortcuts": "Raccourcis",
+      "recording": "Enregistrement",
+      "troubleshooting": "Dépannage",
+      "app": "Application"
     },
     "support": {
       "hint": "TTP est gratuit. Une licence à vie débloque les packs de sons et soutient le projet."
+    },
+    "pages": {
+      "dictation": "Dictée",
+      "general": "Général",
+      "dictionary": "Dictionnaire",
+      "history": "Historique",
+      "support": "Soutenir TTP",
+      "advanced": "Avancé"
     }
   },
   "onboarding": {

@@ -1,13 +1,13 @@
 // TTP - Talk To Paste
-// Settings window. One column of compact groups, macOS System Settings style:
-// a row per setting, label on the left, control on the right, a one-line hint
-// only where the label is not enough. Rarely wanted settings sit under a
-// collapsed Advanced group.
+// Settings window, macOS System Settings style: a sidebar of short pages, and
+// on each page a few groups of compact rows — label on the left, control on
+// the right, a one-line hint only where the label is not enough.
 
 import { useEffect, useState, useCallback, useRef, memo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Volume2, Copy, Check, Download, RefreshCw, ArrowRight, Repeat, ChevronRight, Trash2,
+  Volume2, Copy, Check, Download, RefreshCw, ArrowRight, Repeat, Trash2,
+  Mic, SlidersHorizontal, BookOpen, History, Heart, Wrench,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { invoke } from '@tauri-apps/api/core';
@@ -42,9 +42,9 @@ function Group({ title, action, children, className }: {
   className?: string;
 }) {
   return (
-    <section className={cn('mb-5', className)}>
-      <div className="mb-1.5 flex min-h-[22px] items-center justify-between px-1">
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.06em] text-app-faint">{title}</h2>
+    <section className={cn('mb-6', className)}>
+      <div className="mb-2 flex min-h-[22px] items-center justify-between px-1">
+        <h2 className="text-[12.5px] font-semibold text-app-muted">{title}</h2>
         {action}
       </div>
       <div className="overflow-hidden rounded-app-md border border-app-border bg-app-surface divide-y divide-app-border">
@@ -62,14 +62,14 @@ function Row({ label, hint, children, htmlFor }: {
   htmlFor?: string;
 }) {
   return (
-    <div className="flex min-h-[44px] items-center justify-between gap-4 px-3.5 py-2">
+    <div className="flex min-h-[46px] items-center justify-between gap-4 px-4 py-2.5">
       <div className="min-w-0">
         {htmlFor ? (
           <label htmlFor={htmlFor} className="block text-[13px] text-app-text">{label}</label>
         ) : (
           <p className="text-[13px] text-app-text">{label}</p>
         )}
-        {hint && <p className="mt-0.5 text-[11.5px] leading-snug text-app-muted">{hint}</p>}
+        {hint && <p className="mt-0.5 text-[12px] leading-snug text-app-muted">{hint}</p>}
       </div>
       {children && <div className="flex shrink-0 items-center gap-2">{children}</div>}
     </div>
@@ -277,7 +277,21 @@ export function Settings() {
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
   const [showUninstallConfirm, setShowUninstallConfirm] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  // The page shown, remembered between openings of the window.
+  const [page, setPage] = useState<SettingsPage>(() => {
+    try {
+      const stored = localStorage.getItem(PAGE_STORAGE_KEY);
+      return (PAGES.some((p) => p.id === stored) ? stored : 'dictation') as SettingsPage;
+    } catch {
+      return 'dictation';
+    }
+  });
+  const selectPage = useCallback((next: SettingsPage) => {
+    setPage(next);
+    try { localStorage.setItem(PAGE_STORAGE_KEY, next); } catch { /* storage unavailable */ }
+  }, []);
+  // An update found in the background is shown on the page that holds it.
+  useTauriEvent('update-available', () => selectPage('general'));
 
   // No local autostart state and no `isAutostartEnabled()` call — the plugin's
   // is_enabled() is unreliable on macOS for product names with spaces. The UI
@@ -383,8 +397,9 @@ export function Settings() {
   useEffect(() => {
     if (hasGroqKey !== false || scrolledToKey.current) return;
     scrolledToKey.current = true;
-    transcriptionSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [hasGroqKey]);
+    selectPage('general');
+    setTimeout(() => transcriptionSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }, [hasGroqKey, selectPage]);
 
   const handleGroqKeySaved = () => {
     setHasGroqKey(true); setGroqKeySuccess(true);
@@ -547,433 +562,429 @@ export function Settings() {
   const selectedPack = soundPacks?.find((p) => p.id === soundPack) ?? soundPacks?.[0];
 
   return (
-    <div className="h-screen overflow-y-auto bg-app-bg text-app-text bg-noise">
-      <div className="mx-auto max-w-[560px] px-6 pt-6 pb-10">
-        {/* Header: who this is, and what it has done for you this month. */}
-        <header className="mb-5 flex items-center gap-3 px-1">
-          <BrandTile size="sm" />
-          <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-semibold leading-tight text-app-text">TTP</p>
-            <p className="text-[11.5px] text-app-faint tabular-nums">v{appVersion}</p>
-          </div>
-          <MonthStats />
-        </header>
+    <div className="h-screen flex bg-app-bg text-app-text">
+      <SettingsSidebar page={page} onSelect={selectPage} version={appVersion} />
 
-        <PermissionBanner />
+      <main className="flex-1 min-w-0 overflow-y-auto bg-noise">
+        <div className="mx-auto max-w-[540px] px-7 pt-6 pb-10">
+          <h1 className="mb-5 text-[20px] font-semibold tracking-[-0.01em] text-app-text">
+            {t(`settings.pages.${page}`)}
+          </h1>
 
-        <Group title={t('settings.groups.dictation')}>
-          <Row
-            label={t('settings.recordingTrigger.title')}
-            hint={t('settings.recordingTrigger.hintShort')}
-          >
-            {isMac ? (
-              <TriggerPicker compact />
-            ) : (
-              <select
-                className={SELECT}
-                value={shortcut}
-                onChange={(e) => handleShortcutChange(e.target.value)}
-                disabled={loading}
-                aria-label={t('settings.recordingTrigger.title')}
-              >
-                {triggerOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-              </select>
-            )}
-          </Row>
-          {isMac && (
-            <Row
-              label={t('settings.recordingTrigger.secondaryTitle')}
-              hint={t('settings.recordingTrigger.secondaryHint')}
-            >
-              <TriggerPicker compact slot="second" />
-            </Row>
-          )}
-          <Row label={t('settings.recordingMode.audioDeviceLabel')} htmlFor="audio-device-select">
-            <select
-              id="audio-device-select"
-              className={SELECT}
-              value={audioDeviceName ?? ''}
-              onChange={(e) => handleAudioDeviceChange(e.target.value)}
-              onFocus={refreshAudioDevices}
-              disabled={loading}
-            >
-              <option value="">{t('settings.recordingMode.audioDeviceDefault')}</option>
-              {audioDevices.map((d) => (
-                <option key={d.name} value={d.name}>
-                  {d.is_default ? `${d.name} ${t('settings.recordingMode.audioDeviceDefaultSuffix')}` : d.name}
-                </option>
-              ))}
-            </select>
-          </Row>
-          <Row label={t('settings.transcription.languageLabel')} htmlFor="transcription-language-select">
-            <select
-              id="transcription-language-select"
-              className={SELECT}
-              value={transcriptionLanguage}
-              onChange={(e) =>
-                saveSettings({
-                  transcription_language: e.target.value === 'auto' ? null : e.target.value,
-                }).catch((err) => console.error('Failed to save transcription_language:', err))
-              }
-              disabled={loading}
-            >
-              <option value="auto">{t('settings.transcription.languageAuto')}</option>
-              <option value="en">{t('settings.transcription.languageEnglish')}</option>
-              <option value="fr">{t('settings.transcription.languageFrench')}</option>
-            </select>
-          </Row>
-          <ToggleRow
-            label={t('settings.transcription.polishLabel')}
-            hint={t('settings.transcription.polishDesc')}
-            enabled={aiPolishEnabled}
-            onChange={handlePolishToggle}
-            disabled={loading}
-          />
-          {shortcutError && <p className="px-3.5 py-2 text-[12px] text-app-danger">{showShortcutError}</p>}
-          {shortcutSuccess && <p className="px-3.5 py-2 text-[12px] text-app-success">{t('settings.recordingTrigger.successUpdated')}</p>}
-        </Group>
+          <PermissionBanner />
 
-        {isMac && <FnEmojiNudge />}
-
-        <div ref={transcriptionSectionRef} className="scroll-mt-6">
-          <Group title={t('settings.transcription.groqLabel')}>
-            {hasGroqKey === false ? (
-              <div className="px-3.5 py-3">
-                <ApiKeyForm compact onSuccess={handleGroqKeySaved} submitLabel={t('common.save')} />
-              </div>
-            ) : (
-              <Row
-                label={t('settings.transcription.keyLabel')}
-                hint={groqKeySuccess ? t('settings.transcription.keySaved') : undefined}
-              >
-                <span className="text-[12px] text-app-success">{hasGroqKey ? t('settings.transcription.keyConfigured') : '…'}</span>
-                <Button variant="ghost" size="sm" onClick={() => setHasGroqKey(false)}>{t('common.change')}</Button>
-              </Row>
-            )}
-          </Group>
-        </div>
-
-        <Group title={t('settings.groups.general')}>
-          <ToggleRow
-            label={t('settings.recordingMode.launchStartupLabel')}
-            enabled={autostartEnabled}
-            onChange={handleAutostartToggle}
-            disabled={loading}
-          />
-          <UpdatesRow />
-        </Group>
-
-        <Group
-          title={t('settings.dictionary.title')}
-          action={dictionary.length > 0 ? (
-            <button type="button" onClick={() => setShowClearConfirm(true)} className="text-[11.5px] text-app-faint hover:text-app-danger transition-colors">
-              {t('common.clearAll')}
-            </button>
-          ) : undefined}
-        >
-          <form
-            className="flex items-center gap-2 px-3.5 py-2"
-            onSubmit={(e) => { e.preventDefault(); void handleAddEntry(); }}
-          >
-            <Input
-              value={newOriginal}
-              onChange={(e) => setNewOriginal(e.target.value)}
-              placeholder={t('settings.dictionary.placeholderMisheard')}
-              aria-label={t('settings.dictionary.labelMisheard')}
-              className="h-7 flex-1 text-[12.5px]"
-            />
-            <ArrowRight className="size-3.5 shrink-0 text-app-faint" aria-hidden />
-            <Input
-              value={newCorrection}
-              onChange={(e) => setNewCorrection(e.target.value)}
-              placeholder={t('settings.dictionary.placeholderCorrection')}
-              aria-label={t('settings.dictionary.labelCorrection')}
-              className="h-7 flex-1 text-[12.5px]"
-            />
-            <Button type="submit" size="sm" variant="secondary" disabled={!newOriginal.trim() || !newCorrection.trim()}>
-              {t('common.add')}
-            </Button>
-          </form>
-          {addEntryError && <p className="px-3.5 py-1.5 text-[12px] text-app-danger">{addEntryError}</p>}
-          {dictionary.length === 0 ? (
-            <p className="px-3.5 py-2.5 text-[12px] text-app-muted">{t('settings.dictionary.emptyState')}</p>
-          ) : (
-            <div className="max-h-44 overflow-y-auto">
-              {dictionary.map((entry) => (
-                <DictionaryRow key={entry.original} entry={entry} onDelete={handleDeleteEntry} />
-              ))}
-            </div>
-          )}
-        </Group>
-
-        <Group
-          title={t('settings.history.title')}
-          action={history.length > 0 ? (
-            <button type="button" onClick={() => setShowClearHistoryConfirm(true)} className="text-[11.5px] text-app-faint hover:text-app-danger transition-colors">
-              {t('settings.history.clearButton')}
-            </button>
-          ) : undefined}
-        >
-          <ToggleRow
-            label={t('settings.history.saveLabel')}
-            enabled={historyEnabled}
-            onChange={handleHistoryEnabledToggle}
-            disabled={loading}
-          />
-          {history.length === 0 ? (
-            <p className="px-3.5 py-2.5 text-[12px] text-app-muted">
-              {historyEnabled ? t('settings.history.emptyEnabled') : t('settings.history.emptyDisabled')}
-            </p>
-          ) : (
-            <div className="max-h-64 overflow-y-auto">
-              {history.map((entry) => <HistoryRow key={entry.timestamp} entry={entry} />)}
-            </div>
-          )}
-        </Group>
-
-        <Group title={t('settings.pro.title')}>
-          {companionError ? (
-            <div className="px-3.5 py-2.5">
-              <Banner
-                tone="warning"
-                title={t('error.companion_unreachable_title')}
-                action={<button type="button" onClick={loadCompanion} className="text-[12px] font-medium text-app-accent hover:underline">{t('error.retry')}</button>}
-              >
-                {t('error.companion_unreachable')}
-              </Banner>
-            </div>
-          ) : soundPacks && soundPacks.length > 0 && (
-            <Row
-              label={t('settings.companion.soundsLabel')}
-              hint={selectedPack ? t(`settings.companion.packs.${selectedPack.id}.desc`) : undefined}
-              htmlFor="sound-pack-select"
-            >
-              <select
-                id="sound-pack-select"
-                className={SELECT}
-                value={soundPack}
-                onChange={(e) => handleSelectPack(e.target.value)}
-                disabled={loading}
-              >
-                {soundPacks.map((pack) => {
-                  // `!== true`, not `!unlocked`: an unknown entitlement must
-                  // not be rendered as a lock.
-                  const locked = !pack.free && cosmeticsUnlocked !== true;
-                  return (
-                    <option key={pack.id} value={pack.id} disabled={locked}>
-                      {t(`settings.companion.packs.${pack.id}.name`)}{locked ? ' 🔒' : ''}
-                    </option>
-                  );
-                })}
-              </select>
-              <button
-                type="button"
-                onClick={() => { invoke('preview_sound_pack', { packId: soundPack }).catch(() => {}); }}
-                aria-label={t('settings.companion.preview')}
-                title={t('settings.companion.preview')}
-                className="rounded-app-sm p-1.5 text-app-muted hover:text-app-text hover:bg-app-raised transition-colors"
-              >
-                <Volume2 className="size-3.5" aria-hidden />
-              </button>
-            </Row>
-          )}
-          {!isPro ? (
+          {page === 'dictation' && (
             <>
-              <div className="flex items-center gap-2 px-3.5 py-2">
-                <Input
-                  value={licenseInput}
-                  onChange={(e) => setLicenseInput(e.target.value)}
-                  placeholder={t('settings.pro.inputPlaceholder')}
-                  spellCheck={false}
-                  disabled={licenseLoading}
-                  className="h-7 flex-1 font-mono text-[12px]"
-                  onKeyDown={(e) => { if (e.key === 'Enter' && licenseInput.trim()) handleActivateLicense(); }}
-                  aria-label={t('settings.pro.labelKey')}
-                />
-                <Button size="sm" variant="secondary" onClick={handleActivateLicense} disabled={licenseLoading || !licenseInput.trim()} loading={licenseLoading}>
-                  {t('settings.pro.activateShort')}
-                </Button>
-              </div>
-              {licenseError && <p className="px-3.5 pb-2 text-[12px] text-app-danger">{showLicenseError}</p>}
-              <div className="flex items-center justify-between gap-3 px-3.5 py-2">
-                <p className="text-[11.5px] leading-snug text-app-muted">{t('settings.support.hint')}</p>
-                <a
-                  href="https://amirks.lemonsqueezy.com/checkout/buy/23ded1c4-c862-4f8c-ada5-0bb3dc2e0060"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 text-[12px] font-medium text-app-accent hover:text-app-accent-hover"
+            <Group title={t('settings.groups.shortcuts')}>
+              <Row
+                label={t('settings.recordingTrigger.title')}
+                hint={t('settings.recordingTrigger.hintShort')}
+              >
+                {isMac ? (
+                  <TriggerPicker compact />
+                ) : (
+                  <select
+                    className={SELECT}
+                    value={shortcut}
+                    onChange={(e) => handleShortcutChange(e.target.value)}
+                    disabled={loading}
+                    aria-label={t('settings.recordingTrigger.title')}
+                  >
+                    {triggerOptions.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                  </select>
+                )}
+              </Row>
+              {isMac && (
+                <Row
+                  label={t('settings.recordingTrigger.secondaryTitle')}
+                  hint={t('settings.recordingTrigger.secondaryHint')}
                 >
-                  {t('settings.pro.buyLink')}
-                </a>
-              </div>
-            </>
-          ) : (
-            <Row
-              label={<span className="inline-flex items-center gap-1.5">{t('settings.pro.labelKey')} <span className="font-mono text-app-muted">{maskedLicenseKey}</span></span>}
-              hint={`${licenseStatus ?? t('settings.pro.statusUnknown')} · ${formatExpiry(licenseExpiresAt)}`}
-            >
-              <Button variant="ghost" size="sm" onClick={validateLicense} disabled={licenseLoading} title={t('common.refresh')}>
-                <RefreshCw className="size-3" />
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setShowDeactivateConfirm(true)} disabled={licenseLoading} className="text-app-danger hover:text-app-danger">
-                {t('settings.pro.deactivateShort')}
-              </Button>
-            </Row>
-          )}
-        </Group>
+                  <TriggerPicker compact slot="second" />
+                </Row>
+              )}
+            </Group>
 
-        {/* Rarely wanted, or only wanted when something is wrong. */}
-        <button
-          type="button"
-          onClick={() => setAdvancedOpen((o) => !o)}
-          aria-expanded={advancedOpen}
-          className="mb-2 flex items-center gap-1.5 px-1 text-[12px] font-medium text-app-muted hover:text-app-text transition-colors"
-        >
-          <ChevronRight className={cn('size-3.5 transition-transform duration-hover', advancedOpen && 'rotate-90')} aria-hidden />
-          {advancedOpen ? t('settings.advanced.hide') : t('settings.advanced.show')}
-        </button>
-
-        {advancedOpen && (
-          <Group title={t('settings.nav.advanced')}>
-            <ToggleRow
-              label={t('settings.recordingMode.vadAutoStopLabel')}
-              hint={t('settings.recordingMode.vadAutoStopDesc')}
-              enabled={vadAutoStopEnabled}
-              onChange={handleVadAutoStopToggle}
-              disabled={loading}
-            />
-            {vadAutoStopEnabled && (
-              <Row label={t('settings.recordingMode.vadSilenceSecsLabel')} htmlFor="vad-silence-secs">
-                <input
-                  id="vad-silence-secs"
-                  type="range"
-                  min={1}
-                  max={10}
-                  step={1}
-                  value={vadSilenceSecs}
-                  onChange={(e) => handleVadSilenceSecsChange(Number(e.target.value))}
+            <Group title={t('settings.groups.recording')}>
+              <Row label={t('settings.recordingMode.audioDeviceLabel')} htmlFor="audio-device-select">
+                <select
+                  id="audio-device-select"
+                  className={SELECT}
+                  value={audioDeviceName ?? ''}
+                  onChange={(e) => handleAudioDeviceChange(e.target.value)}
+                  onFocus={refreshAudioDevices}
                   disabled={loading}
-                  className="w-32 accent-app-accent"
-                />
-                <span className="w-7 text-right text-[12px] tabular-nums text-app-text">{vadSilenceSecs}s</span>
+                >
+                  <option value="">{t('settings.recordingMode.audioDeviceDefault')}</option>
+                  {audioDevices.map((d) => (
+                    <option key={d.name} value={d.name}>
+                      {d.is_default ? `${d.name} ${t('settings.recordingMode.audioDeviceDefaultSuffix')}` : d.name}
+                    </option>
+                  ))}
+                </select>
               </Row>
-            )}
-            <ToggleRow
-              label={t('settings.privacy.helpLabel')}
-              hint={t('settings.privacy.whatSentBody')}
-              enabled={telemetryEnabled}
-              onChange={handleTelemetryToggle}
-              disabled={loading}
-            />
-            {showRestartBanner && (
-              <Row label={t('settings.privacy.restartHint')}>
-                <Button variant="secondary" size="sm" onClick={() => relaunch().catch(console.error)}>
-                  {t('common.restartNow')}
+              <Row label={t('settings.transcription.languageLabel')} htmlFor="transcription-language-select">
+                <select
+                  id="transcription-language-select"
+                  className={SELECT}
+                  value={transcriptionLanguage}
+                  onChange={(e) =>
+                    saveSettings({
+                      transcription_language: e.target.value === 'auto' ? null : e.target.value,
+                    }).catch((err) => console.error('Failed to save transcription_language:', err))
+                  }
+                  disabled={loading}
+                >
+                  <option value="auto">{t('settings.transcription.languageAuto')}</option>
+                  <option value="en">{t('settings.transcription.languageEnglish')}</option>
+                  <option value="fr">{t('settings.transcription.languageFrench')}</option>
+                </select>
+              </Row>
+              <ToggleRow
+                label={t('settings.transcription.polishLabel')}
+                hint={t('settings.transcription.polishDesc')}
+                enabled={aiPolishEnabled}
+                onChange={handlePolishToggle}
+                disabled={loading}
+              />
+              {shortcutError && <p className="px-3.5 py-2 text-[12px] text-app-danger">{showShortcutError}</p>}
+              {shortcutSuccess && <p className="px-3.5 py-2 text-[12px] text-app-success">{t('settings.recordingTrigger.successUpdated')}</p>}
+            </Group>
+            {isMac && <FnEmojiNudge />}
+            </>
+          )}
+
+          {page === 'general' && (
+            <>
+            <div ref={transcriptionSectionRef} className="scroll-mt-6">
+              <Group title={t('settings.transcription.groqLabel')}>
+                {hasGroqKey === false ? (
+                  <div className="px-3.5 py-3">
+                    <ApiKeyForm compact onSuccess={handleGroqKeySaved} submitLabel={t('common.save')} />
+                  </div>
+                ) : (
+                  <Row
+                    label={t('settings.transcription.keyLabel')}
+                    hint={groqKeySuccess ? t('settings.transcription.keySaved') : undefined}
+                  >
+                    <span className="text-[12px] text-app-success">{hasGroqKey ? t('settings.transcription.keyConfigured') : '…'}</span>
+                    <Button variant="ghost" size="sm" onClick={() => setHasGroqKey(false)}>{t('common.change')}</Button>
+                  </Row>
+                )}
+              </Group>
+            </div>
+
+            <Group title={t('settings.groups.app')}>
+              <ToggleRow
+                label={t('settings.recordingMode.launchStartupLabel')}
+                enabled={autostartEnabled}
+                onChange={handleAutostartToggle}
+                disabled={loading}
+              />
+              <UpdatesRow />
+            </Group>
+            </>
+          )}
+
+          {page === 'dictionary' && (
+            <Group
+              title={t('settings.dictionary.title')}
+              action={dictionary.length > 0 ? (
+                <button type="button" onClick={() => setShowClearConfirm(true)} className="text-[11.5px] text-app-faint hover:text-app-danger transition-colors">
+                  {t('common.clearAll')}
+                </button>
+              ) : undefined}
+            >
+              <form
+                className="flex items-center gap-2 px-3.5 py-2"
+                onSubmit={(e) => { e.preventDefault(); void handleAddEntry(); }}
+              >
+                <Input
+                  value={newOriginal}
+                  onChange={(e) => setNewOriginal(e.target.value)}
+                  placeholder={t('settings.dictionary.placeholderMisheard')}
+                  aria-label={t('settings.dictionary.labelMisheard')}
+                  className="h-7 flex-1 text-[12.5px]"
+                />
+                <ArrowRight className="size-3.5 shrink-0 text-app-faint" aria-hidden />
+                <Input
+                  value={newCorrection}
+                  onChange={(e) => setNewCorrection(e.target.value)}
+                  placeholder={t('settings.dictionary.placeholderCorrection')}
+                  aria-label={t('settings.dictionary.labelCorrection')}
+                  className="h-7 flex-1 text-[12.5px]"
+                />
+                <Button type="submit" size="sm" variant="secondary" disabled={!newOriginal.trim() || !newCorrection.trim()}>
+                  {t('common.add')}
+                </Button>
+              </form>
+              {addEntryError && <p className="px-3.5 py-1.5 text-[12px] text-app-danger">{addEntryError}</p>}
+              {dictionary.length === 0 ? (
+                <p className="px-3.5 py-2.5 text-[12px] text-app-muted">{t('settings.dictionary.emptyState')}</p>
+              ) : (
+                <div className="max-h-44 overflow-y-auto">
+                  {dictionary.map((entry) => (
+                    <DictionaryRow key={entry.original} entry={entry} onDelete={handleDeleteEntry} />
+                  ))}
+                </div>
+              )}
+            </Group>
+          )}
+
+          {page === 'history' && (
+            <Group
+              title={t('settings.history.title')}
+              action={history.length > 0 ? (
+                <button type="button" onClick={() => setShowClearHistoryConfirm(true)} className="text-[11.5px] text-app-faint hover:text-app-danger transition-colors">
+                  {t('settings.history.clearButton')}
+                </button>
+              ) : undefined}
+            >
+              <ToggleRow
+                label={t('settings.history.saveLabel')}
+                enabled={historyEnabled}
+                onChange={handleHistoryEnabledToggle}
+                disabled={loading}
+              />
+              {history.length === 0 ? (
+                <p className="px-3.5 py-2.5 text-[12px] text-app-muted">
+                  {historyEnabled ? t('settings.history.emptyEnabled') : t('settings.history.emptyDisabled')}
+                </p>
+              ) : (
+                <div className="max-h-64 overflow-y-auto">
+                  {history.map((entry) => <HistoryRow key={entry.timestamp} entry={entry} />)}
+                </div>
+              )}
+            </Group>
+          )}
+
+          {page === 'support' && (
+            <Group title={t('settings.pro.title')}>
+              {companionError ? (
+                <div className="px-3.5 py-2.5">
+                  <Banner
+                    tone="warning"
+                    title={t('error.companion_unreachable_title')}
+                    action={<button type="button" onClick={loadCompanion} className="text-[12px] font-medium text-app-accent hover:underline">{t('error.retry')}</button>}
+                  >
+                    {t('error.companion_unreachable')}
+                  </Banner>
+                </div>
+              ) : soundPacks && soundPacks.length > 0 && (
+                <Row
+                  label={t('settings.companion.soundsLabel')}
+                  hint={selectedPack ? t(`settings.companion.packs.${selectedPack.id}.desc`) : undefined}
+                  htmlFor="sound-pack-select"
+                >
+                  <select
+                    id="sound-pack-select"
+                    className={SELECT}
+                    value={soundPack}
+                    onChange={(e) => handleSelectPack(e.target.value)}
+                    disabled={loading}
+                  >
+                    {soundPacks.map((pack) => {
+                      // `!== true`, not `!unlocked`: an unknown entitlement must
+                      // not be rendered as a lock.
+                      const locked = !pack.free && cosmeticsUnlocked !== true;
+                      return (
+                        <option key={pack.id} value={pack.id} disabled={locked}>
+                          {t(`settings.companion.packs.${pack.id}.name`)}{locked ? ' 🔒' : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => { invoke('preview_sound_pack', { packId: soundPack }).catch(() => {}); }}
+                    aria-label={t('settings.companion.preview')}
+                    title={t('settings.companion.preview')}
+                    className="rounded-app-sm p-1.5 text-app-muted hover:text-app-text hover:bg-app-raised transition-colors"
+                  >
+                    <Volume2 className="size-3.5" aria-hidden />
+                  </button>
+                </Row>
+              )}
+              {!isPro ? (
+                <>
+                  <div className="flex items-center gap-2 px-3.5 py-2">
+                    <Input
+                      value={licenseInput}
+                      onChange={(e) => setLicenseInput(e.target.value)}
+                      placeholder={t('settings.pro.inputPlaceholder')}
+                      spellCheck={false}
+                      disabled={licenseLoading}
+                      className="h-7 flex-1 font-mono text-[12px]"
+                      onKeyDown={(e) => { if (e.key === 'Enter' && licenseInput.trim()) handleActivateLicense(); }}
+                      aria-label={t('settings.pro.labelKey')}
+                    />
+                    <Button size="sm" variant="secondary" onClick={handleActivateLicense} disabled={licenseLoading || !licenseInput.trim()} loading={licenseLoading}>
+                      {t('settings.pro.activateShort')}
+                    </Button>
+                  </div>
+                  {licenseError && <p className="px-3.5 pb-2 text-[12px] text-app-danger">{showLicenseError}</p>}
+                  <div className="flex items-center justify-between gap-3 px-3.5 py-2">
+                    <p className="text-[11.5px] leading-snug text-app-muted">{t('settings.support.hint')}</p>
+                    <a
+                      href="https://amirks.lemonsqueezy.com/checkout/buy/23ded1c4-c862-4f8c-ada5-0bb3dc2e0060"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 text-[12px] font-medium text-app-accent hover:text-app-accent-hover"
+                    >
+                      {t('settings.pro.buyLink')}
+                    </a>
+                  </div>
+                </>
+              ) : (
+                <Row
+                  label={<span className="inline-flex items-center gap-1.5">{t('settings.pro.labelKey')} <span className="font-mono text-app-muted">{maskedLicenseKey}</span></span>}
+                  hint={`${licenseStatus ?? t('settings.pro.statusUnknown')} · ${formatExpiry(licenseExpiresAt)}`}
+                >
+                  <Button variant="ghost" size="sm" onClick={validateLicense} disabled={licenseLoading} title={t('common.refresh')}>
+                    <RefreshCw className="size-3" />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setShowDeactivateConfirm(true)} disabled={licenseLoading} className="text-app-danger hover:text-app-danger">
+                    {t('settings.pro.deactivateShort')}
+                  </Button>
+                </Row>
+              )}
+            </Group>
+          )}
+
+          {page === 'advanced' && (
+            <Group title={t('settings.groups.troubleshooting')}>
+              <ToggleRow
+                label={t('settings.recordingMode.vadAutoStopLabel')}
+                hint={t('settings.recordingMode.vadAutoStopDesc')}
+                enabled={vadAutoStopEnabled}
+                onChange={handleVadAutoStopToggle}
+                disabled={loading}
+              />
+              {vadAutoStopEnabled && (
+                <Row label={t('settings.recordingMode.vadSilenceSecsLabel')} htmlFor="vad-silence-secs">
+                  <input
+                    id="vad-silence-secs"
+                    type="range"
+                    min={1}
+                    max={10}
+                    step={1}
+                    value={vadSilenceSecs}
+                    onChange={(e) => handleVadSilenceSecsChange(Number(e.target.value))}
+                    disabled={loading}
+                    className="w-32 accent-app-accent"
+                  />
+                  <span className="w-7 text-right text-[12px] tabular-nums text-app-text">{vadSilenceSecs}s</span>
+                </Row>
+              )}
+              <ToggleRow
+                label={t('settings.privacy.helpLabel')}
+                hint={t('settings.privacy.whatSentBody')}
+                enabled={telemetryEnabled}
+                onChange={handleTelemetryToggle}
+                disabled={loading}
+              />
+              {showRestartBanner && (
+                <Row label={t('settings.privacy.restartHint')}>
+                  <Button variant="secondary" size="sm" onClick={() => relaunch().catch(console.error)}>
+                    {t('common.restartNow')}
+                  </Button>
+                </Row>
+              )}
+              <ToggleRow
+                label={t('settings.updateChannel.labelBeta')}
+                hint={useBetaChannel ? t('settings.updateChannel.warning') : t('settings.updateChannel.descBeta')}
+                enabled={useBetaChannel}
+                onChange={handleBetaToggle}
+                disabled={loading}
+              />
+              <ToggleRow
+                label={t('settings.diagnostics.label')}
+                enabled={diagnosticsEnabled}
+                onChange={handleDiagnosticsToggle}
+                disabled={loading}
+              />
+              <Row label={t('settings.logs.title')}>
+                <Button variant="secondary" size="sm" onClick={() => { invoke('reveal_log_folder').catch(console.error); }}>
+                  {t('settings.logs.buttonShort')}
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => { invoke('reveal_recordings_folder').catch(console.error); }}>
+                  {t('settings.logs.recordingsButtonShort')}
                 </Button>
               </Row>
-            )}
-            <ToggleRow
-              label={t('settings.updateChannel.labelBeta')}
-              hint={useBetaChannel ? t('settings.updateChannel.warning') : t('settings.updateChannel.descBeta')}
-              enabled={useBetaChannel}
-              onChange={handleBetaToggle}
-              disabled={loading}
-            />
-            <ToggleRow
-              label={t('settings.diagnostics.label')}
-              enabled={diagnosticsEnabled}
-              onChange={handleDiagnosticsToggle}
-              disabled={loading}
-            />
-            <Row label={t('settings.logs.title')}>
-              <Button variant="secondary" size="sm" onClick={() => { invoke('reveal_log_folder').catch(console.error); }}>
-                {t('settings.logs.buttonShort')}
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => { invoke('reveal_recordings_folder').catch(console.error); }}>
-                {t('settings.logs.recordingsButtonShort')}
-              </Button>
-            </Row>
-            <Row label={t('settings.reset.title')} hint={t('settings.reset.desc')}>
-              <Button variant="secondary" size="sm" onClick={() => setShowResetConfirm(true)} className="text-app-danger">
-                {t('settings.reset.button')}
-              </Button>
-            </Row>
-            <Row label={t('settings.uninstall.title')} hint={t('settings.uninstall.desc')}>
-              <Button variant="danger" size="sm" onClick={() => setShowUninstallConfirm(true)}>
-                {t('settings.uninstall.buttonShort')}
-              </Button>
-            </Row>
-          </Group>
-        )}
+              <Row label={t('settings.reset.title')} hint={t('settings.reset.desc')}>
+                <Button variant="secondary" size="sm" onClick={() => setShowResetConfirm(true)} className="text-app-danger">
+                  {t('settings.reset.button')}
+                </Button>
+              </Row>
+              <Row label={t('settings.uninstall.title')} hint={t('settings.uninstall.desc')}>
+                <Button variant="danger" size="sm" onClick={() => setShowUninstallConfirm(true)}>
+                  {t('settings.uninstall.buttonShort')}
+                </Button>
+              </Row>
+            </Group>
+          )}
 
-        <footer className="mt-6 flex items-center justify-center gap-3 text-[11px] text-app-faint">
-          <a href="https://amirks.eu" target="_blank" rel="noopener noreferrer" className="hover:text-app-text transition-colors">amirks.eu</a>
-          <span aria-hidden>·</span>
-          <a href="https://www.linkedin.com/in/amirks/" target="_blank" rel="noopener noreferrer" className="hover:text-app-text transition-colors">
-            {t('settings.sidebar.followLinkedIn')}
-          </a>
-        </footer>
+          <ConfirmDialog
+            open={showClearConfirm}
+            title={t('dialog.clearDictionary.title')}
+            message={t('dialog.clearDictionary.message')}
+            confirmText={t('dialog.clearDictionary.confirm')}
+            cancelText={t('common.cancel')}
+            onConfirm={handleClearDictionary}
+            onCancel={() => setShowClearConfirm(false)}
+          />
+          <ConfirmDialog
+            open={showResetConfirm}
+            title={t('dialog.reset.title')}
+            message={t('dialog.reset.message')}
+            confirmText={t('dialog.reset.confirm')}
+            cancelText={t('common.cancel')}
+            onConfirm={handleResetDefaults}
+            onCancel={() => setShowResetConfirm(false)}
+          />
+          <ConfirmDialog
+            open={showClearHistoryConfirm}
+            title={t('dialog.clearHistory.title')}
+            message={t('dialog.clearHistory.message')}
+            confirmText={t('dialog.clearHistory.confirm')}
+            cancelText={t('common.cancel')}
+            onConfirm={handleClearHistory}
+            onCancel={() => setShowClearHistoryConfirm(false)}
+          />
+          <ConfirmDialog
+            open={showUninstallConfirm}
+            title={t('dialog.uninstall.title')}
+            message={t('dialog.uninstall.message')}
+            confirmText={uninstalling ? t('dialog.uninstall.uninstalling') : t('dialog.uninstall.confirm')}
+            cancelText={t('common.cancel')}
+            tone="danger"
+            onConfirm={handleUninstall}
+            onCancel={() => !uninstalling && setShowUninstallConfirm(false)}
+          />
+          <ConfirmDialog
+            open={showDeactivateConfirm}
+            title={t('dialog.deactivateLicense.title')}
+            message={t('dialog.deactivateLicense.message')}
+            confirmText={t('dialog.deactivateLicense.confirm')}
+            cancelText={t('common.cancel')}
+            tone="warning"
+            onConfirm={handleDeactivateLicense}
+            onCancel={() => setShowDeactivateConfirm(false)}
+          />
+          <ConfirmDialog
+            open={pendingBetaDowngrade}
+            title={t('dialog.downgradeBeta.title')}
+            message={t('dialog.downgradeBeta.message')}
+            confirmText={t('common.continue')}
+            cancelText={t('common.cancel')}
+            tone="warning"
+            onConfirm={() => { setPendingBetaDowngrade(false); void persistBeta(false); }}
+            onCancel={() => setPendingBetaDowngrade(false)}
+          />
 
-        <ConfirmDialog
-          open={showClearConfirm}
-          title={t('dialog.clearDictionary.title')}
-          message={t('dialog.clearDictionary.message')}
-          confirmText={t('dialog.clearDictionary.confirm')}
-          cancelText={t('common.cancel')}
-          onConfirm={handleClearDictionary}
-          onCancel={() => setShowClearConfirm(false)}
-        />
-        <ConfirmDialog
-          open={showResetConfirm}
-          title={t('dialog.reset.title')}
-          message={t('dialog.reset.message')}
-          confirmText={t('dialog.reset.confirm')}
-          cancelText={t('common.cancel')}
-          onConfirm={handleResetDefaults}
-          onCancel={() => setShowResetConfirm(false)}
-        />
-        <ConfirmDialog
-          open={showClearHistoryConfirm}
-          title={t('dialog.clearHistory.title')}
-          message={t('dialog.clearHistory.message')}
-          confirmText={t('dialog.clearHistory.confirm')}
-          cancelText={t('common.cancel')}
-          onConfirm={handleClearHistory}
-          onCancel={() => setShowClearHistoryConfirm(false)}
-        />
-        <ConfirmDialog
-          open={showUninstallConfirm}
-          title={t('dialog.uninstall.title')}
-          message={t('dialog.uninstall.message')}
-          confirmText={uninstalling ? t('dialog.uninstall.uninstalling') : t('dialog.uninstall.confirm')}
-          cancelText={t('common.cancel')}
-          tone="danger"
-          onConfirm={handleUninstall}
-          onCancel={() => !uninstalling && setShowUninstallConfirm(false)}
-        />
-        <ConfirmDialog
-          open={showDeactivateConfirm}
-          title={t('dialog.deactivateLicense.title')}
-          message={t('dialog.deactivateLicense.message')}
-          confirmText={t('dialog.deactivateLicense.confirm')}
-          cancelText={t('common.cancel')}
-          tone="warning"
-          onConfirm={handleDeactivateLicense}
-          onCancel={() => setShowDeactivateConfirm(false)}
-        />
-        <ConfirmDialog
-          open={pendingBetaDowngrade}
-          title={t('dialog.downgradeBeta.title')}
-          message={t('dialog.downgradeBeta.message')}
-          confirmText={t('common.continue')}
-          cancelText={t('common.cancel')}
-          tone="warning"
-          onConfirm={() => { setPendingBetaDowngrade(false); void persistBeta(false); }}
-          onCancel={() => setPendingBetaDowngrade(false)}
-        />
 
-        <WhatsNew />
-      </div>
+          <WhatsNew />
+        </div>
+      </main>
     </div>
   );
 }
@@ -981,6 +992,75 @@ export function Settings() {
 interface SoundPack {
   id: string;
   free: boolean;
+}
+
+/* ----------------------------------------------------------------------------
+   Pages and the sidebar
+   ------------------------------------------------------------------------- */
+
+type SettingsPage = 'dictation' | 'general' | 'dictionary' | 'history' | 'support' | 'advanced';
+
+const PAGE_STORAGE_KEY = 'ttp-settings-page';
+
+const PAGES: { id: SettingsPage; icon: typeof Mic }[] = [
+  { id: 'dictation', icon: Mic },
+  { id: 'general', icon: SlidersHorizontal },
+  { id: 'dictionary', icon: BookOpen },
+  { id: 'history', icon: History },
+  { id: 'support', icon: Heart },
+  { id: 'advanced', icon: Wrench },
+];
+
+function SettingsSidebar({ page, onSelect, version }: {
+  page: SettingsPage;
+  onSelect: (page: SettingsPage) => void;
+  version: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <aside className="flex w-[190px] shrink-0 flex-col border-r border-app-border bg-app-dim">
+      <div className="flex items-center gap-2.5 px-4 pt-5 pb-4">
+        <BrandTile size="sm" />
+        <div className="min-w-0">
+          <p className="text-[13px] font-semibold leading-tight text-app-text">TTP</p>
+          <p className="text-[11px] tabular-nums text-app-faint">v{version}</p>
+        </div>
+      </div>
+
+      <nav className="flex-1 px-2">
+        <ul className="space-y-0.5">
+          {PAGES.map(({ id, icon: Icon }) => {
+            const active = page === id;
+            return (
+              <li key={id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(id)}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'flex w-full items-center gap-2.5 rounded-app-sm px-2.5 py-1.5 text-left text-[13px]',
+                    'transition-colors duration-hover',
+                    active ? 'bg-app-accent text-app-accent-fg' : 'text-app-text hover:bg-app-raised',
+                  )}
+                >
+                  <Icon className={cn('size-4 shrink-0', active ? 'text-app-accent-fg' : 'text-app-muted')} strokeWidth={1.75} aria-hidden />
+                  {t(`settings.pages.${id}`)}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+
+      <MonthStats />
+
+      <div className="flex items-center gap-2 border-t border-app-border px-4 py-3 text-[11px] text-app-faint">
+        <a href="https://amirks.eu" target="_blank" rel="noopener noreferrer" className="hover:text-app-text transition-colors">amirks.eu</a>
+        <span aria-hidden>·</span>
+        <a href="https://www.linkedin.com/in/amirks/" target="_blank" rel="noopener noreferrer" className="hover:text-app-text transition-colors">LinkedIn</a>
+      </div>
+    </aside>
+  );
 }
 
 /* ----------------------------------------------------------------------------
@@ -1011,13 +1091,12 @@ function MonthStats() {
   const fmt = new Intl.NumberFormat(i18n.language, { notation: 'compact', maximumFractionDigits: 1 }).format;
 
   return (
-    <div className="text-right">
-      <p className="text-[15px] font-semibold leading-tight tabular-nums text-app-text">
+    <div className="border-t border-app-border px-4 py-3">
+      <p className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-app-faint">{t('settings.sidebar.thisMonth')}</p>
+      <p className="mt-1 text-[15px] font-semibold leading-tight tabular-nums text-app-text">
         {fmt(summary.month.words)} <span className="text-[11px] font-normal text-app-muted">{t('settings.sidebar.words')}</span>
       </p>
-      <p className="text-[11px] text-app-faint">
-        {t('settings.sidebar.thisMonth')} · {t('settings.sidebar.transcriptions', { count: summary.month.transcriptions })}
-      </p>
+      <p className="text-[11px] text-app-faint">{t('settings.sidebar.transcriptions', { count: summary.month.transcriptions })}</p>
     </div>
   );
 }

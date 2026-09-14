@@ -126,9 +126,6 @@
     }
   },
   "settings": {
-    "nav": {
-      "advanced": "Advanced"
-    },
     "pro": {
       "title": "Support TTP",
       "inputPlaceholder": "Paste your license key here",
@@ -277,19 +274,24 @@
     "sidebar": {
       "thisMonth": "This month",
       "words": "words",
-      "transcriptions": "{{count}} transcriptions",
-      "followLinkedIn": "Follow on LinkedIn"
-    },
-    "advanced": {
-      "show": "Show advanced settings",
-      "hide": "Hide advanced settings"
+      "transcriptions": "{{count}} transcriptions"
     },
     "groups": {
-      "dictation": "Dictation",
-      "general": "General"
+      "shortcuts": "Shortcuts",
+      "recording": "Recording",
+      "troubleshooting": "Troubleshooting",
+      "app": "App"
     },
     "support": {
       "hint": "TTP is free. A lifetime licence unlocks the sound packs and supports the project."
+    },
+    "pages": {
+      "dictation": "Dictation",
+      "general": "General",
+      "dictionary": "Dictionary",
+      "history": "History",
+      "support": "Support TTP",
+      "advanced": "Advanced"
     }
   },
   "onboarding": {

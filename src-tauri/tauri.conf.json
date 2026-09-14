@@ -45,9 +45,9 @@
       {
         "label": "settings",
         "title": "TTP",
-        "width": 620,
-        "height": 720,
-        "minWidth": 480,
+        "width": 760,
+        "height": 620,
+        "minWidth": 640,
         "minHeight": 520,
         "maxWidth": 1100,
         "maxHeight": 900,
