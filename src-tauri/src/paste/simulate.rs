@@ -45,7 +45,13 @@ use std::time::Duration;
 
 /// Focus-settle delay before the first synthetic event, so the keystroke
 /// isn't swallowed by an app that has just regained foreground.
-const FOCUS_SETTLE_MS: u64 = 100;
+///
+/// Was 100 ms. On the hotkey path focus never leaves the target — the pill
+/// does not take it — so that was 0.1 s of every dictation spent waiting for
+/// nothing; the History replay, whose window does hide first, already waits
+/// 120 ms on its own side. If a first character ever goes missing,
+/// `paste.verify` will say so.
+const FOCUS_SETTLE_MS: u64 = 25;
 
 #[cfg(target_os = "macos")]
 mod mac {

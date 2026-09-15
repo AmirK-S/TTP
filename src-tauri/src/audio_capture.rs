@@ -164,6 +164,33 @@ struct RecordingState {
     writer: WavWriterHandle,
     save_path: PathBuf,
     samples_written: Arc<AtomicU64>,
+    /// When the stream started playing, and how many samples per second it
+    /// delivers (rate × channels): enough to know when the audio up to the
+    /// key release has all arrived. See `drain_complete`.
+    started_at: std::time::Instant,
+    samples_per_sec: u64,
+}
+
+/// Longest the stop waits for late audio — the old fixed drain.
+const DRAIN_MAX_MS: u64 = 400;
+/// Audio past the release that is still kept, for a last syllable that
+/// trails the key.
+const DRAIN_MARGIN_MS: u64 = 30;
+const DRAIN_POLL_MS: u64 = 5;
+
+/// Whether the capture already holds every sample up to `captured_for` (from
+/// stream start to key release) plus the margin.
+///
+/// The stop used to sleep a fixed 400 ms on every platform — a Windows fix
+/// (WASAPI held ~150 ms of input) that cost each Mac dictation 0.42 s of
+/// nothing: 23 of 23 dictations on 2026-09-15 spent 414–442 ms there, a
+/// fifth of the whole wait between releasing the key and seeing text. Now
+/// the stop waits only until the audio that was spoken has arrived, never
+/// longer than the old drain.
+pub(crate) fn drain_complete(samples: u64, captured_for: std::time::Duration, samples_per_sec: u64) -> bool {
+    let needed = (captured_for + std::time::Duration::from_millis(DRAIN_MARGIN_MS)).as_secs_f64()
+        * samples_per_sec as f64;
+    samples as f64 >= needed
 }
 
 static STATE: LazyLock<Mutex<Option<RecordingState>>> = LazyLock::new(|| Mutex::new(None));
@@ -625,6 +652,8 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
     stream
         .play()
         .map_err(|e| format!("Failed to start audio stream: {}", e))?;
+    let started_at = std::time::Instant::now();
+    let samples_per_sec = config.sample_rate().0 as u64 * config.channels() as u64;
 
     // 6. Ask permission, then stash everything in shared state for
     //    stop_recording to pick up.
@@ -690,6 +719,8 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
         writer: writer_handle,
         save_path,
         samples_written,
+        started_at,
+        samples_per_sec,
     });
     Ok(())
 }
@@ -876,7 +907,26 @@ async fn stop_recording_inner() -> Result<PathBuf, String> {
     // the .await at the top also keeps the future Send (a Stream / Mutex
     // guard / RecordingState held across an .await is not Send-safe and
     // makes the Tauri command macro fail to compile).
-    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    //
+    // Adaptive since 2026-09-15: wait until the samples cover the moment of
+    // release, capped at the old 400 ms (see `drain_complete`). Only a clone
+    // of the counter is taken from STATE, and the guard is gone before the
+    // first `.await`. A capture not published yet gets the full drain.
+    let released_at = std::time::Instant::now();
+    let clock = STATE.lock().ok().and_then(|s| {
+        s.as_ref().map(|r| (r.samples_written.clone(), released_at.saturating_duration_since(r.started_at), r.samples_per_sec))
+    });
+    let drain_max = std::time::Duration::from_millis(DRAIN_MAX_MS);
+    loop {
+        let done = clock.as_ref().is_some_and(|(samples, captured_for, per_sec)| {
+            drain_complete(samples.load(Ordering::Relaxed), *captured_for, *per_sec)
+        });
+        if done || released_at.elapsed() >= drain_max {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(DRAIN_POLL_MS)).await;
+    }
+    let drain_ms = released_at.elapsed().as_millis() as u64;
 
     // Let any in-flight start finish publishing before we look for it.
     //
@@ -986,6 +1036,9 @@ async fn stop_recording_inner() -> Result<PathBuf, String> {
             // true on a stop; when it is, the monitor did not stop this
             // recording and the backstop did.
             "sample_cap_hit": SAMPLE_CAP_HIT.load(Ordering::SeqCst),
+            // How long the stop waited for late audio. 400 means the cap was
+            // hit — the device lags more than the margin, or started late.
+            "drain_ms": drain_ms,
         }),
     );
 
@@ -1231,5 +1284,29 @@ mod sample_cap_tests {
         let limit = sample_limit_for(24_000, 1);
         assert!(limit < 24_000 * 30 * 60);
         assert!(limit < 24_000 * 11 * 3600);
+    }
+}
+
+#[cfg(test)]
+mod drain_tests {
+    use super::drain_complete;
+    use std::time::Duration;
+
+    #[test]
+    fn the_stop_waits_until_audio_up_to_the_release_has_arrived() {
+        // 48 kHz mono, key released 2 s after the stream started.
+        let per_sec = 48_000;
+        let spoken = Duration::from_secs(2);
+        // Samples up to the release but not the margin: keep waiting.
+        assert!(!drain_complete(96_000, spoken, per_sec));
+        // Release plus 30 ms is 97 440 samples.
+        assert!(drain_complete(97_440, spoken, per_sec));
+    }
+
+    #[test]
+    fn channels_count_in_the_rate() {
+        // Stereo delivers twice the samples for the same time.
+        assert!(!drain_complete(97_440, Duration::from_secs(2), 96_000));
+        assert!(drain_complete(194_880, Duration::from_secs(2), 96_000));
     }
 }
