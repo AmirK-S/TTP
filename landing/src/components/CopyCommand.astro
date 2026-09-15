@@ -1,0 +1,14 @@
+---
+import { useTranslations, type Lang } from '@/i18n/utils';
+import { INSTALL_COMMAND } from '@/lib/links';
+
+interface Props { lang: Lang; class?: string }
+const { lang, class: className = '' } = Astro.props;
+const t = useTranslations(lang);
+---
+
+<button type="button" class:list={['cmd', className]} data-copy={INSTALL_COMMAND} aria-label={`${t('hero.copy')} : ${INSTALL_COMMAND}`}>
+  <span class="prompt" aria-hidden="true">$</span>
+  <code>{INSTALL_COMMAND}</code>
+  <span class="cmd-label" data-copy-label data-idle={t('hero.copy')} data-done={t('hero.copied')}>{t('hero.copy')}</span>
+</button>

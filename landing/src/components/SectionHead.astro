@@ -1,0 +1,11 @@
+---
+interface Props { eyebrow: string; title: string; sub?: string; align?: 'center' | 'left' }
+const { eyebrow, title, sub, align = 'center' } = Astro.props;
+const centered = align === 'center';
+---
+
+<div class:list={['flex flex-col gap-4', centered ? 'items-center text-center' : 'items-start']} data-reveal>
+  <p class="eyebrow">{eyebrow}</p>
+  <h2 class:list={['h-section', centered ? 'max-w-3xl' : 'max-w-2xl']}>{title}</h2>
+  {sub && <p class:list={['lede', centered ? 'max-w-2xl' : 'max-w-xl']}>{sub}</p>}
+</div>

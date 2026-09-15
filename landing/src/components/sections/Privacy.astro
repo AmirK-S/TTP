@@ -1,0 +1,157 @@
+---
+/**
+ * Where the voice goes. The claim is about the relationship, not the
+ * location: TTP is not local, and there is no server of mine on the way.
+ */
+import { getLocalizedPath, useTranslations, type Lang } from '@/i18n/utils';
+import { GROQ_PRIVACY, REPO_URL } from '@/lib/links';
+import SectionHead from '@/components/SectionHead.astro';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+
+const columns = [
+  { title: t('priv.staysTitle'), items: [t('priv.stays1'), t('priv.stays2'), t('priv.stays3')] },
+  { title: t('priv.consentTitle'), items: [t('priv.consent1'), t('priv.consent2')] },
+  { title: t('priv.honestTitle'), items: [t('priv.honest1'), t('priv.honest2'), t('priv.honest3')] },
+];
+---
+
+<section id="privacy" class="section border-t border-line">
+  <div class="wrap">
+    <SectionHead eyebrow={t('priv.eyebrow')} title={t('priv.title')} sub={t('priv.sub')} />
+
+    <!-- The route -->
+    <div class="card mx-auto mt-14 max-w-4xl p-6 sm:p-10" data-reveal>
+      <div class="grid items-center gap-4 sm:grid-cols-[1fr_auto_1fr] sm:gap-6">
+        <div class="route-node">
+          <span class="route-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg>
+          </span>
+          <span>
+            <b class="block font-semibold">{t('priv.mac')}</b>
+            <span class="text-[0.8125rem] text-muted">{t('priv.macNote')}</span>
+          </span>
+        </div>
+
+        <div class="route-line" aria-hidden="true">
+          <span class="route-packet"></span>
+          <span class="mono route-tls">TLS</span>
+        </div>
+
+        <div class="route-node">
+          <span class="route-icon !bg-[#f55036] !text-white">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 15a8 8 0 0 1 16 0"/><path d="M12 7V3M4 19h16"/></svg>
+          </span>
+          <span>
+            <b class="block font-semibold">{t('priv.groq')}</b>
+            <span class="text-[0.8125rem] text-muted">{t('priv.groqNote')}</span>
+          </span>
+        </div>
+      </div>
+
+      <div class="mt-5 flex items-center justify-center gap-3 rounded-[14px] border border-dashed border-line-strong px-4 py-3.5 text-center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" class="text-faint"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M2 2l20 20"/></svg>
+        <span class="text-[0.9375rem] font-medium text-faint line-through decoration-1">{t('priv.none')}</span>
+        <span class="text-[0.9375rem] text-muted">— {t('priv.noneNote')}</span>
+      </div>
+    </div>
+
+    <div class="mx-auto mt-3.5 grid max-w-4xl gap-3.5 md:grid-cols-3">
+      {columns.map((c, i) => (
+        <div class="card p-6" data-reveal style={`transition-delay:${i * 80}ms`}>
+          <h3 class="text-[0.9375rem] font-semibold">{c.title}</h3>
+          <ul class="mt-4 grid gap-3">
+            {c.items.map((item) => (
+              <li class="flex gap-2.5 text-[0.875rem] leading-snug text-muted">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class:list={['mt-px shrink-0', i === 2 ? 'text-faint' : 'text-accent']}>
+                  {i === 2 ? <><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8v.01" /></> : <path d="M20 6 9 17l-5-5" />}
+                </svg>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+
+    <p class="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm" data-reveal>
+      <a href={getLocalizedPath(lang, 'privacy')} class="link">{t('priv.policy')}</a>
+      <a href={GROQ_PRIVACY} target="_blank" rel="noopener" class="link">{t('priv.groqPolicy')}</a>
+      <a href={REPO_URL} target="_blank" rel="noopener" class="link">GitHub</a>
+    </p>
+  </div>
+</section>
+
+<style>
+  .route-node {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 1rem 1.125rem;
+    border-radius: 14px;
+    background: var(--bg);
+    border: 1px solid var(--line-c);
+    box-shadow: var(--shadow-sm);
+  }
+  .route-icon {
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    flex-shrink: 0;
+    border-radius: 10px;
+    background: var(--text);
+    color: var(--bg);
+  }
+  .route-line {
+    position: relative;
+    height: 2.5rem;
+    min-width: 7rem;
+    display: grid;
+    place-items: center;
+  }
+  .route-line::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 2px;
+    border-radius: 2px;
+    background: repeating-linear-gradient(90deg, var(--line-strong) 0 6px, transparent 6px 11px);
+  }
+  .route-tls {
+    position: relative;
+    top: -1.1rem;
+    font-size: 0.6875rem;
+    color: var(--faint);
+    background: var(--surface);
+    padding-inline: 0.35rem;
+  }
+  .route-packet {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 8px;
+    height: 8px;
+    margin-top: -4px;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent);
+    animation: travel 2.6s var(--ease-out) infinite;
+  }
+  @keyframes travel {
+    0% { left: 0; opacity: 0; }
+    15% { opacity: 1; }
+    85% { opacity: 1; }
+    100% { left: calc(100% - 8px); opacity: 0; }
+  }
+  @media (max-width: 639px) {
+    .route-line { height: 3rem; min-width: 0; }
+    .route-line::before { left: 50%; right: auto; top: 0; bottom: 0; width: 2px; height: auto; background: repeating-linear-gradient(180deg, var(--line-strong) 0 6px, transparent 6px 11px); }
+    .route-tls { top: 0; left: 1.2rem; }
+    .route-packet { display: none; }
+  }
+</style>

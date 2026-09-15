@@ -1,6 +1,24 @@
+/* ----------------------------------------------------------------------------
+   Every word on the site, in both languages.
+
+   Rules, each learned the hard way:
+
+   1. Nothing here may be untrue with the source open. TTP sends audio to
+      `api.groq.com`; there is no local model. Never write "local", "offline"
+      or "nothing leaves your Mac".
+   2. Everything is free and uncapped. The €17 licence is a thank-you that
+      unlocks sound packs and nothing functional.
+   3. macOS only until Windows has been tested on a real machine.
+   4. Screen context is off until the person turns it on. Say so wherever it
+      is shown.
+
+   The French is the primary text (the launch audience is French) and speaks
+   like the app does: « tu », short sentences.
+   ------------------------------------------------------------------------- */
+
 export const languages = {
   en: 'English',
-  fr: 'Fran\u00e7ais',
+  fr: 'Français',
 } as const;
 
 export const defaultLang = 'en' as const;
@@ -8,354 +26,412 @@ export type Lang = keyof typeof languages;
 
 export const ui = {
   en: {
-    // Navbar
+    // ── chrome ───────────────────────────────────────────────────────────
+    'nav.skip': 'Skip to content',
+    'nav.how': 'How it works',
     'nav.features': 'Features',
-    'nav.howItWorks': 'How It Works',
-    'nav.changelog': 'Changelog',
+    'nav.privacy': 'Privacy',
+    'nav.faq': 'FAQ',
     'nav.download': 'Download',
-    'nav.getPro': 'Get Pro',
+    'nav.menu': 'Menu',
 
-    // Hero
-    'hero.headline': 'Turn Speech into Text.',
-    'hero.headlineAccent': 'Anywhere. Free.',
-    'hero.subheadline':
-      "Press a shortcut. Speak. Your words appear wherever you're typing. No switching apps. No copy-pasting. Just talk.",
-    'hero.cta': 'Get TTP Free',
-    'hero.socialProof': 'Free forever. No account. No strings attached.',
-    'hero.whisperNote': 'Powered by Groq. Sub-2-second transcription.',
-    'hero.trustBar': 'No servers · No tracking · Audio sent direct to Groq · Open source',
+    // ── hero ─────────────────────────────────────────────────────────────
+    'hero.badge': 'Free · no account · for Mac',
+    'hero.title1': 'You talk.',
+    'hero.title2': 'It’s typed.',
+    'hero.sub':
+      'Hold a key, say your sentence, let go. Clean text appears where your cursor is, in any Mac app, in about a second.',
+    'hero.cta': 'Download for Mac',
+    'hero.intel': 'Intel Mac',
+    'hero.signed': 'Signed and notarised by Apple',
+    'hero.copy': 'Copy',
+    'hero.copied': 'Copied',
+    'hero.commandLabel': 'Or in Terminal',
 
-    // How It Works
-    'howItWorks.heading': 'How It Works',
-    'howItWorks.subheading': 'Three steps. Zero friction.',
-    'howItWorks.step1Title': 'Hold Your Shortcut',
-    'howItWorks.step1Desc':
-      'Press and hold your shortcut key. On Mac, just press Fn.',
-    'howItWorks.step2Title': 'Speak',
-    'howItWorks.step2Desc':
-      'Talk naturally. TTP records your voice in the background.',
-    'howItWorks.step3Title': 'Text Appears',
-    'howItWorks.step3Desc':
-      'Your words are transcribed and pasted instantly into any app.',
+    // ── the stage ────────────────────────────────────────────────────────
+    'stage.label': 'Demonstration: a dictation into three apps',
+    'stage.pause': 'Pause',
+    'stage.play': 'Play',
+    'stage.transcribing': 'Transcribing…',
+    'stage.sceneChat': 'A message',
+    'stage.sceneMail': 'An email',
+    'stage.sceneScreen': 'With your screen',
+    'stage.chatApp': 'Messages',
+    'stage.chatWith': 'Julien',
+    'stage.chatIncoming': 'When are you free for the review?',
+    'stage.chatPlaceholder': 'Message',
+    'stage.chatSaid': 'uh hi Julien, uh, let’s do the review Monday at 2… no, Tuesday, sorry',
+    'stage.chatClean': 'Hi Julien, let’s do the review Tuesday at 2 pm.',
+    'stage.mailApp': 'Mail',
+    'stage.mailTo': 'To:',
+    'stage.mailToValue': 'team',
+    'stage.mailSubject': 'Subject:',
+    'stage.mailSubjectValue': 'Release date',
+    'stage.mailHello': 'Hi all,',
+    'stage.mailSaid': 'so um I was thinking we could, like, push the release to Friday, if that works for everyone',
+    'stage.mailClean': 'I was thinking we could push the release to Friday, if that works for everyone.',
+    'stage.screenApp': 'Notes',
+    'stage.screenDocTitle': 'Tonight',
+    'stage.screenDocLine': 'Install Claude Code on the TTP repo',
+    'stage.screenSaid': 'I’m trying cloud code tonight on the repo',
+    'stage.screenClean': 'I’m trying Claude Code tonight on the repo.',
+    'stage.screenBadge': 'Name read on screen',
 
-    // Features
-    'features.heading': 'Everything You Need',
-    'features.subheading': 'Powerful features, zero complexity.',
-    'features.fastTitle': 'Lightning Fast',
-    'features.fastDesc':
-      'Powered by Groq Whisper. Your speech transcribed in under 2 seconds.',
-    'features.everywhereTitle': 'Works Everywhere',
-    'features.everywhereDesc':
-      'Paste into any app \u2014 Slack, VS Code, Gmail, Notion, anywhere you type.',
-    'features.aiPolishTitle': 'AI Polish',
-    'features.aiPolishDesc':
-      'Automatically removes filler words, fixes grammar, and cleans up your text.',
-    'features.dictionaryTitle': 'Smart Dictionary',
-    'features.dictionaryDesc':
-      'Learns your names, jargon, and technical terms. Gets better with every use.',
-    'features.platformsTitle': 'Mac + Windows',
-    'features.platformsDesc':
-      'Native app for macOS and Windows. Lightweight, lives in your menu bar.',
-    'features.byokTitle': 'Bring Your Own Key',
-    'features.byokDesc':
-      'Use your Groq API key. No subscription. Pay only for what you use.',
-    'features.privacyTitle': 'Privacy First',
-    'features.privacyDesc':
-      'API keys and history stored locally. Nothing leaves your machine.',
-    'features.updatesTitle': 'Auto Updates',
-    'features.updatesDesc':
-      'Always up to date. Updates install automatically in the background.',
+    // ── apps strip ───────────────────────────────────────────────────────
+    'apps.lead': 'Works wherever you can type.',
 
-    // Pricing
-    'pricing.heading': 'Simple Pricing',
-    'pricing.subheading': 'No subscriptions. Pay once, use forever.',
-    'pricing.free.label': 'Free',
-    'pricing.free.name': 'Free',
-    'pricing.free.price': '$0',
-    'pricing.free.priceSub': 'forever, no credit card',
-    'pricing.free.feat1': '30 AI Polish per month',
-    'pricing.free.feat2': '20 dictionary entries',
-    'pricing.free.feat3': '50 history entries',
-    'pricing.free.feat4': 'BYOK Groq (your own API key)',
-    'pricing.free.cta': 'Download Free',
-    'pricing.pro.label': 'Pro',
-    'pricing.pro.name': 'Pro',
-    'pricing.pro.badge': 'Recommended',
-    'pricing.pro.priceSub': 'one-time payment, forever yours',
-    'pricing.pro.feat1': 'Unlimited everything',
-    'pricing.pro.feat2': 'Lifetime updates',
-    'pricing.pro.feat3': 'BYOK Groq (your own API key)',
-    'pricing.pro.feat4': 'Priority support',
-    'pricing.pro.cta': 'Get Pro',
+    // ── how ──────────────────────────────────────────────────────────────
+    'how.eyebrow': 'How it works',
+    'how.title': 'One key. Three moves.',
+    'how.sub': 'No window to open, no button to click. TTP lives in the menu bar and waits for your key.',
+    'how.holdTitle': 'Hold',
+    'how.holdDesc': 'The fn key by default. Or any key you like, even a mouse button.',
+    'how.speakTitle': 'Speak',
+    'how.speakDesc': 'At your own pace. The ums and the “no, I mean” are TTP’s problem.',
+    'how.releaseTitle': 'Let go',
+    'how.releaseDesc': 'About a second later, the text is pasted where your cursor was.',
+    'how.handsFree': 'A long one? Double-tap the key and TTP keeps listening on its own.',
 
-    // Footer
-    'footer.tagline': 'Talk To Paste',
-    'footer.github': 'GitHub',
+    // ── features ─────────────────────────────────────────────────────────
+    'feat.eyebrow': 'Features',
+    'feat.title': 'Everything included. Nothing capped.',
+    'feat.sub': 'No paid version with the good bits. This is the whole app.',
+    'feat.polishTitle': 'It tidies, it doesn’t rewrite',
+    'feat.polishDesc':
+      'AI correction removes hesitations, fixes punctuation and follows your changes of mind. Your words stay yours. You can switch it off.',
+    'feat.polishSaidLabel': 'You say',
+    'feat.polishCleanLabel': 'TTP writes',
+    'feat.speedValue': '≈ 1 s',
+    'feat.speedTitle': 'From letting go to the text',
+    'feat.speedDesc': 'For a short sentence, measured on my own dictations. It depends on your connection.',
+    'feat.screenTitle': 'Names spelled right, thanks to your screen',
+    'feat.screenDesc':
+      'Turn it on and TTP sends Groq the names on screen that sound like what you said, and the sentence you are continuing. Never passwords.',
+    'feat.screenOff': 'Off until you choose',
+    'feat.screenSaid': 'you say “cloud code”',
+    'feat.dictTitle': 'Your dictionary',
+    'feat.dictDesc': 'Teach it a name once. It spells it right from then on.',
+    'feat.histTitle': 'Nothing gets lost',
+    'feat.histDesc': 'If a paste didn’t land, your dictation is waiting in the history.',
+    'feat.histItem1': 'Hi Julien, let’s do the review Tuesday…',
+    'feat.histItem2': 'I was thinking we could push the release…',
+    'feat.longTitle': 'Long dictations',
+    'feat.longDesc': 'One or two minutes in one go, for a full email or a detailed prompt.',
+    'feat.langTitle': 'French, English',
+    'feat.langDesc': 'It detects the language, or you set it once.',
+    'feat.updTitle': 'Updates itself',
+    'feat.updDesc': 'New versions install from the app. Nothing to redownload.',
+
+    // ── setup ────────────────────────────────────────────────────────────
+    'setup.eyebrow': 'Setup',
+    'setup.title': 'Ready in two minutes. Once.',
+    'setup.sub':
+      'TTP has no server. It uses a Groq key in your name, and that is exactly why it costs nothing.',
+    'setup.s1Title': 'Install TTP',
+    'setup.s1Desc': 'Drag the app into Applications, or paste the command into Terminal.',
+    'setup.s2Title': 'Create your Groq key',
+    'setup.s2Desc': 'Free, no card, on console.groq.com. TTP keeps it in your Keychain.',
+    'setup.s3Title': 'Allow three permissions',
+    'setup.s3Desc':
+      'Microphone to hear you, Accessibility to type for you, Input Monitoring to see your key. TTP opens the right panel.',
+    'setup.s4Title': 'Choose for the screen',
+    'setup.s4Desc': 'Yes or no. You can change your mind in Settings → Dictation.',
+    'setup.cta': 'Open the Groq console',
+    'setup.winTitle': 'Connect to Groq',
+    'setup.winSub': 'Your voice is sent to Groq to be transcribed. TTP has no server.',
+    'setup.winKey': 'Groq API key',
+    'setup.winSaved': 'Key saved',
+    'setup.winFree': 'Groq’s free tier covers normal daily use.',
+
+    // ── privacy ──────────────────────────────────────────────────────────
+    'priv.eyebrow': 'Privacy',
+    'priv.title': 'Your voice goes to Groq. Never to me.',
+    'priv.sub':
+      'When you let go of the key, the recording goes straight from your Mac to Groq, with your key, and comes back as text. There is nothing of mine on the way.',
+    'priv.mac': 'Your Mac',
+    'priv.macNote': 'records while you hold',
+    'priv.groq': 'Groq',
+    'priv.groqNote': 'transcribes with your key',
+    'priv.none': 'TTP server',
+    'priv.noneNote': 'there isn’t one',
+    'priv.staysTitle': 'Stays on your Mac',
+    'priv.stays1': 'Your Groq key, in the Keychain',
+    'priv.stays2': 'Your history, dictionary and settings',
+    'priv.stays3': 'The recording, deleted once transcribed',
+    'priv.consentTitle': 'Only if you say yes',
+    'priv.consent1': 'Names read on screen, to spell them right',
+    'priv.consent2': 'Crash reports, never your voice or your text',
+    'priv.honestTitle': 'To be clear',
+    'priv.honest1': 'You need a connection: there is no offline mode',
+    'priv.honest2': 'Groq’s privacy policy applies to your audio',
+    'priv.honest3': 'The source code is public on GitHub',
+    'priv.policy': 'Full privacy page',
+    'priv.groqPolicy': 'Groq’s policy',
+
+    // ── maker ────────────────────────────────────────────────────────────
+    'maker.eyebrow': 'Who makes it',
+    'maker.title': 'Hi, I’m Amir.',
+    'maker.p1':
+      'I’m an AI engineer. I built TTP because I wanted to dictate everywhere on my Mac, fast and cleanly. I use it all day.',
+    'maker.freeTitle': 'Why is it free?',
+    'maker.p2':
+      'Because it costs me nothing to run. No server, everyone uses their own Groq key. So no subscription, no account and no limits.',
+    'maker.p3':
+      'If you want to support me, a €17 licence, once, unlocks five sound packs. It’s a thank-you, nothing more: the app is complete without it.',
+    'maker.role': 'AI engineer · CentraleSupélec · Paris',
+    'maker.support': 'Support TTP · €17',
+    'maker.site': 'amirks.eu',
+    'maker.github': 'Source on GitHub',
+
+    // ── faq ──────────────────────────────────────────────────────────────
+    'faq.eyebrow': 'Questions',
+    'faq.title': 'Before you install',
+    'faq.q1': 'Is it really free?',
+    'faq.a1':
+      'Yes. Every feature, no limit, no trial. The only thing to buy is a €17 thank-you that unlocks sound packs. Groq’s free tier covers normal daily use.',
+    'faq.q2': 'Why do I need a Groq key?',
+    'faq.a2':
+      'Because TTP has no server. The transcription runs at Groq, on your account. That’s why there is no TTP account and no subscription.',
+    'faq.q3': 'Does it work offline?',
+    'faq.a3':
+      'No. Transcription happens at Groq, so you need a connection. If you need fully local, MacWhisper or Superwhisper in local mode will suit you better.',
+    'faq.q4': 'Where do my dictations go?',
+    'faq.a4':
+      'Only to Groq, to be transcribed and corrected. TTP has no usage analytics. Crash reports are sent only if you turn them on, and never contain your text.',
+    'faq.q5': 'What about Windows?',
+    'faq.a5': 'Not yet. TTP is designed and tested on Mac first.',
+    'faq.q6': 'How is it different from Superwhisper or Wispr Flow?',
+    'faq.a6':
+      'They are very good apps, with a subscription or a local model. TTP is free, needs no account, and your voice goes through no middleman. In exchange you need a Groq key and a connection.',
+    'faq.q7': 'Something isn’t working?',
+    'faq.a7':
+      'In TTP: Settings → Advanced → Report a problem. It prepares an email with a log that never contains what you dictated. Or open an issue on GitHub.',
+    'faq.q8': 'How do I uninstall it?',
+    'faq.a8': 'Settings → Advanced → Uninstall. It removes the app and all of its data.',
+
+    // ── final cta ────────────────────────────────────────────────────────
+    'final.title': 'Try it on your next sentence.',
+    'final.sub': 'Free, no account. Apple Silicon and Intel.',
+
+    // ── footer ───────────────────────────────────────────────────────────
+    'footer.tagline': 'Talk To Paste. Dictation for Mac.',
+    'footer.made': 'Made in Paris by Amir Kellou-Sidhoum.',
     'footer.download': 'Download',
-    'footer.changelog': 'Changelog',
+    'footer.releases': 'What’s new',
+    'footer.github': 'GitHub',
     'footer.privacy': 'Privacy',
     'footer.terms': 'Terms',
-    'footer.madeWith': 'Made with care.',
+    'footer.clean': 'No cookies and no analytics on this site.',
 
-    // Download
-    'download.heading': 'Get Started in Seconds',
-    'download.subheading': 'Available for macOS and Windows. Free forever.',
-    'download.downloads': 'downloads',
-    'download.downloadFor': 'Download for',
-
-    // Install Guide
-    'install.heading': 'Installation',
-    'install.subheading': 'Get TTP up and running in seconds.',
-    'install.whyTitle': 'Why does this happen?',
-    'install.whyText': "TTP is free and open source. Apple and Microsoft charge developers hundreds of dollars per year for a certificate that removes security warnings. We chose to keep TTP free instead. The app is fully open source \u2014 you can inspect every line of code on GitHub.",
-    'install.macTab': 'macOS',
-    'install.winTab': 'Windows',
-    'install.macAlreadyTitle': 'Already downloaded? Open Terminal and run:',
-    'install.macAlreadyDesc': "This removes Apple's quarantine flag. That's it \u2014 the app opens normally after this.",
-    'install.macOneLineTitle': 'Install with one command:',
-    'install.macOneLineDesc': 'Downloads TTP, installs it, removes the quarantine flag, and launches it. Works on Apple Silicon and Intel.',
-    'install.macAltTitle': 'Alternative: no Terminal needed',
-    'install.macAltStep1': 'Open the app once (it will be blocked)',
-    'install.macAltStep2': 'Go to System Settings \u2192 Privacy & Security',
-    'install.macAltStep3': 'Click "Open Anyway" and enter your password',
-    'install.winDownloadTitle': 'Download for Windows:',
-    'install.winDownloadButton': 'Download TTP for Windows',
-    'install.winDownloadDesc': 'Downloads the installer (.exe). Run it to install TTP.',
-    'install.winSmartScreenTitle': 'Windows SmartScreen warning',
-    'install.winDesc': 'Windows SmartScreen may show a warning on first launch.',
-    'install.winStep1': 'Click "More info"',
-    'install.winStep2': 'Click "Run anyway"',
-    'install.copied': 'Copied!',
-    'install.clickToCopy': 'Copy',
-
-    // Changelog
-    'changelog.heading': 'Changelog',
-    'changelog.subheading': 'Every improvement, documented.',
-    'changelog.empty': 'No releases yet. Check back soon!',
-    'changelog.emptyLink': 'View project on GitHub',
-    'changelog.error': "Couldn't load releases right now.",
-    'changelog.errorLink': 'View releases on GitHub',
-    'changelog.viewAll': 'View all releases on GitHub',
-
-    // Meta
-    'meta.title': 'TTP - Talk To Paste | Turn Speech into Text Anywhere',
+    // ── meta ─────────────────────────────────────────────────────────────
+    'meta.title': 'TTP — you talk, it’s typed',
     'meta.description':
-      'TTP (Talk To Paste) - Turn speech into text anywhere. Press a shortcut, speak, and your words appear wherever you\'re typing. Free, open source, works on macOS and Windows.',
-
-    // Portfolio
-    'nav.about': 'About',
-    'portfolio.heading': 'About the Builder',
-    'portfolio.subheading': 'AI Engineer. Builder. Consultant.',
-    'portfolio.title': 'AI Engineer / Builder / Consultant',
-    'portfolio.bio':
-      'CentraleSupelec-trained engineer building production AI systems. From multi-agent RAG pipelines at AXA to real-time Rust data systems at SunZuLabs.',
-    'portfolio.credentials': 'CentraleSupelec',
-    'portfolio.exp.heading': 'Experience',
-    'portfolio.exp.axa.title': 'AXA AI Factory',
-    'portfolio.exp.axa.desc':
-      'Multi-agent RAG pipelines, vocal AI assistants, and LangGraph orchestration for insurance automation.',
-    'portfolio.exp.engie.title': 'ENGIE Research & Innovation',
-    'portfolio.exp.engie.desc':
-      'Azure OpenAI RAG system processing 1,000+ documents, reducing research time by 68%.',
-    'portfolio.exp.sunzu.title': 'SunZuLabs',
-    'portfolio.exp.sunzu.desc':
-      'Real-time market data feed handler in Rust with sub-10ms latency for fintech analytics.',
-    'portfolio.exp.denem.title': 'DENEM Labs',
-    'portfolio.exp.denem.desc':
-      'AI consulting and system architecture for emerging tech startups.',
-    'portfolio.exp.total.title': 'TotalEnergies Hackathon',
-    'portfolio.exp.total.desc':
-      'LLM agent for commodity trading analysis, built in 48 hours. Award-winning solution.',
-    'portfolio.exp.audits.title': '15+ AI Audits',
-    'portfolio.exp.audits.desc':
-      'Comprehensive AI system evaluations and strategic recommendations for SMEs.',
-    'portfolio.proj.heading': 'Projects',
-    'portfolio.proj.ttp.title': 'TTP \u2014 Talk To Paste',
-    'portfolio.proj.ttp.desc':
-      'Open-source desktop app that turns speech into text anywhere. One shortcut, instant transcription.',
-    'portfolio.proj.02viral.title': '02Viral.com',
-    'portfolio.proj.02viral.desc':
-      'AI-powered viral content platform with intelligent agents for content creation and optimization.',
-    'portfolio.tech.heading': 'Tech Stack',
-    'portfolio.viewProject': 'View Project',
-    'portfolio.viewGithub': 'GitHub',
+      'Dictation for Mac. Hold a key, speak, and clean text appears where your cursor is, in any app. Free, no account, bring your own free Groq key.',
   },
+
   fr: {
-    // Navbar
-    'nav.features': 'Fonctionnalit\u00e9s',
-    'nav.howItWorks': 'Comment \u00e7a marche',
-    'nav.changelog': 'Changelog',
-    'nav.download': 'T\u00e9l\u00e9charger',
-    'nav.getPro': 'Passer en Pro',
+    // ── chrome ───────────────────────────────────────────────────────────
+    'nav.skip': 'Aller au contenu',
+    'nav.how': 'Fonctionnement',
+    'nav.features': 'Fonctions',
+    'nav.privacy': 'Confidentialité',
+    'nav.faq': 'Questions',
+    'nav.download': 'Télécharger',
+    'nav.menu': 'Menu',
 
-    // Hero
-    'hero.headline': 'Transformez la parole en texte.',
-    'hero.headlineAccent': 'Partout. Gratuit.',
-    'hero.subheadline':
-      "Appuyez sur un raccourci. Parlez. Vos mots apparaissent l\u00e0 o\u00f9 vous tapez. Sans changer d'app. Sans copier-coller. Parlez, c'est tout.",
-    'hero.cta': 'Obtenir TTP Gratuitement',
-    'hero.socialProof': 'Gratuit pour toujours. Sans compte. Sans conditions.',
-    'hero.whisperNote': 'Propulsé par Groq. Transcription en moins de 2 secondes.',
-    'hero.trustBar': 'Pas de serveur · Pas de tracking · Audio envoyé direct à Groq · Open source',
+    // ── hero ─────────────────────────────────────────────────────────────
+    'hero.badge': 'Gratuit · sans compte · pour Mac',
+    'hero.title1': 'Tu parles.',
+    'hero.title2': 'C’est écrit.',
+    'hero.sub':
+      'Maintiens une touche, dis ta phrase, relâche. Le texte propre apparaît là où est ton curseur, dans n’importe quelle app Mac, en une seconde environ.',
+    'hero.cta': 'Télécharger pour Mac',
+    'hero.intel': 'Mac Intel',
+    'hero.signed': 'Signé et notarisé par Apple',
+    'hero.copy': 'Copier',
+    'hero.copied': 'Copié',
+    'hero.commandLabel': 'Ou dans le Terminal',
 
-    // How It Works
-    'howItWorks.heading': 'Comment \u00e7a marche',
-    'howItWorks.subheading': 'Trois \u00e9tapes. Z\u00e9ro friction.',
-    'howItWorks.step1Title': 'Maintenez votre raccourci',
-    'howItWorks.step1Desc':
-      'Appuyez et maintenez votre raccourci. Sur Mac, appuyez simplement sur Fn.',
-    'howItWorks.step2Title': 'Parlez',
-    'howItWorks.step2Desc':
-      "Parlez naturellement. TTP enregistre votre voix en arri\u00e8re-plan.",
-    'howItWorks.step3Title': 'Le texte appara\u00eet',
-    'howItWorks.step3Desc':
-      "Vos mots sont transcrits et coll\u00e9s instantan\u00e9ment dans n'importe quelle app.",
+    // ── the stage ────────────────────────────────────────────────────────
+    'stage.label': 'Démonstration : une dictée dans trois apps',
+    'stage.pause': 'Pause',
+    'stage.play': 'Lecture',
+    'stage.transcribing': 'Transcription…',
+    'stage.sceneChat': 'Un message',
+    'stage.sceneMail': 'Un e-mail',
+    'stage.sceneScreen': 'Avec ton écran',
+    'stage.chatApp': 'Messages',
+    'stage.chatWith': 'Julien',
+    'stage.chatIncoming': 'Tu es dispo quand pour le point ?',
+    'stage.chatPlaceholder': 'Message',
+    'stage.chatSaid': 'euh salut Julien, euh, on se voit lundi à 14h pour le point… non, mardi, pardon',
+    'stage.chatClean': 'Salut Julien, on se voit mardi à 14 h pour le point.',
+    'stage.mailApp': 'Mail',
+    'stage.mailTo': 'À :',
+    'stage.mailToValue': 'équipe',
+    'stage.mailSubject': 'Objet :',
+    'stage.mailSubjectValue': 'Date de sortie',
+    'stage.mailHello': 'Bonjour à tous,',
+    'stage.mailSaid':
+      'alors euh je me disais qu’on pourrait hein décaler la sortie à vendredi, enfin si ça va pour tout le monde',
+    'stage.mailClean': 'Je me disais qu’on pourrait décaler la sortie à vendredi, si ça convient à tout le monde.',
+    'stage.screenApp': 'Notes',
+    'stage.screenDocTitle': 'Ce soir',
+    'stage.screenDocLine': 'Installer Claude Code sur le repo TTP',
+    'stage.screenSaid': 'je teste cloud code ce soir sur le repo',
+    'stage.screenClean': 'Je teste Claude Code ce soir sur le repo.',
+    'stage.screenBadge': 'Nom lu à l’écran',
 
-    // Features
-    'features.heading': "Tout ce qu'il vous faut",
-    'features.subheading':
-      'Des fonctionnalit\u00e9s puissantes, z\u00e9ro complexit\u00e9.',
-    'features.fastTitle': 'Ultra Rapide',
-    'features.fastDesc':
-      'Propuls\u00e9 par Groq Whisper. Votre parole transcrite en moins de 2 secondes.',
-    'features.everywhereTitle': 'Fonctionne Partout',
-    'features.everywhereDesc':
-      "Collez dans n'importe quelle app \u2014 Slack, VS Code, Gmail, Notion, partout o\u00f9 vous tapez.",
-    'features.aiPolishTitle': 'Correction IA',
-    'features.aiPolishDesc':
-      'Supprime automatiquement les mots superflus, corrige la grammaire et nettoie votre texte.',
-    'features.dictionaryTitle': 'Dictionnaire Intelligent',
-    'features.dictionaryDesc':
-      "Apprend vos noms, jargon et termes techniques. S'am\u00e9liore \u00e0 chaque utilisation.",
-    'features.platformsTitle': 'Mac + Windows',
-    'features.platformsDesc':
-      'App native pour macOS et Windows. L\u00e9g\u00e8re, vit dans votre barre de menu.',
-    'features.byokTitle': 'Apportez Votre Cl\u00e9',
-    'features.byokDesc':
-      "Utilisez votre cl\u00e9 API Groq. Pas d'abonnement. Payez uniquement ce que vous utilisez.",
-    'features.privacyTitle': "Vie Priv\u00e9e d'Abord",
-    'features.privacyDesc':
-      'Cl\u00e9s API et historique stock\u00e9s localement. Rien ne quitte votre machine.',
-    'features.updatesTitle': 'Mises \u00e0 Jour Auto',
-    'features.updatesDesc':
-      "Toujours \u00e0 jour. Les mises \u00e0 jour s'installent automatiquement en arri\u00e8re-plan.",
+    // ── apps strip ───────────────────────────────────────────────────────
+    'apps.lead': 'Marche partout où tu peux écrire.',
 
-    // Pricing
-    'pricing.heading': 'Tarifs Simples',
-    'pricing.subheading': 'Aucun abonnement. Achetez une fois, utilisez \u00e0 vie.',
-    'pricing.free.label': 'Gratuit',
-    'pricing.free.name': 'Gratuit',
-    'pricing.free.price': '0\u00a0\u20ac',
-    'pricing.free.priceSub': 'pour toujours, sans carte bancaire',
-    'pricing.free.feat1': '30 corrections IA par mois',
-    'pricing.free.feat2': '20 entr\u00e9es de dictionnaire',
-    'pricing.free.feat3': "50 entr\u00e9es d'historique",
-    'pricing.free.feat4': 'BYOK Groq (votre propre cl\u00e9 API)',
-    'pricing.free.cta': 'T\u00e9l\u00e9charger Gratuitement',
-    'pricing.pro.label': 'Pro',
-    'pricing.pro.name': 'Pro',
-    'pricing.pro.badge': 'Recommand\u00e9',
-    'pricing.pro.priceSub': 'paiement unique, \u00e0 vous pour toujours',
-    'pricing.pro.feat1': 'Tout en illimit\u00e9',
-    'pricing.pro.feat2': 'Mises \u00e0 jour \u00e0 vie',
-    'pricing.pro.feat3': 'BYOK Groq (votre propre cl\u00e9 API)',
-    'pricing.pro.feat4': 'Support prioritaire',
-    'pricing.pro.cta': 'Passer en Pro',
+    // ── how ──────────────────────────────────────────────────────────────
+    'how.eyebrow': 'Fonctionnement',
+    'how.title': 'Une touche. Trois gestes.',
+    'how.sub':
+      'Pas de fenêtre à ouvrir, pas de bouton à cliquer. TTP vit dans la barre de menus et attend ta touche.',
+    'how.holdTitle': 'Maintiens',
+    'how.holdDesc': 'La touche fn par défaut. Ou celle que tu veux, même un bouton de souris.',
+    'how.speakTitle': 'Parle',
+    'how.speakDesc': 'À ton rythme. Les « euh » et les « non, pardon », c’est TTP qui s’en occupe.',
+    'how.releaseTitle': 'Relâche',
+    'how.releaseDesc': 'Une seconde plus tard environ, le texte est collé là où était ton curseur.',
+    'how.handsFree': 'C’est long ? Tape deux fois la touche : TTP continue d’écouter tout seul.',
 
-    // Footer
-    'footer.tagline': 'Talk To Paste',
+    // ── features ─────────────────────────────────────────────────────────
+    'feat.eyebrow': 'Fonctions',
+    'feat.title': 'Tout est inclus. Rien n’est limité.',
+    'feat.sub': 'Pas de version payante avec les bonnes fonctions. C’est l’app entière.',
+    'feat.polishTitle': 'Il corrige, il ne réécrit pas',
+    'feat.polishDesc':
+      'La correction IA retire les hésitations, remet la ponctuation et suit tes changements d’avis. Tes mots restent les tiens. Tu peux la couper.',
+    'feat.polishSaidLabel': 'Tu dis',
+    'feat.polishCleanLabel': 'TTP écrit',
+    'feat.speedValue': '≈ 1 s',
+    'feat.speedTitle': 'Entre la touche relâchée et le texte',
+    'feat.speedDesc': 'Pour une phrase courte, mesuré sur mes propres dictées. Ça dépend de ta connexion.',
+    'feat.screenTitle': 'Les bons noms, grâce à ton écran',
+    'feat.screenDesc':
+      'Si tu l’actives, TTP envoie à Groq les noms affichés qui ressemblent à ce que tu dis, et la phrase que tu continues. Jamais les mots de passe.',
+    'feat.screenOff': 'Désactivé tant que tu ne choisis pas',
+    'feat.screenSaid': 'tu dis « cloud code »',
+    'feat.dictTitle': 'Ton dictionnaire',
+    'feat.dictDesc': 'Apprends-lui un nom une fois. Il l’écrit bien ensuite.',
+    'feat.histTitle': 'Rien ne se perd',
+    'feat.histDesc': 'Si un collage n’a pas marché, ta dictée t’attend dans l’historique.',
+    'feat.histItem1': 'Salut Julien, on se voit mardi à 14 h…',
+    'feat.histItem2': 'Je me disais qu’on pourrait décaler la sortie…',
+    'feat.longTitle': 'Longues dictées',
+    'feat.longDesc': 'Une à deux minutes d’affilée, pour un e-mail entier ou un prompt détaillé.',
+    'feat.langTitle': 'Français, anglais',
+    'feat.langDesc': 'Il détecte la langue, ou tu la fixes une fois.',
+    'feat.updTitle': 'Se met à jour seul',
+    'feat.updDesc': 'Les nouvelles versions s’installent depuis l’app. Rien à retélécharger.',
+
+    // ── setup ────────────────────────────────────────────────────────────
+    'setup.eyebrow': 'Installation',
+    'setup.title': 'Prêt en deux minutes. Une seule fois.',
+    'setup.sub':
+      'TTP n’a pas de serveur. Il utilise une clé Groq à ton nom, et c’est justement pour ça qu’il ne coûte rien.',
+    'setup.s1Title': 'Installe TTP',
+    'setup.s1Desc': 'Glisse l’app dans Applications, ou colle la commande dans le Terminal.',
+    'setup.s2Title': 'Crée ta clé Groq',
+    'setup.s2Desc': 'Gratuite, sans carte bancaire, sur console.groq.com. TTP la range dans ton Trousseau.',
+    'setup.s3Title': 'Autorise trois permissions',
+    'setup.s3Desc':
+      'Le micro pour t’entendre, l’accessibilité pour écrire à ta place, la surveillance des entrées pour voir ta touche. TTP t’ouvre le bon panneau.',
+    'setup.s4Title': 'Choisis pour l’écran',
+    'setup.s4Desc': 'Oui ou non. Tu peux changer d’avis dans Réglages → Dictée.',
+    'setup.cta': 'Ouvrir la console Groq',
+    'setup.winTitle': 'Connecter à Groq',
+    'setup.winSub': 'Ta voix est envoyée à Groq pour être transcrite. TTP n’a pas de serveur.',
+    'setup.winKey': 'Clé API Groq',
+    'setup.winSaved': 'Clé enregistrée',
+    'setup.winFree': 'Le forfait gratuit de Groq suffit pour un usage quotidien normal.',
+
+    // ── privacy ──────────────────────────────────────────────────────────
+    'priv.eyebrow': 'Confidentialité',
+    'priv.title': 'Ta voix va chez Groq. Jamais chez moi.',
+    'priv.sub':
+      'Quand tu relâches la touche, l’enregistrement part directement de ton Mac vers Groq, avec ta clé, et revient en texte. Rien à moi sur le trajet.',
+    'priv.mac': 'Ton Mac',
+    'priv.macNote': 'enregistre tant que tu tiens',
+    'priv.groq': 'Groq',
+    'priv.groqNote': 'transcrit avec ta clé',
+    'priv.none': 'Serveur TTP',
+    'priv.noneNote': 'il n’y en a pas',
+    'priv.staysTitle': 'Reste sur ton Mac',
+    'priv.stays1': 'Ta clé Groq, dans le Trousseau',
+    'priv.stays2': 'Ton historique, ton dictionnaire, tes réglages',
+    'priv.stays3': 'L’enregistrement, supprimé une fois transcrit',
+    'priv.consentTitle': 'Seulement si tu dis oui',
+    'priv.consent1': 'Les noms lus à l’écran, pour bien les écrire',
+    'priv.consent2': 'Les rapports de plantage, jamais ta voix ni ton texte',
+    'priv.honestTitle': 'Pour être clair',
+    'priv.honest1': 'Il faut une connexion : pas de mode hors ligne',
+    'priv.honest2': 'La politique de Groq s’applique à ton audio',
+    'priv.honest3': 'Le code source est public sur GitHub',
+    'priv.policy': 'Page confidentialité complète',
+    'priv.groqPolicy': 'Politique de Groq',
+
+    // ── maker ────────────────────────────────────────────────────────────
+    'maker.eyebrow': 'Qui le fait',
+    'maker.title': 'Salut, moi c’est Amir.',
+    'maker.p1':
+      'Je suis ingénieur IA. J’ai fait TTP parce que je voulais dicter partout sur mon Mac, vite et proprement. Je m’en sers toute la journée.',
+    'maker.freeTitle': 'Pourquoi c’est gratuit ?',
+    'maker.p2':
+      'Parce que ça ne me coûte rien. Pas de serveur, chacun utilise sa clé Groq. Donc pas d’abonnement, pas de compte, pas de limite.',
+    'maker.p3':
+      'Si tu veux me soutenir, une licence à 17 €, une fois, débloque cinq packs de sons. C’est un merci, rien de plus : l’app est complète sans.',
+    'maker.role': 'Ingénieur IA · CentraleSupélec · Paris',
+    'maker.support': 'Soutenir TTP · 17 €',
+    'maker.site': 'amirks.eu',
+    'maker.github': 'Code source sur GitHub',
+
+    // ── faq ──────────────────────────────────────────────────────────────
+    'faq.eyebrow': 'Questions',
+    'faq.title': 'Avant d’installer',
+    'faq.q1': 'C’est vraiment gratuit ?',
+    'faq.a1':
+      'Oui. Toutes les fonctions, sans limite, sans essai. La seule chose à acheter est un merci à 17 € qui débloque des packs de sons. Le forfait gratuit de Groq suffit pour un usage quotidien normal.',
+    'faq.q2': 'Pourquoi une clé Groq ?',
+    'faq.a2':
+      'Parce que TTP n’a pas de serveur. La transcription se fait chez Groq, sur ton compte. C’est pour ça qu’il n’y a ni compte TTP ni abonnement.',
+    'faq.q3': 'Ça marche hors ligne ?',
+    'faq.a3':
+      'Non. La transcription se fait chez Groq, il faut donc une connexion. Si tu veux du 100 % local, MacWhisper ou Superwhisper en mode local te conviendront mieux.',
+    'faq.q4': 'Où vont mes dictées ?',
+    'faq.a4':
+      'Seulement chez Groq, pour être transcrites et corrigées. TTP n’a aucune statistique d’usage. Les rapports de plantage partent seulement si tu les actives, et ne contiennent jamais ton texte.',
+    'faq.q5': 'Et sur Windows ?',
+    'faq.a5': 'Pas pour l’instant. TTP est pensé et testé d’abord sur Mac.',
+    'faq.q6': 'Quelle différence avec Superwhisper ou Wispr Flow ?',
+    'faq.a6':
+      'Ce sont de très bonnes apps, avec un abonnement ou un modèle local. TTP est gratuit, sans compte, et ta voix ne passe par aucun intermédiaire. En échange, il faut une clé Groq et une connexion.',
+    'faq.q7': 'Quelque chose ne marche pas ?',
+    'faq.a7':
+      'Dans TTP : Réglages → Avancé → Signaler un problème. Ça prépare un e-mail avec un relevé qui ne contient jamais ce que tu as dicté. Ou ouvre un ticket sur GitHub.',
+    'faq.q8': 'Comment le désinstaller ?',
+    'faq.a8': 'Réglages → Avancé → Désinstaller. Ça supprime l’app et toutes ses données.',
+
+    // ── final cta ────────────────────────────────────────────────────────
+    'final.title': 'Essaie-le sur ta prochaine phrase.',
+    'final.sub': 'Gratuit, sans compte. Apple Silicon et Intel.',
+
+    // ── footer ───────────────────────────────────────────────────────────
+    'footer.tagline': 'Talk To Paste. La dictée pour Mac.',
+    'footer.made': 'Fait à Paris par Amir Kellou-Sidhoum.',
+    'footer.download': 'Télécharger',
+    'footer.releases': 'Nouveautés',
     'footer.github': 'GitHub',
-    'footer.download': 'T\u00e9l\u00e9charger',
-    'footer.changelog': 'Changelog',
-    'footer.privacy': 'Confidentialit\u00e9',
+    'footer.privacy': 'Confidentialité',
     'footer.terms': 'Conditions',
-    'footer.madeWith': 'Fait avec soin.',
+    'footer.clean': 'Ni cookies ni statistiques sur ce site.',
 
-    // Download
-    'download.heading': 'Commencez en quelques secondes',
-    'download.subheading':
-      'Disponible sur macOS et Windows. Gratuit pour toujours.',
-    'download.downloads': 't\u00e9l\u00e9chargements',
-    'download.downloadFor': 'T\u00e9l\u00e9charger pour',
-
-    // Install Guide
-    'install.heading': 'Installation',
-    'install.subheading': 'Installez TTP en quelques secondes.',
-    'install.whyTitle': 'Pourquoi cette \u00e9tape ?',
-    'install.whyText': "TTP est gratuit et open source. Apple et Microsoft facturent des centaines d'euros par an pour un certificat qui supprime les alertes de s\u00e9curit\u00e9. On a pr\u00e9f\u00e9r\u00e9 garder TTP gratuit. L'app est enti\u00e8rement open source \u2014 vous pouvez inspecter chaque ligne de code sur GitHub.",
-    'install.macTab': 'macOS',
-    'install.winTab': 'Windows',
-    'install.macAlreadyTitle': 'D\u00e9j\u00e0 t\u00e9l\u00e9charg\u00e9 ? Ouvrez le Terminal et lancez :',
-    'install.macAlreadyDesc': "Cela supprime le blocage d'Apple. C'est tout \u2014 l'app s'ouvre normalement apr\u00e8s \u00e7a.",
-    'install.macOneLineTitle': 'Installez en une commande :',
-    'install.macOneLineDesc': 'T\u00e9l\u00e9charge TTP, l\'installe, supprime le blocage et le lance. Fonctionne sur Apple Silicon et Intel.',
-    'install.macAltTitle': 'Alternative : sans Terminal',
-    'install.macAltStep1': "Ouvrez l'app une premi\u00e8re fois (elle sera bloqu\u00e9e)",
-    'install.macAltStep2': 'Allez dans R\u00e9glages Syst\u00e8me \u2192 Confidentialit\u00e9 et s\u00e9curit\u00e9',
-    'install.macAltStep3': 'Cliquez sur \u00ab Ouvrir quand m\u00eame \u00bb et entrez votre mot de passe',
-    'install.winDownloadTitle': 'T\u00e9l\u00e9charger pour Windows :',
-    'install.winDownloadButton': 'T\u00e9l\u00e9charger TTP pour Windows',
-    'install.winDownloadDesc': "T\u00e9l\u00e9charge l'installateur (.exe). Lancez-le pour installer TTP.",
-    'install.winSmartScreenTitle': 'Avertissement Windows SmartScreen',
-    'install.winDesc': 'Windows SmartScreen peut afficher un avertissement au premier lancement.',
-    'install.winStep1': 'Cliquez sur \u00ab Informations compl\u00e9mentaires \u00bb',
-    'install.winStep2': 'Cliquez sur \u00ab Ex\u00e9cuter quand m\u00eame \u00bb',
-    'install.copied': 'Copi\u00e9 !',
-    'install.clickToCopy': 'Copier',
-
-    // Changelog
-    'changelog.heading': 'Journal des mises \u00e0 jour',
-    'changelog.subheading': 'Chaque am\u00e9lioration, document\u00e9e.',
-    'changelog.empty':
-      'Pas encore de versions. Revenez bient\u00f4t\u00a0!',
-    'changelog.emptyLink': 'Voir le projet sur GitHub',
-    'changelog.error':
-      'Impossible de charger les versions pour le moment.',
-    'changelog.errorLink': 'Voir les versions sur GitHub',
-    'changelog.viewAll': 'Voir toutes les versions sur GitHub',
-
-    // Meta
-    'meta.title':
-      'TTP - Talk To Paste | Transformez la parole en texte, partout',
+    // ── meta ─────────────────────────────────────────────────────────────
+    'meta.title': 'TTP — tu parles, c’est écrit',
     'meta.description':
-      "TTP (Talk To Paste) - Transformez la parole en texte, partout. Appuyez sur un raccourci, parlez, et vos mots apparaissent l\u00e0 o\u00f9 vous tapez. Gratuit, open source, disponible sur macOS et Windows.",
-
-    // Portfolio
-    'nav.about': 'A propos',
-    'portfolio.heading': 'Le Cr\u00e9ateur',
-    'portfolio.subheading': 'Ing\u00e9nieur IA. Cr\u00e9ateur. Consultant.',
-    'portfolio.title': 'Ing\u00e9nieur IA / Cr\u00e9ateur / Consultant',
-    'portfolio.bio':
-      'Ingénieur CentraleSupelec spécialisé dans les systèmes IA en production. Des pipelines RAG multi-agents chez AXA aux systèmes temps réel en Rust chez SunZuLabs.',
-    'portfolio.credentials': 'CentraleSupelec',
-    'portfolio.exp.heading': 'Exp\u00e9rience',
-    'portfolio.exp.axa.title': 'AXA AI Factory',
-    'portfolio.exp.axa.desc':
-      'Pipelines RAG multi-agents, assistants vocaux IA et orchestration LangGraph pour l\'automatisation en assurance.',
-    'portfolio.exp.engie.title': 'ENGIE Recherche & Innovation',
-    'portfolio.exp.engie.desc':
-      'Syst\u00e8me RAG Azure OpenAI traitant 1 000+ documents, r\u00e9duisant le temps de recherche de 68%.',
-    'portfolio.exp.sunzu.title': 'SunZuLabs',
-    'portfolio.exp.sunzu.desc':
-      'Gestionnaire de flux de donn\u00e9es march\u00e9 en temps r\u00e9el en Rust avec latence sub-10ms pour l\'analyse fintech.',
-    'portfolio.exp.denem.title': 'DENEM Labs',
-    'portfolio.exp.denem.desc':
-      'Conseil en IA et architecture syst\u00e8mes pour startups tech \u00e9mergentes.',
-    'portfolio.exp.total.title': 'Hackathon TotalEnergies',
-    'portfolio.exp.total.desc':
-      'Agent LLM pour l\'analyse du trading de mati\u00e8res premi\u00e8res, construit en 48h. Solution prim\u00e9e.',
-    'portfolio.exp.audits.title': '15+ Audits IA',
-    'portfolio.exp.audits.desc':
-      '\u00c9valuations compl\u00e8tes de syst\u00e8mes IA et recommandations strat\u00e9giques pour PMEs.',
-    'portfolio.proj.heading': 'Projets',
-    'portfolio.proj.ttp.title': 'TTP \u2014 Talk To Paste',
-    'portfolio.proj.ttp.desc':
-      'Application desktop open-source qui transforme la parole en texte partout. Un raccourci, transcription instantan\u00e9e.',
-    'portfolio.proj.02viral.title': '02Viral.com',
-    'portfolio.proj.02viral.desc':
-      'Plateforme de contenu viral propuls\u00e9e par l\'IA avec des agents intelligents pour la cr\u00e9ation et l\'optimisation de contenu.',
-    'portfolio.tech.heading': 'Stack Technique',
-    'portfolio.viewProject': 'Voir le Projet',
-    'portfolio.viewGithub': 'GitHub',
+      'La dictée pour Mac. Maintiens une touche, parle, et le texte propre apparaît là où est ton curseur, dans n’importe quelle app. Gratuit, sans compte, avec ta clé Groq gratuite.',
   },
 } as const;

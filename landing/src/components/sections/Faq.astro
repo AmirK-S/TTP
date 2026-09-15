@@ -1,0 +1,34 @@
+---
+/** Native <details>: no script, keyboard and screen readers for free. */
+import { useTranslations, type Lang } from '@/i18n/utils';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+
+const items = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({
+  q: t(`faq.q${n}` as Parameters<typeof t>[0]),
+  a: t(`faq.a${n}` as Parameters<typeof t>[0]),
+}));
+---
+
+<section id="faq" class="section border-t border-line">
+  <div class="wrap grid gap-12 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-20">
+    <div class="flex flex-col items-start gap-4 lg:sticky lg:top-28 lg:self-start" data-reveal>
+      <p class="eyebrow">{t('faq.eyebrow')}</p>
+      <h2 class="h-section">{t('faq.title')}</h2>
+    </div>
+
+    <div class="faq border-t border-line" data-reveal>
+      {items.map((item, i) => (
+        <details open={i === 0}>
+          <summary>
+            {item.q}
+            <span class="plus" aria-hidden="true"></span>
+          </summary>
+          <p class="answer">{item.a}</p>
+        </details>
+      ))}
+    </div>
+  </div>
+</section>

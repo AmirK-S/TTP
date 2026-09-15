@@ -1,0 +1,172 @@
+---
+/** Everything the app does, as a bento. Each tile draws its own small proof. */
+import { useTranslations, type Lang } from '@/i18n/utils';
+import SectionHead from '@/components/SectionHead.astro';
+
+interface Props { lang: Lang; version: string }
+const { lang, version } = Astro.props;
+const t = useTranslations(lang);
+const fr = lang === 'fr';
+
+/* The raw sentence, with what the correction removes struck through. */
+const said = fr
+  ? [['euh', true], [' salut Julien, ', false], ['euh,', true], [' on se voit ', false], ['lundi', true], [' ', false], ['… non,', true], [' mardi à 14h pour le point', false], [', pardon', true]]
+  : [['uh', true], [' hi Julien, ', false], ['uh,', true], [' let’s do the review ', false], ['Monday', true], [' ', false], ['… no,', true], [' Tuesday at 2', false], [', sorry', true]];
+
+const [nextMajor, nextMinor, nextPatch] = version.split('.').map((n) => Number.parseInt(n, 10) || 0);
+const nextVersion = `${nextMajor}.${nextMinor}.${nextPatch + 1}`;
+---
+
+<section id="features" class="section border-t border-line">
+  <div class="wrap">
+    <SectionHead eyebrow={t('feat.eyebrow')} title={t('feat.title')} sub={t('feat.sub')} />
+
+    <ul class="bento mt-14">
+      <!-- polish -->
+      <li class="card tile span-2" data-reveal>
+        <div class="tile-visual grid gap-3 !p-5">
+          <div>
+            <p class="mb-1.5 text-[0.75rem] font-medium text-faint">{t('feat.polishSaidLabel')}</p>
+            <p class="text-[0.9375rem] leading-relaxed text-muted">
+              {said.map(([text, cut]) => (cut ? <span class="strike">{text}</span> : <span>{text}</span>))}
+            </p>
+          </div>
+          <div class="h-px bg-line"></div>
+          <div>
+            <p class="mb-1.5 flex items-center gap-1.5 text-[0.75rem] font-medium text-accent">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>
+              {t('feat.polishCleanLabel')}
+            </p>
+            <p class="text-[1.0625rem] font-medium leading-relaxed tracking-[-0.01em]">{t('stage.chatClean')}</p>
+          </div>
+        </div>
+        <div>
+          <h3>{t('feat.polishTitle')}</h3>
+          <p class="mt-1.5">{t('feat.polishDesc')}</p>
+        </div>
+      </li>
+
+      <!-- speed -->
+      <li class="card tile" data-reveal style="transition-delay:80ms">
+        <div class="tile-visual flex flex-1 flex-col justify-between gap-6 !p-5">
+          <p class="text-[3.5rem] font-[650] leading-none tracking-[-0.05em] !text-text">{t('feat.speedValue')}</p>
+          <div class="grid gap-2">
+            <div class="flex h-2 overflow-hidden rounded-full bg-raised">
+              <span class="w-[33%] bg-[color-mix(in_srgb,var(--accent)_45%,transparent)]"></span>
+              <span class="w-[59%] bg-accent"></span>
+              <span class="w-[8%] bg-[color-mix(in_srgb,var(--accent)_70%,var(--text))]"></span>
+            </div>
+            <p class="flex justify-between text-[0.6875rem] text-faint">
+              <span>Whisper</span><span>{fr ? 'correction' : 'polish'}</span><span>{fr ? 'collage' : 'paste'}</span>
+            </p>
+          </div>
+        </div>
+        <div>
+          <h3>{t('feat.speedTitle')}</h3>
+          <p class="mt-1.5">{t('feat.speedDesc')}</p>
+        </div>
+      </li>
+
+      <!-- screen context -->
+      <li class="card tile" data-reveal>
+        <div class="tile-visual grid gap-2.5 !p-5 text-[0.875rem]">
+          <p class="flex items-center justify-between gap-2">
+            <span class="inline-flex items-center gap-1.5 text-faint">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+              {fr ? 'À l’écran' : 'On screen'}
+            </span>
+            <span class="rounded-md bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] px-1.5 py-0.5 font-medium text-text ring-1 ring-[color-mix(in_srgb,var(--accent)_35%,transparent)]">Claude Code</span>
+          </p>
+          <p class="text-muted">{t('feat.screenSaid')}</p>
+          <p class="flex items-center gap-2 font-medium"><span class="row-arrow">→</span> Claude Code</p>
+        </div>
+        <div>
+          <h3>{t('feat.screenTitle')}</h3>
+          <p class="mt-1.5">{t('feat.screenDesc')}</p>
+          <p class="chip mt-3 !h-6 !text-[0.75rem]">
+            <span class="h-1.5 w-1.5 rounded-full bg-faint"></span>{t('feat.screenOff')}
+          </p>
+        </div>
+      </li>
+
+      <!-- dictionary -->
+      <li class="card tile" data-reveal style="transition-delay:80ms">
+        <div class="tile-visual grid gap-0 !p-0 text-[0.875rem]">
+          {[['grok', 'Groq'], ['amir k s', 'AmirKS'], ['super base', 'Supabase']].map(([heard, fixed], i) => (
+            <p class:list={['grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-2.5', i > 0 && 'border-t border-line']}>
+              <span class="text-faint">{heard}</span>
+              <span class="row-arrow">→</span>
+              <span class="font-medium">{fixed}</span>
+            </p>
+          ))}
+        </div>
+        <div>
+          <h3>{t('feat.dictTitle')}</h3>
+          <p class="mt-1.5">{t('feat.dictDesc')}</p>
+        </div>
+      </li>
+
+      <!-- history -->
+      <li class="card tile" data-reveal style="transition-delay:160ms">
+        <div class="tile-visual grid grid-cols-1 gap-0 !p-0 text-[0.8125rem]">
+          {[[t('feat.histItem1'), '09:41'], [t('feat.histItem2'), '09:38']].map(([text, time], i) => (
+            <p class:list={['flex min-w-0 items-center justify-between gap-3 px-4 py-3 !text-text', i > 0 && 'border-t border-line']}>
+              <span class="min-w-0 truncate">{text}</span>
+              <span class="shrink-0 tabular-nums text-faint">{time}</span>
+            </p>
+          ))}
+        </div>
+        <div>
+          <h3>{t('feat.histTitle')}</h3>
+          <p class="mt-1.5">{t('feat.histDesc')}</p>
+        </div>
+      </li>
+
+      <!-- long dictations -->
+      <li class="card tile" data-reveal>
+        <div class="tile-visual flex items-center gap-3 !p-4">
+          <span class="pill-rec shrink-0 !animate-none"></span>
+          <span class="flex h-6 flex-1 items-center gap-[2px] overflow-hidden" aria-hidden="true">
+            {Array.from({ length: 48 }).map((_, i) => (
+              <i class="block w-[2px] shrink-0 rounded-full bg-text/60" style={`height:${4 + Math.round(Math.abs(Math.sin(i * 1.7) * Math.cos(i * 0.45)) * 18)}px`}></i>
+            ))}
+          </span>
+          <span class="shrink-0 text-[0.8125rem] tabular-nums text-muted">1:42</span>
+        </div>
+        <div>
+          <h3>{t('feat.longTitle')}</h3>
+          <p class="mt-1.5">{t('feat.longDesc')}</p>
+        </div>
+      </li>
+
+      <!-- languages -->
+      <li class="card tile" data-reveal style="transition-delay:80ms">
+        <div class="tile-visual flex flex-wrap gap-1.5 !p-4">
+          <span class="chip !border-transparent !bg-text !text-bg">Auto</span>
+          <span class="chip">Français</span>
+          <span class="chip">English</span>
+        </div>
+        <div>
+          <h3>{t('feat.langTitle')}</h3>
+          <p class="mt-1.5">{t('feat.langDesc')}</p>
+        </div>
+      </li>
+
+      <!-- updates -->
+      <li class="card tile" data-reveal style="transition-delay:160ms">
+        <div class="tile-visual flex items-center justify-between gap-3 !p-4 text-[0.8125rem]">
+          <span class="tabular-nums text-faint">v{version}</span>
+          <span class="h-px flex-1 bg-line"></span>
+          <span class="inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] px-2.5 py-1 font-medium tabular-nums text-accent">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/></svg>
+            v{nextVersion}
+          </span>
+        </div>
+        <div>
+          <h3>{t('feat.updTitle')}</h3>
+          <p class="mt-1.5">{t('feat.updDesc')}</p>
+        </div>
+      </li>
+    </ul>
+  </div>
+</section>

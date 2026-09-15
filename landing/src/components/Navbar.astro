@@ -1,153 +1,99 @@
 ---
-import { getLangFromUrl, useTranslations, getLocalizedPath } from '@/i18n/utils';
-import LanguagePicker from '@/components/LanguagePicker.astro';
+import { getLangFromUrl, useTranslations, getLocalizedPath, otherLangPath } from '@/i18n/utils';
+import { languages } from '@/i18n/ui';
+import Logo from '@/components/Logo.astro';
 
 const lang = getLangFromUrl(Astro.url);
 const t = useTranslations(lang);
+const other = lang === 'en' ? 'fr' : 'en';
 
-const buyUrl = 'https://amirks.lemonsqueezy.com/checkout/buy/23ded1c4-c862-4f8c-ada5-0bb3dc2e0060';
+const links = [
+  { href: getLocalizedPath(lang, '#how'), label: t('nav.how') },
+  { href: getLocalizedPath(lang, '#features'), label: t('nav.features') },
+  { href: getLocalizedPath(lang, '#privacy'), label: t('nav.privacy') },
+  { href: getLocalizedPath(lang, '#faq'), label: t('nav.faq') },
+];
 ---
 
-<nav class="fixed top-0 left-0 right-0 z-50 border-b border-black/[0.06] bg-white/80 backdrop-blur-lg dark:border-white/5 dark:bg-slate-950/80">
-  <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-    <!-- Logo -->
-    <a href={getLocalizedPath(lang)} class="text-xl font-bold tracking-tight text-zinc-900 dark:text-white">
-      TTP
+<header class="sticky top-0 z-50" data-nav>
+  <div class="nav-backdrop absolute inset-0 -z-10 border-b border-transparent transition-[background-color,border-color] duration-200"></div>
+  <nav class="wrap flex h-16 items-center justify-between gap-4" aria-label="TTP">
+    <a href={getLocalizedPath(lang)} class="text-[1.3rem] text-text" aria-label="TTP">
+      <Logo />
     </a>
 
-    <!-- Desktop navigation -->
-    <div class="hidden items-center gap-8 md:flex">
-      <a href={getLocalizedPath(lang, '#features')} class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white">
-        {t('nav.features')}
-      </a>
-      <a href={getLocalizedPath(lang, '#how-it-works')} class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white">
-        {t('nav.howItWorks')}
-      </a>
-      <a href={getLocalizedPath(lang, '#changelog')} class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white">
-        {t('nav.changelog')}
-      </a>
-      <a href={getLocalizedPath(lang, '#about')} class="text-sm text-zinc-600 transition-colors hover:text-zinc-900 dark:text-slate-400 dark:hover:text-white">
-        {t('nav.about')}
-      </a>
-      <LanguagePicker />
-      <a
-        href={getLocalizedPath(lang, '#install')}
-            class="rounded-full border border-black/[0.08] px-4 py-1.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-black/[0.04] dark:border-white/10 dark:text-white dark:hover:bg-white/5"
-      >
-        {t('nav.download')}
-      </a>
-      <a
-        href={buyUrl}
-        target="_blank"
-        rel="noopener"
-        class="rounded-full bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white shadow-md shadow-blue-600/20 transition-all hover:bg-blue-700 hover:shadow-blue-600/30 dark:bg-gradient-to-r dark:from-violet-500 dark:to-fuchsia-500 dark:shadow-violet-500/25 dark:hover:from-violet-400 dark:hover:to-fuchsia-400 dark:hover:shadow-violet-500/40"
-      >
-        {t('nav.getPro')}
-      </a>
+    <div class="hidden items-center gap-1 md:flex">
+      {links.map((l) => (
+        <a href={l.href} class="rounded-full px-3.5 py-2 text-sm text-muted transition-colors hover:text-text">{l.label}</a>
+      ))}
     </div>
 
-    <!-- Mobile hamburger button -->
-    <button
-      id="mobile-menu-btn"
-      class="md:hidden p-2 text-zinc-900 dark:text-white"
-      aria-label="Toggle menu"
-      aria-expanded="false"
-      aria-controls="mobile-menu"
-    >
-      <svg id="menu-icon-open" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="3" y1="6" x2="21" y2="6" />
-        <line x1="3" y1="12" x2="21" y2="12" />
-        <line x1="3" y1="18" x2="21" y2="18" />
-      </svg>
-      <svg id="menu-icon-close" class="hidden h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="18" y1="6" x2="6" y2="18" />
-        <line x1="6" y1="6" x2="18" y2="18" />
-      </svg>
-    </button>
-  </div>
-</nav>
+    <div class="flex items-center gap-2">
+      <a
+        href={otherLangPath(Astro.url, other)}
+        data-lang-switch={other}
+        hreflang={other}
+        class="hidden rounded-full px-3 py-2 text-sm text-muted transition-colors hover:text-text sm:block"
+      >
+        {other.toUpperCase()}
+        <span class="sr-only">{languages[other]}</span>
+      </a>
 
-<!-- Mobile overlay menu -->
-<div
-  id="mobile-menu"
-  class="fixed inset-0 z-40 hidden flex-col items-center justify-center gap-8 bg-white/95 backdrop-blur-lg dark:bg-slate-950/95 md:hidden"
-  aria-hidden="true"
->
-  <a href={getLocalizedPath(lang, '#features')} class="mobile-nav-link text-2xl font-medium text-zinc-900 transition-colors hover:text-zinc-600 dark:text-white dark:hover:text-slate-300">
-    {t('nav.features')}
-  </a>
-  <a href={getLocalizedPath(lang, '#how-it-works')} class="mobile-nav-link text-2xl font-medium text-zinc-900 transition-colors hover:text-zinc-600 dark:text-white dark:hover:text-slate-300">
-    {t('nav.howItWorks')}
-  </a>
-  <a href={getLocalizedPath(lang, '#changelog')} class="mobile-nav-link text-2xl font-medium text-zinc-900 transition-colors hover:text-zinc-600 dark:text-white dark:hover:text-slate-300">
-    {t('nav.changelog')}
-  </a>
-  <a href={getLocalizedPath(lang, '#about')} class="mobile-nav-link text-2xl font-medium text-zinc-900 transition-colors hover:text-zinc-600 dark:text-white dark:hover:text-slate-300">
-    {t('nav.about')}
-  </a>
-  <LanguagePicker />
-  <a
-    href={getLocalizedPath(lang, '#install')}
-    class="mobile-nav-link rounded-full border border-black/[0.08] px-6 py-2.5 text-lg font-medium text-zinc-900 transition-colors hover:bg-black/[0.04] dark:border-white/10 dark:text-white dark:hover:bg-white/5"
-  >
-    {t('nav.download')}
-  </a>
-  <a
-    href={buyUrl}
-    target="_blank"
-    rel="noopener"
-    class="mobile-nav-link rounded-full bg-blue-600 px-6 py-2.5 text-lg font-semibold text-white shadow-md shadow-blue-600/20 transition-all hover:bg-blue-700 dark:bg-gradient-to-r dark:from-violet-500 dark:to-fuchsia-500 dark:shadow-violet-500/25 dark:hover:from-violet-400 dark:hover:to-fuchsia-400"
-  >
-    {t('nav.getPro')}
-  </a>
-</div>
+      <a href={getLocalizedPath(lang, '#download')} class="btn btn-primary btn-sm">
+        {t('nav.download')}
+      </a>
+
+      <button
+        type="button"
+        data-menu-toggle
+        aria-expanded="false"
+        aria-controls="mobile-nav"
+        class="grid h-9 w-9 place-items-center rounded-full border border-line text-muted md:hidden"
+        aria-label={t('nav.menu')}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M4 8h16M4 16h16" stroke-linecap="round" />
+        </svg>
+      </button>
+    </div>
+  </nav>
+
+  <div id="mobile-nav" hidden class="border-b border-line bg-bg md:hidden">
+    <div class="wrap flex flex-col py-2">
+      {links.map((l) => (
+        <a href={l.href} class="border-b border-line py-3.5 text-[0.9375rem] text-text last:border-b-0" data-close-menu>{l.label}</a>
+      ))}
+      <a href={otherLangPath(Astro.url, other)} data-lang-switch={other} class="py-3.5 text-[0.9375rem] text-muted">
+        {languages[other]}
+      </a>
+    </div>
+  </div>
+</header>
+
+<style>
+  [data-nav][data-scrolled] .nav-backdrop {
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    border-color: var(--line-c);
+    backdrop-filter: blur(16px) saturate(170%);
+    -webkit-backdrop-filter: blur(16px) saturate(170%);
+  }
+</style>
 
 <script>
-  const menuBtn = document.getElementById('mobile-menu-btn');
-  const mobileMenu = document.getElementById('mobile-menu');
-  const iconOpen = document.getElementById('menu-icon-open');
-  const iconClose = document.getElementById('menu-icon-close');
+  const nav = document.querySelector<HTMLElement>('[data-nav]');
+  const toggle = document.querySelector<HTMLButtonElement>('[data-menu-toggle]');
+  const panel = document.getElementById('mobile-nav');
 
-  if (menuBtn && mobileMenu && iconOpen && iconClose) {
-    let isOpen = false;
-
-    function openMenu() {
-      isOpen = true;
-      mobileMenu.classList.remove('hidden');
-      mobileMenu.classList.add('flex');
-      menuBtn.setAttribute('aria-expanded', 'true');
-      mobileMenu.setAttribute('aria-hidden', 'false');
-      iconOpen.classList.add('hidden');
-      iconClose.classList.remove('hidden');
-      document.body.style.overflow = 'hidden';
-      if ((window as any).__lenis) (window as any).__lenis.stop();
-    }
-
-    function closeMenu() {
-      isOpen = false;
-      mobileMenu.classList.add('hidden');
-      mobileMenu.classList.remove('flex');
-      menuBtn.setAttribute('aria-expanded', 'false');
-      mobileMenu.setAttribute('aria-hidden', 'true');
-      iconClose.classList.add('hidden');
-      iconOpen.classList.remove('hidden');
-      document.body.style.overflow = '';
-      if ((window as any).__lenis) (window as any).__lenis.start();
-    }
-
-    menuBtn.addEventListener('click', () => {
-      if (isOpen) {
-        closeMenu();
-      } else {
-        openMenu();
-      }
-    });
-
-    // Close menu when any link inside the overlay is clicked
-    mobileMenu.querySelectorAll('a').forEach((link) => {
-      link.addEventListener('click', () => {
-        closeMenu();
-      });
-    });
+  function setMenu(open: boolean) {
+    toggle?.setAttribute('aria-expanded', String(open));
+    if (panel) panel.hidden = !open;
   }
+  toggle?.addEventListener('click', () => setMenu(toggle.getAttribute('aria-expanded') !== 'true'));
+  document.querySelectorAll('[data-close-menu]').forEach((a) => a.addEventListener('click', () => setMenu(false)));
+
+  /* The bar gains its backdrop once the page has moved. Passive listener,
+     read-only: it never scrolls anything. */
+  const sync = () => nav?.toggleAttribute('data-scrolled', window.scrollY > 8);
+  window.addEventListener('scroll', sync, { passive: true });
+  sync();
 </script>
