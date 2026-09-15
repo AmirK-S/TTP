@@ -70,8 +70,21 @@ pub struct AudioInputDeviceInfo {
 /// Enumerate every cpal input device on the system. Skips devices whose
 /// `name()` call errors (rare; usually means the device was unplugged
 /// between enumeration and the name() lookup).
+///
+/// Async, and so off the main thread. A synchronous command runs on the main
+/// thread, and on a Mac that has not granted the microphone the CoreAudio
+/// query raises the system prompt and blocks until it is answered: on the
+/// 2026-09-15 fresh install the hidden Settings window asked at launch and
+/// froze every TTP window for 22 s — the onboarding showed blank with a
+/// spinning cursor. Settings also no longer asks before the grant.
 #[command]
-pub fn list_audio_input_devices() -> Result<Vec<AudioInputDeviceInfo>, String> {
+pub async fn list_audio_input_devices() -> Result<Vec<AudioInputDeviceInfo>, String> {
+    tauri::async_runtime::spawn_blocking(enumerate_input_devices)
+        .await
+        .map_err(|e| format!("Failed to list input devices: {}", e))?
+}
+
+fn enumerate_input_devices() -> Result<Vec<AudioInputDeviceInfo>, String> {
     let host = cpal::default_host();
     let default_name = host
         .default_input_device()

@@ -1067,10 +1067,10 @@ pub fn run() {
             // Check if this is the first launch
             let is_first = permissions::is_first_launch();
             if is_first {
-                // The pill carries the first-launch "press Fn" hint, so it is
-                // shown at rest this once. It hides itself after the first
-                // dictation dismisses the hint.
-                tray::show_pill(app.handle());
+                // No pill at rest here any more. It used to carry a "press Fn"
+                // hint during onboarding; on the 2026-09-15 fresh install it
+                // sat over every window as a white rectangle, and the
+                // onboarding's last step teaches the key anyway.
                 // Show onboarding window (permission check flow)
                 let _ = onboarding::show_onboarding(app.handle().clone());
             } else {

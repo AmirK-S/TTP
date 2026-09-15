@@ -260,6 +260,14 @@ static REBUILD_ATTEMPTS: AtomicU64 = AtomicU64::new(0);
 /// Set once we have given up on this process's tap, so the watchdog stops
 /// touching it and stops logging about it.
 static TAP_ABANDONED: AtomicBool = AtomicBool::new(false);
+/// `hotkey.tap_waiting_for_permission` is written once per session.
+static TAP_WAITING_REPORTED: AtomicBool = AtomicBool::new(false);
+
+/// Whether a tap may be created without macOS prompting for it: Accessibility
+/// or Input Monitoring granted. Both are read without a prompt.
+fn tap_permission_granted() -> bool {
+    crate::paste::check_accessibility() || has_input_monitoring()
+}
 
 /// Failed re-arms before we stop re-enabling and rebuild the tap outright.
 ///
@@ -441,6 +449,23 @@ fn is_physical_fn_key(_flags: u64) -> bool {
 ///
 /// Returns whether a live tap is now installed.
 unsafe fn install_tap(reason: &str) -> bool {
+    // Creating a HID-level tap without a grant makes macOS put its own
+    // Accessibility prompt on screen, and the tap it hands back is disabled
+    // within seconds — which then burned the three rebuilds and abandoned the
+    // hotkey for the session. Seen 2026-09-15 on a fresh install: the prompt
+    // appeared behind the onboarding before it had asked for anything, and
+    // `hotkey.tap_abandoned` landed 72 s after launch. So wait, silently, for
+    // either grant; the watchdog calls back here every two seconds and the
+    // onboarding's drag panel delivers the grant.
+    if !tap_permission_granted() {
+        if !TAP_WAITING_REPORTED.swap(true, Ordering::Relaxed) {
+            crate::trace::event(
+                "hotkey.tap_waiting_for_permission",
+                serde_json::json!({ "reason": reason }),
+            );
+        }
+        return false;
+    }
     let mask: u64 = (1u64 << KCG_EVENT_FLAGS_CHANGED)
         | (1u64 << KCG_EVENT_KEY_DOWN)
         | (1u64 << KCG_EVENT_KEY_UP)
@@ -1089,6 +1114,11 @@ static SWALLOWED_KEY_DOWN: [AtomicBool; 2] = [AtomicBool::new(false), AtomicBool
 static SWALLOW_PORT: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
 
 pub fn ensure_swallow_tap() {
+    // An active tap needs Accessibility, and asking for one without it is
+    // what puts the system prompt up. The watchdog retries once it is granted.
+    if !crate::paste::check_accessibility() {
+        return;
+    }
     if SWALLOW_TAP_RUNNING.swap(true, Ordering::Relaxed) {
         return;
     }

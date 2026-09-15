@@ -371,9 +371,15 @@ export function Settings() {
   // Audio input devices: enumerated on Settings open + on focus return so
   // a user who hot-plugs a USB mic sees it without restarting.
   const [audioDevices, setAudioDevices] = useState<Array<{ name: string; is_default: boolean }>>([]);
+  // Never before the microphone is granted: listing input devices is what
+  // made macOS raise its prompt at launch, over the onboarding.
   const refreshAudioDevices = useCallback(() => {
-    invoke<Array<{ name: string; is_default: boolean }>>('list_audio_input_devices')
-      .then(setAudioDevices)
+    invoke<string>('check_microphone_permission')
+      .then((status) => {
+        if (status !== 'Granted') return;
+        return invoke<Array<{ name: string; is_default: boolean }>>('list_audio_input_devices')
+          .then(setAudioDevices);
+      })
       .catch((e) => console.error('[Settings] list_audio_input_devices failed:', e));
   }, []);
   useEffect(() => {
