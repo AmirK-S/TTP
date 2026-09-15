@@ -212,6 +212,13 @@
       "languageFrench": "Français",
       "keyLabel": "Clé API"
     },
+    "report": {
+      "label": "Signaler un problème",
+      "hint": "Prépare un e-mail avec la version de TTP et le relevé des dernières dictées. Rien de ce que tu as dicté n'y figure.",
+      "button": "Signaler",
+      "done": "Rapport enregistré dans Téléchargements. Joins-le à l'e-mail pour {{email}}.",
+      "failed": "Le rapport n'a pas pu être créé."
+    },
     "privacy": {
       "helpLabel": "Aide à améliorer TTP",
       "restartHint": "Les changements prennent effet au redémarrage.",
@@ -345,8 +352,14 @@
       "subtitle": "Clique dans la zone, maintiens {{key}}, dis une phrase, puis relâche.",
       "placeholder": "Tes mots apparaîtront ici.",
       "worked": "Ça marche. Tu peux fermer cette fenêtre : TTP continue de tourner dans la barre de menus.",
-      "menuBar": "TTP vit dans la barre de menus en haut de ton écran, avec ses réglages."
+      "menuBar": "TTP vit dans la barre de menus en haut de ton écran, avec ses réglages.",
+      "crashLabel": "Envoyer les rapports de plantage",
+      "crashDesc": "Seulement les plantages et les erreurs, jamais ta voix ni ton texte. Modifiable dans Réglages → Avancé."
     }
+  },
+  "report": {
+    "emailSubject": "TTP {{version}} — un problème",
+    "emailBody": "Bonjour,\n\nVoici ce qui s'est passé :\n\n\n\nLe rapport {{file}} vient de s'ouvrir dans le Finder : joins-le à cet e-mail. Il ne contient rien de ce que j'ai dicté."
   },
   "form": {
     "apiKey": {
@@ -387,6 +400,7 @@
     "subtitle": "TTP a été mis à jour.",
     "dismiss": "Compris",
     "notes": {
+      "3-2-1": "TTP est plus simple, et toujours entièrement gratuit.\n• Le raccourci de ton choix : Fn, une touche, un modificateur ou un bouton de souris. Et un deuxième si tu veux, pratique avec un clavier externe.\n• TTP tient compte de l'écran : les noms affichés autour de ton curseur et ceux de ton dictionnaire sont écrits correctement. Seul ce qui sert à ta dictée part chez Groq avec elle, jamais un champ de mot de passe. Réglages → Dictée → « Tenir compte de l'écran » pour le couper.\n• Installation guidée : tu autorises TTP en le glissant dans les Réglages Système, puis tu fais un premier essai.\n• Réglages repensés : quelques pages courtes au lieu d'une longue liste.\n• Deux dictées d'affilée marchent à chaque fois.\n• ✓✓ quand le texte est collé. S'il n'a pas pu l'être, il t'attend dans l'historique.\n• La correction IA remarche : Groq avait retiré l'ancien modèle.\n• Un souci ? Réglages → Avancé → « Signaler un problème » prépare un e-mail avec un rapport, sans rien de ce que tu as dicté.\n• À la fin de l'installation, tu choisis si TTP envoie ses rapports de plantage.",
       "3-2-0": "TTP est plus simple, et toujours entièrement gratuit.\n• Le raccourci de ton choix : Fn, une touche, un modificateur ou un bouton de souris. Et un deuxième si tu veux, pratique avec un clavier externe.\n• TTP tient compte de l'écran : les noms affichés autour de ton curseur et ceux de ton dictionnaire sont écrits correctement. Seul ce qui sert à ta dictée part chez Groq avec elle, jamais un champ de mot de passe. Réglages → Dictée → « Tenir compte de l'écran » pour le couper.\n• Installation guidée : tu autorises TTP en le glissant dans les Réglages Système, puis tu fais un premier essai.\n• Réglages repensés : quelques pages courtes au lieu d'une longue liste.\n• Deux dictées d'affilée marchent à chaque fois.\n• ✓✓ quand le texte est collé. S'il n'a pas pu l'être, il t'attend dans l'historique.\n• La correction IA remarche : Groq avait retiré l'ancien modèle.",
       "3-1-7": "TTP est entièrement gratuit. Toutes les fonctionnalités, sans limite, sans compte, sans essai qui expire.\n• Le Compagnon : des packs de sons — bol, marimba, feutre. Cosmétique et rien d'autre : aucun son ne change ce que TTP fait de ta voix.\n• La correction IA remarche. Groq a débranché le modèle qu'on utilisait le 16 août ; on a migré, et chaque tentative est maintenant chronométrée pour que la prochaine panne se voie.\n• Micro mort : si ton casque est connecté sans rien envoyer, TTP te le dit au bout de deux secondes, pendant que tu peux encore agir — au lieu de te laisser parler vingt secondes dans le vide.\n• Le micro ne peut plus rester allumé. Un enregistrement qui démarre après que tu as relâché la touche est refusé au lieu d'être laissé ouvert sans personne pour le fermer.\n• Plus rapide : le trousseau macOS ne s'intercale plus entre ta dernière phrase et ton texte. Une lecture mesurée à 62 secondes se faisait attendre là.\n• La touche Fn survit : quand macOS désactive notre écoute clavier et que la réarmer ne suffit plus, on la reconstruit.\n• Diagnostic : chaque dictée laisse une trace, étape par étape, dans ttp-trace.log. Paramètres → Avancé → Diagnostics.",
       "3-1-6": "Fix : même le prompt minimal \"French and English bilingual speaker.\" leakait à la fin des transcriptions sur du silence en fin de phrase (Whisper recopiait la queue du prompt + commençait une suite). Solution radicale : on n'envoie PLUS de prompt du tout à Whisper. La langue est gérée par le paramètre API `language`, et la correction des noms propres est gérée par le post-traitement word-boundary qui ne peut jamais ajouter de mots absents. Plus aucun risque de prompt-bias.",

@@ -33,6 +33,7 @@ mod paste;
 #[cfg(target_os = "macos")]
 mod permission_helper;
 mod permissions;
+mod problem_report;
 mod recording;
 mod screen_context;
 mod settings;
@@ -1186,6 +1187,7 @@ pub fn run() {
             trace_api::trace_recent_events,
             trace_api::trace_set_live,
             trace_api::trace_status,
+            problem_report::report_problem,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

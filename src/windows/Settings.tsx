@@ -351,6 +351,21 @@ export function Settings() {
 
   const handlePolishToggle = makeToggle('ai_polish_enabled');
   const handleScreenContextToggle = makeToggle('screen_context_enabled');
+
+  /* Report a problem: a text file in Downloads plus a pre-addressed e-mail,
+     built by `problem_report.rs`. The line under the button says where the
+     file went, since attaching it is the one step we cannot do for them. */
+  const [report, setReport] = useState<{ status: 'idle' | 'working' | 'done' | 'failed'; email?: string }>({ status: 'idle' });
+  const handleReportProblem = useCallback(async () => {
+    setReport({ status: 'working' });
+    try {
+      const result = await invoke<{ path: string; email: string }>('report_problem');
+      setReport({ status: 'done', email: result.email });
+    } catch (error) {
+      console.error('Failed to create problem report:', error);
+      setReport({ status: 'failed' });
+    }
+  }, []);
   const handleTelemetryToggle = makeToggle('telemetry_enabled', () => setShowRestartBanner(true));
   const handleHistoryEnabledToggle = makeToggle('history_enabled');
   const handleVadAutoStopToggle = makeToggle('vad_auto_stop_enabled');
@@ -868,6 +883,25 @@ export function Settings() {
 
           {page === 'advanced' && (
             <Group title={t('settings.groups.troubleshooting')}>
+              <Row
+                label={t('settings.report.label')}
+                hint={
+                  report.status === 'done'
+                    ? t('settings.report.done', { email: report.email })
+                    : report.status === 'failed'
+                      ? t('settings.report.failed')
+                      : t('settings.report.hint')
+                }
+              >
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleReportProblem}
+                  disabled={report.status === 'working'}
+                >
+                  {t('settings.report.button')}
+                </Button>
+              </Row>
               <ToggleRow
                 label={t('settings.recordingMode.vadAutoStopLabel')}
                 hint={t('settings.recordingMode.vadAutoStopDesc')}

@@ -20,7 +20,7 @@ import {
   ExternalLink,
   Sparkles,
 } from 'lucide-react';
-import { Button, Card, BrandTile } from '../components/ui';
+import { Button, Card, BrandTile, Toggle } from '../components/ui';
 import { ApiKeyForm } from '../components/ApiKeyForm';
 import { cn } from '../lib/cn';
 import { useTauriEvent } from '../hooks/useTauriEvent';
@@ -421,6 +421,15 @@ function TryStep() {
   const { t } = useTranslation();
   const { label } = useTrigger();
   const [worked, setWorked] = useState(false);
+  // Asked once, here, and off until the user says yes. Sent as a one-key
+  // payload: `set_settings` merges it, and this window's store was never
+  // loaded, so a full save from it would reset everything else.
+  const [crashReports, setCrashReports] = useState(false);
+  const handleCrashReports = async (enabled: boolean) => {
+    setCrashReports(enabled);
+    try { await invoke('set_settings', { settings: { telemetry_enabled: enabled } }); }
+    catch (e) { console.error('Failed to save telemetry_enabled:', e); setCrashReports(!enabled); }
+  };
 
   useTauriEvent<{ stage: string }>('transcription-progress', (event) => {
     if (event.payload.stage === 'complete') setWorked(true);
@@ -454,6 +463,19 @@ function TryStep() {
       ) : (
         <p className="mt-4 text-[12px] text-app-muted leading-relaxed">{t('onboarding.try.menuBar')}</p>
       )}
+
+      <div className="mt-6 flex items-start justify-between gap-4 border-t border-app-border pt-4">
+        <div>
+          <p className="text-[13px] font-medium text-app-text">{t('onboarding.try.crashLabel')}</p>
+          <p className="mt-0.5 text-[12px] text-app-muted leading-relaxed">{t('onboarding.try.crashDesc')}</p>
+        </div>
+        <Toggle
+          size="sm"
+          enabled={crashReports}
+          onChange={handleCrashReports}
+          aria-label={t('onboarding.try.crashLabel')}
+        />
+      </div>
     </section>
   );
 }
