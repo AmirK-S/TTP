@@ -12,6 +12,8 @@ mod cosmetics;
 mod credentials;
 mod dictionary;
 #[cfg(target_os = "macos")]
+mod dock;
+#[cfg(target_os = "macos")]
 mod fnkey;
 // The pure-function FSM lives in its own module so it can be unit-tested on
 // any platform — `fnkey` itself is macOS-only and pulls in objc + cocoa.
@@ -1091,6 +1093,17 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
+            }
+            // A Dock tile and a ⌘-Tab entry while Settings or onboarding is
+            // open, none once they are hidden (see `dock`).
+            #[cfg(target_os = "macos")]
+            if dock::APP_WINDOWS.contains(&window.label()) {
+                match event {
+                    tauri::WindowEvent::Focused(_)
+                    | tauri::WindowEvent::CloseRequested { .. }
+                    | tauri::WindowEvent::Destroyed => dock::sync(window.app_handle()),
+                    _ => {}
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
