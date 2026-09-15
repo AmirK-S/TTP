@@ -98,6 +98,13 @@ jobs:
              && [ "${{ matrix.platform }}" != "macos-latest" ]; then
             echo "run=false" >> "$GITHUB_OUTPUT"
             echo "Skipped: dispatch requested macOS only."
+          elif [ "${{ github.event_name }}" = "push" ] \
+             && [[ "${{ github.ref_name }}" == polaris/* ]] \
+             && [ "${{ matrix.platform }}" != "macos-latest" ]; then
+            # Maintainer builds are installed on a Mac; the Windows leg only
+            # doubled the wait (2026-09-15). Tags still build Windows.
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Skipped: maintainer build, macOS only."
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
