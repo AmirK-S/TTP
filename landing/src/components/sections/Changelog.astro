@@ -1,0 +1,70 @@
+---
+/**
+ * The changelog, rendered at build time from GitHub Releases.
+ *
+ * This was a React island with `framer-motion` on it. It is a list of dates
+ * and text; it did not need 60 kB of animation library, and now it ships none.
+ */
+import { useTranslations, type Lang } from '@/i18n/utils';
+import { REPO_URL } from '@/lib/coats';
+import type { ReleaseData } from '@/lib/github';
+
+interface Props { lang: Lang; releases: ReleaseData[] }
+const { lang, releases } = Astro.props;
+const t = useTranslations(lang);
+
+const formatter = new Intl.DateTimeFormat(lang === 'fr' ? 'fr-FR' : 'en-GB', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+});
+
+/** Release bodies are markdown written by hand. Only the shapes that actually
+ *  appear in them are handled: bullets, and everything else as a line. */
+function lines(body: string): string[] {
+  return body
+    .split('\n')
+    .map((l) => l.replace(/^[-*]\s+/, '').replace(/[*_`#]/g, '').trim())
+    .filter((l) => l.length > 0 && !/^!\[/.test(l))
+    .slice(0, 6);
+}
+
+const shown = releases.slice(0, 5);
+---
+
+<section id="changelog" class="band">
+  <div class="wrap">
+    <p class="plate-label">{t('log.plate')}</p>
+
+    <div class="max-w-2xl" data-reveal>
+      <h2 class="display text-[clamp(1.75rem,1.2rem+2vw,2.75rem)]">{t('log.heading')}</h2>
+      <p class="mt-4 text-muted">{t('log.subheading')}</p>
+    </div>
+
+    {shown.length === 0 ? (
+      <p class="mt-8 text-muted">{t('log.empty')}</p>
+    ) : (
+      <ol class="mt-9 border-t border-line">
+        {shown.map((r) => (
+          <li class="grid gap-2 border-b border-line py-6 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-8" data-reveal>
+            <div>
+              <p class="mono text-sm font-semibold">{r.tag_name}</p>
+              <p class="mono mt-1 text-xs text-faint">
+                <time datetime={r.published_at}>{formatter.format(new Date(r.published_at))}</time>
+              </p>
+            </div>
+            <ul class="grid gap-1.5">
+              {lines(r.body ?? '').map((l) => (
+                <li class="text-sm leading-relaxed text-muted">{l}</li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ol>
+    )}
+
+    <a href={`${REPO_URL}/releases`} target="_blank" rel="noopener" class="link mt-6 inline-block text-sm">
+      {t('log.viewAll')}
+    </a>
+  </div>
+</section>

@@ -1,0 +1,71 @@
+---
+/**
+ * The comparison page-in-a-section.
+ *
+ * Research C9: discovery in this category happens through comparison threads
+ * and awesome-lists, continuously, rather than through launches — so a page
+ * that answers "how is this different from MacWhisper" in one screen is a
+ * durable asset. Two constraints came with it, and both are load-bearing:
+ *
+ *   - Be accurate about the trade-off. TTP is free and uncapped; it also needs
+ *     a Groq key and does not run offline. The row that says so is the third
+ *     one, not a footnote.
+ *   - Do not punch at the funded competitors. The single negative comment in
+ *     an otherwise warm 467-point Show HN thread was aimed precisely at
+ *     underdog framing (§3f). So the lede says they are good applications,
+ *     and means it.
+ */
+import { useTranslations, type Lang } from '@/i18n/utils';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+
+const rows = [
+  { head: t('cmp.rowPrice'), ttp: t('cmp.ttpPrice'), mac: t('cmp.macPrice'), sup: t('cmp.superPrice') },
+  { head: t('cmp.rowFree'), ttp: t('cmp.ttpFree'), mac: t('cmp.macFree'), sup: t('cmp.superFree') },
+  { head: t('cmp.rowSetup'), ttp: t('cmp.ttpSetup'), mac: t('cmp.macSetup'), sup: t('cmp.superSetup') },
+  { head: t('cmp.rowAudio'), ttp: t('cmp.ttpAudio'), mac: t('cmp.macAudio'), sup: t('cmp.superAudio') },
+  { head: t('cmp.rowOffline'), ttp: t('cmp.ttpOffline'), mac: t('cmp.macOffline'), sup: t('cmp.superOffline') },
+  { head: t('cmp.rowByok'), ttp: t('cmp.ttpByok'), mac: t('cmp.macByok'), sup: t('cmp.superByok') },
+  { head: t('cmp.rowPaid'), ttp: t('cmp.ttpPaid'), mac: t('cmp.macPaid'), sup: t('cmp.superPaid') },
+];
+---
+
+<section id="compare" class="band">
+  <div class="wrap">
+    <p class="plate-label">{t('cmp.plate')}</p>
+
+    <div class="max-w-2xl" data-reveal>
+      <h2 class="display text-[clamp(1.75rem,1.2rem+2vw,2.75rem)]">{t('cmp.heading')}</h2>
+      <p class="mt-5 text-muted">{t('cmp.lead')}</p>
+    </div>
+
+    <div class="mt-9 overflow-x-auto rounded-[var(--r-lg)] border border-line" data-reveal>
+      <table class="w-full min-w-[42rem] border-collapse text-left">
+        <caption class="sr-only">{t('cmp.heading')}</caption>
+        <thead>
+          <tr class="border-b border-line bg-raised">
+            <th scope="col" class="px-5 py-3 text-xs font-medium uppercase tracking-[0.12em] text-faint"></th>
+            <th scope="col" class="px-5 py-3 text-sm font-semibold text-accent">{t('cmp.colTtp')}</th>
+            <th scope="col" class="px-5 py-3 text-sm font-semibold">{t('cmp.colMac')}</th>
+            <th scope="col" class="px-5 py-3 text-sm font-semibold">{t('cmp.colSuper')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr class={i % 2 ? 'bg-raised/40' : ''}>
+              <th scope="row" class="border-t border-line px-5 py-4 align-top text-[0.8125rem] font-medium text-faint">{r.head}</th>
+              <td class="border-t border-line px-5 py-4 align-top text-sm">{r.ttp}</td>
+              <td class="border-t border-line px-5 py-4 align-top text-sm text-muted">{r.mac}</td>
+              <td class="border-t border-line px-5 py-4 align-top text-sm text-muted">{r.sup}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    <p class="mt-6 max-w-3xl text-[0.9375rem] leading-relaxed text-muted" data-reveal>{t('cmp.honest')}</p>
+    <p class="caption mt-3">{t('cmp.asOf')}</p>
+  </div>
+</section>

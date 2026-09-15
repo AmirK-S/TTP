@@ -1,0 +1,269 @@
+/* ----------------------------------------------------------------------------
+   TTP — design tokens.
+
+   Named for the "coats" (alternate palettes) that used to live here; they were
+   removed in the simplification pass and only the house palette remains.
+
+   ── The contract ─────────────────────────────────────────────────────────
+   Every palette value is declared twice, `--l-*` (light) and `--d-*` (dark).
+   A single resolver picks a side based on the `data-theme` rules the app has
+   always used and publishes the names components read.
+
+       --ttp-accent    the character / primary colour
+       --ttp-surface   panel and pill body
+       --ttp-glow      emphasis, halo, focus
+       --ttp-ink       high-contrast foreground
+
+   `--ttp-surface` and `--ttp-ink` are context-resolved. In a normal window a
+   "surface" is the panel body and the "ink" is the text on it, so they follow
+   light/dark. In the floating-bar window the surface is the *pill*, which
+   floats over the user's wallpaper and is dark in every appearance — so under
+   `html.floating-bar` the same two names resolve to the pill body and the
+   mark that reads on it.
+   ------------------------------------------------------------------------- */
+
+/* ============================================================================
+   1. BASE.
+   ========================================================================= */
+
+:root {
+  /* — light ————————————————————————————————————————————————————— */
+  --l-bg: #ffffff;
+  --l-surface: #fafafa;
+  --l-raised: #f5f5f6;
+  --l-overlay: #ffffff;
+  --l-dim: #f0f0f1;
+  --l-border: rgba(0, 0, 0, 0.08);
+  --l-border-strong: rgba(0, 0, 0, 0.14);
+  --l-text: #18181b;
+  --l-muted: #5b5b62;
+  --l-faint: #8a8a92;
+  --l-accent: #2563eb;
+  --l-accent-hover: #1d4ed8;
+  --l-accent-fg: #ffffff;
+  --l-glow: #2563eb;
+  --l-success: #15803d;
+  --l-warning: #b45309;
+  --l-danger: #b91c1c;
+  --l-highlight: inset 0 1px 0 0 rgba(0, 0, 0, 0.03);
+  --l-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 1px rgba(16, 24, 40, 0.04);
+  --l-shadow-md: 0 2px 4px rgba(16, 24, 40, 0.04), 0 6px 16px rgba(16, 24, 40, 0.08);
+  --l-shadow-lg: 0 4px 8px rgba(16, 24, 40, 0.04), 0 16px 36px rgba(16, 24, 40, 0.12);
+  --l-canvas-wash: none;
+
+  /* — dark —————————————————————————————————————————————————————— */
+  --d-bg: #0a0a0c;
+  --d-surface: #111114;
+  --d-raised: #16161a;
+  --d-overlay: #1c1c21;
+  --d-dim: #08080a;
+  --d-border: rgba(255, 255, 255, 0.06);
+  --d-border-strong: rgba(255, 255, 255, 0.12);
+  --d-text: #ededee;
+  --d-muted: #a1a1aa;
+  --d-faint: #6b6b73;
+  --d-accent: #4c8bf5;
+  --d-accent-hover: #6da0f7;
+  --d-accent-fg: #0a0a0c;
+  --d-glow: #4c8bf5;
+  --d-success: #4ade80;
+  --d-warning: #fbbf24;
+  --d-danger: #f87171;
+  --d-highlight: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+  --d-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.30), 0 1px 1px rgba(0, 0, 0, 0.20);
+  --d-shadow-md: 0 2px 4px rgba(0, 0, 0, 0.30), 0 8px 20px rgba(0, 0, 0, 0.40);
+  --d-shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.30), 0 20px 40px rgba(0, 0, 0, 0.50);
+  --d-canvas-wash: none;
+
+  /* — shape ————————————————————————————————————————————————————— */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-pill: 999px;
+
+  /* — type —————————————————————————————————————————————————————— */
+  --ttp-font-body: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --ttp-font-display: var(--ttp-font-body);
+  --ttp-font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+  --ttp-feat: 'ss03', 'cv11', 'calt', 'kern', 'liga';
+  --ttp-track-body: 0em;
+  --ttp-track-display: -0.022em;
+  --ttp-weight-display: 600;
+  --ttp-weight-body: 400;
+  --ttp-line: 1.45;
+
+  /* — motion ———————————————————————————————————————————————————— */
+  --ttp-ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --ttp-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ttp-dur-press: 75ms;
+  --ttp-dur-hover: 150ms;
+  --ttp-dur-modal: 220ms;
+
+  /* — surface treatment ————————————————————————————————————————— */
+  /* Canvas grain — dark speckle on a light appearance, light speckle on a
+     dark one, per coat. `piebald` has none: it is a flat sheet. */
+  --l-grain-img: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0   0 0 0 0 0   0 0 0 0 0   0 0 0 0.035 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --d-grain-img: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1   0 0 0 0 1   0 0 0 0 1   0 0 0 0.03 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --ttp-panel-blur: none;
+  --ttp-border-width: 1px;
+
+  /* — the pill, which floats over the wallpaper and is dark in every
+     appearance — and the mark that reads on it. */
+  --ttp-pill: #000000;
+  --ttp-pill-ink: #ffffff;
+  --ttp-pill-ring: rgba(255, 255, 255, 0.10);
+  --ttp-pill-glow: #4c8bf5;
+}
+
+/* ============================================================================
+   2. THE RESOLVER.
+
+   Written once for every coat. It reads the `--l-*` / `--d-*` pair the coat
+   declared and publishes the names the rest of the app has always used, using
+   exactly the light/dark rules TTP already had:
+
+     • bare `:root`                          → light
+     • `prefers-color-scheme: dark` and the
+       user has not forced light             → dark
+     • `[data-theme="dark"]`                 → dark, whatever the OS says
+
+   Each selector is doubled with a descendant form so that ANY element carrying
+   `data-ttp-theme` becomes a fully-painted island of that coat. That is what
+   makes the specimen swatches in Settings possible: they are not screenshots
+   or hand-copied hex values, they are the real coat, rendered live, and they
+   cannot drift from what you get when you pick it.
+
+   Soft/tint variants are mixed from the resolved colour rather than declared,
+   so a coat that changes its accent gets consistent pills for free.
+   ========================================================================= */
+
+:root,
+[data-ttp-theme] {
+  --bg: var(--l-bg);
+  --surface: var(--l-surface);
+  --raised: var(--l-raised);
+  --overlay: var(--l-overlay);
+  --dim: var(--l-dim);
+  --border: var(--l-border);
+  --border-strong: var(--l-border-strong);
+  --text: var(--l-text);
+  --muted: var(--l-muted);
+  --faint: var(--l-faint);
+  --accent: var(--l-accent);
+  --accent-hover: var(--l-accent-hover);
+  --accent-fg: var(--l-accent-fg);
+  --success: var(--l-success);
+  --warning: var(--l-warning);
+  --danger: var(--l-danger);
+  --glow: var(--l-glow);
+  --highlight: var(--l-highlight);
+  --shadow-sm: var(--l-shadow-sm);
+  --shadow-md: var(--l-shadow-md);
+  --shadow-lg: var(--l-shadow-lg);
+  --canvas-wash: var(--l-canvas-wash);
+  --ttp-grain-img: var(--l-grain-img);
+  --soft-mix: 10%;
+  --tint-mix: 6%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]),
+  :root:not([data-theme="light"]) [data-ttp-theme] {
+    --bg: var(--d-bg);
+    --surface: var(--d-surface);
+    --raised: var(--d-raised);
+    --overlay: var(--d-overlay);
+    --dim: var(--d-dim);
+    --border: var(--d-border);
+    --border-strong: var(--d-border-strong);
+    --text: var(--d-text);
+    --muted: var(--d-muted);
+    --faint: var(--d-faint);
+    --accent: var(--d-accent);
+    --accent-hover: var(--d-accent-hover);
+    --accent-fg: var(--d-accent-fg);
+    --success: var(--d-success);
+    --warning: var(--d-warning);
+    --danger: var(--d-danger);
+    --glow: var(--d-glow);
+    --highlight: var(--d-highlight);
+    --shadow-sm: var(--d-shadow-sm);
+    --shadow-md: var(--d-shadow-md);
+    --shadow-lg: var(--d-shadow-lg);
+    --canvas-wash: var(--d-canvas-wash);
+    --ttp-grain-img: var(--d-grain-img);
+    --soft-mix: 16%;
+    --tint-mix: 10%;
+  }
+}
+
+:root[data-theme="dark"],
+:root[data-theme="dark"] [data-ttp-theme] {
+  --bg: var(--d-bg);
+  --surface: var(--d-surface);
+  --raised: var(--d-raised);
+  --overlay: var(--d-overlay);
+  --dim: var(--d-dim);
+  --border: var(--d-border);
+  --border-strong: var(--d-border-strong);
+  --text: var(--d-text);
+  --muted: var(--d-muted);
+  --faint: var(--d-faint);
+  --accent: var(--d-accent);
+  --accent-hover: var(--d-accent-hover);
+  --accent-fg: var(--d-accent-fg);
+  --success: var(--d-success);
+  --warning: var(--d-warning);
+  --danger: var(--d-danger);
+  --highlight: var(--d-highlight);
+  --shadow-sm: var(--d-shadow-sm);
+  --shadow-md: var(--d-shadow-md);
+  --shadow-lg: var(--d-shadow-lg);
+  --canvas-wash: var(--d-canvas-wash);
+  --ttp-grain-img: var(--d-grain-img);
+  --soft-mix: 16%;
+  --tint-mix: 10%;
+}
+
+/* Derived alpha variants — one definition, every coat, both appearances. */
+:root,
+[data-ttp-theme] {
+  --accent-soft: color-mix(in srgb, var(--accent) var(--soft-mix), transparent);
+  --accent-tint: color-mix(in srgb, var(--accent) var(--tint-mix), transparent);
+  --success-soft: color-mix(in srgb, var(--success) var(--soft-mix), transparent);
+  --success-tint: color-mix(in srgb, var(--success) var(--tint-mix), transparent);
+  --warning-soft: color-mix(in srgb, var(--warning) var(--soft-mix), transparent);
+  --warning-tint: color-mix(in srgb, var(--warning) var(--tint-mix), transparent);
+  --danger-soft: color-mix(in srgb, var(--danger) var(--soft-mix), transparent);
+  --danger-tint: color-mix(in srgb, var(--danger) var(--tint-mix), transparent);
+}
+
+/* ============================================================================
+   3. THE FOUR CONTRACT NAMES.
+
+   Everything above is TTP's private vocabulary. These four are the public
+   names components read; nothing else may be assumed.
+   ========================================================================= */
+
+:root,
+[data-ttp-theme] {
+  --ttp-accent: var(--accent);
+  --ttp-surface: var(--surface);
+  --ttp-ink: var(--text);
+  /* Opaque on purpose. A consumer may read this with `getComputedStyle` and
+     hand it to something that only understands a colour — a `color-mix()`
+     string would survive in CSS and break everywhere else. Alpha is the
+     caller's business. */
+  --ttp-glow: var(--glow);
+}
+
+/* In the floating-bar window the surface IS the pill. It sits over whatever
+   wallpaper the user has, so it does not follow light/dark — and neither does
+   the mark that has to stay legible on it. Same four names, correct values. */
+html.floating-bar {
+  --ttp-surface: var(--ttp-pill);
+  --ttp-ink: var(--ttp-pill-ink);
+  --ttp-glow: var(--ttp-pill-glow);
+}

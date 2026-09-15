@@ -1,48 +1,77 @@
 // TTP - Talk To Paste
 // Main Tauri application entry point
 
+mod activity;
+mod audio_capture;
 mod audio_monitor;
+// Decides whether a capture that has just been built may go live, and
+// whether one that is live still has an owner. See the module header for the
+// 10 h 57 m hot microphone it exists to prevent.
+mod capture_arbiter;
+mod cosmetics;
 mod credentials;
 mod dictionary;
 #[cfg(target_os = "macos")]
+mod dock;
+#[cfg(target_os = "macos")]
 mod fnkey;
+// The pure-function FSM lives in its own module so it can be unit-tested on
+// any platform — `fnkey` itself is macOS-only and pulls in objc + cocoa.
+mod fnkey_fsm;
 mod history;
 mod http_client;
 mod i18n;
 mod keychain;
 mod licensing;
-pub mod logging;
+// crate-type = ["staticlib", "cdylib", "rlib"] means anything `pub` is
+// visible to downstream linkers. `logging` and `transcription` are internal
+// implementation details; `pub(crate)` makes their visibility match their
+// actual usage (only inside this lib).
+pub(crate) mod logging;
 mod onboarding;
 mod paste;
+#[cfg(target_os = "macos")]
+mod permission_helper;
 mod permissions;
+mod problem_report;
 mod recording;
+mod screen_context;
 mod settings;
 mod shortcuts;
 mod sounds;
 mod state;
 mod telemetry;
-mod transcription;
+mod trace;
+mod trace_api;
+mod trigger;
+// `pub`, not `pub(crate)`: `tests/polish_golden.rs` is an integration test and
+// therefore an external crate. It was `pub(crate)` for a long time, which meant
+// that file did not compile — and because `cargo test --lib` never builds
+// `tests/`, every gate stayed green while an entire test file was not running.
+// Only `transcription::polish` is re-exported publicly; the rest stays internal.
+pub mod transcription;
 mod tray;
 mod uninstall;
 mod usage;
+mod vad;
 mod whatsnew;
 
 use credentials::{
-    delete_groq_api_key, get_groq_api_key, has_groq_api_key, set_groq_api_key,
+    delete_groq_api_key, has_groq_api_key, set_groq_api_key,
     validate_groq_api_key,
 };
 use dictionary::{add_dictionary_entry, clear_dictionary, delete_dictionary_entry, get_dictionary};
-use history::{clear_history, get_history};
+use history::{clear_history, get_history, replay_history_entry};
 use licensing::{
     activate_license, deactivate_license, get_license_info, is_pro, validate_license,
 };
 use onboarding::{close_onboarding, show_onboarding};
 use permissions::{
-    check_microphone_permission, is_first_launch_cmd, mark_first_launch_complete_cmd,
+    check_microphone_permission, is_first_launch_cmd,
     check_accessibility_permission, request_accessibility_permission,
     reset_accessibility_permission, PermissionStatus,
 };
-use recording::{get_recordings_dir, RecordingContext};
+use recording::RecordingContext;
 use settings::{get_settings, reset_settings, set_settings, open_settings_window};
 use state::AppState;
 use transcription::process_audio;
@@ -68,6 +97,95 @@ fn unregister_shortcuts_cmd(app: AppHandle) -> Result<(), String> {
         .unregister_all()
         .map_err(|e| format!("Failed to unregister shortcuts: {}", e))?;
     Ok(())
+}
+
+/// The dictation trigger: what Settings shows, and on macOS what the tap
+/// listens for.
+#[tauri::command]
+fn get_trigger() -> trigger::Trigger {
+    settings::store::effective_trigger(&settings::get_settings())
+}
+
+#[tauri::command]
+fn get_secondary_trigger() -> Option<trigger::Trigger> {
+    settings::get_settings().trigger_secondary
+}
+
+fn trigger_error(trigger: &trigger::Trigger) -> Result<(), String> {
+    trigger::validate(trigger).map_err(|reason| {
+        let slug = serde_json::to_value(reason)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default();
+        format!("error.trigger_{}", slug)
+    })
+}
+
+/// Make `trigger` the dictation trigger and persist it. Refuses a trigger that
+/// would take a character away from the user (a bare letter) with a
+/// translation key the Settings window resolves.
+#[tauri::command]
+fn set_trigger(app: AppHandle, trigger: trigger::Trigger) -> Result<(), String> {
+    trigger_error(&trigger)?;
+    let secondary = settings::get_settings().trigger_secondary;
+    // The same trigger in both slots is one trigger: drop the second.
+    let clear_secondary = secondary == Some(trigger);
+    let payload = if clear_secondary {
+        serde_json::json!({ "trigger": trigger, "trigger_secondary": null })
+    } else {
+        serde_json::json!({ "trigger": trigger })
+    };
+    settings::set_settings(payload, app)?;
+    #[cfg(target_os = "macos")]
+    {
+        fnkey::set_trigger(0, Some(trigger));
+        if clear_secondary {
+            fnkey::set_trigger(1, None);
+        }
+    }
+    Ok(())
+}
+
+/// Set or clear (`None`) the second trigger.
+#[tauri::command]
+fn set_secondary_trigger(app: AppHandle, trigger: Option<trigger::Trigger>) -> Result<(), String> {
+    if let Some(t) = &trigger {
+        trigger_error(t)?;
+        if *t == settings::store::effective_trigger(&settings::get_settings()) {
+            return Err("error.trigger_same_as_main".into());
+        }
+    }
+    settings::set_settings(serde_json::json!({ "trigger_secondary": trigger }), app)?;
+    #[cfg(target_os = "macos")]
+    fnkey::set_trigger(1, trigger);
+    Ok(())
+}
+
+/// Listen for the user's next key, modifier or mouse button. The result
+/// arrives as a `trigger-captured` event.
+#[tauri::command]
+fn start_trigger_capture() {
+    #[cfg(target_os = "macos")]
+    fnkey::start_trigger_capture();
+}
+
+#[tauri::command]
+fn cancel_trigger_capture() {
+    #[cfg(target_os = "macos")]
+    fnkey::cancel_trigger_capture();
+}
+
+/// What `code` types on the current keyboard layout, for labelling a key
+/// trigger ("Q" on AZERTY where QWERTY has "A").
+#[tauri::command]
+fn trigger_key_chars(code: u16) -> String {
+    #[cfg(target_os = "macos")]
+    return fnkey::key_chars(code);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = code;
+        String::new()
+    }
 }
 
 /// Tauri command to toggle Fn key monitoring
@@ -121,6 +239,39 @@ fn request_input_monitoring_permission() -> bool {
     }
     #[cfg(not(target_os = "macos"))]
     { true }
+}
+
+/// Build metadata returned to the frontend. Lets the Settings UI display
+/// the exact build the user is running — useful for distinguishing beta
+/// builds that share a marketing version string (e.g. v3.0.0-beta.1 vs
+/// v3.0.0-beta.3 both reporting `version: "3.0.0"` because the manifest
+/// doesn't carry the pre-release suffix).
+#[derive(Debug, Clone, serde::Serialize)]
+struct BuildInfo {
+    /// Marketing version from `Cargo.toml` (e.g. "3.0.0").
+    version: String,
+    /// 7-char git commit SHA embedded at build time. "unknown" if neither
+    /// `GIT_COMMIT_SHA` env var nor a local `.git` were available at build.
+    commit_sha: String,
+    /// "beta" if the user has the beta channel toggle on, else "stable".
+    /// Reflects the user's current preference, not the channel that
+    /// produced the binary (a stable user running a beta build would see
+    /// "stable" here — that's intentional, the SHA is the source of truth).
+    channel: String,
+}
+
+#[tauri::command]
+fn get_build_info() -> BuildInfo {
+    let settings = settings::get_settings();
+    BuildInfo {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        commit_sha: env!("TTP_BUILD_SHA").to_string(),
+        channel: if settings.use_beta_channel {
+            "beta".to_string()
+        } else {
+            "stable".to_string()
+        },
+    }
 }
 
 /// Pick the right manifest URL based on the user's channel preference.
@@ -334,6 +485,44 @@ fn restart_app_post_update(app: AppHandle) -> Result<(), String> {
     relaunch_app_via_launchservices(app)
 }
 
+/// Tell the UI a permission is missing, and say so if nobody was listening.
+///
+/// Both call sites fire during Tauri `setup()`, having just discovered either
+/// that the app is not trusted for Accessibility at all or — the interesting
+/// case — that macOS reports it as trusted while the AX probe fails. During
+/// `setup()` the webview may well not have mounted yet, which is precisely
+/// when this runs, so the emit can find no listener, the banner never appears,
+/// and the user is left with a permission problem and no sign of it.
+///
+/// The behaviour is unchanged: this is still best-effort and still does not
+/// retry. What changes is that the failure now has a line. `emit` returning
+/// `Ok` is not proof a window received it either — that limit is real and is
+/// why the event carries the reason rather than only the outcome.
+#[cfg(target_os = "macos")]
+fn notify_accessibility_missing(app: &AppHandle) {
+    match app.emit("accessibility-missing", ()) {
+        Ok(()) => {
+            trace::event(
+                "permission.notify",
+                serde_json::json!({ "event": "accessibility-missing", "emitted": true }),
+            );
+        }
+        Err(e) => {
+            logging::log_warn(&format!(
+                "[TTP] could not tell the UI accessibility is missing: {}",
+                e
+            ));
+            trace::event(
+                "permission.notify_failed",
+                serde_json::json!({
+                    "event": "accessibility-missing",
+                    "error": e.to_string(),
+                }),
+            );
+        }
+    }
+}
+
 /// Tauri command to reset state to Idle (used when skipping short recordings)
 #[tauri::command]
 fn reset_to_idle(app: AppHandle) {
@@ -385,6 +574,224 @@ async fn open_accessibility_settings(app: AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Open macOS System Settings on the Keyboard pane, where the user sets
+/// "Press 🌐 key to → Do Nothing" to stop the emoji picker firing on Fn.
+/// We can't flip that setting programmatically with live effect (a raw
+/// preference write persists but the running session keeps the cached value
+/// until System Settings posts an internal signal), so we guide the user here
+/// — the UI change applies instantly.
+#[tauri::command]
+async fn open_keyboard_settings(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_url(
+            "x-apple.systempreferences:com.apple.Keyboard-Settings.extension",
+            None::<&str>,
+        )
+        .map_err(|e| e.to_string())
+}
+
+/// Whether the macOS Globe/🌐 (Fn) key does something on a standalone press
+/// (emoji picker, dictation, input-source switch) and will therefore interfere
+/// with using Fn as a push-to-talk hotkey. True unless it's set to "Do Nothing"
+/// (`AppleFnUsageType == 0` in `com.apple.HIToolbox`). The frontend uses this to
+/// show a one-time nudge guiding the user to disable it, and to auto-dismiss the
+/// nudge once they have. Read via a fresh `defaults` process so we see external
+/// changes immediately (our own process's CFPreferences cache would be stale).
+#[tauri::command]
+fn fn_globe_key_intercepts() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        match std::process::Command::new("defaults")
+            .args(["read", "com.apple.HIToolbox", "AppleFnUsageType"])
+            .output()
+        {
+            // "0" = Do Nothing → no interference.
+            Ok(o) if o.status.success() => {
+                String::from_utf8_lossy(&o.stdout).trim() != "0"
+            }
+            // Key unset (read fails) → macOS default pops the emoji picker.
+            _ => true,
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+// ── Panic observability ─────────────────────────────────────────────────
+//
+// A panic in this app is not survivable. `[profile.release]` sets
+// `panic = "abort"`, and `tests/abort_observability.rs` establishes that by
+// compiling a real `-C panic=abort` binary rather than by citing the setting:
+// the panicking closure never returns control to its `catch_unwind`. So the
+// only thing a panic can leave behind is whatever the hook writes in the
+// moment before the process dies.
+//
+// Until now it left NOTHING. The only `set_hook` call in the app sat inside
+// `if telemetry_active`, and `telemetry_enabled` defaults to false
+// (`settings/store.rs`). For a default user — which is every user who has not
+// opted in — a panic produced no Sentry event, no trace line, and not even
+// the `[Panic]` stderr print. The abort was invisible because there was no
+// hook at all, which has nothing to do with the panic strategy and would have
+// stayed true under `unwind`.
+//
+// Two rules, and they are the whole design:
+//
+//   1. The hook is installed UNCONDITIONALLY. What it writes unconditionally
+//      is a line in a file on the user's own machine — the same
+//      `ttp-trace.log` the app already writes on every dictation, that never
+//      leaves the machine on its own, and that the user is asked to send only
+//      when they choose to report a bug. Local diagnostics are not telemetry
+//      and do not need consent.
+//
+//   2. Only the SENTRY half stays behind consent, exactly as before. Nothing
+//      on the unconditional path opens a socket, and `install_panic_hook`
+//      takes `telemetry_active` for the sole purpose of gating that half.
+//
+// The record has to reach disk in one synchronous `write(2)`.
+// `logging::log_trace_line` opens `O_APPEND`, writes `line + "\n"` in a
+// single `write_all`, and drops; `tests/abort_observability.rs` proves that
+// shape survives the abort with no `fsync`, and proves that the obvious
+// alternative does not — `trace::event` pushes onto a bounded channel drained
+// by the `ttp-trace-writer` thread, which the abort never schedules again.
+// So this hook calls `logging::log_trace_line` DIRECTLY and must never call
+// `trace::*`. It also holds no lock: `append_line` is lock-free, so the hook
+// cannot deadlock on a mutex the panicking thread was already holding.
+
+/// Longest panic message, in characters, written to the trace record.
+///
+/// Panic messages are developer-authored strings, so this is not normally a
+/// redaction question. But `expect(&format!(…))` can fold a runtime value into
+/// one, and the trace is a file users are invited to send to the maintainer,
+/// so the cap bounds the blast radius of the one case nobody audited. The
+/// truncation is announced in the record — a silently shortened diagnostic is
+/// the failure this whole subsystem exists to stop.
+const PANIC_MSG_MAX: usize = 300;
+
+/// Truncate to at most `max` CHARACTERS, on a char boundary, saying how much
+/// was dropped. `&s[..max]` would panic here, inside a panic hook, which is an
+/// abort during an abort and the least debuggable outcome available.
+fn truncate_for_trace(s: &str, max: usize) -> String {
+    match s.char_indices().nth(max) {
+        None => s.to_string(),
+        Some((idx, _)) => format!("{}… [+{} bytes truncated]", &s[..idx], s.len() - idx),
+    }
+}
+
+/// Render one `app.panic` record in the on-disk trace line format.
+///
+/// Pure and separate from the hook so the format can be tested without a test
+/// process having to panic to produce one — see the tests at the end of this
+/// file, which round-trip it back through `trace_api::parse_line` so the
+/// viewer and the analyser are known to be able to read what a dying process
+/// wrote.
+///
+/// The timestamp format is spelled out here rather than borrowed from
+/// `trace::now_ts`, which is private. If that format ever changes, this string
+/// changes with it; `panic_record_round_trips_through_the_parser` is what
+/// notices.
+fn panic_trace_line(msg: &str, location: &str, thread: &str) -> String {
+    trace::format_line(&trace::TraceEvent {
+        ts: chrono::Local::now()
+            .format("%Y-%m-%d %H:%M:%S%.3f")
+            .to_string(),
+        // Standalone: a panic is not part of one dictation, and pretending it
+        // belonged to one would put a fabricated id in front of the reader.
+        id: None,
+        elapsed_ms: None,
+        stage: "app.panic".to_string(),
+        fields: serde_json::json!({
+            "msg": truncate_for_trace(msg, PANIC_MSG_MAX),
+            "location": location,
+            "thread": thread,
+        }),
+    })
+}
+
+/// Install the process-wide panic hook. Called once, early, for every user.
+///
+/// `telemetry_active` gates ONLY the Sentry report. The local trace record and
+/// the stderr print happen either way.
+pub fn install_panic_hook(telemetry_active: bool) {
+    install_panic_hook_with(telemetry_active, logging::log_trace_line);
+}
+
+/// The hook, with its disk sink injected.
+///
+/// The sink is a parameter for exactly one reason: it lets a test observe what
+/// the hook writes without the test process needing to survive its own death.
+/// `tests/panic_hook.rs` uses it to prove the hook is installed and fires with
+/// telemetry OFF — the default, and the case that was broken.
+///
+/// What that test deliberately does NOT claim is that the write survives an
+/// abort: a test binary unwinds, and asserting survival there would be the
+/// hazard `docs/engineering-standards.md` §1.8 names — a test that passes
+/// while proving nothing about the product. That half is
+/// `tests/abort_observability.rs`, which runs a real aborting process against
+/// the exact `open` + single `write_all` shape `logging::log_trace_line` uses.
+/// Two tests, one property each, neither borrowing the other's evidence.
+pub fn install_panic_hook_with(telemetry_active: bool, sink: fn(&str) -> bool) {
+    std::panic::set_hook(Box::new(move |info| {
+        let payload = info.payload();
+        let msg = payload
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "panic with non-string payload".to_string());
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown>".to_string());
+        // Which thread died is half the diagnosis: the paste injection runs on
+        // a `spawn_blocking` worker, the Fn timer on the macOS main thread.
+        // Bound to a local first — `thread::current()` returns a value and
+        // `name()` borrows from it.
+        let current = std::thread::current();
+        let thread = current.name().unwrap_or("<unnamed>").to_string();
+
+        // FIRST, and for everyone: the local record. Ahead of the stderr print
+        // (a packaged .app has no terminal attached) and well ahead of the
+        // Sentry flush (which blocks up to two seconds and can fail), so the
+        // cheapest and most reliable evidence is already on disk even if
+        // nothing below this line ever runs.
+        let wrote = sink(&panic_trace_line(&msg, &location, &thread));
+
+        eprintln!("[Panic] {} at {} (thread {})", msg, location, thread);
+        if !wrote {
+            eprintln!("[Panic] the app.panic record did not reach ttp-trace.log");
+        }
+
+        if !telemetry_active {
+            return;
+        }
+
+        // Capture the panic into Sentry BEFORE the abort kicks in. The default
+        // sentry-rust panic integration cannot ship it: the OS terminates the
+        // process before the SDK's drop-based flush runs.
+        //
+        // The event is constructed manually (instead of depending on a
+        // specific internal helper in sentry::integrations::panic) so the
+        // contract stays stable across sentry crate minor versions.
+        //
+        // Resolve the client via the current Hub rather than capturing the
+        // ClientInitGuard (which is not Clone in sentry 0.42). The Hub is
+        // process-global; flush() blocks up to the given timeout to ship the
+        // event over HTTPS before abort.
+        let hub = sentry::Hub::current();
+        let event = sentry::protocol::Event {
+            message: Some(format!("Rust panic: {} at {}", msg, location)),
+            level: sentry::Level::Fatal,
+            ..Default::default()
+        };
+        hub.capture_event(event);
+        if let Some(client) = hub.client() {
+            let _ = client.flush(Some(std::time::Duration::from_secs(2)));
+        }
+    }));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     use std::sync::Arc;
@@ -413,6 +820,11 @@ pub fn run() {
         ..Default::default()
     });
 
+    // Panic observability, for EVERY user. See `install_panic_hook` above for
+    // why this is not inside `if telemetry_active` any more, and for what the
+    // hook is allowed to do before the abort takes the process.
+    install_panic_hook(telemetry_active);
+
     // Minidump handler for native crashes (segfaults, stack overflows)
     // Only init when telemetry is active — minidump re-executes the binary
     // as a crash reporter process, which causes a duplicate app in dev mode
@@ -426,6 +838,9 @@ pub fn run() {
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_sentry::init(&client))
         .plugin(tauri_plugin_opener::init())
+        // Dragging TTP's own bundle into the System Settings privacy list —
+        // see `permission_helper`.
+        .plugin(tauri_plugin_drag::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, _shortcut, event| {
@@ -434,7 +849,6 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_positioner::init())
-        .plugin(tauri_plugin_mic_recorder::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
@@ -470,14 +884,58 @@ pub fn run() {
         .manage(Mutex::new(AppState::default()))
         .manage(Mutex::new(RecordingContext::default()))
         .setup(move |app| {
+            // Hand the trace writer an app handle before the first line is
+            // emitted, so a viewer opened later can subscribe without the
+            // writer having to learn about it mid-stream.
+            trace::set_app_handle(app.handle().clone());
+
+            // First line of every run. Without a session boundary the trace is
+            // one undifferentiated stream across restarts, and "did the app
+            // restart between these two dictations?" — the question you ask
+            // when something recovered on its own — is unanswerable.
+            trace::event(
+                "app.launched",
+                serde_json::json!({
+                    "version": env!("CARGO_PKG_VERSION"),
+                    "os": std::env::consts::OS,
+                    "arch": std::env::consts::ARCH,
+                }),
+            );
+
+            // Pay the keychain's one-time ACL evaluation now, on a blocking
+            // thread nobody waits on, rather than during the first dictation
+            // with the user watching an empty text field. See
+            // `keychain::warm_caches`.
+            tauri::async_runtime::spawn_blocking(|| {
+                usage::warm_keychain_cache();
+                licensing::warm_keychain_cache();
+                // The third keychain account, and the only one whose read sits
+                // between the user's last word and the Whisper call. It was
+                // the one left uncached and unwarmed.
+                credentials::warm_key_cache();
+                // After the warm-up, so its two signed reads hit a warm keychain.
+                cosmetics::trace_state();
+            });
+
             // Initialize license state (loads cached license + kicks off background refresh)
             licensing::init(app.handle());
 
-            // Start the auto-trial on first launch (idempotent).
-            usage::init();
-
-            // Clean up stale audio backups (>24 hours old)
-            transcription::backup::cleanup_stale_backups(app.handle());
+            // Sweep audio nobody will read again (>24 hours old) from both
+            // audio_backups/ and recordings/: now, and then every hour, because
+            // a tray app that runs for weeks never reaches its next launch.
+            transcription::backup::sweep_stale_audio(app.handle(), "launch");
+            {
+                let handle = app.handle().clone();
+                let spawned = std::thread::Builder::new()
+                    .name("ttp-audio-sweep".into())
+                    .spawn(move || loop {
+                        std::thread::sleep(std::time::Duration::from_secs(60 * 60));
+                        transcription::backup::sweep_stale_audio(&handle, "hourly");
+                    });
+                if let Err(e) = spawned {
+                    logging::log_warn(&format!("hourly audio sweep not started: {}", e));
+                }
+            }
 
             // Hide from dock — TTP is a tray-only app
             #[cfg(target_os = "macos")]
@@ -499,28 +957,36 @@ pub fn run() {
             // Set up settings change listener for pill visibility updates
             tray::setup_settings_listener(app.handle());
 
+            // On first launch the onboarding asks for every permission, one at
+            // a time and with the drag panel. Firing the system prompts here as
+            // well put macOS's own "TTP would like to control this computer"
+            // dialog on top of the onboarding before it had said a word
+            // (seen 2026-09-14 on the first signed build of the new flow).
+            #[cfg(target_os = "macos")]
+            let onboarding_pending = permissions::is_first_launch();
+
             // Check accessibility permission (needed for paste simulation on macOS)
             #[cfg(target_os = "macos")]
-            {
+            if !onboarding_pending {
                 let api_trusted = paste::check_accessibility();
                 let actually_works = paste::probe_accessibility();
 
                 if !api_trusted {
                     // Not trusted at all — prompt via the system dialog
                     paste::check_accessibility_with_prompt(true);
-                    let _ = app.handle().emit("accessibility-missing", ());
+                    notify_accessibility_missing(app.handle());
                 } else if !actually_works {
                     // Stale trust entry (common after app update) — reset and re-prompt
-                    eprintln!(
-                        "[TTP] Accessibility trust is stale after update. Resetting TCC entry."
+                    logging::log_warn(
+                        "[TTP] Accessibility trust is stale after update. Resetting TCC entry.",
                     );
                     if let Err(e) = paste::reset_accessibility_tcc() {
-                        eprintln!("[TTP] Failed to reset TCC: {}", e);
+                        logging::log_error(&format!("[TTP] Failed to reset TCC: {}", e));
                     }
                     // Small delay then re-prompt
                     std::thread::sleep(std::time::Duration::from_millis(300));
                     paste::check_accessibility_with_prompt(true);
-                    let _ = app.handle().emit("accessibility-missing", ());
+                    notify_accessibility_missing(app.handle());
                     use tauri_plugin_notification::NotificationExt;
                     let _ = app.notification()
                         .builder()
@@ -530,15 +996,24 @@ pub fn run() {
                 }
             }
 
-            // Set up global keyboard shortcuts
+            // Windows/Linux: global shortcuts through the plugin.
+            #[cfg(not(target_os = "macos"))]
             shortcuts::setup_shortcuts(app.handle())?;
 
-            // Start Fn key monitor (macOS only, always running but toggled via settings)
+            // macOS: every trigger — Fn, a key, a modifier, a mouse button —
+            // goes through the event tap. The plugin's Carbon hotkeys can do
+            // none of the last three, so it is not used here.
             #[cfg(target_os = "macos")]
             {
+                if !onboarding_pending && !fnkey::has_input_monitoring() {
+                    fnkey::request_input_monitoring();
+                }
                 fnkey::start_fn_key_monitor(app.handle());
-                let fn_enabled = settings::get_settings().fn_key_enabled;
-                fnkey::set_fn_key_enabled(fn_enabled);
+                let s = settings::get_settings();
+                fnkey::set_trigger(0, Some(settings::store::effective_trigger(&s)));
+                if s.trigger_secondary.is_some() {
+                    fnkey::set_trigger(1, s.trigger_secondary);
+                }
             }
 
             // Best-effort: clear the macOS quarantine xattr after a self-update so
@@ -577,20 +1052,6 @@ pub fn run() {
                 }
             }
 
-            // Load persisted hands_free_mode from settings
-            let hands_free_mode = settings::get_settings().hands_free_mode;
-            if let Some(state) = app.try_state::<Mutex<AppState>>() {
-                if let Ok(mut app_state) = state.try_lock() {
-                    app_state.hands_free_mode = hands_free_mode;
-                }
-            }
-
-            // Respect the `hide_pill_when_inactive` setting at startup — without this,
-            // the pill always reappeared after a relaunch even when the user had hidden it.
-            if tray::should_show_pill(app.handle()) {
-                tray::show_pill(app.handle());
-            }
-
             // Pre-warm the Groq TLS connection so the first push-to-talk after
             // launch doesn't pay the full TCP+TLS handshake (~300-600ms on the
             // user's RTT). Fire-and-forget HEAD into the shared HTTP client's
@@ -607,40 +1068,57 @@ pub fn run() {
             // Check if this is the first launch
             let is_first = permissions::is_first_launch();
             if is_first {
+                // No pill at rest here any more. It used to carry a "press Fn"
+                // hint during onboarding; on the 2026-09-15 fresh install it
+                // sat over every window as a white rectangle, and the
+                // onboarding's last step teaches the key anyway.
                 // Show onboarding window (permission check flow)
                 let _ = onboarding::show_onboarding(app.handle().clone());
             } else {
-                // Not first launch - check if Groq API key exists, show setup window if not
+                // Not first launch but no Groq key (cleared, or a new
+                // keychain): open Settings, which shows the key form.
                 let has_groq = credentials::get_groq_api_key_internal(app.handle())
                     .map(|k| k.is_some())
                     .unwrap_or(false);
 
                 if !has_groq {
-                    // Show setup window for first-run experience
-                    if let Some(window) = app.get_webview_window("setup") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+                    let _ = settings::open_settings_window(app.handle().clone());
                 }
             }
 
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Prevent app from quitting when setup/settings windows close
+            // Prevent app from quitting when settings/onboarding windows close
             // TTP is a tray app — it should keep running in background
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
             }
+            // A Dock tile and a ⌘-Tab entry while Settings or onboarding is
+            // open, none once they are hidden (see `dock`).
+            #[cfg(target_os = "macos")]
+            if dock::APP_WINDOWS.contains(&window.label()) {
+                match event {
+                    tauri::WindowEvent::Focused(_)
+                    | tauri::WindowEvent::CloseRequested { .. }
+                    | tauri::WindowEvent::Destroyed => dock::sync(window.app_handle()),
+                    _ => {}
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
-            get_groq_api_key,
             set_groq_api_key,
             has_groq_api_key,
             delete_groq_api_key,
             validate_groq_api_key,
-            get_recordings_dir,
+            recording::reveal_recordings_folder,
+            cosmetics::list_sound_packs,
+            cosmetics::cosmetics_unlocked,
+            sounds::preview_sound_pack,
+            audio_capture::start_recording,
+            audio_capture::stop_recording,
+            audio_capture::list_audio_input_devices,
             process_audio,
             get_settings,
             set_settings,
@@ -652,27 +1130,45 @@ pub fn run() {
             clear_dictionary,
             get_history,
             clear_history,
+            replay_history_entry,
             update_shortcut_cmd,
             unregister_shortcuts_cmd,
             set_fn_key_enabled,
+            get_trigger,
+            set_trigger,
+            get_secondary_trigger,
+            set_secondary_trigger,
+            start_trigger_capture,
+            cancel_trigger_capture,
+            trigger_key_chars,
             check_input_monitoring,
             check_input_monitoring_permission,
             request_input_monitoring_permission,
             open_input_monitoring_settings,
             open_microphone_settings,
             open_accessibility_settings,
+            open_keyboard_settings,
+            fn_globe_key_intercepts,
             reset_to_idle,
             restart_app_post_update,
             check_for_updates_with_channel,
             install_update_with_channel,
             mark_update_ready,
+            get_build_info,
             check_microphone_permission,
             is_first_launch_cmd,
-            mark_first_launch_complete_cmd,
             permissions::request_microphone_permission,
             check_accessibility_permission,
             request_accessibility_permission,
             reset_accessibility_permission,
+            #[cfg(target_os = "macos")]
+            permission_helper::show_permission_helper,
+            #[cfg(target_os = "macos")]
+            permission_helper::close_permission_helper,
+            #[cfg(target_os = "macos")]
+            permission_helper::permission_helper_kind,
+            #[cfg(target_os = "macos")]
+            permission_helper::app_bundle_path,
             show_onboarding,
             close_onboarding,
             check_whats_new,
@@ -685,15 +1181,92 @@ pub fn run() {
             get_usage_stats,
             get_analytics_summary,
             uninstall::uninstall_app,
+            logging::reveal_log_folder,
+            trace_api::trace_recent_dictations,
+            trace_api::trace_get_dictation,
+            trace_api::trace_recent_events,
+            trace_api::trace_set_live,
+            trace_api::trace_status,
+            problem_report::report_problem,
+            trace_api::trace_ui,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(move |handler, event| {
-            match event {
-                tauri::RunEvent::Ready { .. } => {
-                    telemetry::analytics::track(handler, "app_started", None);
-                }
-                _ => {}
-            }
-        });
+        .run(|_, _| {});
+}
+
+
+#[cfg(test)]
+mod panic_hook_tests {
+    use super::*;
+
+    /// The record a dying process writes has to be readable by the things that
+    /// read the trace. This closes the loop through the real parser rather than
+    /// eyeballing the string: `trace_api::parse_line` is what the viewer and
+    /// `scripts/trace_analyser` both go through, so a format that fails here is
+    /// a panic record that lands on disk and is then skipped as unparseable —
+    /// which would be a diagnostic that exists and cannot be read, the same
+    /// silence in a different costume.
+    #[test]
+    fn panic_record_round_trips_through_the_parser() {
+        let line = panic_trace_line("boom", "src/paste/simulate.rs:412:9", "blocking-worker");
+        let ev = trace_api::parse_line(&line).expect("the panic record must parse back");
+
+        assert_eq!(ev.stage, "app.panic");
+        assert!(ev.id.is_none(), "a panic belongs to no dictation");
+        assert!(ev.elapsed_ms.is_none());
+        assert_eq!(ev.fields["msg"], "boom");
+        assert_eq!(ev.fields["location"], "src/paste/simulate.rs:412:9");
+        assert_eq!(ev.fields["thread"], "blocking-worker");
+    }
+
+    /// One record, one physical line. `logging::append_line` frames the line
+    /// and its newline as a single `write_all` precisely so a record cannot
+    /// share a line with another writer's; an embedded newline in the payload
+    /// would defeat that from the inside, and a panic message is the one
+    /// payload in this app that an author writes by hand and can easily give a
+    /// newline to.
+    #[test]
+    fn the_record_is_a_single_line_even_when_the_message_is_not() {
+        let line = panic_trace_line("first\nsecond\r\nthird", "a.rs:1:1", "main");
+        assert!(
+            !line.contains('\n') && !line.contains('\r'),
+            "the panic record spans more than one line: {:?}",
+            line
+        );
+        // Not lost, just escaped — serde_json renders the breaks as \n inside
+        // the string, so the message survives in full and readably.
+        assert!(line.contains("second"), "the message was cut at the newline: {:?}", line);
+    }
+
+    /// Truncation is bounded AND announced. A quietly shortened panic message
+    /// is worse than a long one: the reader cannot tell a message that ended
+    /// from a message that was cut.
+    #[test]
+    fn a_long_message_is_capped_and_says_so() {
+        let long = "x".repeat(PANIC_MSG_MAX * 3);
+        let line = panic_trace_line(&long, "a.rs:1:1", "main");
+        let ev = trace_api::parse_line(&line).expect("still a valid record");
+        let msg = ev.fields["msg"].as_str().expect("msg is a string");
+        assert!(msg.starts_with(&"x".repeat(PANIC_MSG_MAX)));
+        assert!(
+            msg.contains("truncated"),
+            "the cap must be visible in the record: {:?}",
+            msg
+        );
+        assert!(msg.len() < long.len());
+    }
+
+    /// The cap counts characters, and `&s[..n]` on a multi-byte boundary
+    /// panics. Panicking inside the panic hook is an abort during an abort,
+    /// and the app's whole corpus is French.
+    #[test]
+    fn truncation_never_splits_a_multibyte_character() {
+        let accented = "é".repeat(PANIC_MSG_MAX * 2);
+        let out = truncate_for_trace(&accented, PANIC_MSG_MAX);
+        assert!(out.starts_with(&"é".repeat(PANIC_MSG_MAX)));
+        // And a string exactly at the cap is left completely alone.
+        let exact = "é".repeat(PANIC_MSG_MAX);
+        assert_eq!(truncate_for_trace(&exact, PANIC_MSG_MAX), exact);
+    }
 }

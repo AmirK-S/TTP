@@ -1,12 +1,12 @@
 export { Button } from './Button';
-export { Card, CardHeader, CardBody } from './Card';
+export { Card } from './Card';
 export { Input } from './Input';
 export { Banner } from './Banner';
 export { Spinner } from './Spinner';
 export { Toggle } from './Toggle';
 export { Modal, ConfirmDialog } from './Modal';
 export { EmptyState } from './EmptyState';
-export { SettingsSection, SettingsRow, SettingsGroup } from './SettingsSection';
+export { SettingsSection, SettingsRow } from './SettingsSection';
 export { RadioOption } from './RadioOption';
 export { BrandTile } from './BrandTile';
 export { DarkPill } from './DarkPill';

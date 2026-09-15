@@ -1,0 +1,15 @@
+[2026-09-01 10:00:00.010] [········]          app.launched {"arch":"aarch64","os":"macos","version":"3.1.6"}
+[2026-09-01 10:00:00.020] [········]          hotkey.press {"flags":"0x800000","held_ms":160}
+[2026-09-01 10:00:00.021] [········]          state.transition {"from":"Idle","to":"Recording"}
+[2026-09-01 10:00:00.061] [········]          capture.start {"channels":1,"device":"MacBook Air Microphone","format":"F32","is_os_default":true,"preferred":null,"rate":48000}
+[2026-09-01 10:00:05.061] [········]          hotkey.release {"flags":"0x0"}
+[2026-09-01 10:00:05.062] [········]          state.transition {"from":"Recording","to":"Processing"}
+[2026-09-01 10:00:05.462] [········]          capture.stop {"default_now":"MacBook Air Microphone","device":"MacBook Air Microphone","device_changed":false,"samples":240000}
+[2026-09-01 10:00:05.472] [0000-1111] +     0ms dictation.start {"kind":"recording"}
+[2026-09-01 10:00:05.482] [0000-1111] +     5ms dictation.finish {"ms":5,"outcome":"aborted","reason":"moon_phase_wrong"}
+[2026-09-01 10:00:05.487] [········]          state.transition {"from":"Processing","to":"Idle"}
+[2026-09-01 10:00:05.488] [········]          state.transition {"from":"Idle","to":"Idle"}
+[2026-09-01 10:00:06.488] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:07.488] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:08.488] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:09.488] [········]          hotkey.tap_armed {}

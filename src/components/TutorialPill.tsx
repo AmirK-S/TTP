@@ -41,20 +41,32 @@ export function TutorialPill({ shortcutText = 'fn' }: TutorialPillProps) {
       }}
       role="status"
     >
-      <span className="text-[12px] font-medium text-white/85 select-none tracking-[-0.005em]">
+      <span
+        className="text-[12px] font-medium select-none tracking-[-0.005em]"
+        style={{ color: 'var(--ttp-pill-ink)', opacity: 0.85 }}
+      >
         {t('floatingBar.tutorialPrefix')}
       </span>
       <kbd
         className={
           'inline-flex items-center justify-center min-w-[20px] h-[18px] px-1.5 ' +
-          'rounded-app-xs bg-white/15 text-[10px] font-semibold text-white/95 ' +
+          'rounded-app-xs text-[10px] font-semibold ' +
           'shadow-[inset_0_-1px_0_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.15)] ' +
           'tabular-nums tracking-wide font-mono'
         }
+        // The keycap borrows the pill's own mark colour so it stays legible
+        // whatever the coat has made the pill out of.
+        style={{
+          backgroundColor: 'color-mix(in srgb, var(--ttp-pill-ink) 15%, transparent)',
+          color: 'color-mix(in srgb, var(--ttp-pill-ink) 95%, transparent)',
+        }}
       >
         {shortcutText.toUpperCase()}
       </kbd>
-      <span className="text-[12px] font-medium text-white/85 select-none tracking-[-0.005em]">
+      <span
+        className="text-[12px] font-medium select-none tracking-[-0.005em]"
+        style={{ color: 'var(--ttp-pill-ink)', opacity: 0.85 }}
+      >
         {t('floatingBar.tutorialSuffix')}
       </span>
     </DarkPill>

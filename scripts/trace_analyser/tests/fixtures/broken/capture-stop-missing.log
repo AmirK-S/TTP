@@ -1,0 +1,7 @@
+[2026-09-01 10:00:00.010] [········]          app.launched {"arch":"aarch64","os":"macos","version":"3.1.6"}
+[2026-09-01 10:00:00.020] [········]          capture.start {"channels":1,"device":"AirPods Pro","format":"F32","is_os_default":true,"preferred":null,"rate":24000}
+[2026-09-01 10:10:00.020] [········]          capture.start {"channels":1,"device":"AirPods Pro","format":"F32","is_os_default":true,"preferred":null,"rate":24000}
+[2026-09-01 10:10:01.020] [········]          hotkey.tap_armed {}
+[2026-09-01 10:10:02.020] [········]          hotkey.tap_armed {}
+[2026-09-01 10:10:03.020] [········]          hotkey.tap_armed {}
+[2026-09-01 10:10:04.020] [········]          hotkey.tap_armed {}

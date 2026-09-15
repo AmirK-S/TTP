@@ -6,77 +6,75 @@ import Footer from '@/components/Footer.astro';
 const lastUpdated = '2026-05-06';
 ---
 
-<Layout title="Privacy Policy — TTP">
+<Layout title="Privacy Policy: TTP">
   <Navbar />
-  <main class="mx-auto max-w-3xl px-6 pb-16 pt-32 text-zinc-700 dark:text-slate-200">
-    <h1 class="mb-2 text-4xl font-bold text-zinc-900 dark:text-white">Privacy Policy</h1>
-    <p class="mb-8 text-sm text-zinc-500 dark:text-slate-500">Last updated: {lastUpdated}</p>
+  <main class="wrap-narrow pb-20 pt-16 text-muted">
+    <h1 class="display mb-2 text-[clamp(2rem,1.4rem+1.8vw,2.75rem)] text-text">Privacy Policy</h1>
+    <p class="mono mb-10 text-xs text-faint">Last updated: {lastUpdated}</p>
 
     <p class="mb-6">
-      TTP (Talk To Paste) is a desktop voice-to-text app that runs entirely on your computer.
-      This page describes what data the app touches and what leaves your machine.
+      TTP (Talk To Paste) is a desktop voice-to-text app. Transcription is not local: each
+      recording is sent to Groq using an API key that belongs to you. This page describes
+      exactly what stays on your computer and what leaves it.
     </p>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">What stays on your computer</h2>
-    <ul class="mb-6 list-disc space-y-2 pl-6">
-      <li><strong>Audio recordings</strong> — kept on disk only as a temporary backup while a transcription is in flight, then deleted automatically.</li>
-      <li><strong>Transcription history</strong> — stored locally so you can copy past results. You can disable history or clear it from Settings at any time.</li>
-      <li><strong>Dictionary entries</strong> — corrections you've taught TTP. Local only.</li>
-      <li><strong>Settings</strong> — your preferences (shortcut, hands-free mode, history toggle, etc.).</li>
-      <li><strong>License state cache</strong> — a signed copy of your TTP Pro license info so the app works briefly offline.</li>
-      <li><strong>Groq API key</strong> — stored in your OS Keychain (macOS) or Credential Manager (Windows). Never written to disk in plain text.</li>
+    <h2 class="display mb-3 mt-12 text-xl text-text">What stays on your computer</h2>
+    <ul class="mb-6 list-disc space-y-2 pl-6 marker:text-faint">
+      <li><strong>Audio recordings</strong>: kept on disk only as a temporary backup while a transcription is in flight, then deleted automatically.</li>
+      <li><strong>Transcription history</strong>: stored locally so you can copy past results. You can disable history or clear it from Settings at any time.</li>
+      <li><strong>Dictionary entries</strong>: corrections you've taught TTP. Local only.</li>
+      <li><strong>Settings</strong>: your preferences (shortcut, hands-free mode, history toggle, etc.).</li>
+      <li><strong>License state cache</strong>: a signed copy of your TTP Pro license info so the app works briefly offline.</li>
+      <li><strong>Groq API key</strong>: stored in your OS Keychain (macOS) or Credential Manager (Windows). Never written to disk in plain text.</li>
     </ul>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">What gets sent to third parties</h2>
-    <ul class="mb-6 list-disc space-y-2 pl-6">
+    <h2 class="display mb-3 mt-12 text-xl text-text">What gets sent to third parties</h2>
+    <ul class="mb-6 list-disc space-y-2 pl-6 marker:text-faint">
       <li>
-        <strong>Groq</strong> (<a class="underline text-blue-600 hover:text-blue-700 dark:text-inherit dark:hover:text-white" href="https://groq.com/privacy-policy/" rel="noopener" target="_blank">privacy policy</a>) —
+        <strong>Groq</strong> (<a class="link" href="https://groq.com/privacy-policy/" rel="noopener" target="_blank">privacy policy</a>):
         every audio recording is sent to Groq's Whisper endpoint to be transcribed.
         If AI Polish is enabled, the raw text is also sent to a Groq LLM for cleanup.
         TTP does not store or access your Groq API key beyond the call itself.
       </li>
       <li>
-        <strong>Lemon Squeezy</strong> (<a class="underline text-blue-600 hover:text-blue-700 dark:text-inherit dark:hover:text-white" href="https://www.lemonsqueezy.com/privacy" rel="noopener" target="_blank">privacy policy</a>) —
+        <strong>Lemon Squeezy</strong> (<a class="link" href="https://www.lemonsqueezy.com/privacy" rel="noopener" target="_blank">privacy policy</a>):
         handles payment when you purchase TTP Pro and validates your license key.
         Your billing information is processed by Lemon Squeezy, not TTP.
       </li>
       <li>
-        <strong>Sentry</strong> — error reporting. <strong>Off by default.</strong> When you opt in from Settings → Telemetry, crash reports are sent to help fix bugs.
+        <strong>Sentry</strong>: error reporting. <strong>Off by default.</strong> When you opt in from Settings → Telemetry, crash reports are sent to help fix bugs.
         API keys, file paths, email addresses, and the contents of your transcriptions are scrubbed before sending.
       </li>
       <li>
-        <strong>Aptabase</strong> — anonymous usage analytics. <strong>Off by default.</strong> When opted in, TTP reports counts of events (e.g. "transcription completed", "settings changed") with no PII attached.
-      </li>
-      <li>
-        <strong>GitHub</strong> — used as the auto-update channel. The app checks GitHub Releases for new versions and downloads them. No identifying information is sent.
+        <strong>GitHub</strong>: used as the auto-update channel. The app checks GitHub Releases for new versions and downloads them. No identifying information is sent.
       </li>
     </ul>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">What we do not do</h2>
-    <ul class="mb-6 list-disc space-y-2 pl-6">
+    <h2 class="display mb-3 mt-12 text-xl text-text">What we do not do</h2>
+    <ul class="mb-6 list-disc space-y-2 pl-6 marker:text-faint">
       <li>We do not sell or share your data with anyone.</li>
-      <li>We do not train models on your transcriptions. (Groq's policy on training applies independently — see their link above.)</li>
+      <li>We do not train models on your transcriptions. (Groq's policy on training applies independently: see their link above.)</li>
       <li>We do not run any analytics or telemetry by default. Both must be explicitly enabled.</li>
       <li>There is no tracking pixel, no advertising network, no third-party fingerprinting.</li>
     </ul>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">Your data, your control</h2>
+    <h2 class="display mb-3 mt-12 text-xl text-text">Your data, your control</h2>
     <p class="mb-3">All TTP data on your computer lives in:</p>
-    <ul class="mb-6 list-disc space-y-2 pl-6">
-      <li>macOS: <code class="rounded border border-black/[0.06] bg-zinc-100 px-1.5 py-0.5 font-mono text-[0.92em] dark:border-transparent dark:bg-white/5">~/Library/Application Support/com.ttp.desktop/</code> + <code class="rounded border border-black/[0.06] bg-zinc-100 px-1.5 py-0.5 font-mono text-[0.92em] dark:border-transparent dark:bg-white/5">~/.config/ttp/</code></li>
-      <li>Windows: <code class="rounded border border-black/[0.06] bg-zinc-100 px-1.5 py-0.5 font-mono text-[0.92em] dark:border-transparent dark:bg-white/5">%APPDATA%\com.ttp.desktop\</code></li>
+    <ul class="mb-6 list-disc space-y-2 pl-6 marker:text-faint">
+      <li>macOS: <code class="mono rounded border border-line bg-raised px-1.5 py-0.5">~/Library/Application Support/com.ttp.desktop/</code> + <code class="mono rounded border border-line bg-raised px-1.5 py-0.5">~/.config/ttp/</code></li>
+      <li>Windows: <code class="mono rounded border border-line bg-raised px-1.5 py-0.5">%APPDATA%\com.ttp.desktop\</code></li>
     </ul>
     <p class="mb-6">
       Deleting these folders + uninstalling TTP wipes everything. No server-side state is held about you outside of the third parties listed above.
     </p>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">Contact</h2>
+    <h2 class="display mb-3 mt-12 text-xl text-text">Contact</h2>
     <p class="mb-6">
       Questions, deletion requests, or issues:
-      <a class="underline text-blue-600 hover:text-blue-700 dark:text-inherit dark:hover:text-white" href="mailto:amirksmain@gmail.com">amirksmain@gmail.com</a>.
+      <a class="link" href="mailto:amirksmain@gmail.com">amirksmain@gmail.com</a>.
     </p>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">Changes to this policy</h2>
+    <h2 class="display mb-3 mt-12 text-xl text-text">Changes to this policy</h2>
     <p class="mb-6">
       Material changes will be announced in the changelog and a fresh "Last updated" date will appear at the top of this page.
     </p>

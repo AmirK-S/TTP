@@ -1,218 +1,145 @@
 ---
-import '@/styles/globals.css';
-import { getLangFromUrl } from '@/i18n/utils';
+import '@/styles/site.css';
+import { getLangFromUrl, useTranslations } from '@/i18n/utils';
 import interWoff2 from '@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url';
 
 interface Props {
-  title: string;
+  title?: string;
+  description?: string;
+  /** Canonical path of this page in the other language, for hreflang. */
+  altPath?: string;
 }
 
-const { title } = Astro.props;
 const lang = getLangFromUrl(Astro.url);
+const t = useTranslations(lang);
 
-const description = lang === 'fr'
-  ? "TTP (Talk To Paste) - Transformez la parole en texte, partout. Appuyez sur un raccourci, parlez, et vos mots apparaissent l\u00e0 o\u00f9 vous tapez. Gratuit, open source, disponible sur macOS et Windows."
-  : "TTP (Talk To Paste) - Turn speech into text anywhere. Press a shortcut, speak, and your words appear wherever you're typing. Free, open source, works on macOS and Windows.";
+const { title = t('meta.title'), description = t('meta.description'), altPath } = Astro.props;
+
+const SITE = 'https://ttp.amirks.eu';
+const here = `${SITE}${Astro.url.pathname}`;
 ---
 
 <!doctype html>
-<html lang={lang}>
+<html lang={lang} data-coat="wild">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
     <link rel="preload" as="font" type="font/woff2" href={interWoff2} crossorigin="anonymous" />
     <link rel="icon" type="image/png" href="/icon.png" />
-    <link rel="alternate" hreflang="en" href="/" />
-    <link rel="alternate" hreflang="fr" href="/fr/" />
+    <link rel="canonical" href={here} />
+    {altPath && <link rel="alternate" hreflang={lang === 'en' ? 'fr' : 'en'} href={`${SITE}${altPath}`} />}
+    <link rel="alternate" hreflang="x-default" href={`${SITE}/`} />
 
-    <!-- Open Graph / social previews -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="TTP — Talk To Paste" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
-    <meta property="og:image" content="https://ttp.amirks.eu/ttp-logo-1024.png" />
+    <meta property="og:image" content={`${SITE}/ttp-logo-1024.png`} />
     <meta property="og:image:width" content="1024" />
     <meta property="og:image:height" content="1024" />
-    <meta property="og:url" content={`https://ttp.amirks.eu${Astro.url.pathname}`} />
+    <meta property="og:url" content={here} />
     <meta property="og:locale" content={lang === 'fr' ? 'fr_FR' : 'en_US'} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
-    <meta name="twitter:image" content="https://ttp.amirks.eu/ttp-logo-1024.png" />
+    <meta name="twitter:image" content={`${SITE}/ttp-logo-1024.png`} />
 
-    <!-- JSON-LD: SoftwareApplication for richer search results -->
+    {/* One offer, one price, and it is named for what it is. The old markup
+        advertised a "Pro" tier next to a "Free" one, which is exactly the
+        reading the product no longer supports. */}
     <script type="application/ld+json" set:html={JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "TTP — Talk To Paste",
-      "description": description,
-      "url": "https://ttp.amirks.eu",
-      "downloadUrl": "https://github.com/AmirK-S/TTP/releases",
-      "operatingSystem": ["macOS", "Windows"],
-      "applicationCategory": "ProductivityApplication",
-      "image": "https://ttp.amirks.eu/ttp-logo-1024.png",
-      "softwareVersion": "1.8.1",
-      "author": {
-        "@type": "Person",
-        "name": "Amir KS",
-        "url": "https://amirks.eu"
+      '@context': 'https://schema.org',
+      '@type': 'SoftwareApplication',
+      name: 'TTP — Talk To Paste',
+      description,
+      url: SITE,
+      downloadUrl: 'https://github.com/AmirK-S/TTP/releases',
+      operatingSystem: ['macOS', 'Windows'],
+      applicationCategory: 'ProductivityApplication',
+      image: `${SITE}/ttp-logo-1024.png`,
+      author: { '@type': 'Person', name: 'Amir Kellousi-Dhoum', url: 'https://amirks.eu' },
+      offers: {
+        '@type': 'Offer',
+        name: 'The application',
+        price: '0',
+        priceCurrency: 'EUR',
+        description: 'Every feature, uncapped. Requires a free Groq API key of your own.',
       },
-      "offers": [
-        { "@type": "Offer", "name": "Free", "price": "0", "priceCurrency": "EUR" },
-        { "@type": "Offer", "name": "Pro", "price": "17", "priceCurrency": "EUR", "url": "https://amirks.lemonsqueezy.com/checkout/buy/23ded1c4-c862-4f8c-ada5-0bb3dc2e0060" }
-      ]
     })} />
 
     <title>{title}</title>
+
+    {/* Before first paint: restore the coat and appearance the visitor last
+        chose, and mark the document as scripted so the reveal animations may
+        start hidden. Without JS nothing is hidden and nothing is lost. */}
     <script is:inline>
-    (function(){
-      if(location.pathname!=='/'&&location.pathname!=='/index.html')return;
-      var s=localStorage.getItem('lang');
-      if(s==='en')return;
-      if(s==='fr'){location.replace('/fr/'+location.hash);return}
-      var langs=navigator.languages||[navigator.language||''];
-      for(var i=0;i<langs.length;i++){if(langs[i].startsWith('fr')){location.replace('/fr/'+location.hash);return}}
-    })();
+      (function () {
+        var d = document.documentElement;
+        d.classList.add('js');
+        try {
+          var c = localStorage.getItem('ttp-coat');
+          if (c && ['wild', 'roan', 'piebald', 'merle', 'tortie'].indexOf(c) >= 0) d.setAttribute('data-coat', c);
+          var a = localStorage.getItem('ttp-appearance');
+          if (a === 'light' || a === 'dark') d.setAttribute('data-appearance', a);
+        } catch (e) {}
+      })();
+    </script>
+
+    {/* Language preference, honoured only on the bare root so a shared deep
+        link is never redirected out from under the person who was sent it. */}
+    <script is:inline>
+      (function () {
+        if (location.pathname !== '/' && location.pathname !== '/index.html') return;
+        var s = null;
+        try { s = localStorage.getItem('lang'); } catch (e) {}
+        if (s === 'en') return;
+        if (s === 'fr') { location.replace('/fr/' + location.hash); return; }
+        var langs = navigator.languages || [navigator.language || ''];
+        for (var i = 0; i < langs.length; i++) {
+          if (langs[i].indexOf('fr') === 0) { location.replace('/fr/' + location.hash); return; }
+        }
+      })();
     </script>
   </head>
-  <body class="min-h-screen bg-white text-zinc-900 antialiased dark:bg-slate-950 dark:text-white">
+
+  <body>
+    <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded focus:bg-accent focus:px-4 focus:py-2 focus:text-accent-fg">
+      {t('nav.skip')}
+    </a>
     <slot />
+
     <script>
-      import Lenis from "lenis";
-      // lenis/snap removed — custom snap below
-      import gsap from "gsap";
-      import { ScrollTrigger } from "gsap/ScrollTrigger";
-      import { SplitText } from "gsap/SplitText";
-
-      // Register GSAP plugins (must happen before any animation code)
-      gsap.registerPlugin(ScrollTrigger, SplitText);
-
-      // Mobile address bar resize fix -- prevents ScrollTrigger jumps when address bar hides/shows
-      ScrollTrigger.config({ ignoreMobileResize: true });
-
-      // Check reduced-motion preference
-      const prefersReducedMotion = window.matchMedia(
-        "(prefers-reduced-motion: reduce)"
-      ).matches;
-
-      // Initialize Lenis smooth scroll
-      // lerp: 1 = instant interpolation (no momentum) for reduced-motion users
-      // lerp: 0.1 = smooth momentum for standard users
-      // anchors: true = smooth scroll to hash links (#features, #download, etc.)
-      const lenis = new Lenis({
-        lerp: prefersReducedMotion ? 1 : 0.1,
-        smoothWheel: true,
-        anchors: true,
-      });
-
-      // Sync Lenis scroll position with ScrollTrigger
-      // Without this, ScrollTrigger doesn't know about Lenis's virtual scroll position
-      lenis.on("scroll", ScrollTrigger.update);
-
-      // Drive Lenis from GSAP's ticker (single RAF loop)
-      // Do NOT set autoRaf: true on Lenis -- that would create a double RAF loop
-      gsap.ticker.add((time) => {
-        lenis.raf(time * 1000);
-      });
-
-      // Disable GSAP lag smoothing to prevent jump-catching after tab backgrounding
-      gsap.ticker.lagSmoothing(0);
-
-      // Expose lenis globally for Navbar scroll lock and future scripts
-      (window as any).__lenis = lenis;
-
-      // Custom scroll snap: desktop only, respects reduced-motion
-      // Snaps to nearest section top when user stops scrolling near a boundary.
-      // Middle of tall sections = no snap, free scroll.
-      const mm = gsap.matchMedia();
-
-      mm.add("(min-width: 768px) and (prefers-reduced-motion: no-preference)", () => {
-        const sections = [...document.querySelectorAll("[data-snap-section]")] as HTMLElement[];
-        const THRESHOLD = 350;
-        let snapTimer: ReturnType<typeof setTimeout> | null = null;
-        let isSnapping = false;
-        let snapEnabled = true;
-
-        (window as any).__snap = {
-          stop: () => { snapEnabled = false; },
-          start: () => { snapEnabled = true; },
-        };
-
-        const onScroll = () => {
-          if (isSnapping || !snapEnabled) return;
-          if (snapTimer) clearTimeout(snapTimer);
-
-          snapTimer = setTimeout(() => {
-            if (!snapEnabled) return;
-            const scrollY = lenis.scroll;
-            let nearest: HTMLElement | null = null;
-            let minDist = Infinity;
-
-            for (const section of sections) {
-              const dist = Math.abs(scrollY - section.offsetTop);
-              if (dist < minDist) {
-                minDist = dist;
-                nearest = section;
-              }
+      /* Reveal on scroll. One observer, no library, and it unobserves as it
+         goes, so a long page does not keep a live callback per section. */
+      const items = document.querySelectorAll('[data-reveal]');
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches && 'IntersectionObserver' in window) {
+        const io = new IntersectionObserver(
+          (entries) => {
+            for (const e of entries) {
+              if (!e.isIntersecting) continue;
+              e.target.classList.add('in');
+              io.unobserve(e.target);
             }
-
-            if (nearest && minDist > 2 && minDist < THRESHOLD) {
-              isSnapping = true;
-              lenis.scrollTo(nearest, {
-                duration: 0.6,
-                onComplete: () => { isSnapping = false; },
-              });
-            }
-          }, 150);
-        };
-
-        lenis.on("scroll", onScroll);
-
-        return () => {
-          if (snapTimer) clearTimeout(snapTimer);
-          lenis.off("scroll", onScroll);
-          (window as any).__snap = null;
-        };
-      });
-
-      // Mouse-follow spotlight -- desktop pointer devices only
-      if (window.matchMedia("(hover: hover)").matches) {
-        const spotlightContainers = document.querySelectorAll("[data-spotlight]");
-
-        spotlightContainers.forEach((container) => {
-          const cards = [...container.querySelectorAll("[data-spotlight-card]")];
-          let ticking = false;
-
-          container.addEventListener("pointermove", (e) => {
-            if (ticking) return;
-            ticking = true;
-
-            requestAnimationFrame(() => {
-              const rect = container.getBoundingClientRect();
-              const mouseX = (e as PointerEvent).clientX - rect.left;
-              const mouseY = (e as PointerEvent).clientY - rect.top;
-
-              for (const card of cards) {
-                const cardRect = card.getBoundingClientRect();
-                const x = mouseX - (cardRect.left - rect.left);
-                const y = mouseY - (cardRect.top - rect.top);
-                (card as HTMLElement).style.setProperty("--spotlight-x", `${x}px`);
-                (card as HTMLElement).style.setProperty("--spotlight-y", `${y}px`);
-              }
-              ticking = false;
-            });
-          });
-
-          container.addEventListener("pointerleave", () => {
-            for (const card of cards) {
-              (card as HTMLElement).style.removeProperty("--spotlight-x");
-              (card as HTMLElement).style.removeProperty("--spotlight-y");
-            }
-          });
-        });
+          },
+          { rootMargin: '0px 0px -8% 0px', threshold: 0.05 },
+        );
+        items.forEach((el) => io.observe(el));
+      } else {
+        items.forEach((el) => el.classList.add('in'));
       }
 
+      /* Faces that belong to no sequence — the wordmark, the footer — just
+         idle and blink. They are started here rather than in each component so
+         there is exactly one import of the driver on the page. */
+      const auto = document.querySelectorAll<HTMLElement>('[data-face-auto]');
+      if (auto.length) {
+        const { mountFace } = await import('@/lib/face');
+        auto.forEach((el) => {
+          const id = el.dataset.face;
+          if (id) mountFace(el, id as Parameters<typeof mountFace>[1]);
+        });
+      }
     </script>
   </body>
 </html>

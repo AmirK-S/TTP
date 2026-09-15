@@ -1,0 +1,12 @@
+[2026-09-01 10:00:00.010] [········]          app.launched {"arch":"aarch64","os":"macos","version":"3.1.6"}
+[2026-09-01 10:00:00.020] [········]          state.transition {"from":"Idle","to":"Recording"}
+[2026-09-01 10:00:00.060] [········]          capture.start {"channels":1,"device":"AirPods Pro","format":"F32","is_os_default":true,"preferred":null,"rate":24000}
+[2026-09-01 10:00:00.120] [········]          state.transition {"from":"Recording","to":"Idle"}
+[2026-09-01 10:00:00.126] [········]          capture.orphan_prevented {"build_ms":544,"device":"AirPods Pro","reason":"user_idle"}
+[2026-09-01 10:00:09.126] [········]          capture.stop {"default_now":"AirPods Pro","device":"AirPods Pro","device_changed":false,"samples":480000}
+[2026-09-01 10:00:09.176] [········]          degraded {"error":"arbiter and STATE disagree","live":true,"site":"capture.reclaim"}
+[2026-09-01 10:00:09.226] [········]          capture.stop_waited_for_start {"ms":3000,"timed_out":true}
+[2026-09-01 10:00:10.226] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:11.226] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:12.226] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:13.226] [········]          hotkey.tap_armed {}

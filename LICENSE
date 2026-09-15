@@ -1,0 +1,38 @@
+TTP — Talk To Paste
+Copyright (c) 2025-2026 Amir KS
+
+Source-Available License (Non-Commercial)
+
+This source code is provided for personal use, learning, and contribution.
+
+You MAY:
+
+  - Read, study, and inspect the source.
+  - Clone the repository for personal evaluation and to build the app for
+    your own machine.
+  - Submit issues, feature requests, and pull requests against the upstream
+    repository at https://github.com/AmirK-S/TTP.
+  - Run a self-built copy on machines you own, with your own Groq API key,
+    for personal (non-commercial) use.
+
+You MAY NOT:
+
+  - Sell, sublicense, or distribute TTP (modified or unmodified) without
+    prior written permission from the copyright holder.
+  - Use TTP, in whole or in part, as the basis of a competing commercial
+    product.
+  - Remove, disable, bypass, or circumvent the Pro license enforcement,
+    payment validation, or trial mechanisms.
+  - Use any trademarks, logos, or product names associated with TTP without
+    permission.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL
+THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+For licensing inquiries (including commercial use, redistribution, or
+custom arrangements), contact: amirksmain@gmail.com

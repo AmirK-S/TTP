@@ -1,0 +1,257 @@
+---
+/**
+ * The hero.
+ *
+ * `docs/marketing-research.md` C3: lead with the output, not the feature.
+ * Wispr Flow's hero is a messy transcript beside a polished one and
+ * Superwhisper's is one sentence in four registers; both lead with a
+ * demonstration of the result. TTP's most demonstrable act is the polish pass,
+ * so the pair is the hero and the feature grid can wait until §5.
+ *
+ * C4: the Groq key is named above the fold rather than discovered at the setup
+ * screen, where nobody can see the bounce happen.
+ */
+import { getLocalizedPath, useTranslations, type Lang } from '@/i18n/utils';
+import CompanionFace from '@/components/CompanionFace.astro';
+
+interface Props { lang: Lang; macUrl: string }
+const { lang, macUrl } = Astro.props;
+const t = useTranslations(lang);
+const manualPath = lang === 'fr' ? '/fr/manuel' : '/manual';
+---
+
+<section class="pb-12 pt-10 sm:pt-14">
+  {/* Two columns from `lg` up. Rendered at 1440x900 the single-column version
+      put the whole demonstration below the fold and left the right half of the
+      screen empty — the exact opposite of C3, which says lead with the output.
+      The two transcript panes stack inside the rail, so the comparison reads
+      top to bottom instead of left to right. */}
+  <div class="wrap grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.02fr)] lg:gap-14">
+    <div>
+      <p class="mono mb-5 text-xs uppercase tracking-[0.16em] text-faint">{t('hero.eyebrow')}</p>
+
+      <h1 class="display text-[clamp(2.5rem,1.6rem+2.8vw,4.25rem)]">
+        {t('hero.headline')}<br />
+        <span class="text-accent">{t('hero.headlineAccent')}</span>
+      </h1>
+
+      <p class="mt-6 max-w-xl text-[1.0625rem] text-muted">{t('hero.sub')}</p>
+
+      <div class="mt-7 flex flex-wrap items-center gap-3">
+        <a href={macUrl} class="btn btn-primary">{t('hero.ctaPrimary')}</a>
+        <a href={manualPath} class="btn btn-quiet">{t('hero.ctaSecondary')}</a>
+      </div>
+      <p class="mt-3 text-sm text-faint">{t('hero.ctaSub')}</p>
+
+      {/* The cliff, named. Hiding it converts a download into a bounce at the
+          setup screen; owning it turns it into the reason the app is free. */}
+      <p class="mt-7 max-w-xl border-l-2 border-line pl-4 text-sm leading-relaxed text-muted">
+        {t('hero.keyLead')}{' '}
+        <a href={getLocalizedPath(lang, '#key')} class="link">{t('hero.keyLink')}</a>.
+      </p>
+    </div>
+
+    <!-- Plate I: the demonstration -->
+    <div>
+    <figure class="panel overflow-hidden" data-demo>
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-6">
+        <div class="flex items-center gap-3">
+          <span class="pill" data-demo-pill>
+            <CompanionFace variety="house" uid="hero" size={16} />
+            <span class="bars quiet" data-demo-bars>
+              {Array.from({ length: 14 }).map(() => <i></i>)}
+            </span>
+            <span class="mono text-[0.6875rem] tabular-nums opacity-70" data-demo-timer>0:03</span>
+          </span>
+          <span class="mono text-xs text-faint" data-demo-status aria-live="polite">{t('hero.statusDone')}</span>
+        </div>
+
+        <button type="button" class="mono text-xs text-faint underline underline-offset-4 hover:text-text" data-demo-replay>
+          {t('hero.replay')}
+        </button>
+      </div>
+
+      <div class="grid gap-px bg-line">
+        <div class="bg-surface px-5 py-5 sm:px-6">
+          <p class="mono mb-2.5 text-[0.6875rem] uppercase tracking-[0.14em] text-faint">{t('hero.saidLabel')}</p>
+          <p class="min-h-[5.5rem] text-[0.9375rem] leading-relaxed text-muted">
+            <span data-demo-raw-text>{t('hero.raw')}</span><span class="caret" data-demo-caret aria-hidden="true"></span>
+          </p>
+        </div>
+        <div class="bg-surface px-5 py-5 sm:px-6">
+          <p class="mono mb-2.5 text-[0.6875rem] uppercase tracking-[0.14em] text-faint">{t('hero.pastedLabel')}</p>
+          <p class="min-h-[4.5rem] text-[0.9375rem] leading-relaxed text-text transition-opacity duration-300" data-demo-polished>
+            {t('hero.polished')}
+          </p>
+        </div>
+      </div>
+
+      <figcaption class="border-t border-line px-4 py-3 sm:px-6">
+        <p class="caption">{t('hero.plate')}</p>
+      </figcaption>
+    </figure>
+
+    <p class="mt-4 text-sm text-faint">{t('hero.demoNote')}</p>
+    </div>
+  </div>
+
+  <script
+    is:inline
+    type="application/json"
+    data-demo-copy
+    set:html={JSON.stringify({
+      raw: t('hero.raw'),
+      idle: t('hero.statusIdle'),
+      listening: t('hero.statusListening'),
+      thinking: t('hero.statusThinking'),
+      done: t('hero.statusDone'),
+    })}
+  />
+</section>
+
+<style>
+  .caret {
+    display: inline-block;
+    width: 2px;
+    height: 1.05em;
+    margin-left: 1px;
+    vertical-align: -0.15em;
+    background: currentColor;
+    opacity: 0;
+  }
+  .caret.on { opacity: 0.7; animation: caret-blink 1.05s steps(1, end) infinite; }
+  @keyframes caret-blink { 0%, 50% { opacity: 0.7 } 50.01%, 100% { opacity: 0 } }
+  @media (prefers-reduced-motion: reduce) {
+    .caret.on { animation: none; }
+  }
+</style>
+
+<script>
+  import { mountFace, type FaceState } from '@/lib/face';
+
+  const demo = document.querySelector<HTMLElement>('[data-demo]');
+  const copyNode = document.querySelector<HTMLScriptElement>('[data-demo-copy]');
+  if (demo && copyNode) {
+    const copy = JSON.parse(copyNode.textContent ?? '{}') as Record<string, string>;
+    const pill = demo.querySelector<HTMLElement>('[data-demo-pill]')!;
+    const bars = Array.from(demo.querySelectorAll<HTMLElement>('[data-demo-bars] i'));
+    const timer = demo.querySelector<HTMLElement>('[data-demo-timer]')!;
+    const status = demo.querySelector<HTMLElement>('[data-demo-status]')!;
+    const rawText = demo.querySelector<HTMLElement>('[data-demo-raw-text]')!;
+    const caret = demo.querySelector<HTMLElement>('[data-demo-caret]')!;
+    const polished = demo.querySelector<HTMLElement>('[data-demo-polished]')!;
+    const replay = demo.querySelector<HTMLButtonElement>('[data-demo-replay]')!;
+    const barsWrap = demo.querySelector<HTMLElement>('[data-demo-bars]')!;
+
+    const face = mountFace(pill, 'house');
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const RAW = copy.raw ?? '';
+
+    let timers: number[] = [];
+    let barTicker: number | undefined;
+
+    const at = (ms: number, fn: () => void) => { timers.push(window.setTimeout(fn, ms)); };
+
+    function stop() {
+      timers.forEach(window.clearTimeout);
+      timers = [];
+      window.clearInterval(barTicker);
+      barTicker = undefined;
+      barsWrap.classList.add('quiet');
+      bars.forEach((b) => b.style.removeProperty('--h'));
+    }
+
+    function setState(s: FaceState, label: string) {
+      face.setState(s);
+      status.textContent = label;
+    }
+
+    /** The end of the sequence, and the state the panel rests in: both columns
+     *  filled. Someone who arrives with reduced motion, or who scrolls past
+     *  before it plays, sees the finished pair — which is the point of the
+     *  panel. The animation is a bonus, never the payload. */
+    function settle() {
+      rawText.textContent = RAW;
+      caret.classList.remove('on');
+      polished.style.opacity = '1';
+      status.textContent = copy.done ?? '';
+      timer.textContent = '0:03';
+    }
+
+    function play() {
+      stop();
+      if (reduced) { settle(); face.setState('idle'); return; }
+
+      rawText.textContent = '';
+      polished.style.opacity = '0';
+      timer.textContent = '0:00';
+      setState('idle', copy.idle ?? '');
+
+      at(400, () => {
+        setState('listening', copy.listening ?? '');
+        caret.classList.add('on');
+        barsWrap.classList.remove('quiet');
+        /* ~11 frames a second, only while the demo is speaking, and cleared
+           the moment it stops. Fourteen bars, per the manual, none omitted. */
+        barTicker = window.setInterval(() => {
+          bars.forEach((b, i) => {
+            const centre = 1 - Math.abs(i - 6.5) / 8; // taller at the centre
+            const h = 3 + Math.random() * 11 * centre;
+            b.style.setProperty('--h', `${h.toFixed(1)}px`);
+          });
+        }, 90);
+
+        // Type the raw line while it "hears" it. Roughly speech pace.
+        const perChar = 3200 / Math.max(RAW.length, 1);
+        for (let i = 1; i <= RAW.length; i++) {
+          at(i * perChar, () => { rawText.textContent = RAW.slice(0, i); });
+        }
+        at(1100, () => { timer.textContent = '0:01'; });
+        at(2100, () => { timer.textContent = '0:02'; });
+        at(3100, () => { timer.textContent = '0:03'; });
+      });
+
+      // Release: the bars collapse, and the face narrows and holds still.
+      at(3700, () => {
+        window.clearInterval(barTicker);
+        barTicker = undefined;
+        barsWrap.classList.add('quiet');
+        bars.forEach((b) => b.style.removeProperty('--h'));
+        caret.classList.remove('on');
+        setState('thinking', copy.thinking ?? '');
+      });
+
+      // The words land. The face's own reaction to this is 140 ms later still,
+      // which `mountFace` owns — it is a reaction to the app's own result, and
+      // that lateness is what makes it read as noticing rather than reporting.
+      at(4900, () => {
+        polished.style.opacity = '1';
+        setState('resolving', copy.done ?? '');
+      });
+      at(5500, () => { face.setState('idle'); });
+    }
+
+    replay.addEventListener('click', play);
+
+    if ('IntersectionObserver' in window) {
+      const io = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            if (!e.isIntersecting) continue;
+            io.disconnect();
+            play();
+          }
+        },
+        { threshold: 0.2 },
+      );
+      io.observe(demo);
+    } else {
+      settle();
+    }
+
+    // A tab in the background should not be running a demo at anybody.
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { stop(); settle(); }
+    });
+  }
+</script>

@@ -5,8 +5,6 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { safeInvoke } from '../lib/safeInvoke';
 import { emit } from '@tauri-apps/api/event';
-import { setLanguage, type LanguageChoice } from '../i18n/config';
-import { applyTheme, type ThemeChoice } from '../lib/theme';
 
 /** Dictionary entry structure matching Rust backend */
 export interface DictionaryEntry {
@@ -25,18 +23,30 @@ export interface HistoryEntry {
 /** Settings structure matching Rust backend */
 export interface Settings {
   ai_polish_enabled: boolean;
+  /** Send the text around the cursor to the polish model. Default true. */
+  screen_context_enabled: boolean;
   shortcut: string;
   fn_key_enabled: boolean;
   telemetry_enabled: boolean;
-  hands_free_mode: boolean;
-  hide_pill_when_inactive: boolean;
   autostart_enabled: boolean;
   history_enabled: boolean;
   use_beta_channel: boolean;
-  /** 'en' | 'fr' | 'system' | null. null is treated as 'system' (autodetect). */
-  language: string | null;
-  /** 'system' | 'light' | 'dark' | null. null is treated as 'system' (follow OS). */
-  theme: string | null;
+  /** Auto-stop recording after sustained silence. Default false. */
+  vad_auto_stop_enabled: boolean;
+  /** Seconds of continuous silence before auto-stop fires. Bounded [1, 10]. */
+  vad_silence_secs: number;
+  /** User-preferred input device by name. null/undefined = OS default. */
+  audio_device_name: string | null;
+  /** Language sent to Whisper: "auto" | "en" | "fr" | null. null = auto. */
+  transcription_language: string | null;
+  /**
+   * Write full transcription text into the dictation trace at every pipeline
+   * stage. The trace itself (timings, filter verdicts, stuck modifiers) is
+   * always written; this adds the text. Default false.
+   */
+  diagnostics_enabled: boolean;
+  /** Start/stop sound set id. null or a locked id plays the house sounds. */
+  sound_pack: string | null;
 }
 
 /** License info returned by Rust backend */
@@ -53,30 +63,27 @@ interface LicenseInfo {
 /** Usage stats returned by Rust backend */
 interface UsageStats {
   is_pro: boolean;
-  is_in_trial: boolean;
-  trial_days_left: number | null;
-  trial_started_at: number | null;
   polish_count_this_month: number;
-  polish_limit_free: number;
   dictionary_count: number;
-  dictionary_limit_free: number;
   history_count: number;
-  history_limit_free: number;
 }
 
 interface SettingsStore {
   // State
   aiPolishEnabled: boolean;
+  screenContextEnabled: boolean;
   shortcut: string;
   fnKeyEnabled: boolean;
   telemetryEnabled: boolean;
-  handsFreeMode: boolean;
-  hidePillWhenInactive: boolean;
   autostartEnabled: boolean;
   historyEnabled: boolean;
   useBetaChannel: boolean;
-  language: LanguageChoice;
-  theme: ThemeChoice;
+  vadAutoStopEnabled: boolean;
+  vadSilenceSecs: number;
+  audioDeviceName: string | null;
+  transcriptionLanguage: string;
+  diagnosticsEnabled: boolean;
+  soundPack: string;
   dictionary: DictionaryEntry[];
   history: HistoryEntry[];
   loading: boolean;
@@ -126,16 +133,19 @@ function applyLicenseInfo(info: LicenseInfo) {
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
   // Initial state
   aiPolishEnabled: true,
+  screenContextEnabled: false,
   shortcut: 'Alt+Space',
   fnKeyEnabled: false,
   telemetryEnabled: false,
-  handsFreeMode: false,
-  hidePillWhenInactive: false,
   autostartEnabled: false,
   historyEnabled: true,
   useBetaChannel: false,
-  language: 'system',
-  theme: 'system',
+  vadAutoStopEnabled: false,
+  vadSilenceSecs: 3,
+  audioDeviceName: null,
+  transcriptionLanguage: 'auto',
+  diagnosticsEnabled: false,
+  soundPack: 'default',
   dictionary: [],
   history: [],
   loading: false,
@@ -158,23 +168,22 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ loading: true });
     try {
       const settings = await safeInvoke<Settings>('get_settings');
-      const lang = (settings.language ?? 'system') as LanguageChoice;
-      const theme = (settings.theme ?? 'system') as ThemeChoice;
       set({
         aiPolishEnabled: settings.ai_polish_enabled,
+        screenContextEnabled: settings.screen_context_enabled ?? false,
         shortcut: settings.shortcut || 'Alt+Space',
         fnKeyEnabled: settings.fn_key_enabled ?? false,
         telemetryEnabled: settings.telemetry_enabled ?? false,
-        handsFreeMode: settings.hands_free_mode ?? false,
-        hidePillWhenInactive: settings.hide_pill_when_inactive ?? false,
         autostartEnabled: settings.autostart_enabled ?? false,
         historyEnabled: settings.history_enabled ?? true,
         useBetaChannel: settings.use_beta_channel ?? false,
-        language: lang,
-        theme,
+        vadAutoStopEnabled: settings.vad_auto_stop_enabled ?? false,
+        vadSilenceSecs: settings.vad_silence_secs ?? 3,
+        audioDeviceName: settings.audio_device_name ?? null,
+        transcriptionLanguage: settings.transcription_language ?? 'auto',
+        diagnosticsEnabled: settings.diagnostics_enabled ?? false,
+        soundPack: settings.sound_pack ?? 'default',
       });
-      setLanguage(lang);
-      applyTheme(theme);
     } catch (error) {
       console.error('Failed to load settings:', error);
     } finally {
@@ -187,16 +196,19 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     try {
       const currentSettings: Settings = {
         ai_polish_enabled: get().aiPolishEnabled,
+        screen_context_enabled: get().screenContextEnabled,
         shortcut: get().shortcut,
         fn_key_enabled: get().fnKeyEnabled,
         telemetry_enabled: get().telemetryEnabled,
-        hands_free_mode: get().handsFreeMode,
-        hide_pill_when_inactive: get().hidePillWhenInactive,
         autostart_enabled: get().autostartEnabled,
         history_enabled: get().historyEnabled,
         use_beta_channel: get().useBetaChannel,
-        language: get().language,
-        theme: get().theme,
+        vad_auto_stop_enabled: get().vadAutoStopEnabled,
+        vad_silence_secs: get().vadSilenceSecs,
+        audio_device_name: get().audioDeviceName,
+        transcription_language: get().transcriptionLanguage === 'auto' ? null : get().transcriptionLanguage,
+        diagnostics_enabled: get().diagnosticsEnabled,
+        sound_pack: get().soundPack,
       };
 
       const newSettings: Settings = {
@@ -207,23 +219,22 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       await invoke('set_settings', { settings: newSettings });
       // Emit event so other components (like pill, other windows) can react to settings changes
       emit('settings-changed', newSettings);
-      const newLang = (newSettings.language ?? 'system') as LanguageChoice;
-      const newTheme = (newSettings.theme ?? 'system') as ThemeChoice;
       set({
         aiPolishEnabled: newSettings.ai_polish_enabled,
+        screenContextEnabled: newSettings.screen_context_enabled ?? false,
         shortcut: newSettings.shortcut,
         fnKeyEnabled: newSettings.fn_key_enabled,
         telemetryEnabled: newSettings.telemetry_enabled,
-        handsFreeMode: newSettings.hands_free_mode,
-        hidePillWhenInactive: newSettings.hide_pill_when_inactive,
         autostartEnabled: newSettings.autostart_enabled,
         historyEnabled: newSettings.history_enabled,
         useBetaChannel: newSettings.use_beta_channel,
-        language: newLang,
-        theme: newTheme,
+        vadAutoStopEnabled: newSettings.vad_auto_stop_enabled,
+        vadSilenceSecs: newSettings.vad_silence_secs,
+        audioDeviceName: newSettings.audio_device_name,
+        transcriptionLanguage: newSettings.transcription_language ?? 'auto',
+        diagnosticsEnabled: newSettings.diagnostics_enabled ?? false,
+        soundPack: newSettings.sound_pack ?? 'default',
       });
-      setLanguage(newLang);
-      applyTheme(newTheme);
     } catch (error) {
       console.error('Failed to save settings:', error);
       throw error;
@@ -236,19 +247,20 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       await invoke('reset_settings');
       set({
         aiPolishEnabled: true,
+        screenContextEnabled: false,
         shortcut: 'Alt+Space',
         fnKeyEnabled: false,
         telemetryEnabled: false,
-        handsFreeMode: false,
-        hidePillWhenInactive: false,
         autostartEnabled: false,
         historyEnabled: true,
         useBetaChannel: false,
-        language: 'system',
-        theme: 'system',
+        vadAutoStopEnabled: false,
+        vadSilenceSecs: 3,
+        audioDeviceName: null,
+        transcriptionLanguage: 'auto',
+        diagnosticsEnabled: false,
+        soundPack: 'default',
       }); // Default values
-      setLanguage('system');
-      applyTheme('system');
     } catch (error) {
       console.error('Failed to reset settings:', error);
       throw error;

@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for all windows",
-  "windows": ["main", "setup", "settings", "pill", "onboarding"],
+  "windows": ["main", "settings", "pill", "onboarding", "permission-helper"],
   "permissions": [
     "core:default",
     "core:event:default",
@@ -16,15 +16,13 @@
     "core:window:allow-set-focus",
     "core:window:allow-close",
     "core:window:allow-set-title",
+    "drag:default",
     "opener:default",
     "opener:allow-open-url",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-is-registered",
     "positioner:default",
-    "mic-recorder:default",
-    "mic-recorder:allow-start-recording",
-    "mic-recorder:allow-stop-recording",
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text",
     "notification:default",
@@ -38,8 +36,6 @@
       "identifier": "http:default",
       "allow": [
         { "url": "https://api.groq.com/*" },
-        { "url": "https://github.com/*" },
-        { "url": "https://api.github.com/*" },
         { "url": "https://*.ingest.sentry.io/*" },
         { "url": "https://*.ingest.de.sentry.io/*" }
       ]

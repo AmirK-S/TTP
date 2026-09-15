@@ -1,82 +1,45 @@
 ---
 import Layout from '@/layouts/Layout.astro';
 import Navbar from '@/components/Navbar.astro';
-import HeroSection from '@/components/HeroSection.astro';
-import { InstallGuide } from '@/components/InstallGuide';
-import HowItWorks from '@/components/HowItWorks.astro';
-import PricingSection from '@/components/PricingSection.astro';
-import FeaturesGrid from '@/components/FeaturesGrid.astro';
-import PortfolioSection from '@/components/PortfolioSection.astro';
-import { Changelog } from '@/components/Changelog';
 import Footer from '@/components/Footer.astro';
-import { getLangFromUrl, useTranslations } from '@/i18n/utils';
+import Hero from '@/components/sections/Hero.astro';
+import Steps from '@/components/sections/Steps.astro';
+import KeyStep from '@/components/sections/KeyStep.astro';
+import WhyFree from '@/components/sections/WhyFree.astro';
+import WhatItDoes from '@/components/sections/WhatItDoes.astro';
+import AudioRoute from '@/components/sections/AudioRoute.astro';
+import Companion from '@/components/sections/Companion.astro';
+import Compare from '@/components/sections/Compare.astro';
+import Maker from '@/components/sections/Maker.astro';
+import Install from '@/components/sections/Install.astro';
+import Changelog from '@/components/sections/Changelog.astro';
+import { getLangFromUrl } from '@/i18n/utils';
 import { fetchGitHubData } from '@/lib/github';
 
 const lang = getLangFromUrl(Astro.url);
-const t = useTranslations(lang);
-
-const { downloadLinks, totalDownloads, changelog } = await fetchGitHubData();
-const latestVersion = changelog[0]?.tag_name?.replace(/^v/, '') ?? '1.2.0';
-
-const installTranslations = {
-  heading: t('install.heading'),
-  subheading: t('install.subheading'),
-  whyTitle: t('install.whyTitle'),
-  whyText: t('install.whyText'),
-  macTab: t('install.macTab'),
-  winTab: t('install.winTab'),
-  macAlreadyTitle: t('install.macAlreadyTitle'),
-  macAlreadyDesc: t('install.macAlreadyDesc'),
-  macOneLineTitle: t('install.macOneLineTitle'),
-  macOneLineDesc: t('install.macOneLineDesc'),
-  macAltTitle: t('install.macAltTitle'),
-  macAltStep1: t('install.macAltStep1'),
-  macAltStep2: t('install.macAltStep2'),
-  macAltStep3: t('install.macAltStep3'),
-  winDownloadTitle: t('install.winDownloadTitle'),
-  winDownloadButton: t('install.winDownloadButton'),
-  winDownloadDesc: t('install.winDownloadDesc'),
-  winSmartScreenTitle: t('install.winSmartScreenTitle'),
-  winDesc: t('install.winDesc'),
-  winStep1: t('install.winStep1'),
-  winStep2: t('install.winStep2'),
-  copied: t('install.copied'),
-  clickToCopy: t('install.clickToCopy'),
-};
-
-const changelogTranslations = {
-  heading: t('changelog.heading'),
-  subheading: t('changelog.subheading'),
-  empty: t('changelog.empty'),
-  emptyLink: t('changelog.emptyLink'),
-  viewAll: t('changelog.viewAll'),
-};
+const { downloadLinks, changelog } = await fetchGitHubData();
+const version = changelog[0]?.tag_name?.replace(/^v/, '') ?? '3.1.6';
 ---
 
-<Layout title="TTP - Talk To Paste | Turn Speech into Text Anywhere">
+<Layout altPath="/fr/">
   <Navbar />
-  <main>
-    <HeroSection />
-
-    <!-- Install Guide: terminal installation -->
-    <InstallGuide client:visible version={latestVersion} windowsDownloadUrl={downloadLinks.windows} translations={installTranslations} />
-
-    <!-- How It Works: 3-step visual guide -->
-    <HowItWorks />
-
-    <!-- Pricing: Free vs Pro tiers -->
-    <PricingSection />
-
-    <!-- Features: Bento Grid showcase -->
-    <FeaturesGrid />
-
-    <!-- Portfolio: About the Builder -->
-    <PortfolioSection />
-
-    <!-- Changelog: GitHub Releases timeline -->
-    <Changelog client:visible releases={changelog} translations={changelogTranslations} locale={lang} />
+  <main id="main">
+    {/* Order is the argument. Show the output, then admit the one piece of
+        friction, then explain why the friction is also the reason it is free,
+        then the features, and only then privacy — which is a section, not a
+        headline, because nobody in this category leads with it and the claim
+        TTP can honestly make is about a relationship rather than a location. */}
+    <Hero lang={lang} macUrl={downloadLinks.mac} />
+    <Steps lang={lang} />
+    <KeyStep lang={lang} />
+    <WhyFree lang={lang} />
+    <WhatItDoes lang={lang} />
+    <AudioRoute lang={lang} />
+    <Companion lang={lang} />
+    <Compare lang={lang} />
+    <Maker lang={lang} />
+    <Install lang={lang} version={version} macUrl={downloadLinks.mac} winUrl={downloadLinks.windows} />
+    <Changelog lang={lang} releases={changelog} />
   </main>
-
-  <!-- Footer -->
   <Footer />
 </Layout>

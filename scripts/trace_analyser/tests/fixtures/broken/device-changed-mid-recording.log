@@ -1,0 +1,38 @@
+[2026-09-01 10:00:00.010] [········]          app.launched {"arch":"aarch64","os":"macos","version":"3.1.6"}
+[2026-09-01 10:00:00.020] [········]          capture.start {"channels":1,"device":"AirPods Pro","format":"F32","is_os_default":true,"preferred":null,"rate":24000}
+[2026-09-01 10:00:05.020] [········]          capture.stop {"default_now":"MacBook Air Microphone","device":"AirPods Pro","device_changed":true,"samples":240000}
+[2026-09-01 10:00:05.030] [········]          hotkey.press {"flags":"0x800000","held_ms":160}
+[2026-09-01 10:00:05.031] [········]          state.transition {"from":"Idle","to":"Recording"}
+[2026-09-01 10:00:05.071] [········]          capture.start {"channels":1,"device":"MacBook Air Microphone","format":"F32","is_os_default":true,"preferred":null,"rate":48000}
+[2026-09-01 10:00:10.071] [········]          hotkey.release {"flags":"0x0"}
+[2026-09-01 10:00:10.072] [········]          state.transition {"from":"Recording","to":"Processing"}
+[2026-09-01 10:00:10.472] [········]          capture.stop {"default_now":"MacBook Air Microphone","device":"MacBook Air Microphone","device_changed":false,"samples":240000}
+[2026-09-01 10:00:10.474] [0000-1111] +     0ms dictation.start {"kind":"recording","verbose":false}
+[2026-09-01 10:00:10.474] [0000-1111] +     0ms audio.duration {"secs":5.0,"wav_bytes":480000}
+[2026-09-01 10:00:10.477] [0000-1111] +     3ms audio.signal {"avg_rms":0.02,"floor":0.005,"nonzero_ratio":1.0,"peak":0.16,"samples":240000}
+[2026-09-01 10:00:10.483] [0000-1111] +     9ms audio.convert {"converted":true,"in_bytes":1,"out_bytes":1}
+[2026-09-01 10:00:10.486] [0000-1111] +    12ms whisper.request {"bytes":1,"input_mode":"push_to_talk","lang":"auto","prompt":false}
+[2026-09-01 10:00:10.886] [0000-1111] +   412ms whisper.response {"chars":64,"empty_body_retry":false,"ms":400,"sha8":"aaaa1111"}
+[2026-09-01 10:00:10.906] [0000-1111] +   432ms cleanup {"changed":false,"from":{"chars":64,"sha8":"aaaa1111"},"to":{"chars":64,"sha8":"aaaa1111"}}
+[2026-09-01 10:00:10.907] [0000-1111] +   433ms polish.decision {"quota_ok":true,"setting_enabled":true}
+[2026-09-01 10:00:11.507] [0000-1111] +  1033ms polish {"changed":true,"from":{"chars":64,"sha8":"aaaa1111"},"model":"openai/gpt-oss-120b","outcome":"applied","quota_ok":true,"to":{"chars":64,"sha8":"bbbb2222"}}
+[2026-09-01 10:00:11.508] [0000-1111] +  1034ms dictionary {"changed":false,"from":{"chars":64,"sha8":"bbbb2222"},"to":{"chars":64,"sha8":"bbbb2222"}}
+[2026-09-01 10:00:11.510] [0000-1111] +  1036ms paste.accessibility {"ax_probe_ok":true,"tcc_trusted":true}
+[2026-09-01 10:00:11.511] [0000-1111] +  1037ms paste.decision {"chars":64,"has_accessibility":true,"strategy":"type"}
+[2026-09-01 10:00:11.621] [0000-1111] +  1147ms paste.result {"ok":true}
+[2026-09-01 10:00:11.622] [0000-1111] +  1148ms clipboard.restore {"ok":true}
+[2026-09-01 10:00:11.623] [0000-1111] +  1149ms correction_window.started {}
+[2026-09-01 10:00:11.624] [0000-1111] +  1150ms history.saved {"ok":true}
+[2026-09-01 10:00:11.625] [0000-1111] +  1151ms ui.completed {"pasted":true}
+[2026-09-01 10:00:11.626] [0000-1111] +  1152ms usage.recorded {"ms":0}
+[2026-09-01 10:00:11.627] [0000-1111] +  1153ms files.cleaned {}
+[2026-09-01 10:00:11.629] [0000-1111] +  1155ms dictation.finish {"chars":64,"has_accessibility":true,"ms":1155,"outcome":"pasted","words":12}
+[2026-09-01 10:00:12.029] [0000-1111] +  1555ms paste.verify {"after_chars":64,"ax_readable":true,"before_chars":0,"changed":true,"delta_chars":64,"expected_chars":64,"first_change_ms":30,"settled_ms":48}
+[2026-09-01 10:00:12.030] [········]          state.transition {"from":"Processing","to":"Idle"}
+[2026-09-01 10:00:12.031] [········]          state.transition {"from":"Idle","to":"Idle"}
+[2026-09-01 10:00:12.036] [········]          state.transition {"from":"Processing","to":"Idle"}
+[2026-09-01 10:00:12.037] [········]          state.transition {"from":"Idle","to":"Idle"}
+[2026-09-01 10:00:13.037] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:14.037] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:15.037] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:16.037] [········]          hotkey.tap_armed {}

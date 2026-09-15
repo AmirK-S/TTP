@@ -1,0 +1,136 @@
+---
+/**
+ * Installing it, including the unsigned-binary warning.
+ *
+ * The old page called this "Why does this happen?" and answered with a
+ * paragraph about certificates. Kept, because it is a real question a person
+ * asks at exactly this moment, and shortened, because the honest version is
+ * two sentences: no paid certificate, and the money would have had to come
+ * from the reader.
+ */
+import { useTranslations, type Lang } from '@/i18n/utils';
+
+interface Props { lang: Lang; version: string; winUrl: string; macUrl: string }
+const { lang, version, winUrl, macUrl } = Astro.props;
+const t = useTranslations(lang);
+
+/* Both quoted from `public/install.sh` itself, so the page cannot drift from
+   the script it is telling people to pipe into a shell. The bundle really is
+   called "TTP by AmirKS.app", spaces and all, which is why the path is
+   quoted. */
+const oneLiner = 'curl -fsSL ttp.amirks.eu/install.sh | sh';
+const unquarantine = 'xattr -cr "/Applications/TTP by AmirKS.app"';
+---
+
+<section id="install" class="band">
+  <div class="wrap">
+    <p class="plate-label">{t('install.plate')}</p>
+
+    <div class="flex flex-wrap items-end justify-between gap-4" data-reveal>
+      <div class="max-w-2xl">
+        <h2 class="display text-[clamp(1.75rem,1.2rem+2vw,2.75rem)]">{t('install.heading')}</h2>
+        <p class="mt-4 text-muted">{t('install.subheading')}</p>
+      </div>
+      <p class="mono text-xs text-faint">{t('install.version')} {version}</p>
+    </div>
+
+    <div class="mt-9 grid gap-px overflow-hidden rounded-[var(--r-lg)] border border-line bg-line lg:grid-cols-2" data-reveal>
+      <!-- macOS -->
+      <div class="bg-surface p-6 sm:p-7">
+        <h3 class="mono mb-5 text-xs uppercase tracking-[0.14em] text-faint">{t('install.macTab')}</h3>
+
+        <p class="text-sm font-semibold">{t('install.macOneLineTitle')}</p>
+        <button type="button" class="copy mt-2" data-copy={oneLiner}>
+          <code>{oneLiner}</code>
+          <span class="copy-label" data-copy-idle={t('install.copy')} data-copy-done={t('install.copied')}>{t('install.copy')}</span>
+        </button>
+        <p class="mt-2 text-[0.8125rem] leading-relaxed text-faint">{t('install.macOneLineDesc')}</p>
+
+        <p class="mt-6 text-sm font-semibold">{t('install.macAlreadyTitle')}</p>
+        <button type="button" class="copy mt-2" data-copy={unquarantine}>
+          <code>{unquarantine}</code>
+          <span class="copy-label" data-copy-idle={t('install.copy')} data-copy-done={t('install.copied')}>{t('install.copy')}</span>
+        </button>
+        <p class="mt-2 text-[0.8125rem] leading-relaxed text-faint">{t('install.macAlreadyDesc')}</p>
+
+        <p class="mt-6 text-sm font-semibold">{t('install.macAltTitle')}</p>
+        <ol class="mt-2 grid gap-1.5 text-[0.8125rem] text-muted">
+          <li>1. {t('install.macAltStep1')}</li>
+          <li>2. {t('install.macAltStep2')}</li>
+          <li>3. {t('install.macAltStep3')}</li>
+        </ol>
+
+        <a href={macUrl} class="btn btn-primary mt-6 !py-2 !text-sm">{t('install.macTab')} .dmg</a>
+      </div>
+
+      <!-- Windows -->
+      <div class="bg-surface p-6 sm:p-7">
+        <h3 class="mono mb-5 text-xs uppercase tracking-[0.14em] text-faint">{t('install.winTab')}</h3>
+
+        <p class="text-sm font-semibold">{t('install.winDownloadTitle')}</p>
+        <p class="mt-2 text-[0.8125rem] leading-relaxed text-faint">{t('install.winDownloadDesc')}</p>
+        <a href={winUrl} class="btn btn-primary mt-4 !py-2 !text-sm">{t('install.winDownloadButton')}</a>
+
+        <p class="mt-6 text-sm font-semibold">{t('install.winSmartScreenTitle')}</p>
+        <ol class="mt-2 grid gap-1.5 text-[0.8125rem] text-muted">
+          <li>1. {t('install.winStep1')}</li>
+          <li>2. {t('install.winStep2')}</li>
+        </ol>
+
+        <div class="mt-8 border-t border-line pt-5">
+          <h4 class="text-sm font-semibold">{t('install.whyTitle')}</h4>
+          <p class="mt-2 text-[0.8125rem] leading-relaxed text-muted">{t('install.whyText')}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .copy {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border: 1px solid var(--line-c);
+    border-radius: var(--r-sm);
+    background: var(--raised);
+    padding: 0.625rem 0.75rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  .copy code {
+    font-family: var(--f-mono);
+    font-size: 0.75rem;
+    color: var(--text);
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .copy-label {
+    font-family: var(--f-mono);
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--faint);
+    flex-shrink: 0;
+  }
+  .copy:hover .copy-label { color: var(--accent); }
+</style>
+
+<script>
+  document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((button) => {
+    const label = button.querySelector<HTMLElement>('.copy-label');
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(button.dataset.copy ?? '');
+        if (!label) return;
+        label.textContent = label.dataset.copyDone ?? '';
+        window.setTimeout(() => { label.textContent = label.dataset.copyIdle ?? ''; }, 1600);
+      } catch {
+        /* Clipboard denied. The command is on screen and selectable; saying so
+           in a toast would be noise. */
+      }
+    });
+  });
+</script>

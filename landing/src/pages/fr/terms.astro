@@ -6,84 +6,87 @@ import Footer from '@/components/Footer.astro';
 const lastUpdated = '2026-05-06';
 ---
 
-<Layout title="Conditions d'Utilisation — TTP">
+<Layout title="Conditions d'Utilisation: TTP">
   <Navbar />
-  <main class="mx-auto max-w-3xl px-6 pb-16 pt-32 text-zinc-700 dark:text-slate-200">
-    <h1 class="mb-2 text-4xl font-bold text-zinc-900 dark:text-white">Conditions d'Utilisation</h1>
-    <p class="mb-8 text-sm text-zinc-500 dark:text-slate-500">Dernière mise à jour : {lastUpdated}</p>
+  <main class="wrap-narrow pb-20 pt-16 text-muted">
+    <h1 class="display mb-2 text-[clamp(2rem,1.4rem+1.8vw,2.75rem)] text-text">Conditions d'Utilisation</h1>
+    <p class="mono mb-10 text-xs text-faint">Dernière mise à jour : {lastUpdated}</p>
 
     <p class="mb-6">
       En installant ou en utilisant TTP (Talk To Paste, « l'application »), vous acceptez ces conditions.
       Si vous n'acceptez pas, n'installez pas l'application ou cessez de l'utiliser.
     </p>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">1. Le service</h2>
+    <h2 class="display mb-3 mt-12 text-xl text-text">1. Le service</h2>
     <p class="mb-6">
       TTP est une application de bureau qui enregistre l'audio de votre microphone, l'envoie à un fournisseur tiers de transcription (Groq), et colle le résultat dans la fenêtre active.
       L'application s'exécute sur votre ordinateur ; nous n'hébergeons ni ne traitons votre audio sur notre infrastructure.
       La qualité, la latence et la disponibilité de la transcription dépendent de Groq et de votre connexion internet.
     </p>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">2. Versions Gratuite et Pro</h2>
-    <p class="mb-3">TTP est proposé en deux versions :</p>
-    <ul class="mb-6 list-disc space-y-2 pl-6">
-      <li><strong>Gratuite</strong> — fonctionnalité de transcription complète avec des limites sur AI Polish, le dictionnaire et l'historique.</li>
-      <li><strong>Pro</strong> — un achat unique qui débloque l'usage illimité de ces fonctionnalités et inclut les mises à jour gratuites à vie.</li>
-    </ul>
+    <h2 class="display mb-3 mt-12 text-xl text-text">2. Ce qui est gratuit, et ce qui est vendu</h2>
+    <p class="mb-3">
+      Toutes les fonctions de TTP qui permettent une transcription &mdash; la dictée, la correction IA, le
+      dictionnaire, l'historique, les langues, le mode mains libres, les mises &agrave; jour &mdash; sont gratuites
+      et sans plafond. Il n'y a pas d'essai, rien n'expire, et rien ne compte votre usage. Les plafonds des
+      versions pr&eacute;c&eacute;dentes (correction IA, dictionnaire, historique) ont &eacute;t&eacute; retir&eacute;s le 28 ao&ucirc;t 2026.
+    </p>
     <p class="mb-6">
-      Un essai Pro de 7 jours démarre automatiquement au premier lancement pour vous permettre d'évaluer les fonctionnalités Pro avant l'achat.
-      L'essai est par machine et ne peut pas être réinitialisé en réinstallant.
+      Un achat facultatif existe, vendu via Lemon Squeezy sous le nom <strong>TTP Pro</strong> et appel&eacute;
+      <strong>le Compagnon</strong> dans l'application. C'est un paiement unique et il ne d&eacute;bloque que des
+      &eacute;l&eacute;ments d&eacute;coratifs : un visage pour la barre flottante, quatre robes suppl&eacute;mentaires, six jeux de
+      sons et un manuel. Il ne change rien &agrave; ce que l'application sait faire.
     </p>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">3. Licence</h2>
+    <h2 class="display mb-3 mt-12 text-xl text-text">3. Licence</h2>
     <p class="mb-6">
       Nous vous accordons une licence non exclusive et non transférable pour installer et utiliser TTP sur le nombre de machines couvertes par votre achat
-      (Gratuite : installations illimitées ; Pro : selon le nombre d'activations indiqué au paiement).
+      (l'application gratuite : installations illimitées ; le Compagnon : selon le nombre d'activations indiqué au paiement).
       Vous ne pouvez pas redistribuer, revendre, décompiler, faire de l'ingénierie inverse, ni supprimer les mécanismes d'application de licence dans l'application.
     </p>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">4. Paiement, remboursements et annulation</h2>
+    <h2 class="display mb-3 mt-12 text-xl text-text">4. Paiement, remboursements et annulation</h2>
     <p class="mb-6">
       Tous les achats Pro sont traités par Lemon Squeezy. Le tarif, les taxes et la devise sont affichés sur la page de paiement.
-      Pro est un achat unique ; il n'y a pas d'abonnement récurrent. Les remboursements sont gérés selon la fenêtre standard de Lemon Squeezy — contactez <a class="underline text-blue-600 hover:text-blue-700 dark:text-inherit dark:hover:text-white" href="mailto:amirksmain@gmail.com">amirksmain@gmail.com</a> dans les 14 jours suivant l'achat si le produit ne fonctionne pas pour vous.
+      Pro est un achat unique ; il n'y a pas d'abonnement récurrent. Les remboursements sont gérés selon la fenêtre standard de Lemon Squeezy: contactez <a class="link" href="mailto:amirksmain@gmail.com">amirksmain@gmail.com</a> dans les 14 jours suivant l'achat si le produit ne fonctionne pas pour vous.
     </p>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">5. Vos responsabilités</h2>
-    <ul class="mb-6 list-disc space-y-2 pl-6">
+    <h2 class="display mb-3 mt-12 text-xl text-text">5. Vos responsabilités</h2>
+    <ul class="mb-6 list-disc space-y-2 pl-6 marker:text-faint">
       <li>Vous êtes responsable du contenu que vous enregistrez et transcrivez. N'enregistrez pas de personnes sans leur consentement ou dans des juridictions où c'est illégal.</li>
       <li>Vous êtes responsable de la sécurité de votre clé API Groq. TTP la stocke dans votre trousseau OS, mais vous devez sécuriser votre compte.</li>
       <li>Vous acceptez de respecter les conditions de service de Groq pour tout audio envoyé via l'application.</li>
     </ul>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">6. Avertissements</h2>
+    <h2 class="display mb-3 mt-12 text-xl text-text">6. Avertissements</h2>
     <p class="mb-6">
       TTP est fourni « tel quel », sans garantie d'aucune sorte, expresse ou implicite, y compris la qualité marchande, l'adéquation à un usage particulier, et la non-contrefaçon.
       La transcription est effectuée par Groq ; nous ne garantissons pas l'exactitude, l'exhaustivité, ni l'adéquation à un usage spécifique.
       L'application peut cesser de fonctionner à tout moment si Groq, Lemon Squeezy ou tout tiers dont nous dépendons modifie ses conditions.
     </p>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">7. Limitation de responsabilité</h2>
+    <h2 class="display mb-3 mt-12 text-xl text-text">7. Limitation de responsabilité</h2>
     <p class="mb-6">
       Dans la mesure maximale permise par la loi, TTP et son auteur ne sont pas responsables des dommages indirects, accessoires, spéciaux, consécutifs ou punitifs,
       ni d'une perte de profits, de données ou d'usage, découlant de ou liés à l'application.
       Notre responsabilité totale pour tout dommage direct est limitée au montant que vous avez payé pour l'application au cours des 12 mois précédant la réclamation.
     </p>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">8. Résiliation</h2>
+    <h2 class="display mb-3 mt-12 text-xl text-text">8. Résiliation</h2>
     <p class="mb-6">
       Vous pouvez cesser d'utiliser l'application et la désinstaller à tout moment. Si vous violez ces conditions (par exemple en tentant de contourner l'application de la licence),
       nous pouvons résilier votre licence sans remboursement.
     </p>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">9. Droit applicable</h2>
+    <h2 class="display mb-3 mt-12 text-xl text-text">9. Droit applicable</h2>
     <p class="mb-6">
       Ces conditions sont régies par le droit français. Tout litige sera résolu devant les tribunaux compétents de France, sous réserve des lois impératives de protection des consommateurs de votre pays de résidence.
     </p>
 
-    <h2 class="mb-3 mt-10 text-2xl font-semibold text-zinc-900 dark:text-white">10. Contact</h2>
+    <h2 class="display mb-3 mt-12 text-xl text-text">10. Contact</h2>
     <p class="mb-6">
       Questions sur ces conditions :
-      <a class="underline text-blue-600 hover:text-blue-700 dark:text-inherit dark:hover:text-white" href="mailto:amirksmain@gmail.com">amirksmain@gmail.com</a>.
+      <a class="link" href="mailto:amirksmain@gmail.com">amirksmain@gmail.com</a>.
     </p>
   </main>
   <Footer />
