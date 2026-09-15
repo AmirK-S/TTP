@@ -148,9 +148,9 @@ describe('usePasteCompletion', () => {
     const { result, rerender } = mount();
     await settleSubscription();
     rerender({ stage: 'complete', params: { outcome: 'paste_swallowed' } });
-    act(() => { vi.advanceTimersByTime(SETTLE_MS + 3000); });
+    act(() => { vi.advanceTimersByTime(SETTLE_MS + 2000); });
     verify('paste_swallowed');
-    // Still the same frame, running out its original 4 s rather than
+    // Still the same frame, running out its original 3 s rather than
     // restarting it.
     act(() => { vi.advanceTimersByTime(1000); });
     expect(result.current).toBeNull();

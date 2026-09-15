@@ -19,7 +19,7 @@ import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, CheckCheck } from 'lucide-react';
+import { AlertCircle, CheckCheck, History } from 'lucide-react';
 import { safeInvoke } from '../lib/safeInvoke';
 import { translateRustMessage } from '../lib/translateRustMessage';
 import { useRecordingState } from '../hooks/useRecordingState';
@@ -274,9 +274,8 @@ export function FloatingBar() {
           tone={isDanger ? 'danger' : 'active'}
           className={cn(
             'flex h-9 min-w-[88px] items-center justify-center gap-2.5 px-4',
-            /* The shake is spent on errors and on a swallowed paste, and on
-               nothing else — an unverified paste is not an error and must
-               never shake. Clamped to 0.01ms by the
+            /* The shake is spent on errors and on nothing else — a paste that
+               did not land is in History and must never shake. Clamped to 0.01ms by the
                `prefers-reduced-motion` block in `src/index.css`. */
             isDanger && 'anim-shake',
           )}
@@ -350,11 +349,9 @@ export function FloatingBar() {
                 <span
                   className={cn(
                     'text-[12px] font-medium whitespace-nowrap',
-                    /* 70% on the unverified line, full white on the danger one.
-                       A caption and a warning are different volumes, and the
-                       state a user meets several times a day on a dictation
-                       where nothing went wrong gets the caption. */
-                    treatment.tone === 'danger' ? 'text-white' : 'text-white/70',
+                    /* A caption at 80% for the calm History pointer, full
+                       white on the danger line. */
+                    treatment.tone === 'danger' ? 'text-white' : 'text-white/80',
                   )}
                 >
                   {t(treatment.line)}
@@ -400,6 +397,15 @@ function CompletionMark({
   mark: OutcomeMark;
   reducedMotion: boolean;
 }) {
+  if (mark === 'history') {
+    return (
+      <History
+        className={cn('size-4 shrink-0 text-white/80', !reducedMotion && 'anim-fade-in')}
+        aria-hidden
+        data-ttp-mark="history"
+      />
+    );
+  }
   if (mark === 'alert') {
     return (
       <AlertCircle

@@ -34,9 +34,10 @@
 //     vérification, on s'en fout". Nothing in it is actionable, so the pill
 //     no longer tells it apart. The live region still does, and the trace
 //     keeps `verification` for anyone who needs the difference.
-//   * `paste_swallowed` — rare, and their words did not arrive. This one gets
-//     the tremble, the warning colour, and the sentence that says where the
-//     text still is.
+//   * `paste_swallowed` — the words did not arrive, and they are safe in
+//     History. Calm: no red, no tremble, a short line saying where to find
+//     them. Amir, 2026-09-15: "il ne faut pas faire peur aux gens", just tell
+//     them they can get it back.
 //   * `clipboard_fallback` — unchanged in meaning: the injection never
 //     happened and the text is on the clipboard.
 //
@@ -79,7 +80,7 @@ export function asPasteOutcome(value: unknown): PasteOutcome | null {
 }
 
 /** Which mark the pill draws. */
-export type OutcomeMark = 'arrived' | 'alert';
+export type OutcomeMark = 'arrived' | 'history' | 'alert';
 
 export interface OutcomeTreatment {
   mark: OutcomeMark;
@@ -127,17 +128,15 @@ const TREATMENTS: Record<PasteOutcome, OutcomeTreatment> = {
     tone: 'active',
     holdMs: 800,
   },
-  // The rare one, and the only one where the user has lost something. Same
-  // 4 s the error frame has always used, because it is the same class of
-  // event, and it names the recovery: `add_history_entry` has already run by
-  // the time the verdict lands, so the text is in Settings → History with a
-  // replay button beside it.
+  // Nothing is lost — `add_history_entry` has run by the time the verdict
+  // lands — so this is a pointer, not an alarm. 3 s: long enough to read five
+  // words, short of the 4 s the error frames use.
   paste_swallowed: {
-    mark: 'alert',
+    mark: 'history',
     line: 'floatingBar.outcome.swallowed',
     announcement: 'floatingBar.outcome.swallowedAnnouncement',
-    tone: 'danger',
-    holdMs: 4000,
+    tone: 'active',
+    holdMs: 3000,
   },
   // Reached through the `error` stage in practice — Rust routes a failed
   // injection there with `error.paste_failed` — but kept total over the four

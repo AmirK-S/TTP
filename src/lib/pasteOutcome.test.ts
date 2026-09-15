@@ -90,7 +90,8 @@ describe('proportion', () => {
 
   it('reserves the danger tone for the two states where text is missing', () => {
     const danger = PASTE_OUTCOMES.filter((o) => treatmentFor(o).tone === 'danger');
-    expect(danger).toEqual(['paste_swallowed', 'clipboard_fallback']);
+    // A swallowed paste is in History, so it points there calmly (2026-09-15).
+    expect(danger).toEqual(['clipboard_fallback']);
   });
 
   it('keeps every frame short, and the quiet ones shortest', () => {

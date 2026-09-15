@@ -226,11 +226,12 @@ describeSuite('the pill at the end of a dictation', () => {
     expectFrame(container.firstElementChild?.className).toContain('pointer-events-none');
   });
 
-  itFrame('trembles for a swallowed paste and says where the text is', async () => {
+  itFrame('points calmly to History when a paste did not land', async () => {
     const { container } = await mountBar();
     completeWith('paste_swallowed');
-    expectFrame(screen.getByText("Nothing arrived — it's in Settings → History")).toBeInTheDocument();
-    expectFrame(container.querySelector('.anim-shake')).not.toBeNull();
+    expectFrame(screen.getByText('Not pasted · find it in History')).toBeInTheDocument();
+    expectFrame(container.querySelector('.anim-shake')).toBeNull();
+    expectFrame(container.querySelector('.bg-app-danger\\/95')).toBeNull();
   });
 
   itFrame('speaks French', async () => {
@@ -238,7 +239,7 @@ describeSuite('the pill at the end of a dictation', () => {
     await mountBar();
     completeWith('paste_swallowed');
     expectFrame(
-      screen.getByText("Rien n'est arrivé — c'est dans Paramètres → Historique"),
+      screen.getByText("Pas collé · retrouve-le dans l'historique"),
     ).toBeInTheDocument();
     // `beforeEach` puts it back to English; doing it here would re-render a
     // still-mounted component outside `act`.

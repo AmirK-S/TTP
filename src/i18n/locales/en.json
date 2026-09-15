@@ -372,8 +372,8 @@
     "outcome": {
       "unverifiedAnnouncement": "The text was sent. Nothing confirmed it arrived.",
       "arrivedAnnouncement": "The text arrived.",
-      "swallowed": "Nothing arrived — it's in Settings → History",
-      "swallowedAnnouncement": "The text did not arrive in the app. It is saved in Settings → History.",
+      "swallowed": "Not pasted · find it in History",
+      "swallowedAnnouncement": "The text could not be pasted. You can find it in Settings, History.",
       "clipboard": "Not inserted — the text is on your clipboard",
       "clipboardAnnouncement": "The text was not inserted. It is on your clipboard — press Cmd+V to paste it."
     }

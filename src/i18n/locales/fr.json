@@ -372,8 +372,8 @@
     "outcome": {
       "unverifiedAnnouncement": "Le texte a été envoyé. Rien n'a confirmé qu'il est arrivé.",
       "arrivedAnnouncement": "Le texte est arrivé.",
-      "swallowed": "Rien n'est arrivé — c'est dans Paramètres → Historique",
-      "swallowedAnnouncement": "Le texte n'est pas arrivé dans l'app. Il est enregistré dans Paramètres → Historique.",
+      "swallowed": "Pas collé · retrouve-le dans l'historique",
+      "swallowedAnnouncement": "Le texte n'a pas pu être collé. Tu le retrouves dans Réglages, Historique.",
       "clipboard": "Rien n'a été inséré — le texte est dans ton presse-papiers",
       "clipboardAnnouncement": "Le texte n'a pas été inséré. Il est dans ton presse-papiers ; fais Cmd+V pour le coller."
     }
