@@ -1,54 +1,69 @@
 ---
 /**
- * The maker, made legible (research C7).
- *
- * Every comparable does some version of this — MacWhisper's "Built by Jordi
- * Bruin and friends at Good Snooze in the Netherlands", Bartender's "more than
- * 10 years", CleanShot's named endorsers, Obsidian's "100% user-supported".
- * For an app holding Accessibility and Input Monitoring it is not sentiment;
- * it is part of the security posture, which is why the section opens with the
- * permissions rather than the CV.
+ * Who makes it, and why it is free — in the first person, because the answer
+ * only works that way. For an app that asks for Accessibility and Input
+ * Monitoring, a face and a name are part of the trust, not decoration.
  */
-import { useTranslations, type Lang } from '@/i18n/utils';
 import { Image } from 'astro:assets';
-import photo from '@/assets/amir-photo.png';
-import { REPO_URL } from '@/lib/coats';
+import { useTranslations, type Lang } from '@/i18n/utils';
+import { BUY_URL, MAKER_SITE, REPO_URL } from '@/lib/links';
+import photo from '@/assets/amir.png';
 
 interface Props { lang: Lang }
 const { lang } = Astro.props;
 const t = useTranslations(lang);
 ---
 
-<section id="who" class="band">
+<section id="maker" class="section border-t border-line">
   <div class="wrap">
-    <p class="plate-label">{t('who.plate')}</p>
-
-    <div class="grid items-start gap-10 md:grid-cols-[auto_minmax(0,1fr)] md:gap-12" data-reveal>
-      <figure class="w-40 shrink-0 sm:w-48">
+    <div class="card grid overflow-hidden md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]" data-reveal>
+      <figure class="maker-photo relative min-h-[22rem] md:min-h-full">
         <Image
           src={photo}
-          alt={t('who.name')}
-          widths={[192, 384]}
-          sizes="(min-width: 640px) 192px, 160px"
-          class="w-full rounded-[var(--r-lg)] border border-line object-cover"
+          alt="Amir Kellou-Sidhoum"
+          widths={[480, 720, 1000]}
+          sizes="(min-width: 768px) 520px, 100vw"
+          class="absolute inset-0 h-full w-full object-cover object-[50%_30%]"
           loading="lazy"
         />
-        <figcaption class="caption mt-3">{t('who.role')}</figcaption>
+        <figcaption class="absolute inset-x-4 bottom-4 flex items-center justify-between gap-3 rounded-full border border-white/15 bg-black/45 py-2 pl-4 pr-2 text-[0.8125rem] text-white backdrop-blur-md">
+          <span class="truncate">{t('maker.role')}</span>
+          <a href={MAKER_SITE} target="_blank" rel="noopener" class="shrink-0 rounded-full bg-white/15 px-3 py-1 font-medium transition-colors hover:bg-white/25">{t('maker.site')}</a>
+        </figcaption>
       </figure>
 
-      <div class="max-w-2xl">
-        <h2 class="display text-[clamp(1.75rem,1.2rem+2vw,2.5rem)]">{t('who.heading')}</h2>
-        <p class="mt-5 text-[1.0625rem] text-text">{t('who.p1')}</p>
-        <p class="mt-4 font-display text-lg">{t('who.name')}</p>
-        <p class="mt-2 text-muted">{t('who.p2')}</p>
-        <p class="mt-4 text-muted">{t('who.p3')}</p>
+      <div class="flex flex-col justify-center p-7 sm:p-10 lg:p-14">
+        <p class="eyebrow">{t('maker.eyebrow')}</p>
+        <h2 class="h-section mt-4">{t('maker.title')}</h2>
+        <p class="lede mt-5">{t('maker.p1')}</p>
 
-        <div class="mt-6 flex flex-wrap gap-4 text-sm">
-          <a href={REPO_URL} target="_blank" rel="noopener" class="link">{t('who.github')}</a>
-          <a href="https://amirks.eu" target="_blank" rel="noopener" class="link">{t('who.site')}</a>
-          <a href={`${REPO_URL}/issues`} target="_blank" rel="noopener" class="link">{t('who.email')}</a>
+        <h3 class="mt-9 text-lg font-semibold tracking-[-0.015em]">{t('maker.freeTitle')}</h3>
+        <p class="mt-2 leading-relaxed text-muted">{t('maker.p2')}</p>
+        <p class="mt-3 leading-relaxed text-muted">{t('maker.p3')}</p>
+
+        <div class="mt-8 flex flex-wrap items-center gap-3">
+          <a href={BUY_URL} target="_blank" rel="noopener" class="btn btn-quiet">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="text-[#ff453a]"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+            {t('maker.support')}
+          </a>
+          <a href={REPO_URL} target="_blank" rel="noopener" class="btn text-muted hover:text-text">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2.14c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.19-3.08-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.8 1.19 1.83 1.19 3.08 0 4.41-2.69 5.39-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+            {t('maker.github')}
+          </a>
         </div>
+
+        <p class="signature mt-8 text-[2.5rem] leading-none text-text" aria-hidden="true">Amir</p>
       </div>
     </div>
   </div>
 </section>
+
+<style>
+  .maker-photo { background: var(--raised); }
+  .signature {
+    font-family: "Snell Roundhand", "Apple Chancery", "Brush Script MT", cursive;
+    font-weight: 400;
+    letter-spacing: 0;
+    opacity: 0.85;
+  }
+</style>

@@ -17,16 +17,20 @@ const { title = t('meta.title'), description = t('meta.description'), altPath } 
 
 const SITE = 'https://ttp.amirks.eu';
 const here = `${SITE}${Astro.url.pathname}`;
+const ogImage = `${SITE}/${lang === 'fr' ? 'og.png' : 'og-en.png'}`;
 ---
 
 <!doctype html>
-<html lang={lang} data-coat="wild">
+<html lang={lang}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0a0a0c" media="(prefers-color-scheme: dark)" />
     <link rel="preload" as="font" type="font/woff2" href={interWoff2} crossorigin="anonymous" />
     <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="apple-touch-icon" href="/ttp-logo-1024.png" />
     <link rel="canonical" href={here} />
     {altPath && <link rel="alternate" hreflang={lang === 'en' ? 'fr' : 'en'} href={`${SITE}${altPath}`} />}
     <link rel="alternate" hreflang="x-default" href={`${SITE}/`} />
@@ -35,19 +39,16 @@ const here = `${SITE}${Astro.url.pathname}`;
     <meta property="og:site_name" content="TTP — Talk To Paste" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
-    <meta property="og:image" content={`${SITE}/ttp-logo-1024.png`} />
-    <meta property="og:image:width" content="1024" />
-    <meta property="og:image:height" content="1024" />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta property="og:url" content={here} />
     <meta property="og:locale" content={lang === 'fr' ? 'fr_FR' : 'en_US'} />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
-    <meta name="twitter:image" content={`${SITE}/ttp-logo-1024.png`} />
+    <meta name="twitter:image" content={ogImage} />
 
-    {/* One offer, one price, and it is named for what it is. The old markup
-        advertised a "Pro" tier next to a "Free" one, which is exactly the
-        reading the product no longer supports. */}
     <script type="application/ld+json" set:html={JSON.stringify({
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',
@@ -55,36 +56,18 @@ const here = `${SITE}${Astro.url.pathname}`;
       description,
       url: SITE,
       downloadUrl: 'https://github.com/AmirK-S/TTP/releases',
-      operatingSystem: ['macOS', 'Windows'],
+      operatingSystem: 'macOS',
       applicationCategory: 'ProductivityApplication',
       image: `${SITE}/ttp-logo-1024.png`,
-      author: { '@type': 'Person', name: 'Amir Kellousi-Dhoum', url: 'https://amirks.eu' },
-      offers: {
-        '@type': 'Offer',
-        name: 'The application',
-        price: '0',
-        priceCurrency: 'EUR',
-        description: 'Every feature, uncapped. Requires a free Groq API key of your own.',
-      },
+      author: { '@type': 'Person', name: 'Amir Kellou-Sidhoum', url: 'https://amirks.eu' },
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
     })} />
 
     <title>{title}</title>
 
-    {/* Before first paint: restore the coat and appearance the visitor last
-        chose, and mark the document as scripted so the reveal animations may
-        start hidden. Without JS nothing is hidden and nothing is lost. */}
-    <script is:inline>
-      (function () {
-        var d = document.documentElement;
-        d.classList.add('js');
-        try {
-          var c = localStorage.getItem('ttp-coat');
-          if (c && ['wild', 'roan', 'piebald', 'merle', 'tortie'].indexOf(c) >= 0) d.setAttribute('data-coat', c);
-          var a = localStorage.getItem('ttp-appearance');
-          if (a === 'light' || a === 'dark') d.setAttribute('data-appearance', a);
-        } catch (e) {}
-      })();
-    </script>
+    {/* Marks the document as scripted so reveal animations may start hidden.
+        Without JS nothing is hidden. */}
+    <script is:inline>document.documentElement.classList.add('js');</script>
 
     {/* Language preference, honoured only on the bare root so a shared deep
         link is never redirected out from under the person who was sent it. */}
@@ -104,14 +87,14 @@ const here = `${SITE}${Astro.url.pathname}`;
   </head>
 
   <body>
-    <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded focus:bg-accent focus:px-4 focus:py-2 focus:text-accent-fg">
+    <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-full focus:bg-text focus:px-4 focus:py-2 focus:text-bg">
       {t('nav.skip')}
     </a>
     <slot />
 
     <script>
-      /* Reveal on scroll. One observer, no library, and it unobserves as it
-         goes, so a long page does not keep a live callback per section. */
+      /* Fade-in on arrival. One observer; it unobserves as it goes. It never
+         scrolls anything. */
       const items = document.querySelectorAll('[data-reveal]');
       if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches && 'IntersectionObserver' in window) {
         const io = new IntersectionObserver(
@@ -122,24 +105,37 @@ const here = `${SITE}${Astro.url.pathname}`;
               io.unobserve(e.target);
             }
           },
-          { rootMargin: '0px 0px -8% 0px', threshold: 0.05 },
+          { rootMargin: '0px 0px -6% 0px', threshold: 0.04 },
         );
         items.forEach((el) => io.observe(el));
       } else {
         items.forEach((el) => el.classList.add('in'));
       }
 
-      /* Faces that belong to no sequence — the wordmark, the footer — just
-         idle and blink. They are started here rather than in each component so
-         there is exactly one import of the driver on the page. */
-      const auto = document.querySelectorAll<HTMLElement>('[data-face-auto]');
-      if (auto.length) {
-        const { mountFace } = await import('@/lib/face');
-        auto.forEach((el) => {
-          const id = el.dataset.face;
-          if (id) mountFace(el, id as Parameters<typeof mountFace>[1]);
+      /* Copy buttons for the install command, wherever they appear. */
+      document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((button) => {
+        const label = button.querySelector<HTMLElement>('[data-copy-label]');
+        button.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(button.dataset.copy ?? '');
+          } catch {
+            return;
+          }
+          if (!label) return;
+          button.setAttribute('data-done', '');
+          label.textContent = label.dataset.done ?? '';
+          window.setTimeout(() => {
+            button.removeAttribute('data-done');
+            label.textContent = label.dataset.idle ?? '';
+          }, 1800);
         });
-      }
+      });
+
+      document.querySelectorAll<HTMLAnchorElement>('[data-lang-switch]').forEach((el) => {
+        el.addEventListener('click', () => {
+          try { localStorage.setItem('lang', el.dataset.langSwitch as string); } catch {}
+        });
+      });
     </script>
   </body>
 </html>

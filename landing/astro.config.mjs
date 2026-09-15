@@ -7,6 +7,12 @@ import tailwindcss from '@tailwindcss/vite';
    framer-motion dependencies the previous version carried were doing work that
    CSS and one IntersectionObserver do without a bundle. */
 export default defineConfig({
+  /* The manual and the coats went with the pill's face. Old links land home. */
+  redirects: {
+    '/manual': '/',
+    '/fr/manuel': '/fr/',
+  },
+
   i18n: {
     defaultLocale: 'en',
     locales: ['en', 'fr'],

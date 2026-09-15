@@ -1,0 +1,78 @@
+---
+/** The last screen: a dark panel the colour of the pill, and the download. */
+import { useTranslations, type Lang } from '@/i18n/utils';
+import { INSTALL_COMMAND } from '@/lib/links';
+
+interface Props { lang: Lang; macUrl: string; macIntelUrl: string; version: string }
+const { lang, macUrl, macIntelUrl, version } = Astro.props;
+const t = useTranslations(lang);
+---
+
+<section id="download" class="section pt-0">
+  <div class="wrap">
+    <div class="final relative isolate overflow-hidden rounded-[28px] px-6 py-16 text-center text-white sm:px-12 sm:py-24" data-reveal>
+      <div aria-hidden="true" class="final-glow absolute inset-0 -z-10"></div>
+
+      <span class="pill mx-auto !bg-white/[0.06]">
+        <span class="pill-rec"></span>
+        <span class="pill-bars idle-wave">{Array.from({ length: 16 }).map(() => <i></i>)}</span>
+      </span>
+
+      <h2 class="h-section mx-auto mt-8 max-w-2xl text-white">{t('final.title')}</h2>
+      <p class="mx-auto mt-4 max-w-md text-[1.0625rem] text-white/65">{t('final.sub')}</p>
+
+      <div class="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
+        <a href={macUrl} class="btn btn-lg w-full bg-white text-black hover:bg-white/90 sm:w-auto">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>
+          {t('hero.cta')}
+        </a>
+        <button type="button" class="cmd final-cmd w-full justify-between sm:w-auto" data-copy={INSTALL_COMMAND}>
+          <span class="prompt" aria-hidden="true">$</span>
+          <code>{INSTALL_COMMAND}</code>
+          <span class="cmd-label" data-copy-label data-idle={t('hero.copy')} data-done={t('hero.copied')}>{t('hero.copy')}</span>
+        </button>
+      </div>
+
+      <p class="mt-6 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[0.8125rem] text-white/50">
+        <span>v{version}</span>
+        <span aria-hidden="true">·</span>
+        <a href={macIntelUrl} class="underline-offset-4 hover:text-white hover:underline">{t('hero.intel')}</a>
+        <span aria-hidden="true">·</span>
+        <span>{t('hero.signed')}</span>
+      </p>
+    </div>
+  </div>
+</section>
+
+<style>
+  .final {
+    background: #000;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), var(--shadow-lg);
+  }
+  .final-glow {
+    background:
+      radial-gradient(50% 60% at 50% 0%, rgba(76, 139, 245, 0.35), transparent 70%),
+      radial-gradient(40% 50% at 15% 100%, rgba(139, 92, 246, 0.18), transparent 70%),
+      radial-gradient(40% 50% at 85% 100%, rgba(6, 182, 212, 0.14), transparent 70%);
+  }
+  .final-glow::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(60% 70% at 50% 30%, #000, transparent 75%);
+    -webkit-mask-image: radial-gradient(60% 70% at 50% 30%, #000, transparent 75%);
+  }
+  .final-cmd {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.16);
+    color: #fff;
+    box-shadow: none;
+  }
+  .final-cmd:hover { border-color: rgba(255, 255, 255, 0.32); }
+  .final-cmd :global(.cmd-label) { background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.75); }
+  .final-cmd :global(.prompt) { color: rgba(255, 255, 255, 0.4); }
+  .final-cmd[data-done] :global(.cmd-label) { color: #4ade80; }
+</style>

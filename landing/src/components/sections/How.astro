@@ -1,0 +1,86 @@
+---
+/** Hold, speak, let go — each with a small drawing of what you see. */
+import { useTranslations, type Lang } from '@/i18n/utils';
+import SectionHead from '@/components/SectionHead.astro';
+
+interface Props { lang: Lang }
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+---
+
+<section id="how" class="section">
+  <div class="wrap">
+    <SectionHead eyebrow={t('how.eyebrow')} title={t('how.title')} sub={t('how.sub')} />
+
+    <ol class="mt-14 grid gap-3.5 md:grid-cols-3">
+      <!-- hold -->
+      <li class="card flex flex-col" data-reveal>
+        <div class="how-visual grid h-52 place-items-center border-b border-line">
+          <div class="flex items-end gap-2.5">
+            <span class="kbd opacity-60">
+              <span class="text-[0.75rem] text-muted">control</span>
+            </span>
+            <span class="kbd how-key" data-down>
+              <span class="flex h-full w-full flex-col justify-between text-left">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" class="self-end text-muted"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+                <span class="text-[0.8125rem]">fn</span>
+              </span>
+            </span>
+            <span class="kbd opacity-60">
+              <span class="text-[0.75rem] text-muted">option</span>
+            </span>
+          </div>
+        </div>
+        <div class="p-6">
+          <p class="flex items-baseline gap-2.5"><span class="mono text-xs text-faint">01</span><span class="text-lg font-semibold tracking-[-0.015em]">{t('how.holdTitle')}</span></p>
+          <p class="mt-2 text-[0.9375rem] leading-relaxed text-muted">{t('how.holdDesc')}</p>
+        </div>
+      </li>
+
+      <!-- speak -->
+      <li class="card flex flex-col" data-reveal style="transition-delay:80ms">
+        <div class="how-visual grid h-52 place-items-center border-b border-line">
+          <span class="pill">
+            <span class="pill-rec"></span>
+            <span class="pill-bars idle-wave">{Array.from({ length: 16 }).map(() => <i></i>)}</span>
+            <span class="text-white/90">0:04</span>
+          </span>
+        </div>
+        <div class="p-6">
+          <p class="flex items-baseline gap-2.5"><span class="mono text-xs text-faint">02</span><span class="text-lg font-semibold tracking-[-0.015em]">{t('how.speakTitle')}</span></p>
+          <p class="mt-2 text-[0.9375rem] leading-relaxed text-muted">{t('how.speakDesc')}</p>
+        </div>
+      </li>
+
+      <!-- release -->
+      <li class="card flex flex-col" data-reveal style="transition-delay:160ms">
+        <div class="how-visual flex h-52 flex-col items-center justify-center gap-4 border-b border-line px-6">
+          <p class="w-full max-w-[15rem] rounded-[10px] border border-line bg-bg px-3 py-2 text-left text-[0.8125rem] shadow-[var(--shadow-sm)]">
+            {t('stage.chatClean')}<span class="field-caret"></span>
+          </p>
+          <span class="pill">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>
+          </span>
+        </div>
+        <div class="p-6">
+          <p class="flex items-baseline gap-2.5"><span class="mono text-xs text-faint">03</span><span class="text-lg font-semibold tracking-[-0.015em]">{t('how.releaseTitle')}</span></p>
+          <p class="mt-2 text-[0.9375rem] leading-relaxed text-muted">{t('how.releaseDesc')}</p>
+        </div>
+      </li>
+    </ol>
+
+    <p class="mx-auto mt-8 flex max-w-xl items-center justify-center gap-2.5 text-center text-[0.9375rem] text-muted" data-reveal>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="shrink-0 text-faint"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      {t('how.handsFree')}
+    </p>
+  </div>
+</section>
+
+<style>
+  .how-visual {
+    background:
+      radial-gradient(60% 80% at 50% 100%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%),
+      var(--surface);
+  }
+  .how-key { min-width: 5.25rem; }
+</style>

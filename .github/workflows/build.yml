@@ -34,6 +34,11 @@ on:
       # without tagging anything. Push triggers read the workflow file from
       # the pushed branch, so this works the moment the branch lands.
       - 'polaris/**'
+    # A push that only touches the website builds no app. The site deploys on
+    # its own (Coolify), and a signed macOS build per landing tweak is waste.
+    paths-ignore:
+      - 'landing/**'
+      - '.claude/**'
   pull_request:
     branches: [main, master]
   # On-demand build for any branch. NOTE: GitHub only offers workflow_dispatch

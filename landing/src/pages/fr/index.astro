@@ -1,45 +1,8 @@
 ---
 import Layout from '@/layouts/Layout.astro';
-import Navbar from '@/components/Navbar.astro';
-import Footer from '@/components/Footer.astro';
-import Hero from '@/components/sections/Hero.astro';
-import Steps from '@/components/sections/Steps.astro';
-import KeyStep from '@/components/sections/KeyStep.astro';
-import WhyFree from '@/components/sections/WhyFree.astro';
-import WhatItDoes from '@/components/sections/WhatItDoes.astro';
-import AudioRoute from '@/components/sections/AudioRoute.astro';
-import Companion from '@/components/sections/Companion.astro';
-import Compare from '@/components/sections/Compare.astro';
-import Maker from '@/components/sections/Maker.astro';
-import Install from '@/components/sections/Install.astro';
-import Changelog from '@/components/sections/Changelog.astro';
-import { getLangFromUrl } from '@/i18n/utils';
-import { fetchGitHubData } from '@/lib/github';
-
-const lang = getLangFromUrl(Astro.url);
-const { downloadLinks, changelog } = await fetchGitHubData();
-const version = changelog[0]?.tag_name?.replace(/^v/, '') ?? '3.1.6';
+import Home from '@/components/Home.astro';
 ---
 
 <Layout altPath="/">
-  <Navbar />
-  <main id="main">
-    {/* Order is the argument. Show the output, then admit the one piece of
-        friction, then explain why the friction is also the reason it is free,
-        then the features, and only then privacy — which is a section, not a
-        headline, because nobody in this category leads with it and the claim
-        TTP can honestly make is about a relationship rather than a location. */}
-    <Hero lang={lang} macUrl={downloadLinks.mac} />
-    <Steps lang={lang} />
-    <KeyStep lang={lang} />
-    <WhyFree lang={lang} />
-    <WhatItDoes lang={lang} />
-    <AudioRoute lang={lang} />
-    <Companion lang={lang} />
-    <Compare lang={lang} />
-    <Maker lang={lang} />
-    <Install lang={lang} version={version} macUrl={downloadLinks.mac} winUrl={downloadLinks.windows} />
-    <Changelog lang={lang} releases={changelog} />
-  </main>
-  <Footer />
+  <Home />
 </Layout>

@@ -3,7 +3,7 @@ import Layout from '@/layouts/Layout.astro';
 import Navbar from '@/components/Navbar.astro';
 import Footer from '@/components/Footer.astro';
 
-const lastUpdated = '2026-05-06';
+const lastUpdated = '2026-09-15';
 ---
 
 <Layout title="Politique de Confidentialité: TTP">
@@ -24,8 +24,8 @@ const lastUpdated = '2026-05-06';
       <li><strong>Historique des transcriptions</strong>: stocké localement pour vous permettre de copier les résultats passés. Vous pouvez désactiver l'historique ou l'effacer dans les Paramètres à tout moment.</li>
       <li><strong>Entrées du dictionnaire</strong>: corrections que vous avez apprises à TTP. En local uniquement.</li>
       <li><strong>Paramètres</strong>: vos préférences (raccourci, mode mains libres, etc.).</li>
-      <li><strong>Cache de licence</strong>: copie signée des informations de votre licence TTP Pro permettant à l'application de fonctionner brièvement hors ligne.</li>
-      <li><strong>Clé API Groq</strong>: stockée dans le Trousseau d'accès macOS ou le Gestionnaire d'identifiants Windows. Jamais écrite en clair sur le disque.</li>
+      <li><strong>État de la licence</strong>: si vous avez acheté la licence facultative à 17 € (packs de sons), une copie signée pour que les packs restent débloqués hors ligne.</li>
+      <li><strong>Clé API Groq</strong>: stockée dans le Trousseau d'accès macOS. Jamais écrite en clair sur le disque.</li>
     </ul>
 
     <h2 class="display mb-3 mt-12 text-xl text-text">Ce qui est envoyé à des tiers</h2>
@@ -33,15 +33,15 @@ const lastUpdated = '2026-05-06';
       <li>
         <strong>Groq</strong> (<a class="link" href="https://groq.com/privacy-policy/" rel="noopener" target="_blank">politique de confidentialité</a>):
         chaque enregistrement audio est envoyé à l'API Whisper de Groq pour transcription.
-        Si AI Polish est activé, le texte brut est aussi envoyé à un LLM Groq pour nettoyage.
+        Si la correction IA est activée (par défaut), le texte brut est aussi envoyé à un modèle Groq pour être nettoyé. Si vous avez activé le <em>contexte de l'écran</em> (désactivé par défaut), les noms affichés qui ressemblent à ce que vous dites, et la phrase que vous continuez, sont envoyés avec. Les champs de mot de passe et les gestionnaires de mots de passe ne sont jamais lus, et rien de l'écran n'est conservé.
       </li>
       <li>
         <strong>Lemon Squeezy</strong> (<a class="link" href="https://www.lemonsqueezy.com/privacy" rel="noopener" target="_blank">politique de confidentialité</a>):
-        gère le paiement lors de l'achat de TTP Pro et valide votre clé de licence.
+        gère le paiement si vous achetez la licence facultative et valide votre clé de licence.
         Vos informations de facturation sont traitées par Lemon Squeezy, pas par TTP.
       </li>
       <li>
-        <strong>Sentry</strong>: rapports d'erreurs. <strong>Désactivé par défaut.</strong> Lorsque vous l'activez dans Paramètres → Télémétrie, les rapports de plantage sont envoyés pour aider à corriger les bugs.
+        <strong>Sentry</strong>: rapports d'erreurs. <strong>Désactivé par défaut.</strong> Lorsque vous l'activez (à la fin de l'installation, ou dans Réglages → Avancé), les rapports de plantage sont envoyés pour aider à corriger les bugs.
         Les clés API, les chemins de fichiers, les adresses email et le contenu de vos transcriptions sont expurgés avant l'envoi.
       </li>
       <li>
@@ -60,11 +60,11 @@ const lastUpdated = '2026-05-06';
     <h2 class="display mb-3 mt-12 text-xl text-text">Vos données, votre contrôle</h2>
     <p class="mb-3">Toutes les données TTP sur votre ordinateur se trouvent dans :</p>
     <ul class="mb-6 list-disc space-y-2 pl-6 marker:text-faint">
-      <li>macOS : <code class="mono rounded border border-line bg-raised px-1.5 py-0.5">~/Library/Application Support/com.ttp.desktop/</code> + <code class="mono rounded border border-line bg-raised px-1.5 py-0.5">~/.config/ttp/</code></li>
-      <li>Windows : <code class="mono rounded border border-line bg-raised px-1.5 py-0.5">%APPDATA%\com.ttp.desktop\</code></li>
+      <li><code class="mono rounded border border-line bg-raised px-1.5 py-0.5">~/Library/Application Support/com.ttp.desktop/</code></li>
+      <li><code class="mono rounded border border-line bg-raised px-1.5 py-0.5">~/Library/Application Support/ttp/</code></li>
     </ul>
     <p class="mb-6">
-      Supprimer ces dossiers + désinstaller TTP efface tout. Aucune donnée n'est conservée côté serveur en dehors des tiers listés ci-dessus.
+      Réglages → Avancé → Désinstaller supprime l'application et tout ceci. Supprimer ces dossiers fait la même chose à la main. Aucune donnée n'est conservée côté serveur en dehors des tiers listés ci-dessus.
     </p>
 
     <h2 class="display mb-3 mt-12 text-xl text-text">Contact</h2>

@@ -3,7 +3,7 @@ import Layout from '@/layouts/Layout.astro';
 import Navbar from '@/components/Navbar.astro';
 import Footer from '@/components/Footer.astro';
 
-const lastUpdated = '2026-05-06';
+const lastUpdated = '2026-09-15';
 ---
 
 <Layout title="Privacy Policy: TTP">
@@ -24,8 +24,8 @@ const lastUpdated = '2026-05-06';
       <li><strong>Transcription history</strong>: stored locally so you can copy past results. You can disable history or clear it from Settings at any time.</li>
       <li><strong>Dictionary entries</strong>: corrections you've taught TTP. Local only.</li>
       <li><strong>Settings</strong>: your preferences (shortcut, hands-free mode, history toggle, etc.).</li>
-      <li><strong>License state cache</strong>: a signed copy of your TTP Pro license info so the app works briefly offline.</li>
-      <li><strong>Groq API key</strong>: stored in your OS Keychain (macOS) or Credential Manager (Windows). Never written to disk in plain text.</li>
+      <li><strong>Licence state</strong>: if you bought the optional €17 licence (sound packs), a signed copy of it so the packs stay unlocked offline.</li>
+      <li><strong>Groq API key</strong>: stored in the macOS Keychain. Never written to disk in plain text.</li>
     </ul>
 
     <h2 class="display mb-3 mt-12 text-xl text-text">What gets sent to third parties</h2>
@@ -33,16 +33,16 @@ const lastUpdated = '2026-05-06';
       <li>
         <strong>Groq</strong> (<a class="link" href="https://groq.com/privacy-policy/" rel="noopener" target="_blank">privacy policy</a>):
         every audio recording is sent to Groq's Whisper endpoint to be transcribed.
-        If AI Polish is enabled, the raw text is also sent to a Groq LLM for cleanup.
+        If AI correction is enabled (the default), the raw text is also sent to a Groq model to be cleaned up. If you turned on <em>screen context</em> (off by default), the names shown on screen that sound like what you said, and the sentence you are continuing, are sent with it. Password fields and password managers are never read, and nothing from the screen is kept.
         TTP does not store or access your Groq API key beyond the call itself.
       </li>
       <li>
         <strong>Lemon Squeezy</strong> (<a class="link" href="https://www.lemonsqueezy.com/privacy" rel="noopener" target="_blank">privacy policy</a>):
-        handles payment when you purchase TTP Pro and validates your license key.
+        handles payment if you buy the optional licence and validates your license key.
         Your billing information is processed by Lemon Squeezy, not TTP.
       </li>
       <li>
-        <strong>Sentry</strong>: error reporting. <strong>Off by default.</strong> When you opt in from Settings → Telemetry, crash reports are sent to help fix bugs.
+        <strong>Sentry</strong>: error reporting. <strong>Off by default.</strong> When you opt in (at the end of setup, or in Settings → Advanced), crash reports are sent to help fix bugs.
         API keys, file paths, email addresses, and the contents of your transcriptions are scrubbed before sending.
       </li>
       <li>
@@ -61,11 +61,11 @@ const lastUpdated = '2026-05-06';
     <h2 class="display mb-3 mt-12 text-xl text-text">Your data, your control</h2>
     <p class="mb-3">All TTP data on your computer lives in:</p>
     <ul class="mb-6 list-disc space-y-2 pl-6 marker:text-faint">
-      <li>macOS: <code class="mono rounded border border-line bg-raised px-1.5 py-0.5">~/Library/Application Support/com.ttp.desktop/</code> + <code class="mono rounded border border-line bg-raised px-1.5 py-0.5">~/.config/ttp/</code></li>
-      <li>Windows: <code class="mono rounded border border-line bg-raised px-1.5 py-0.5">%APPDATA%\com.ttp.desktop\</code></li>
+      <li><code class="mono rounded border border-line bg-raised px-1.5 py-0.5">~/Library/Application Support/com.ttp.desktop/</code></li>
+      <li><code class="mono rounded border border-line bg-raised px-1.5 py-0.5">~/Library/Application Support/ttp/</code></li>
     </ul>
     <p class="mb-6">
-      Deleting these folders + uninstalling TTP wipes everything. No server-side state is held about you outside of the third parties listed above.
+      Settings → Advanced → Uninstall removes the app and all of this. Deleting these folders does the same by hand. No server-side state is held about you outside of the third parties listed above.
     </p>
 
     <h2 class="display mb-3 mt-12 text-xl text-text">Contact</h2>

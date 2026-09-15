@@ -14,6 +14,7 @@ interface GitHubRelease {
 
 export interface DownloadLinks {
   mac: string;
+  macIntel: string;
   windows: string;
 }
 
@@ -64,12 +65,14 @@ export async function fetchGitHubData(): Promise<GitHubData> {
       latest.assets.find((a) => /aarch64\.dmg$|arm64\.dmg$/i.test(a.name)) ??
       latest.assets.find((a) => a.name.endsWith(".dmg")) ??
       latest.assets.find((a) => a.name.endsWith(".zip"));
+    const intelDmg = latest.assets.find((a) => /_x64\.dmg$/i.test(a.name));
     const exe =
       latest.assets.find((a) => /-setup\.exe$/i.test(a.name)) ??
       latest.assets.find((a) => a.name.endsWith(".exe")) ??
       latest.assets.find((a) => a.name.endsWith(".msi"));
     const downloadLinks: DownloadLinks = {
       mac: dmg?.browser_download_url || FALLBACK_URL,
+      macIntel: intelDmg?.browser_download_url || FALLBACK_URL,
       windows: exe?.browser_download_url || FALLBACK_URL,
     };
 
@@ -103,7 +106,7 @@ export async function fetchGitHubData(): Promise<GitHubData> {
 
 function getFallbackData(): GitHubData {
   return {
-    downloadLinks: { mac: FALLBACK_URL, windows: FALLBACK_URL },
+    downloadLinks: { mac: FALLBACK_URL, macIntel: FALLBACK_URL, windows: FALLBACK_URL },
     totalDownloads: 0,
     changelog: [],
   };

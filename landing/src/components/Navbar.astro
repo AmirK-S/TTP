@@ -1,66 +1,45 @@
 ---
 import { getLangFromUrl, useTranslations, getLocalizedPath, otherLangPath } from '@/i18n/utils';
 import { languages } from '@/i18n/ui';
-import CompanionFace from '@/components/CompanionFace.astro';
-import CoatPicker from '@/components/CoatPicker.astro';
+import Logo from '@/components/Logo.astro';
 
 const lang = getLangFromUrl(Astro.url);
 const t = useTranslations(lang);
 const other = lang === 'en' ? 'fr' : 'en';
 
 const links = [
-  { href: getLocalizedPath(lang, '#what'), label: t('nav.what') },
-  { href: getLocalizedPath(lang, '#free'), label: t('nav.free') },
-  { href: getLocalizedPath(lang, '#companion'), label: t('nav.companion') },
-  { href: lang === 'fr' ? '/fr/manuel' : '/manual', label: t('nav.manual') },
+  { href: getLocalizedPath(lang, '#how'), label: t('nav.how') },
+  { href: getLocalizedPath(lang, '#features'), label: t('nav.features') },
+  { href: getLocalizedPath(lang, '#privacy'), label: t('nav.privacy') },
+  { href: getLocalizedPath(lang, '#faq'), label: t('nav.faq') },
 ];
 ---
 
-<header class="sticky top-0 z-50 border-b border-line bg-bg/85 backdrop-blur-md">
-  <nav class="wrap flex items-center justify-between gap-4 py-3" aria-label="TTP">
-    <a href={getLocalizedPath(lang)} class="flex items-center gap-2 text-[1.05rem] font-semibold tracking-tight">
-      {/* The wordmark blinks. It is the cheapest possible demonstration that
-          the face is a real thing with a real clock, and it costs one 16px
-          SVG and two setTimeouts. */}
-      <span class="text-accent"><CompanionFace variety="house" uid="nav" size={18} auto /></span>
-      <span>TTP</span>
+<header class="sticky top-0 z-50" data-nav>
+  <div class="nav-backdrop absolute inset-0 -z-10 border-b border-transparent transition-[background-color,border-color] duration-200"></div>
+  <nav class="wrap flex h-16 items-center justify-between gap-4" aria-label="TTP">
+    <a href={getLocalizedPath(lang)} class="text-[1.3rem] text-text" aria-label="TTP">
+      <Logo />
     </a>
 
-    <div class="hidden items-center gap-6 md:flex">
+    <div class="hidden items-center gap-1 md:flex">
       {links.map((l) => (
-        <a href={l.href} class="text-sm text-muted transition-colors hover:text-text">{l.label}</a>
+        <a href={l.href} class="rounded-full px-3.5 py-2 text-sm text-muted transition-colors hover:text-text">{l.label}</a>
       ))}
     </div>
 
     <div class="flex items-center gap-2">
-      <CoatPicker lang={lang} />
-
-      <button
-        type="button"
-        data-appearance-toggle
-        class="grid h-9 w-9 place-items-center rounded-[var(--r-sm)] border border-line text-muted transition-colors hover:text-text"
-        aria-label={t('nav.appearance')}
-        title={t('nav.appearance')}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" data-icon-light>
-          <circle cx="12" cy="12" r="4" />
-          <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke-linecap="round" />
-        </svg>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" data-icon-dark class="hidden">
-          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke-linejoin="round" />
-        </svg>
-      </button>
-
       <a
         href={otherLangPath(Astro.url, other)}
         data-lang-switch={other}
         hreflang={other}
-        class="hidden rounded-[var(--r-sm)] border border-line px-2.5 py-1.5 text-xs font-medium text-muted transition-colors hover:text-text sm:block"
+        class="hidden rounded-full px-3 py-2 text-sm text-muted transition-colors hover:text-text sm:block"
       >
-        {languages[other]}
+        {other.toUpperCase()}
+        <span class="sr-only">{languages[other]}</span>
       </a>
 
-      <a href={getLocalizedPath(lang, '#install')} class="btn btn-primary hidden !py-2 !text-sm md:inline-flex">
+      <a href={getLocalizedPath(lang, '#download')} class="btn btn-primary btn-sm">
         {t('nav.download')}
       </a>
 
@@ -69,75 +48,52 @@ const links = [
         data-menu-toggle
         aria-expanded="false"
         aria-controls="mobile-nav"
-        class="grid h-9 w-9 place-items-center rounded-[var(--r-sm)] border border-line text-muted md:hidden"
+        class="grid h-9 w-9 place-items-center rounded-full border border-line text-muted md:hidden"
         aria-label={t('nav.menu')}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-          <path d="M4 7h16M4 12h16M4 17h16" stroke-linecap="round" />
+          <path d="M4 8h16M4 16h16" stroke-linecap="round" />
         </svg>
       </button>
     </div>
   </nav>
 
-  <div id="mobile-nav" hidden class="border-t border-line md:hidden">
-    <div class="wrap flex flex-col gap-1 py-3">
+  <div id="mobile-nav" hidden class="border-b border-line bg-bg md:hidden">
+    <div class="wrap flex flex-col py-2">
       {links.map((l) => (
-        <a href={l.href} class="rounded-[var(--r-sm)] px-2 py-2 text-sm text-muted hover:bg-raised hover:text-text">{l.label}</a>
+        <a href={l.href} class="border-b border-line py-3.5 text-[0.9375rem] text-text last:border-b-0" data-close-menu>{l.label}</a>
       ))}
-      <a href={getLocalizedPath(lang, '#install')} class="rounded-[var(--r-sm)] px-2 py-2 text-sm font-semibold text-accent">
-        {t('nav.download')}
-      </a>
-      <a href={otherLangPath(Astro.url, other)} data-lang-switch={other} class="rounded-[var(--r-sm)] px-2 py-2 text-sm text-muted">
+      <a href={otherLangPath(Astro.url, other)} data-lang-switch={other} class="py-3.5 text-[0.9375rem] text-muted">
         {languages[other]}
       </a>
     </div>
   </div>
 </header>
 
+<style>
+  [data-nav][data-scrolled] .nav-backdrop {
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    border-color: var(--line-c);
+    backdrop-filter: blur(16px) saturate(170%);
+    -webkit-backdrop-filter: blur(16px) saturate(170%);
+  }
+</style>
+
 <script>
+  const nav = document.querySelector<HTMLElement>('[data-nav]');
   const toggle = document.querySelector<HTMLButtonElement>('[data-menu-toggle]');
   const panel = document.getElementById('mobile-nav');
-  toggle?.addEventListener('click', () => {
-    const open = toggle.getAttribute('aria-expanded') === 'true';
-    toggle.setAttribute('aria-expanded', String(!open));
-    if (panel) panel.hidden = open;
-  });
 
-  document.querySelectorAll<HTMLAnchorElement>('[data-lang-switch]').forEach((el) => {
-    el.addEventListener('click', () => {
-      try { localStorage.setItem('lang', el.dataset.langSwitch as string); } catch {}
-    });
-  });
-
-  /* Appearance. Three states, cycled in the order a person expects: whatever
-     the system says → the opposite of what they are looking at → back to the
-     system. The attribute is what the stylesheet reads; localStorage is only
-     how it survives a reload. */
-  const root = document.documentElement;
-  const appearanceButton = document.querySelector<HTMLButtonElement>('[data-appearance-toggle]');
-  const sun = document.querySelector<SVGElement>('[data-icon-light]');
-  const moon = document.querySelector<SVGElement>('[data-icon-dark]');
-
-  function isDark() {
-    const set = root.getAttribute('data-appearance');
-    if (set === 'dark') return true;
-    if (set === 'light') return false;
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  function setMenu(open: boolean) {
+    toggle?.setAttribute('aria-expanded', String(open));
+    if (panel) panel.hidden = !open;
   }
+  toggle?.addEventListener('click', () => setMenu(toggle.getAttribute('aria-expanded') !== 'true'));
+  document.querySelectorAll('[data-close-menu]').forEach((a) => a.addEventListener('click', () => setMenu(false)));
 
-  function syncIcon() {
-    const dark = isDark();
-    sun?.classList.toggle('hidden', dark);
-    moon?.classList.toggle('hidden', !dark);
-  }
-
-  appearanceButton?.addEventListener('click', () => {
-    const next = isDark() ? 'light' : 'dark';
-    root.setAttribute('data-appearance', next);
-    try { localStorage.setItem('ttp-appearance', next); } catch {}
-    syncIcon();
-  });
-
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncIcon);
-  syncIcon();
+  /* The bar gains its backdrop once the page has moved. Passive listener,
+     read-only: it never scrolls anything. */
+  const sync = () => nav?.toggleAttribute('data-scrolled', window.scrollY > 8);
+  window.addEventListener('scroll', sync, { passive: true });
+  sync();
 </script>

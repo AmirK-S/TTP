@@ -1,0 +1,38 @@
+---
+/**
+ * The home page, shared by `/` and `/fr/`.
+ *
+ * Order is the argument: show it working, show how little there is to learn,
+ * show everything it does, admit the one piece of setup, say where the voice
+ * goes, then who asks for these permissions and why it is free.
+ */
+import Navbar from '@/components/Navbar.astro';
+import Footer from '@/components/Footer.astro';
+import Hero from '@/components/sections/Hero.astro';
+import How from '@/components/sections/How.astro';
+import Features from '@/components/sections/Features.astro';
+import Setup from '@/components/sections/Setup.astro';
+import Privacy from '@/components/sections/Privacy.astro';
+import Maker from '@/components/sections/Maker.astro';
+import Faq from '@/components/sections/Faq.astro';
+import FinalCta from '@/components/sections/FinalCta.astro';
+import { getLangFromUrl } from '@/i18n/utils';
+import { fetchGitHubData } from '@/lib/github';
+
+const lang = getLangFromUrl(Astro.url);
+const { downloadLinks, changelog } = await fetchGitHubData();
+const version = changelog.find((r) => !/-/.test(r.tag_name))?.tag_name?.replace(/^v/, '') ?? '3.2.1';
+---
+
+<Navbar />
+<main id="main">
+  <Hero lang={lang} macUrl={downloadLinks.mac} macIntelUrl={downloadLinks.macIntel} version={version} />
+  <How lang={lang} />
+  <Features lang={lang} version={version} />
+  <Setup lang={lang} />
+  <Privacy lang={lang} />
+  <Maker lang={lang} />
+  <Faq lang={lang} />
+  <FinalCta lang={lang} macUrl={downloadLinks.mac} macIntelUrl={downloadLinks.macIntel} version={version} />
+</main>
+<Footer />

@@ -1,0 +1,9 @@
+---
+/** The wordmark from the app icon: TTP with its blue dot. */
+interface Props { class?: string }
+const { class: className = '' } = Astro.props;
+---
+
+<span class:list={['relative inline-flex items-baseline font-[750] tracking-[-0.045em] leading-none', className]}>
+  TTP<span aria-hidden="true" class="absolute -right-[0.34em] top-[-0.08em] h-[0.3em] w-[0.3em] rounded-full bg-[#4c8bf5]"></span>
+</span>
