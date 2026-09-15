@@ -678,14 +678,16 @@ used to be on this list have moved off it — `vad.*`, `settings.snapshot`,
 
 What remains:
 
-- **The frontend.** The JS side drives `stop_recording` → `process_audio`. An
-  exception in that handoff leaves `capture.stop` with no `dictation.start`
-  after it. That gap is visible, but the reason for it is not. This is still
-  the one shape the trace can only bound, not explain, and it is the largest
-  remaining hole: nothing in `src/` writes to the trace.
-- **When a setting changed.** `settings.snapshot` now records the
-  configuration each dictation ran under, so two dictations can be compared —
-  but the trace still does not record the moment a user flipped a switch.
+- **The frontend, partly.** Since 2026-09-15 the JS side writes `ui.*`
+  records through `trace_api::trace_ui`: `ui.error` and
+  `ui.unhandled_rejection` for anything uncaught in any window, and
+  `ui.recording.start_failed` / `stop_failed` / `process_failed` /
+  `too_short` around the handoff to Rust. What is still dark is a frontend
+  that fails silently — a handler that never runs, rather than one that
+  throws.
+- **Setting changes are now covered.** `settings.changed` lists the keys each
+  write changed (values for booleans, numbers and short slugs; `"changed"`
+  for the rest).
 - **Anything before the panic hook is installed.** That is now the boundary,
   not `app.launched`: the hook goes in ahead of `tauri::Builder`, so a panic
   during Tauri `setup()` leaves an `app.panic` line even though no

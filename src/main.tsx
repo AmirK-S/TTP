@@ -9,6 +9,7 @@
 //   - i18n is initialised synchronously from the system locale, so first
 //     paint never waits on IPC. Language and appearance both follow macOS.
 
+import { installUiErrorTrace } from './lib/traceUi';
 import React, { Suspense, lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -92,6 +93,7 @@ function main() {
   }
 
   const windowLabel = isPreview ? previewLabel : getCurrentWebviewWindow().label;
+  if (!isPreview && windowLabel) installUiErrorTrace(windowLabel);
 
   const rootElement = document.getElementById('root') as HTMLElement;
 

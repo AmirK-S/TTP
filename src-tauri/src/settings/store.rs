@@ -454,8 +454,10 @@ pub fn set_settings(settings: serde_json::Value, app: AppHandle) -> Result<(), S
     // Merge over the stored value. `get_settings()` is the cache, and the
     // cache is refreshed on every write, so it holds exactly what this call
     // is about to replace.
-    let (settings, unknown) = merge_payload(&get_settings(), &settings)?;
+    let before = get_settings();
+    let (settings, unknown) = merge_payload(&before, &settings)?;
     report_unknown_fields(&unknown);
+    crate::trace::event("settings.changed", changed_settings(&before, &settings));
 
     write_settings_atomic(&path, &settings)?;
 
@@ -474,6 +476,33 @@ pub fn set_settings(settings: serde_json::Value, app: AppHandle) -> Result<(), S
     app.emit("settings-changed", &settings).ok();
 
     Ok(())
+}
+
+/// Which settings a write changed, and to what.
+///
+/// `settings.snapshot` says what each dictation ran under; this says when a
+/// switch was flipped, the other half docs/tracing.md listed as missing.
+/// Booleans, numbers and short slugs are written as values; anything else
+/// (the microphone's name, a trigger object) only as `"changed"`.
+pub fn changed_settings(before: &Settings, after: &Settings) -> serde_json::Value {
+    let (Ok(serde_json::Value::Object(old)), Ok(serde_json::Value::Object(new))) =
+        (serde_json::to_value(before), serde_json::to_value(after))
+    else {
+        return serde_json::json!({});
+    };
+    let mut changed = serde_json::Map::new();
+    for (key, value) in &new {
+        if old.get(key) == Some(value) {
+            continue;
+        }
+        let shown = match value {
+            serde_json::Value::Bool(_) | serde_json::Value::Number(_) | serde_json::Value::Null => value.clone(),
+            serde_json::Value::String(s) if s.len() <= 16 && key != "audio_device_name" => value.clone(),
+            _ => serde_json::Value::String("changed".into()),
+        };
+        changed.insert(key.clone(), shown);
+    }
+    serde_json::json!({ "changed": changed })
 }
 
 /// Reset settings to defaults by deleting the settings file
@@ -754,5 +783,22 @@ mod payload_merge_tests {
         assert!(names.contains("sound_pack"));
         assert!(names.contains("ai_polish_enabled"));
         assert!(!names.contains("unknown"), "the catch-all map is not itself a field");
+    }
+}
+
+#[cfg(test)]
+mod settings_changed_tests {
+    use super::*;
+
+    #[test]
+    fn a_change_names_the_key_and_hides_long_values() {
+        let before = Settings::default();
+        let mut after = before.clone();
+        after.screen_context_enabled = true;
+        after.audio_device_name = Some("AirPods de Amir".into());
+        let changed = changed_settings(&before, &after);
+        assert_eq!(changed["changed"]["screen_context_enabled"], serde_json::json!(true));
+        assert_eq!(changed["changed"]["audio_device_name"], serde_json::json!("changed"));
+        assert!(changed["changed"].get("history_enabled").is_none());
     }
 }

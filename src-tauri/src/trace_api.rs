@@ -317,6 +317,46 @@ pub fn trace_recent_events(limit: Option<usize>, stage_prefix: Option<String>) -
     events
 }
 
+/// Let the frontend write to the trace.
+///
+/// docs/tracing.md named this the largest remaining hole: nothing in `src/`
+/// wrote to the trace, so a failure in the JS handoff between `capture.stop`
+/// and `dictation.start` left a gap with no reason. The frontend now reports
+/// its errors and the recordings it drops through here. The stage must be a
+/// `ui.` slug, `"text"` fields are removed whatever the caller sends, and
+/// every string is capped, so this cannot become a way to put dictated words
+/// or a page of prose into the file.
+#[tauri::command]
+pub fn trace_ui(stage: String, fields: Value) {
+    if !valid_ui_stage(&stage) {
+        return;
+    }
+    let mut fields = if fields.is_object() { fields } else { json!({}) };
+    crate::problem_report::strip_text(&mut fields);
+    cap_strings(&mut fields, UI_STRING_MAX);
+    crate::trace::event(&stage, fields);
+}
+
+fn valid_ui_stage(stage: &str) -> bool {
+    stage.starts_with("ui.")
+        && stage.len() <= 48
+        && stage.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_')
+}
+
+/// Longest string a `ui.` record may carry.
+const UI_STRING_MAX: usize = 200;
+
+fn cap_strings(value: &mut Value, max: usize) {
+    match value {
+        Value::String(s) if s.chars().count() > max => {
+            *s = s.chars().take(max).collect();
+        }
+        Value::Object(map) => map.values_mut().for_each(|v| cap_strings(v, max)),
+        Value::Array(items) => items.iter_mut().for_each(|v| cap_strings(v, max)),
+        _ => {}
+    }
+}
+
 /// Turn the live channel on or off.
 ///
 /// Off by default and off again on unmount: a viewer nobody is looking at
@@ -567,5 +607,26 @@ mod tests {
         assert_eq!(clamp_limit(Some(0)), 1);
         assert_eq!(clamp_limit(Some(10_000)), MAX_LIMIT);
         assert_eq!(clamp_limit(Some(7)), 7);
+    }
+}
+
+#[cfg(test)]
+mod ui_trace_tests {
+    use super::*;
+
+    #[test]
+    fn only_ui_slugs_are_accepted() {
+        assert!(valid_ui_stage("ui.recording.too_short"));
+        assert!(!valid_ui_stage("paste.result"));
+        assert!(!valid_ui_stage("ui.Error"));
+        assert!(!valid_ui_stage("ui.a b"));
+    }
+
+    #[test]
+    fn long_strings_are_capped() {
+        let mut v = json!({ "error": "x".repeat(500), "nested": [ "y".repeat(300) ] });
+        cap_strings(&mut v, UI_STRING_MAX);
+        assert_eq!(v["error"].as_str().unwrap().chars().count(), UI_STRING_MAX);
+        assert_eq!(v["nested"][0].as_str().unwrap().chars().count(), UI_STRING_MAX);
     }
 }

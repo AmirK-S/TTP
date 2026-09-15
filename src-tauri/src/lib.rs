@@ -1188,6 +1188,7 @@ pub fn run() {
             trace_api::trace_set_live,
             trace_api::trace_status,
             problem_report::report_problem,
+            trace_api::trace_ui,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

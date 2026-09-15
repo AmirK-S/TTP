@@ -7,6 +7,7 @@
 // Hooks into the recording-state-changed events from Rust and
 // starts/stops capture accordingly.
 
+import { traceUi } from '../lib/traceUi';
 import { invoke } from '@tauri-apps/api/core';
 
 const startRecording = () => invoke<void>('start_recording');
@@ -53,6 +54,7 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
       isRecordingRef.current = false;
       recordingStartTime.current = null;
       const errorMsg = String(error);
+      traceUi('recording.start_failed', { error: errorMsg });
       // Surface the failure to FloatingBar via the same event the Rust pipeline uses,
       // so the user always sees feedback even when no `onError` handler is wired.
       //
@@ -86,6 +88,9 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
 
       // Skip very short recordings (< 0.3s) - likely accidental
       if (duration < 0.3) {
+        // Dropped here, before Rust ever sees a dictation: say so, or a press
+        // that recorded nothing is invisible in the trace.
+        traceUi('recording.too_short', { ms: Math.round(duration * 1000) });
         try {
           await stopRecording(); // Still need to stop the recorder
         } catch {
@@ -106,10 +111,12 @@ export function useRecordingControl(options: UseRecordingControlOptions = {}) {
       // Trigger transcription pipeline
       invoke('process_audio', { audioPath: filePath })
         .catch((error) => {
+          traceUi('recording.process_failed', { error: String(error) });
           onError?.(String(error));
         });
     } catch (error) {
       recordingStartTime.current = null;
+      traceUi('recording.stop_failed', { error: String(error) });
       onError?.(String(error));
       // Reset Rust state to Idle so the user can record again
       invoke('reset_to_idle').catch(() => {});
