@@ -205,7 +205,7 @@
       "polishLabel": "AI Polish",
       "polishDesc": "Trim filler words and fix grammar with AI.",
       "screenContextLabel": "Use what's on screen",
-      "screenContextDesc": "Reads the text around your cursor to spell names right. Never in password fields.",
+      "screenContextDesc": "To spell names right, TTP sends Groq, with your dictation, the names on screen that sound like what you say. Never passwords.",
       "languageLabel": "Transcription language",
       "languageAuto": "Auto-detect",
       "languageEnglish": "English",
@@ -353,6 +353,8 @@
       "placeholder": "Your words will appear here.",
       "worked": "It works. You can close this window: TTP keeps running in the menu bar.",
       "menuBar": "TTP lives in the menu bar at the top of your screen, with its settings.",
+      "screenLabel": "Use what's on screen",
+      "screenDesc": "To spell names right, TTP sends Groq, with your dictation, the names on screen that sound like what you say. Never passwords.",
       "crashLabel": "Send crash reports",
       "crashDesc": "Only crashes and errors, never your voice or your text. You can change this in Settings → Advanced."
     }

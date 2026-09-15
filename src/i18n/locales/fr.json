@@ -205,7 +205,7 @@
       "polishLabel": "Correction IA",
       "polishDesc": "Retire les hésitations et corrige la grammaire avec l'IA.",
       "screenContextLabel": "Tenir compte de l'écran",
-      "screenContextDesc": "Lit le texte autour du curseur pour bien écrire les noms. Jamais dans les mots de passe.",
+      "screenContextDesc": "Pour bien écrire les noms, TTP envoie à Groq, avec ta dictée, ceux affichés à l'écran qui ressemblent à ce que tu dis. Jamais les mots de passe.",
       "languageLabel": "Langue de transcription",
       "languageAuto": "Auto-détection",
       "languageEnglish": "Anglais",
@@ -353,6 +353,8 @@
       "placeholder": "Tes mots apparaîtront ici.",
       "worked": "Ça marche. Tu peux fermer cette fenêtre : TTP continue de tourner dans la barre de menus.",
       "menuBar": "TTP vit dans la barre de menus en haut de ton écran, avec ses réglages.",
+      "screenLabel": "Tenir compte de l'écran",
+      "screenDesc": "Pour bien écrire les noms, TTP envoie à Groq, avec ta dictée, ceux affichés à l'écran qui ressemblent à ce que tu dis. Jamais les mots de passe.",
       "crashLabel": "Envoyer les rapports de plantage",
       "crashDesc": "Seulement les plantages et les erreurs, jamais ta voix ni ton texte. Modifiable dans Réglages → Avancé."
     }

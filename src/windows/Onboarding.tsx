@@ -425,6 +425,19 @@ function TryStep() {
   // payload: `set_settings` merges it, and this window's store was never
   // loaded, so a full save from it would reset everything else.
   const [crashReports, setCrashReports] = useState(false);
+  // On by default, but stated here, in the setup, before the first dictation
+  // sends anything: what leaves the Mac and where it goes.
+  const [screenContext, setScreenContext] = useState(true);
+  useEffect(() => {
+    invoke<{ screen_context_enabled?: boolean }>('get_settings')
+      .then((s) => setScreenContext(s.screen_context_enabled ?? true))
+      .catch(() => {});
+  }, []);
+  const handleScreenContext = async (enabled: boolean) => {
+    setScreenContext(enabled);
+    try { await invoke('set_settings', { settings: { screen_context_enabled: enabled } }); }
+    catch (e) { console.error('Failed to save screen_context_enabled:', e); setScreenContext(!enabled); }
+  };
   const handleCrashReports = async (enabled: boolean) => {
     setCrashReports(enabled);
     try { await invoke('set_settings', { settings: { telemetry_enabled: enabled } }); }
@@ -465,6 +478,19 @@ function TryStep() {
       )}
 
       <div className="mt-6 flex items-start justify-between gap-4 border-t border-app-border pt-4">
+        <div>
+          <p className="text-[13px] font-medium text-app-text">{t('onboarding.try.screenLabel')}</p>
+          <p className="mt-0.5 text-[12px] text-app-muted leading-relaxed">{t('onboarding.try.screenDesc')}</p>
+        </div>
+        <Toggle
+          size="sm"
+          enabled={screenContext}
+          onChange={handleScreenContext}
+          aria-label={t('onboarding.try.screenLabel')}
+        />
+      </div>
+
+      <div className="mt-4 flex items-start justify-between gap-4">
         <div>
           <p className="text-[13px] font-medium text-app-text">{t('onboarding.try.crashLabel')}</p>
           <p className="mt-0.5 text-[12px] text-app-muted leading-relaxed">{t('onboarding.try.crashDesc')}</p>
