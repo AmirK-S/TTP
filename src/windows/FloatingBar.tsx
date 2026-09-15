@@ -19,7 +19,7 @@ import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, Check, CheckCheck } from 'lucide-react';
+import { AlertCircle, CheckCheck } from 'lucide-react';
 import { safeInvoke } from '../lib/safeInvoke';
 import { translateRustMessage } from '../lib/translateRustMessage';
 import { useRecordingState } from '../hooks/useRecordingState';
@@ -385,12 +385,10 @@ export function FloatingBar() {
 }
 
 /**
- * The mark the completion frame draws, and the only place the four outcomes
- * differ visually.
+ * The mark the completion frame draws: a double tick for any paste that
+ * went out, an alert where text is missing.
  *
- * `arrived` pops and `sent` fades: a paste we watched arrive is acknowledged,
- * a paste we merely posted is not. Both
- * animations are single-shot CSS on a 14px glyph — no RAF, nothing that
+ * `arrived` pops and `alert` fades. Both animations are single-shot CSS on a 14px glyph — no RAF, nothing that
  * outlives the frame — and `src/index.css`'s `prefers-reduced-motion` block
  * clamps them to 0.01 ms. The `reducedMotion` prop drops the class outright
  * rather than relying on that; the states survive, only the motion goes.
@@ -410,23 +408,11 @@ function CompletionMark({
       />
     );
   }
-  if (mark === 'arrived') {
-    return (
-      <CheckCheck
-        className={cn('size-4 shrink-0 text-white', !reducedMotion && 'anim-check-pop')}
-        aria-hidden
-        data-ttp-mark="arrived"
-      />
-    );
-  }
-  /* One tick, at the caption's weight. It is the same ink as the words beside
-     it because it means the same thing they do, and because a full-strength
-     mark next to a 70% line reads as an alert badge with an excuse attached. */
   return (
-    <Check
-      className={cn('size-4 shrink-0 text-white/70', !reducedMotion && 'anim-fade-in')}
+    <CheckCheck
+      className={cn('size-4 shrink-0 text-white', !reducedMotion && 'anim-check-pop')}
       aria-hidden
-      data-ttp-mark="sent"
+      data-ttp-mark="arrived"
     />
   );
 }

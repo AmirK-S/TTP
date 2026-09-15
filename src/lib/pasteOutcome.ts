@@ -28,9 +28,12 @@
 //   * `pasted` — the text is in front of them and we watched it arrive. A
 //     mark, no words. Claiming success out loud on the happy path is the same
 //     self-congratulation the trace just had removed from it.
-//   * `pasted_unverified` — a mark that reads differently, plus four quiet
-//     words in the pill's ordinary colour. Nothing to do, nothing to dismiss,
-//     gone in a second and a half.
+//   * `pasted_unverified` — drawn exactly like `pasted`. It used to get a
+//     single tick and "Sent — not confirmed"; Amir, 2026-09-15, did not know
+//     what the three endings meant and decided: "si on n'a pas eu de
+//     vérification, on s'en fout". Nothing in it is actionable, so the pill
+//     no longer tells it apart. The live region still does, and the trace
+//     keeps `verification` for anyone who needs the difference.
 //   * `paste_swallowed` — rare, and their words did not arrive. This one gets
 //     the tremble, the warning colour, and the sentence that says where the
 //     text still is.
@@ -76,7 +79,7 @@ export function asPasteOutcome(value: unknown): PasteOutcome | null {
 }
 
 /** Which mark the pill draws. */
-export type OutcomeMark = 'sent' | 'arrived' | 'alert';
+export type OutcomeMark = 'arrived' | 'alert';
 
 export interface OutcomeTreatment {
   mark: OutcomeMark;
@@ -115,15 +118,14 @@ const TREATMENTS: Record<PasteOutcome, OutcomeTreatment> = {
     tone: 'active',
     holdMs: 800,
   },
-  // Single tick and four words, in the pill's ordinary ink at 70% — a caption,
-  // not a warning. 1500 ms because four words need reading and this is the one
-  // state whose whole job is to be read.
+  // Same frame as `pasted` (see the header). Only the screen-reader sentence
+  // differs, because that user cannot look at the field to check.
   pasted_unverified: {
-    mark: 'sent',
-    line: 'floatingBar.outcome.unverified',
+    mark: 'arrived',
+    line: null,
     announcement: 'floatingBar.outcome.unverifiedAnnouncement',
     tone: 'active',
-    holdMs: 1500,
+    holdMs: 800,
   },
   // The rare one, and the only one where the user has lost something. Same
   // 4 s the error frame has always used, because it is the same class of

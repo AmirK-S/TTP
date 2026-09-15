@@ -70,7 +70,7 @@ describe('proportion', () => {
     // FloatingBar, no tremble. This is the common case and nothing went
     // wrong in it.
     expect(t.tone).toBe('active');
-    expect(t.mark).toBe('sent');
+    expect(t.mark).toBe('arrived');
   });
 
   it('says nothing out loud when it watched the text arrive', () => {
@@ -80,8 +80,12 @@ describe('proportion', () => {
     expect(treatmentFor('pasted').line).toBeNull();
   });
 
-  it('gives the unverified state words, because a glyph alone would conceal', () => {
-    expect(treatmentFor('pasted_unverified').line).not.toBeNull();
+  it('draws an unverified paste exactly like an observed one', () => {
+    // Decided 2026-09-15: nothing about it is actionable, and three endings
+    // were two too many to read. Red stays for text that is missing.
+    const { announcement: _a, ...unverified } = treatmentFor('pasted_unverified');
+    const { announcement: _b, ...pasted } = treatmentFor('pasted');
+    expect(unverified).toEqual(pasted);
   });
 
   it('reserves the danger tone for the two states where text is missing', () => {
@@ -92,8 +96,8 @@ describe('proportion', () => {
   it('keeps every frame short, and the quiet ones shortest', () => {
     const hold = (o: PasteOutcome) => treatmentFor(o).holdMs;
     // Ordered by how much there is to read, not by how bad it is.
-    expect(hold('pasted')).toBeLessThan(hold('pasted_unverified'));
-    expect(hold('pasted_unverified')).toBeLessThan(hold('paste_swallowed'));
+    expect(hold('pasted_unverified')).toBe(hold('pasted'));
+    expect(hold('pasted')).toBeLessThan(hold('paste_swallowed'));
     // Nothing lingers. A frame that outstayed the next hotkey press would be
     // a state the user has to wait out, which is a demand.
     expect(hold('pasted_unverified')).toBeLessThanOrEqual(1500);

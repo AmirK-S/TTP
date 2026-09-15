@@ -370,7 +370,6 @@
     "handsFreeIndicatorLabel": "Mode mains libres, un seul tap pour arrêter",
     "deadInput": "Aucun son — vérifie ton micro",
     "outcome": {
-      "unverified": "Envoyé — non confirmé",
       "unverifiedAnnouncement": "Le texte a été envoyé. Rien n'a confirmé qu'il est arrivé.",
       "arrivedAnnouncement": "Le texte est arrivé.",
       "swallowed": "Rien n'est arrivé — c'est dans Paramètres → Historique",

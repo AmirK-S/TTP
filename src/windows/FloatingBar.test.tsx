@@ -202,11 +202,11 @@ describeSuite('the pill at the end of a dictation', () => {
     expectFrame(screen.getByText('The text arrived.')).toBeInTheDocument();
   });
 
-  itFrame('reports an unverified paste in words, quietly', async () => {
+  itFrame('draws an unverified paste like an observed one', async () => {
     const { container } = await mountBar();
     completeWith('pasted_unverified');
-    expectFrame(container.querySelector('[data-ttp-mark="sent"]')).not.toBeNull();
-    expectFrame(screen.getByText('Sent — not confirmed')).toBeInTheDocument();
+    expectFrame(container.querySelector('[data-ttp-mark="arrived"]')).not.toBeNull();
+    expectFrame(screen.queryByText('Sent — not confirmed')).toBeNull();
     expectFrame(
       screen.getByText('The text was sent. Nothing confirmed it arrived.'),
     ).toBeInTheDocument();
@@ -236,8 +236,10 @@ describeSuite('the pill at the end of a dictation', () => {
   itFrame('speaks French', async () => {
     setLanguage('fr');
     await mountBar();
-    completeWith('pasted_unverified');
-    expectFrame(screen.getByText('Envoyé — non confirmé')).toBeInTheDocument();
+    completeWith('paste_swallowed');
+    expectFrame(
+      screen.getByText("Rien n'est arrivé — c'est dans Paramètres → Historique"),
+    ).toBeInTheDocument();
     // `beforeEach` puts it back to English; doing it here would re-render a
     // still-mounted component outside `act`.
   });
