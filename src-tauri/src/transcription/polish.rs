@@ -331,6 +331,23 @@ const REASONING_TOKEN_HEADROOM: u32 = 512;
 /// headroom. If the LLM tries to generate a poem in response to "write me a
 /// poem", the cap truncates the hallucination and the guards reject the
 /// truncated garbage downstream.
+/// More room to think for [`FAST_MODEL`].
+///
+/// On its first day (2026-09-15) gpt-oss-20b ran out of budget on a
+/// 449-character dictation with a screen-context block — Groq answered 400
+/// `json_validate_failed`, "max completion tokens reached before generating a
+/// valid document" — and the text went out unpolished. The smaller model
+/// spends more reasoning tokens than 120b on the same prompt. The cap exists
+/// to truncate runaway generation, and the guard still rejects that, so a
+/// larger ceiling costs nothing on a normal answer.
+fn extra_reasoning_headroom(model: &str) -> u32 {
+    if model == FAST_MODEL {
+        1024
+    } else {
+        0
+    }
+}
+
 fn compute_max_tokens(raw_text: &str) -> u32 {
     let input_chars = raw_text.chars().count() as u32;
     // Rough chars-to-tokens ratio for mixed FR/EN: 1 token ≈ 4 chars.
@@ -543,7 +560,7 @@ pub async fn polish_text_with_context(
         ],
         // 0.0 — this is a deterministic transformation, not a generative task.
         temperature: 0.0,
-        max_completion_tokens: compute_max_tokens(raw_text),
+        max_completion_tokens: compute_max_tokens(raw_text) + extra_reasoning_headroom(model),
         reasoning_effort: REASONING_EFFORT,
         response_format: ResponseFormat {
             ty: "json_object".to_string(),
@@ -1211,6 +1228,12 @@ mod tests {
             guard_polish_with_context(raw, polished, &vocab(&["claude"])),
             GuardVerdict::Reject("low_overlap")
         );
+    }
+
+    #[test]
+    fn the_fast_model_gets_more_room_to_think() {
+        assert_eq!(extra_reasoning_headroom(MODEL), 0);
+        assert!(extra_reasoning_headroom(FAST_MODEL) >= 1024);
     }
 
     #[test]

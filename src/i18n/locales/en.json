@@ -351,14 +351,24 @@
       "apiKeySubtitle": "Free transcription API. Groq's free tier covers tens of thousands of dictations per month.",
       "stepIndicatorLabel": "Step {{current}} of {{total}}"
     },
+    "screen": {
+      "title": "Spell names right using your screen?",
+      "subtitle": "TTP can look at the text around your cursor to write names the way they appear on screen.",
+      "exampleSaid": "You say “we launch cloud code”, and “Claude Code” is on screen.",
+      "exampleResult": "TTP writes: “We launch Claude Code.”",
+      "sentLabel": "What goes to Groq, with your dictation:",
+      "sentBody": "only the names on screen that sound like what you say, and the sentence you are continuing.",
+      "never": "Never password fields or password managers. TTP keeps nothing from your screen.",
+      "later": "You can change your mind in Settings → Dictation.",
+      "yes": "Turn on",
+      "no": "No thanks"
+    },
     "try": {
       "title": "Try it",
       "subtitle": "Click in the box, hold {{key}}, say a sentence, then let go.",
       "placeholder": "Your words will appear here.",
       "worked": "It works. You can close this window: TTP keeps running in the menu bar.",
       "menuBar": "TTP lives in the menu bar at the top of your screen, with its settings.",
-      "screenLabel": "Use what's on screen",
-      "screenDesc": "To spell names right, TTP sends Groq, with your dictation, the names on screen that sound like what you say. Never passwords.",
       "crashLabel": "Send crash reports",
       "crashDesc": "Only crashes and errors, never your voice or your text. You can change this in Settings → Advanced."
     }

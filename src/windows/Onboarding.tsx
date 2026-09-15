@@ -19,6 +19,8 @@ import {
   ChevronLeft,
   ExternalLink,
   Sparkles,
+  ScanText,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button, Card, BrandTile, Toggle } from '../components/ui';
 import { ApiKeyForm } from '../components/ApiKeyForm';
@@ -29,9 +31,9 @@ import { useTrigger } from '../hooks/useTrigger';
 
 type PermissionStatus = 'Granted' | 'Denied' | 'Undetermined';
 type PermKey = 'microphone' | 'accessibility' | 'inputMonitoring';
-type StepIndex = 0 | 1 | 2;
+type StepIndex = 0 | 1 | 2 | 3;
 
-const TOTAL_STEPS = 3;
+const TOTAL_STEPS = 4;
 const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.startsWith('Mac');
 
 const SETTINGS_COMMAND: Record<PermKey, string> = {
@@ -53,7 +55,7 @@ export default function Onboarding() {
     if (typeof window === 'undefined') return 0;
     const p = new URLSearchParams(window.location.search).get('step');
     const n = p ? Number(p) : NaN;
-    return n >= 0 && n <= 2 ? (n as StepIndex) : 0;
+    return n >= 0 && n <= 3 ? (n as StepIndex) : 0;
   })();
   const [step, setStep] = useState<StepIndex>(initialStep);
   // `?trial=1` forces the post-save success view for screenshots.
@@ -170,7 +172,7 @@ export default function Onboarding() {
   };
 
   const micGranted = permStatus.microphone === 'Granted';
-  const advance = () => setStep((s) => Math.min(2, s + 1) as StepIndex);
+  const advance = () => setStep((s) => Math.min(3, s + 1) as StepIndex);
   const back = () => setStep((s) => Math.max(0, s - 1) as StepIndex);
 
   return (
@@ -193,7 +195,8 @@ export default function Onboarding() {
           {step === 1 && (
             <ApiKeyStep hasApiKey={hasApiKey} onSaved={() => setHasApiKey(true)} />
           )}
-          {step === 2 && <TryStep />}
+          {step === 2 && <ScreenStep onChosen={advance} />}
+          {step === 3 && <TryStep />}
         </div>
       </div>
 
@@ -227,7 +230,7 @@ export default function Onboarding() {
                 {t('onboarding.wizard.next')}
               </Button>
             )}
-            {step === 2 && (
+            {step === 3 && (
               <Button size="md" onClick={finish}>
                 {t('onboarding.wizard.finish')}
               </Button>
@@ -417,6 +420,66 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
  * into itself and the user watches their own words arrive — the one proof
  * that permissions, key and trigger are all right.
  */
+/* ------------------------- Step 2: Screen context ------------------------- */
+
+/**
+ * An explicit yes or no, on its own page, before the first dictation.
+ *
+ * Reading the screen sends some of what is on it to a third party, so it is
+ * off until the user chooses it here (the setting defaults to false) and the
+ * page says what goes, where, and what never does. There is no Next button on
+ * this step: one of the two answers is the way forward. Amir, 2026-09-15:
+ * "on leur demande quand même s'ils veulent ou pas, et on leur explique".
+ */
+function ScreenStep({ onChosen }: { onChosen: () => void }) {
+  const { t } = useTranslation();
+  const [saving, setSaving] = useState(false);
+
+  const choose = async (enabled: boolean) => {
+    setSaving(true);
+    try { await invoke('set_settings', { settings: { screen_context_enabled: enabled } }); }
+    catch (e) { console.error('Failed to save screen_context_enabled:', e); }
+    finally { setSaving(false); onChosen(); }
+  };
+
+  return (
+    <section className="anim-fade-up">
+      <div className="mb-5 size-10 rounded-app-md grid place-items-center bg-app-accent-tint text-app-accent">
+        <ScanText className="size-5" strokeWidth={1.75} aria-hidden />
+      </div>
+      <h2 className="text-display-sm text-app-text">{t('onboarding.screen.title')}</h2>
+      <p className="mt-2 text-[13px] text-app-muted leading-relaxed">{t('onboarding.screen.subtitle')}</p>
+
+      <Card elevation="sm" className="mt-6 px-5 py-4">
+        <p className="text-[12px] text-app-muted">{t('onboarding.screen.exampleSaid')}</p>
+        <p className="mt-1 text-[13px] text-app-text">{t('onboarding.screen.exampleResult')}</p>
+      </Card>
+
+      <ul className="mt-5 space-y-2.5 text-[12.5px] leading-relaxed">
+        <li className="text-app-text">
+          <span className="font-medium">{t('onboarding.screen.sentLabel')}</span> {t('onboarding.screen.sentBody')}
+        </li>
+        <li className="flex gap-2 text-app-text">
+          <ShieldCheck className="size-4 mt-0.5 shrink-0 text-app-success" aria-hidden />
+          <span>{t('onboarding.screen.never')}</span>
+        </li>
+        <li className="text-app-muted">{t('onboarding.screen.later')}</li>
+      </ul>
+
+      <div className="mt-7 flex flex-wrap gap-2">
+        <Button size="md" onClick={() => choose(true)} disabled={saving}>
+          {t('onboarding.screen.yes')}
+        </Button>
+        <Button size="md" variant="secondary" onClick={() => choose(false)} disabled={saving}>
+          {t('onboarding.screen.no')}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+/* ------------------------------ Step 3: Try ------------------------------- */
+
 function TryStep() {
   const { t } = useTranslation();
   const { label } = useTrigger();
@@ -425,19 +488,6 @@ function TryStep() {
   // payload: `set_settings` merges it, and this window's store was never
   // loaded, so a full save from it would reset everything else.
   const [crashReports, setCrashReports] = useState(false);
-  // On by default, but stated here, in the setup, before the first dictation
-  // sends anything: what leaves the Mac and where it goes.
-  const [screenContext, setScreenContext] = useState(true);
-  useEffect(() => {
-    invoke<{ screen_context_enabled?: boolean }>('get_settings')
-      .then((s) => setScreenContext(s.screen_context_enabled ?? true))
-      .catch(() => {});
-  }, []);
-  const handleScreenContext = async (enabled: boolean) => {
-    setScreenContext(enabled);
-    try { await invoke('set_settings', { settings: { screen_context_enabled: enabled } }); }
-    catch (e) { console.error('Failed to save screen_context_enabled:', e); setScreenContext(!enabled); }
-  };
   const handleCrashReports = async (enabled: boolean) => {
     setCrashReports(enabled);
     try { await invoke('set_settings', { settings: { telemetry_enabled: enabled } }); }
@@ -478,19 +528,6 @@ function TryStep() {
       )}
 
       <div className="mt-6 flex items-start justify-between gap-4 border-t border-app-border pt-4">
-        <div>
-          <p className="text-[13px] font-medium text-app-text">{t('onboarding.try.screenLabel')}</p>
-          <p className="mt-0.5 text-[12px] text-app-muted leading-relaxed">{t('onboarding.try.screenDesc')}</p>
-        </div>
-        <Toggle
-          size="sm"
-          enabled={screenContext}
-          onChange={handleScreenContext}
-          aria-label={t('onboarding.try.screenLabel')}
-        />
-      </div>
-
-      <div className="mt-4 flex items-start justify-between gap-4">
         <div>
           <p className="text-[13px] font-medium text-app-text">{t('onboarding.try.crashLabel')}</p>
           <p className="mt-0.5 text-[12px] text-app-muted leading-relaxed">{t('onboarding.try.crashDesc')}</p>

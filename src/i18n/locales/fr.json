@@ -351,14 +351,24 @@
       "apiKeySubtitle": "API de transcription gratuite. Le tier gratuit de Groq couvre des dizaines de milliers de dictées par mois.",
       "stepIndicatorLabel": "Étape {{current}} sur {{total}}"
     },
+    "screen": {
+      "title": "Bien écrire les noms grâce à ton écran ?",
+      "subtitle": "TTP peut regarder le texte affiché autour de ton curseur pour écrire les noms comme ils apparaissent à l'écran.",
+      "exampleSaid": "Tu dis « on lance cloud code », et « Claude Code » est affiché à l'écran.",
+      "exampleResult": "TTP écrit : « On lance Claude Code. »",
+      "sentLabel": "Ce qui part chez Groq, avec ta dictée :",
+      "sentBody": "seulement les noms affichés qui ressemblent à ce que tu dis, et la phrase que tu es en train de continuer.",
+      "never": "Jamais les champs de mot de passe ni les gestionnaires de mots de passe. TTP ne garde rien de ton écran.",
+      "later": "Tu pourras changer d'avis dans Réglages → Dictée.",
+      "yes": "Activer",
+      "no": "Non merci"
+    },
     "try": {
       "title": "Essaie",
       "subtitle": "Clique dans la zone, maintiens {{key}}, dis une phrase, puis relâche.",
       "placeholder": "Tes mots apparaîtront ici.",
       "worked": "Ça marche. Tu peux fermer cette fenêtre : TTP continue de tourner dans la barre de menus.",
       "menuBar": "TTP vit dans la barre de menus en haut de ton écran, avec ses réglages.",
-      "screenLabel": "Tenir compte de l'écran",
-      "screenDesc": "Pour bien écrire les noms, TTP envoie à Groq, avec ta dictée, ceux affichés à l'écran qui ressemblent à ce que tu dis. Jamais les mots de passe.",
       "crashLabel": "Envoyer les rapports de plantage",
       "crashDesc": "Seulement les plantages et les erreurs, jamais ta voix ni ton texte. Modifiable dans Réglages → Avancé."
     }

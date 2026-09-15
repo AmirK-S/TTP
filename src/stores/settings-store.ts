@@ -136,7 +136,7 @@ function applyLicenseInfo(info: LicenseInfo) {
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
   // Initial state
   aiPolishEnabled: true,
-  screenContextEnabled: true,
+  screenContextEnabled: false,
   polishSpeed: 'accurate',
   shortcut: 'Alt+Space',
   fnKeyEnabled: false,
@@ -174,7 +174,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       const settings = await safeInvoke<Settings>('get_settings');
       set({
         aiPolishEnabled: settings.ai_polish_enabled,
-        screenContextEnabled: settings.screen_context_enabled ?? true,
+        screenContextEnabled: settings.screen_context_enabled ?? false,
         polishSpeed: settings.polish_speed ?? 'accurate',
         shortcut: settings.shortcut || 'Alt+Space',
         fnKeyEnabled: settings.fn_key_enabled ?? false,
@@ -227,7 +227,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       emit('settings-changed', newSettings);
       set({
         aiPolishEnabled: newSettings.ai_polish_enabled,
-        screenContextEnabled: newSettings.screen_context_enabled ?? true,
+        screenContextEnabled: newSettings.screen_context_enabled ?? false,
         polishSpeed: newSettings.polish_speed ?? 'accurate',
         shortcut: newSettings.shortcut,
         fnKeyEnabled: newSettings.fn_key_enabled,
@@ -254,7 +254,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       await invoke('reset_settings');
       set({
         aiPolishEnabled: true,
-        screenContextEnabled: true,
+        screenContextEnabled: false,
         polishSpeed: 'accurate',
         shortcut: 'Alt+Space',
         fnKeyEnabled: false,

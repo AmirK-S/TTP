@@ -16,8 +16,10 @@ pub struct Settings {
     pub ai_polish_enabled: bool,
     /// Send what is on screen around the cursor to the polish model, so it
     /// spells names the way the window does (see `crate::screen_context`).
-    /// Default ON; does nothing while `ai_polish_enabled` is off.
-    #[serde(default = "default_true")]
+    /// Default OFF: some of the screen goes to a third party, so the user
+    /// turns it on — the onboarding asks. Does nothing while
+    /// `ai_polish_enabled` is off.
+    #[serde(default)]
     pub screen_context_enabled: bool,
     /// Which polish model: `"fast"` (`polish::FAST_MODEL`) or `"accurate"`.
     /// `None` is accurate.
@@ -139,7 +141,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             ai_polish_enabled: true,
-            screen_context_enabled: true,
+            screen_context_enabled: false,
             polish_speed: None,
             shortcut: default_shortcut(),
             #[cfg(target_os = "macos")]
