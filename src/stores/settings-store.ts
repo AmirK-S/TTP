@@ -25,6 +25,8 @@ export interface Settings {
   ai_polish_enabled: boolean;
   /** Send the text around the cursor to the polish model. Default true. */
   screen_context_enabled: boolean;
+  /** Polish model: "fast" or "accurate"; null is accurate. */
+  polish_speed: string | null;
   shortcut: string;
   fn_key_enabled: boolean;
   telemetry_enabled: boolean;
@@ -72,6 +74,7 @@ interface SettingsStore {
   // State
   aiPolishEnabled: boolean;
   screenContextEnabled: boolean;
+  polishSpeed: string;
   shortcut: string;
   fnKeyEnabled: boolean;
   telemetryEnabled: boolean;
@@ -134,6 +137,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   // Initial state
   aiPolishEnabled: true,
   screenContextEnabled: true,
+  polishSpeed: 'accurate',
   shortcut: 'Alt+Space',
   fnKeyEnabled: false,
   telemetryEnabled: false,
@@ -171,6 +175,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       set({
         aiPolishEnabled: settings.ai_polish_enabled,
         screenContextEnabled: settings.screen_context_enabled ?? true,
+        polishSpeed: settings.polish_speed ?? 'accurate',
         shortcut: settings.shortcut || 'Alt+Space',
         fnKeyEnabled: settings.fn_key_enabled ?? false,
         telemetryEnabled: settings.telemetry_enabled ?? false,
@@ -197,6 +202,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       const currentSettings: Settings = {
         ai_polish_enabled: get().aiPolishEnabled,
         screen_context_enabled: get().screenContextEnabled,
+        polish_speed: get().polishSpeed === 'accurate' ? null : get().polishSpeed,
         shortcut: get().shortcut,
         fn_key_enabled: get().fnKeyEnabled,
         telemetry_enabled: get().telemetryEnabled,
@@ -222,6 +228,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       set({
         aiPolishEnabled: newSettings.ai_polish_enabled,
         screenContextEnabled: newSettings.screen_context_enabled ?? true,
+        polishSpeed: newSettings.polish_speed ?? 'accurate',
         shortcut: newSettings.shortcut,
         fnKeyEnabled: newSettings.fn_key_enabled,
         telemetryEnabled: newSettings.telemetry_enabled,
@@ -248,6 +255,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       set({
         aiPolishEnabled: true,
         screenContextEnabled: true,
+        polishSpeed: 'accurate',
         shortcut: 'Alt+Space',
         fnKeyEnabled: false,
         telemetryEnabled: false,

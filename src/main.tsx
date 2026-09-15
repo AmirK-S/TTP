@@ -63,6 +63,7 @@ function main() {
     listen<{
       ai_polish_enabled?: boolean;
       screen_context_enabled?: boolean;
+      polish_speed?: string | null;
       fn_key_enabled?: boolean;
       telemetry_enabled?: boolean;
       autostart_enabled?: boolean;
@@ -76,6 +77,7 @@ function main() {
       useSettingsStore.setState({
         ...(p?.ai_polish_enabled !== undefined && { aiPolishEnabled: p.ai_polish_enabled }),
         ...(p?.screen_context_enabled !== undefined && { screenContextEnabled: p.screen_context_enabled }),
+        ...(p?.polish_speed !== undefined && { polishSpeed: p.polish_speed ?? 'accurate' }),
         ...(p?.fn_key_enabled !== undefined && { fnKeyEnabled: p.fn_key_enabled }),
         ...(p?.telemetry_enabled !== undefined && { telemetryEnabled: p.telemetry_enabled }),
         ...(p?.autostart_enabled !== undefined && { autostartEnabled: p.autostart_enabled }),

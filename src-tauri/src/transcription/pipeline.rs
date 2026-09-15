@@ -2779,6 +2779,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             serde_json::json!({
                 "ai_polish": s.ai_polish_enabled,
                 "screen_context": s.screen_context_enabled,
+                "polish_speed": s.polish_speed.as_deref().unwrap_or("accurate"),
                 "transcription_language": s.transcription_language.as_deref().unwrap_or("auto"),
                 "vad_auto_stop": s.vad_auto_stop_enabled,
                 "vad_silence_secs": s.vad_silence_secs,
@@ -3585,12 +3586,13 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         _ => std::collections::HashSet::new(),
     };
 
+    let polish_model = crate::transcription::polish::model_for(settings.polish_speed.as_deref());
     let polish_span = crate::trace::Span::start();
     let final_text = if polish_quota_ok {
         emit_progress(app, "polishing", "progress.polishing", None);
 
         let polish_start = std::time::Instant::now();
-        match polish_text_with_context(&api_key, &cleaned_text, context_block.as_deref()).await {
+        match polish_text_with_context(&api_key, &cleaned_text, context_block.as_deref(), polish_model).await {
             Ok(result) => {
                 // Off the critical path, and deliberately not awaited — the
                 // same treatment `record_transcription` got below, for the
@@ -3702,7 +3704,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
     let mut polish_fields = serde_json::json!({
         "outcome": polish_outcome,
-        "model": crate::transcription::polish::MODEL,
+        "model": polish_model,
         "quota_ok": polish_quota_ok,
         "ms": polish_total_ms,
         "screen_context": context_block.is_some(),
@@ -3726,14 +3728,14 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
              transcription was pasted unpolished. A sustained run means the model is \
              gone or the API key has no access to it.",
             trace.id(),
-            crate::transcription::polish::MODEL,
+            polish_model,
             streak
         ));
         trace.stage(
             "polish.outage",
             serde_json::json!({
                 "consecutive_failures": streak,
-                "model": crate::transcription::polish::MODEL,
+                "model": polish_model,
             }),
         );
 

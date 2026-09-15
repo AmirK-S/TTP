@@ -235,7 +235,7 @@ function UpdatesRow() {
 export function Settings() {
   const { t } = useTranslation();
   const {
-    aiPolishEnabled, screenContextEnabled, telemetryEnabled, shortcut, useBetaChannel,
+    aiPolishEnabled, screenContextEnabled, polishSpeed, telemetryEnabled, shortcut, useBetaChannel,
     autostartEnabled, historyEnabled, vadAutoStopEnabled, vadSilenceSecs, audioDeviceName,
     transcriptionLanguage, diagnosticsEnabled, dictionary, history, loading, isPro, licenseKey,
     licenseStatus, licenseExpiresAt,
@@ -668,6 +668,28 @@ export function Settings() {
                 onChange={handlePolishToggle}
                 disabled={loading}
               />
+              {aiPolishEnabled && (
+                <Row
+                  label={t('settings.transcription.polishSpeedLabel')}
+                  hint={t('settings.transcription.polishSpeedHint')}
+                  htmlFor="polish-speed-select"
+                >
+                  <select
+                    id="polish-speed-select"
+                    className={SELECT}
+                    value={polishSpeed}
+                    onChange={(e) =>
+                      saveSettings({
+                        polish_speed: e.target.value === 'accurate' ? null : e.target.value,
+                      }).catch((err) => console.error('Failed to save polish_speed:', err))
+                    }
+                    disabled={loading}
+                  >
+                    <option value="accurate">{t('settings.transcription.polishSpeedAccurate')}</option>
+                    <option value="fast">{t('settings.transcription.polishSpeedFast')}</option>
+                  </select>
+                </Row>
+              )}
               {aiPolishEnabled && (
                 <ToggleRow
                   label={t('settings.transcription.screenContextLabel')}

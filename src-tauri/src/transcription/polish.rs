@@ -42,6 +42,22 @@ const REQUEST_TIMEOUT_SECS: u64 = 30;
 /// now surfaces that within three dictations rather than eight days.
 pub const MODEL: &str = "openai/gpt-oss-120b";
 
+/// The fast choice in Settings: `openai/gpt-oss-20b`, the same family and
+/// parameters (`reasoning_effort`, JSON mode) at about twice the throughput
+/// on Groq (1000 vs 500 tokens/s, console.groq.com/docs/models, 2026-09-15).
+/// Added because polish was the largest share of the wait (0.81 s median of
+/// 1.95 s). `tests/polish_golden.rs` is measured against [`MODEL`], not this
+/// one: expect weaker self-correction until it has been run here too.
+pub const FAST_MODEL: &str = "openai/gpt-oss-20b";
+
+/// The model for the `polish_speed` setting: `"fast"` or anything else.
+pub fn model_for(speed: Option<&str>) -> &'static str {
+    match speed {
+        Some("fast") => FAST_MODEL,
+        _ => MODEL,
+    }
+}
+
 /// Reasoning budget requested from reasoning-capable models.
 ///
 /// gpt-oss emits reasoning tokens that are billed and counted against the
@@ -490,7 +506,7 @@ fn parse_intent(raw: Option<String>) -> Intent {
 /// post-LLM guards before pasting; if guards reject, pipeline falls back to
 /// the phase-1 cleanup output (raw transcript + deterministic cleanup).
 pub async fn polish_text(api_key: &str, raw_text: &str) -> Result<PolishResult, String> {
-    polish_text_with_context(api_key, raw_text, None).await
+    polish_text_with_context(api_key, raw_text, None, MODEL).await
 }
 
 /// [`polish_text`] with an optional `<screen_context>` block, already
@@ -502,6 +518,7 @@ pub async fn polish_text_with_context(
     api_key: &str,
     raw_text: &str,
     context_block: Option<&str>,
+    model: &'static str,
 ) -> Result<PolishResult, String> {
     let (system_prompt, user_content) = match context_block {
         Some(block) => (
@@ -513,7 +530,7 @@ pub async fn polish_text_with_context(
     let client = shared_http();
 
     let request_body = ChatRequest {
-        model: MODEL.to_string(),
+        model: model.to_string(),
         messages: vec![
             ChatMessage {
                 role: "system".to_string(),
@@ -600,7 +617,7 @@ pub async fn polish_text_with_context(
                             "n": attempt + 1,
                             "status": 200,
                             "ms": attempt_ms(),
-                            "model": MODEL,
+                            "model": model,
                             // Non-zero here is the success that an honoured
                             // rate-limit wait bought.
                             "waited_ms": waited_before_attempt_ms,
@@ -634,7 +651,7 @@ pub async fn polish_text_with_context(
                         "n": attempt + 1,
                         "status": status_code,
                         "ms": attempt_ms(),
-                        "model": MODEL,
+                        "model": model,
                         "waited_ms": waited_before_attempt_ms,
                     });
                     annotate_attempt(&mut fields, &plan, guidance.as_ref());
@@ -671,7 +688,7 @@ pub async fn polish_text_with_context(
                     "error": e.to_string(),
                     "timed_out": e.is_timeout(),
                     "ms": attempt_ms(),
-                    "model": MODEL,
+                    "model": model,
                     "waited_ms": waited_before_attempt_ms,
                 });
                 annotate_attempt(&mut fields, &plan, None);
@@ -1194,6 +1211,13 @@ mod tests {
             guard_polish_with_context(raw, polished, &vocab(&["claude"])),
             GuardVerdict::Reject("low_overlap")
         );
+    }
+
+    #[test]
+    fn only_fast_picks_the_fast_model() {
+        assert_eq!(model_for(Some("fast")), FAST_MODEL);
+        assert_eq!(model_for(Some("accurate")), MODEL);
+        assert_eq!(model_for(None), MODEL);
     }
 
     #[test]
