@@ -348,7 +348,7 @@
       "welcomeTitle": "Welcome to Talk To Paste",
       "permissionsSubtitle": "TTP needs these macOS permissions to record and paste. We'll take you straight to the right Settings pane.",
       "apiKeyTitle": "Connect to Groq",
-      "apiKeySubtitle": "Free transcription API. Groq's free tier covers tens of thousands of dictations per month.",
+      "apiKeySubtitle": "Your voice is sent to Groq to be transcribed, then the text to be polished. TTP has no server: your voice and your text never go through us. Groq's free tier covers tens of thousands of dictations per month.",
       "stepIndicatorLabel": "Step {{current}} of {{total}}"
     },
     "screen": {
