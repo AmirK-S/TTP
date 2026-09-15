@@ -21,10 +21,6 @@ pub struct Settings {
     /// `ai_polish_enabled` is off.
     #[serde(default)]
     pub screen_context_enabled: bool,
-    /// Which polish model: `"fast"` (`polish::FAST_MODEL`) or `"accurate"`.
-    /// `None` is accurate.
-    #[serde(default)]
-    pub polish_speed: Option<String>,
     /// Global keyboard shortcut for recording (e.g., "Alt+Space", "Ctrl+Shift+R")
     #[serde(default = "default_shortcut")]
     pub shortcut: String,
@@ -142,7 +138,6 @@ impl Default for Settings {
         Self {
             ai_polish_enabled: true,
             screen_context_enabled: false,
-            polish_speed: None,
             shortcut: default_shortcut(),
             #[cfg(target_os = "macos")]
             fn_key_enabled: true,
