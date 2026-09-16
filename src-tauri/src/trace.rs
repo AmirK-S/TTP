@@ -357,6 +357,15 @@ pub fn set_app_handle(app: tauri::AppHandle) {
     let _ = APP.set(app);
 }
 
+/// Emit an event to every window through the handle set above. For callers
+/// deep in the pipeline that hold no `AppHandle`; a no-op before setup.
+pub fn emit_to_app<S: serde::Serialize + Clone>(event: &str, payload: S) {
+    if let Some(app) = APP.get() {
+        use tauri::Emitter;
+        let _ = app.emit(event, payload);
+    }
+}
+
 /// Turn live streaming on or off. Idempotent; the viewer calls this on mount
 /// and unmount.
 pub fn set_live(on: bool) {

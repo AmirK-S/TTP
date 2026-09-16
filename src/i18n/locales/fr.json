@@ -394,6 +394,7 @@
     "statusTranscribing": "Transcription…",
     "handsFreeIndicatorLabel": "Mode mains libres, un seul tap pour arrêter",
     "deadInput": "Aucun son — vérifie ton micro",
+    "pasteWaiting": "collé quand tu lâches",
     "outcome": {
       "unverifiedAnnouncement": "Le texte a été envoyé. Rien n'a confirmé qu'il est arrivé.",
       "arrivedAnnouncement": "Le texte est arrivé.",

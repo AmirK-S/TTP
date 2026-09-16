@@ -127,6 +127,21 @@ export function FloatingBar() {
     return () => { un.then((f) => f()); };
   }, []);
 
+  /* The previous dictation, waiting for this recording's key to come up. -----
+     Rust holds a finished text back while the hotkey is physically down —
+     typing under a held modifier turns letters into shortcuts. Without a word
+     here the pill shows only the new recording and the held text looks lost.
+     Emitted by `paste/simulate.rs`; cleared when recording stops, since that
+     is exactly when the text goes out. */
+  const [pasteWaiting, setPasteWaiting] = useState(false);
+  useEffect(() => {
+    if (!isRecording) setPasteWaiting(false);
+  }, [isRecording]);
+  useEffect(() => {
+    const un = listen<boolean>('paste-waiting', (event) => setPasteWaiting(event.payload === true));
+    return () => { un.then((f) => f()); };
+  }, []);
+
   /* Elapsed timer during recording. Reset on each recording start. ----------- */
   const [elapsedMs, setElapsedMs] = useState(0);
   useEffect(() => {
@@ -317,6 +332,19 @@ export function FloatingBar() {
                 <span className="text-[12px] font-medium tabular-nums text-white/90">
                   {formatElapsed(elapsedMs)}
                 </span>
+              )}
+              {pasteWaiting && (
+                <>
+                  <span className="block h-3.5 w-px shrink-0 bg-white/20" aria-hidden />
+                  <span
+                    className={cn(
+                      'text-[12px] font-medium text-white/70 whitespace-nowrap',
+                      !prefersReducedMotion && 'anim-fade-in',
+                    )}
+                  >
+                    {t('floatingBar.pasteWaiting')}
+                  </span>
+                </>
               )}
               {isHandsFree && (
                 <Lock

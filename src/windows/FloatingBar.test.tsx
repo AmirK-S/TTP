@@ -263,4 +263,26 @@ describeSuite('the pill at the end of a dictation', () => {
     expectFrame(container.querySelector('[data-ttp-mark]')).toBeNull();
     expectFrame(screen.getByText('Transcribing…')).toBeInTheDocument();
   });
+
+  /* A dictation that finished while the next one is being recorded waits for
+     the key to come up. Seen live on 2026-09-16: 10.7 s with nothing on the
+     pill but the new waveform, which reads as a lost text. */
+  itFrame('says the previous text is waiting while the next one records', async () => {
+    await mountBar();
+    emitBus('recording-state-changed', 'Recording');
+    expectFrame(screen.queryByText('pastes when you let go')).toBeNull();
+    emitBus('paste-waiting', true);
+    expectFrame(screen.getByText('pastes when you let go')).toBeInTheDocument();
+    emitBus('paste-waiting', false);
+    expectFrame(screen.queryByText('pastes when you let go')).toBeNull();
+  });
+
+  itFrame('forgets the waiting text once the recording stops', async () => {
+    await mountBar();
+    emitBus('recording-state-changed', 'Recording');
+    emitBus('paste-waiting', true);
+    emitBus('recording-state-changed', 'Processing');
+    emitBus('recording-state-changed', 'Recording');
+    expectFrame(screen.queryByText('pastes when you let go')).toBeNull();
+  });
 });

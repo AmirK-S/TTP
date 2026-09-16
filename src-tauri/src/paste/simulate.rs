@@ -198,6 +198,11 @@ mod mac {
     }
 }
 
+/// Pill event: `true` while a finished dictation is held back for the next
+/// recording's key to come up, `false` once it is released to be typed.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const PASTE_WAITING_EVENT: &str = "paste-waiting";
+
 /// Modifier bits still held the last time we injected.
 ///
 /// `settle_before_injection` used to write the `paste.modifiers` trace line
@@ -273,12 +278,17 @@ fn settle_before_injection() -> u64 {
         // against a *stuck* modifier; against a real one, wait for the release
         // that ends the recording, then type.
         if stuck != 0 && crate::state::recording_in_progress() {
+            // Held text is invisible from the user's seat: the pill shows the
+            // new recording and nothing says the previous dictation is still
+            // coming, so it reads as lost. Tell the pill for as long as it waits.
+            crate::trace::emit_to_app(PASTE_WAITING_EVENT, true);
             let started = std::time::Instant::now();
             let deadline = started + Duration::from_millis(mac::NEXT_DICTATION_MAX_WAIT_MS);
             while stuck != 0 && crate::state::recording_in_progress() && std::time::Instant::now() < deadline {
                 thread::sleep(Duration::from_millis(20));
                 stuck = mac::held_modifiers();
             }
+            crate::trace::emit_to_app(PASTE_WAITING_EVENT, false);
             // Let the target app see the key-up before the first character.
             thread::sleep(Duration::from_millis(FOCUS_SETTLE_MS));
             stuck = mac::held_modifiers();

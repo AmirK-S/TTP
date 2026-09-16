@@ -394,6 +394,7 @@
     "statusTranscribing": "Transcribing…",
     "handsFreeIndicatorLabel": "Hands-free recording, single tap to stop",
     "deadInput": "No sound — check your mic",
+    "pasteWaiting": "pastes when you let go",
     "outcome": {
       "unverifiedAnnouncement": "The text was sent. Nothing confirmed it arrived.",
       "arrivedAnnouncement": "The text arrived.",
