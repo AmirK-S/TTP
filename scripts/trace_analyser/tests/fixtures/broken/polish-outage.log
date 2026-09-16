@@ -1,0 +1,11 @@
+[2026-09-01 10:00:00.010] [········]          app.launched {"arch":"aarch64","os":"macos","version":"3.1.6"}
+[2026-09-01 10:00:00.020] [········]          polish.attempt {"model":"llama-3.3-70b-versatile","ms":200,"n":1,"status":404}
+[2026-09-01 10:00:00.030] [········]          polish.outage {"consecutive_failures":1,"model":"llama-3.3-70b-versatile"}
+[2026-09-01 10:00:00.040] [········]          polish.attempt {"model":"llama-3.3-70b-versatile","ms":200,"n":1,"status":404}
+[2026-09-01 10:00:00.050] [········]          polish.outage {"consecutive_failures":2,"model":"llama-3.3-70b-versatile"}
+[2026-09-01 10:00:00.060] [········]          polish.attempt {"model":"llama-3.3-70b-versatile","ms":200,"n":1,"status":404}
+[2026-09-01 10:00:00.070] [········]          polish.outage {"consecutive_failures":3,"model":"llama-3.3-70b-versatile"}
+[2026-09-01 10:00:01.070] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:02.070] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:03.070] [········]          hotkey.tap_armed {}
+[2026-09-01 10:00:04.070] [········]          hotkey.tap_armed {}

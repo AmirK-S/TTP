@@ -6,9 +6,8 @@
 //  - 'fr' : French
 //  - 'system' : follow navigator.language at startup (resolved to en or fr)
 //
-// The user choice is persisted in Settings.language as 'en' | 'fr' | 'system'.
-// When 'system' or null, we resolve to fr if navigator.language starts with "fr",
-// otherwise en.
+// The app follows the system language: resolved to fr if navigator.language
+// starts with "fr", otherwise en. Explicit 'en' | 'fr' exist for tests.
 
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';

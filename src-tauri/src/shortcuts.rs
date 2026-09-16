@@ -2,16 +2,17 @@
 // Global keyboard shortcut handling with push-to-talk and double-tap toggle
 //
 // Hands-free semantics:
-//   * Settings toggle `hands_free_mode` = persistent preference. When true,
-//     every single press is a toggle (press to start, press to stop).
-//   * Double-tap = TRANSIENT override for one recording. Sets in-memory
-//     `state.hands_free_mode` only — never touches the persisted setting.
-//     After the recording ends, in-memory state is restored from settings.
+//   * Hold = push-to-talk.
+//   * Double-tap = hands-free for one recording. Sets the AppState
+//     `session_hands_free` override, which is cleared automatically when
+//     set_state transitions back to Idle (state.rs), so there is no "restore
+//     on stop" code in this file.
 
+#[cfg(not(target_os = "macos"))]
 use crate::settings::get_settings;
 use crate::sounds::{play_start_sound, play_stop_sound};
 use crate::state::{AppState, RecordingState};
-use crate::tray::{set_recording_icon, should_show_pill, show_pill, hide_pill};
+use crate::tray::{set_recording_icon, show_pill};
 use std::sync::Mutex;
 use std::time::Instant;
 use tauri::{AppHandle, Manager};
@@ -20,7 +21,9 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 /// Double-tap detection threshold in milliseconds
 const DOUBLE_TAP_THRESHOLD_MS: u128 = 300;
 
-/// Set up global keyboard shortcuts for recording control
+/// Set up global keyboard shortcuts for recording control (Windows/Linux;
+/// macOS reads every trigger through the event tap in `fnkey`).
+#[cfg(not(target_os = "macos"))]
 pub fn setup_shortcuts(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let settings = get_settings();
     let shortcut_str = settings.shortcut;
@@ -71,7 +74,11 @@ pub fn handle_shortcut_event_public(app: &AppHandle, shortcut_state: ShortcutSta
             level: sentry::Level::Warning,
             ..Default::default()
         });
-        eprintln!("[Shortcuts] try_lock contended at handle_shortcut_event_public");
+        crate::logging::log_warn("[Shortcuts] try_lock contended at handle_shortcut_event_public");
+        crate::trace::event(
+            "hotkey.event_dropped",
+            serde_json::json!({ "at": "handle_shortcut_event_public" }),
+        );
         return;
     };
 
@@ -79,6 +86,35 @@ pub fn handle_shortcut_event_public(app: &AppHandle, shortcut_state: ShortcutSta
         ShortcutState::Pressed => handle_shortcut_pressed(&mut app_state, app),
         ShortcutState::Released => handle_shortcut_released(&mut app_state, app),
     }
+}
+
+/// Stop a recording because it reached `audio_monitor::MAX_RECORDING_SECS`.
+///
+/// The cap used to send a synthetic key release through
+/// `handle_shortcut_event_public`, which failed in exactly the two cases a cap
+/// exists for:
+///
+///   * `handle_shortcut_released` ignores releases in hands-free mode — the
+///     one mode where nobody is holding a key and a session can run
+///     unattended. The cap's own comment promised to catch that session.
+///   * `try_lock` drops the event when the lock is contended, and the monitor
+///     loop that sent it exits straight afterwards, so nothing ever asks again.
+///
+/// So this ignores the mode and blocks on the lock. The caller is the
+/// monitor's own blocking thread, and the lock is only ever held for a state
+/// transition.
+///
+/// Returns `None` when there was no recording to stop, otherwise whether the
+/// stopped recording was hands-free.
+pub fn stop_for_duration_cap(app: &AppHandle) -> Option<bool> {
+    let state = app.state::<Mutex<AppState>>();
+    let mut app_state = state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if !app_state.is_recording() {
+        return None;
+    }
+    let hands_free = app_state.effective_hands_free();
+    stop_recording(&mut app_state, app);
+    Some(hands_free)
 }
 
 /// Handle FN key double-tap event - toggles hands-free mode
@@ -93,35 +129,70 @@ pub fn handle_fn_double_tap(app: &AppHandle) {
             level: sentry::Level::Warning,
             ..Default::default()
         });
-        eprintln!("[Shortcuts] try_lock contended at handle_fn_double_tap");
+        crate::logging::log_warn("[Shortcuts] try_lock contended at handle_fn_double_tap");
+        crate::trace::event(
+            "hotkey.event_dropped",
+            serde_json::json!({ "at": "handle_fn_double_tap" }),
+        );
         return;
     };
 
-    let settings_hands_free = get_settings().hands_free_mode;
-
     match app_state.recording_state {
         RecordingState::Idle => {
-            // Transient: enter hands-free for this recording only. The persisted
-            // setting is unchanged — we just override in-memory state.
-            app_state.hands_free_mode = true;
+            // Transient: enter hands-free for this recording only via the
+            // session override. The persisted setting (mirrored into
+            // `hands_free_mode`) is untouched, and the override clears
+            // automatically when the session transitions to Idle.
+            app_state.enter_hands_free_session();
             start_recording(&mut app_state, app);
         }
-        RecordingState::Recording if app_state.hands_free_mode => {
+        RecordingState::Recording if app_state.effective_hands_free() => {
             stop_recording(&mut app_state, app);
-            // Restore to whatever the user's persistent preference is, not a
-            // hardcoded false — otherwise a user who has settings hands-free=true
-            // gets bumped out of toggle mode by a single double-tap.
-            app_state.hands_free_mode = settings_hands_free;
+            // No explicit restore needed: `session_hands_free` is cleared
+            // inside set_state on Idle, so the next read of
+            // effective_hands_free returns the persisted setting.
         }
         _ => {}
     }
 }
 
-/// Handle shortcut key press - implements double-tap detection and settings-based toggle mode
+/// Stop a hands-free recording from a single Fn tap.
+///
+/// Once hands-free mode is engaged (via double-tap, or via toggle mode when the
+/// persisted setting is on), the user expects ONE tap to end the recording —
+/// not a second double-tap. The fnkey timer calls this from the key-release
+/// path; the grace window there guarantees we never cancel the gesture that
+/// just started the recording. Restores in-memory hands_free to the persisted
+/// preference, mirroring [`handle_fn_double_tap`].
+pub fn handle_fn_stop(app: &AppHandle) {
+    let state = app.state::<Mutex<AppState>>();
+
+    let Ok(mut app_state) = state.try_lock() else {
+        sentry::add_breadcrumb(sentry::Breadcrumb {
+            category: Some("shortcuts".to_string()),
+            message: Some("try_lock contended at handle_fn_stop".to_string()),
+            level: sentry::Level::Warning,
+            ..Default::default()
+        });
+        crate::logging::log_warn("[Shortcuts] try_lock contended at handle_fn_stop");
+        crate::trace::event(
+            "hotkey.event_dropped",
+            serde_json::json!({ "at": "handle_fn_stop" }),
+        );
+        return;
+    };
+
+    if app_state.is_recording() {
+        stop_recording(&mut app_state, app);
+        // No explicit hands_free restore — the session override is cleared
+        // by set_state on the Idle transition triggered from the pipeline,
+        // so the persisted preference applies for the next session.
+    }
+}
+
+/// Handle shortcut key press - implements double-tap detection
 fn handle_shortcut_pressed(state: &mut AppState, app: &AppHandle) {
     let now = Instant::now();
-    let settings = get_settings();
-    let settings_hands_free = settings.hands_free_mode;
 
     let is_double_tap = state
         .last_shortcut_time
@@ -131,38 +202,46 @@ fn handle_shortcut_pressed(state: &mut AppState, app: &AppHandle) {
     state.last_shortcut_time = Some(now);
 
     if is_double_tap {
+        // Reset the candidate so the NEXT tap is treated as a fresh single
+        // press rather than the third tap of a triple-tap. fnkey.rs has the
+        // same guard via LAST_FN_PRESS_TIME_MS.store(0) and ours was missing,
+        // which made every shortcut press within 300 ms of a successful
+        // double-tap re-fire the double-tap path.
+        state.last_shortcut_time = None;
         match state.recording_state {
             RecordingState::Idle => {
-                // Transient: hands-free for this recording only. We deliberately
-                // do NOT persist to settings — double-tap is a per-recording
-                // override, not a permanent preference change. (Before, persisting
-                // here meant every subsequent single-press also entered hands-free
-                // until the user manually toggled it off in the UI.)
-                state.hands_free_mode = true;
+                // Transient: hands-free for this session only via the
+                // session override. The persisted preference is untouched
+                // and the override clears automatically on Idle.
+                state.enter_hands_free_session();
                 start_recording(state, app);
             }
-            RecordingState::Recording if state.hands_free_mode => {
+            RecordingState::Recording if state.effective_hands_free() => {
                 stop_recording(state, app);
-                state.hands_free_mode = settings_hands_free;
             }
             _ => {}
         }
     } else {
         if state.is_idle() {
-            // When settings has hands-free enabled, use toggle mode on single press
-            state.hands_free_mode = settings_hands_free;
             start_recording(state, app);
-        } else if state.is_recording() && state.hands_free_mode {
+        } else if state.is_recording() && state.effective_hands_free() {
             // Single press while recording in hands-free mode → stop
             stop_recording(state, app);
-            state.hands_free_mode = settings_hands_free;
+        } else if !state.is_recording() {
+            // Pressed while the previous capture is still being stopped (the
+            // ~0.4 s between release and the pipeline taking the audio). The
+            // press is dropped; say so rather than leave a bare hotkey.press.
+            crate::trace::event(
+                "hotkey.ignored",
+                serde_json::json!({ "state": format!("{:?}", state.recording_state) }),
+            );
         }
     }
 }
 
 /// Handle shortcut key release - stops push-to-talk recording
 fn handle_shortcut_released(state: &mut AppState, app: &AppHandle) {
-    if !state.hands_free_mode && state.is_recording() {
+    if !state.effective_hands_free() && state.is_recording() {
         stop_recording(state, app);
     }
 }
@@ -173,18 +252,19 @@ fn start_recording(state: &mut AppState, app: &AppHandle) {
     set_recording_icon(app, true);
     show_pill(app);
     play_start_sound(app);
+    // Tell the Fn monitor whether this is a hands-free recording, so a single
+    // Fn tap can stop it (see fnkey::handle_fn_stop). Push-to-talk recordings
+    // are unaffected.
+    #[cfg(target_os = "macos")]
+    crate::fnkey::set_hands_free_recording(state.effective_hands_free());
 }
 
 /// Stop recording: update state to Processing, play sound
-/// Pill visibility is determined by should_show_pill() during Processing state
 fn stop_recording(state: &mut AppState, app: &AppHandle) {
     state.set_state(RecordingState::Processing, app);
     set_recording_icon(app, false);
     play_stop_sound(app);
-    // During Processing, show pill if setting allows (shows during processing regardless of hide setting)
-    if should_show_pill(app) {
-        show_pill(app);
-    } else {
-        hide_pill(app);
-    }
+    #[cfg(target_os = "macos")]
+    crate::fnkey::set_hands_free_recording(false);
+    show_pill(app);
 }

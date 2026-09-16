@@ -11,24 +11,27 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use storage::{LicenseRecord, clear_license, load_license, save_license};
+pub use storage::warm_keychain_cache;
 
 /// Maximum days a cached license can be trusted offline before requiring re-validation.
 const OFFLINE_GRACE_DAYS: i64 = 14;
 
-/// Free tier: max AI Polish calls per calendar month.
-pub const FREE_POLISH_PER_MONTH: u32 = 30;
-/// Free tier: max dictionary entries (existing entries above this are grandfathered).
-pub const FREE_DICTIONARY_LIMIT: usize = 20;
-/// Free tier: max history entries (existing entries above this are grandfathered).
-pub const FREE_HISTORY_LIMIT: usize = 50;
-/// Length of the auto-trial granted on first launch, in days. Was 7 in
-/// v1.6.0–v2.1.10, briefly 3 in v2.2.0, settled at 4 in v2.2.1 — gives
-/// one extra evaluation session over a strict 3-day window without
-/// materially weakening the friction against the uninstall+reinstall
-/// trial-refresh loop (the v2.1.4 uninstaller wipes the keychain HMAC
-/// secret + usage.json signed counter the original protection depended
-/// on, so the only real moat is reinstall friction).
-pub const TRIAL_DAYS: i64 = 4;
+// The free-tier caps that used to live here — 30 polish calls a month, 20
+// dictionary entries, 50 history entries — are gone. Every feature that makes
+// TTP work is free and uncapped. History still tops out at
+// MAX_HISTORY_ENTRIES (500) in history::store, but that is a retention policy
+// for everyone, not a tier.
+//
+// The licence machinery below gates exactly one thing: the cosmetics
+// (`cosmetics::unlocked`) — sound packs and the pill's face — which are the
+// thank-you for supporting TTP. Nothing that makes TTP work depends on it.
+//
+// There is no trial. A 4-day one used to start on first launch; it was
+// removed on 2026-09-11, because there is nothing to evaluate — everything
+// useful is already free — and a thank-you on a timer is not a thank-you.
+// `UsageRecord` still carries `trial_started_at` / `trial_count`: they are
+// part of the signed payload, and dropping them would invalidate every
+// existing usage.json.
 
 /// Public license info returned to the frontend.
 #[derive(Debug, Clone, Serialize)]
@@ -75,10 +78,16 @@ pub struct LicenseState {
 
 /// Compute whether the current cached record grants Pro access right now.
 fn is_pro_for(record: &LicenseRecord) -> bool {
+    is_pro_at(record, chrono::Utc::now().timestamp())
+}
+
+/// Pure-function core of `is_pro_for`. Takes the wall-clock timestamp as a
+/// parameter so unit tests can exercise the offline-grace and expiration
+/// branches without `Utc::now()` jitter.
+fn is_pro_at(record: &LicenseRecord, now: i64) -> bool {
     if record.status != "active" {
         return false;
     }
-    let now = chrono::Utc::now().timestamp();
     if let Some(expires) = record.expires_at {
         if expires <= now {
             return false;
@@ -86,6 +95,79 @@ fn is_pro_for(record: &LicenseRecord) -> bool {
     }
     let age_secs = now - record.last_validated_at;
     age_secs < OFFLINE_GRACE_DAYS * 86_400
+}
+
+#[cfg(test)]
+mod is_pro_at_tests {
+    use super::*;
+    use storage::LicenseRecord;
+
+    fn rec(status: &str, expires: Option<i64>, last_validated: i64) -> LicenseRecord {
+        LicenseRecord {
+            license_key: "TTP-XXXX".into(),
+            instance_id: "instance".into(),
+            instance_name: "test".into(),
+            status: status.into(),
+            expires_at: expires,
+            last_validated_at: last_validated,
+            activation_count: None,
+            activation_limit: None,
+            signature: None,
+        }
+    }
+
+    #[test]
+    fn inactive_status_is_not_pro() {
+        let r = rec("expired", None, 1_000);
+        assert!(!is_pro_at(&r, 2_000));
+    }
+
+    #[test]
+    fn active_status_with_no_expiration_grants_pro_within_grace() {
+        let r = rec("active", None, 1_000);
+        // 1 second after validation → well inside 14-day grace.
+        assert!(is_pro_at(&r, 1_001));
+    }
+
+    #[test]
+    fn past_explicit_expiration_revokes_pro_regardless_of_grace() {
+        // expires_at < now → not Pro even though last_validated is recent.
+        let r = rec("active", Some(2_000), 1_999);
+        assert!(!is_pro_at(&r, 2_001));
+    }
+
+    #[test]
+    fn future_expiration_within_grace_grants_pro() {
+        // expires_at is in the future, recently validated → Pro.
+        let r = rec("active", Some(10_000_000), 1_000);
+        assert!(is_pro_at(&r, 2_000));
+    }
+
+    #[test]
+    fn grace_boundary_at_exactly_14_days() {
+        let grace_secs = OFFLINE_GRACE_DAYS * 86_400;
+        let r = rec("active", None, 1_000);
+        // One second BEFORE grace expires → still Pro.
+        assert!(is_pro_at(&r, 1_000 + grace_secs - 1));
+        // Exactly AT grace boundary → not Pro (`age_secs < grace` is strict).
+        assert!(!is_pro_at(&r, 1_000 + grace_secs));
+    }
+
+    #[test]
+    fn beyond_grace_revokes_pro_even_when_status_active() {
+        // 14 days + 1 second since last_validated, no explicit expiration.
+        // Pro revoked: the server hasn't confirmed in too long.
+        let r = rec("active", None, 1_000);
+        assert!(!is_pro_at(&r, 1_000 + OFFLINE_GRACE_DAYS * 86_400 + 1));
+    }
+
+    #[test]
+    fn expiration_exactly_now_revokes_pro() {
+        // `expires_at <= now` is inclusive — expiry at exactly the current
+        // tick already revokes.
+        let r = rec("active", Some(2_000), 1_999);
+        assert!(!is_pro_at(&r, 2_000));
+    }
 }
 
 fn emit_license_changed(app: &AppHandle, info: &LicenseInfo) {
@@ -254,23 +336,11 @@ pub fn is_pro_disk() -> bool {
     load_license().as_ref().map(is_pro_for).unwrap_or(false)
 }
 
-/// Disk-only check: is the user currently within the auto-trial window?
-/// Caller passes a pre-loaded UsageRecord to avoid double IO.
-pub fn is_in_trial_disk(usage: &crate::usage::UsageRecord) -> bool {
-    let Some(started) = usage.trial_started_at else {
-        return false;
-    };
-    let elapsed_secs = chrono::Utc::now().timestamp().saturating_sub(started);
-    elapsed_secs < TRIAL_DAYS * 86_400
-}
-
-/// Combined check: Pro license OR active trial.
-pub fn is_pro_or_trial_disk() -> bool {
-    if is_pro_disk() {
-        return true;
-    }
-    let usage = crate::usage::load_usage();
-    is_in_trial_disk(&usage)
+/// The cached licence's status string, unjudged — `None` when there is no
+/// licence file. For the trace, where "expired" and "never bought one" must
+/// not collapse into the same `false`.
+pub fn license_status_disk() -> Option<String> {
+    load_license().map(|record| record.status)
 }
 
 fn device_label() -> String {

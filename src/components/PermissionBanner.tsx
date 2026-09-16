@@ -9,6 +9,13 @@ type PermKey = 'accessibility' | 'microphone' | 'inputMonitoring';
 
 const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.startsWith('Mac');
 
+/** Accessibility and Input Monitoring open with the drag panel; the
+ *  microphone has no list to drag into, so it opens its pane. */
+async function openFor(key: PermKey) {
+  if (key === 'microphone') return invoke(OPEN_COMMAND.microphone);
+  return invoke('show_permission_helper', { kind: key });
+}
+
 const OPEN_COMMAND: Record<PermKey, string> = {
   accessibility: 'open_accessibility_settings',
   microphone: 'open_microphone_settings',
@@ -35,18 +42,16 @@ export function PermissionBanner() {
       return;
     }
     try {
-      const [mic, ax, im, settings] = await Promise.all([
+      const [mic, ax, im] = await Promise.all([
         invoke<PermissionStatus>('check_microphone_permission'),
         invoke<PermissionStatus>('check_accessibility_permission'),
         invoke<boolean>('check_input_monitoring_permission'),
-        invoke<{ fn_key_enabled?: boolean }>('get_settings').catch(() => ({ fn_key_enabled: false })),
       ]);
       const out: PermKey[] = [];
       if (mic !== 'Granted') out.push('microphone');
       if (ax !== 'Granted') out.push('accessibility');
-      // Only flag Input Monitoring when the user actually depends on Fn —
-      // otherwise it's noise (other hotkeys don't need this permission).
-      if (settings?.fn_key_enabled && !im) out.push('inputMonitoring');
+      // Every trigger is read through the event tap, which needs it.
+      if (!im) out.push('inputMonitoring');
       setMissing(out);
     } catch (e) {
       console.error('PermissionBanner: refresh failed', e);
@@ -75,7 +80,7 @@ export function PermissionBanner() {
       title={title}
       action={
         missing.length === 1 ? (
-          <Button size="sm" variant="secondary" onClick={() => invoke(OPEN_COMMAND[missing[0]])}>
+          <Button size="sm" variant="secondary" onClick={() => openFor(missing[0]).catch(console.error)}>
             {t('onboarding.button.openSettings')}
           </Button>
         ) : undefined
@@ -89,7 +94,7 @@ export function PermissionBanner() {
               key={k}
               size="sm"
               variant="secondary"
-              onClick={() => invoke(OPEN_COMMAND[k])}
+              onClick={() => openFor(k).catch(console.error)}
             >
               {t(`onboarding.item.${k}`)}
             </Button>

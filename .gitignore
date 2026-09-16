@@ -26,3 +26,15 @@ dist-ssr
 .planning/
 .claude/
 assets-export/
+
+# Finder / editor auto-duplicates. macOS Finder creates "<name> 2.<ext>"
+# when paste-copying into a directory that already has the same name;
+# editor crashes can leave "<name>.<ext>.tmp.<pid>.<hex>" files behind.
+# These have shadowed a real workflow file in CI before (a stale
+# "build 2.yml" with rustc 1.85.0 ran instead of build.yml's 1.90.0 pin).
+**/* 2.yml
+**/* 2.rs
+**/* 2.ts
+**/* 2.tsx
+**/*.yml.tmp.*
+**/*.rs.tmp.*

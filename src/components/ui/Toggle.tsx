@@ -23,11 +23,15 @@ export const Toggle = forwardRef<HTMLButtonElement, ToggleProps>(function Toggle
       disabled={disabled}
       onClick={() => !disabled && onChange(!enabled)}
       className={cn(
-        'relative inline-flex shrink-0 cursor-pointer rounded-full border-2 border-transparent',
+        // `ttp-toggle` is a coat hook: a coat whose accent is nearly the same
+        // value as the knob (piebald's is white) has to draw an edge on the
+        // knob or the switch reads as a blank capsule. See src/styles/coats.css.
+        'ttp-toggle relative inline-flex shrink-0 cursor-pointer rounded-full border-2 border-transparent',
         'transition-[background-color] duration-hover ease-app-out',
         'active:scale-[0.96] active:duration-press',
         track,
-        enabled ? 'bg-app-accent' : 'bg-app-raised',
+        // Off must still read as a switch on a light surface, not as a smudge.
+        enabled ? 'bg-app-accent' : 'bg-app-border-strong',
         disabled && 'opacity-50 cursor-not-allowed',
         className,
       )}
