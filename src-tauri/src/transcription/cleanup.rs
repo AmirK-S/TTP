@@ -132,6 +132,16 @@ fn collapse_repetitions(text: &str) -> String {
         .map(|(i, _)| i)
         .collect();
 
+    // A repetition is two spoken words, so only words separated by nothing but
+    // whitespace count. Without this "3.2.2" split into 3 / 2 / 2 and lost its
+    // last ".2" (2026-09-16, trace 0076-6510, five times in one dictation);
+    // "192.168.1.1", "1,1" and "ok/ok" went the same way.
+    let spaced = |k: usize| {
+        tokens[word_idx[k] + 1..word_idx[k + 1]]
+            .iter()
+            .all(|t| t.chars().all(char::is_whitespace))
+    };
+
     // Mark indices to drop. We collapse exactly ONE pair of repetition at a
     // time so x3+ repetitions become x2 (preserves emphasis intent).
     let mut drop_word_positions: std::collections::HashSet<usize> = std::collections::HashSet::new();
@@ -144,7 +154,7 @@ fn collapse_repetitions(text: &str) -> String {
         let b = &tokens[word_idx[i + 1]].to_lowercase();
         let c = &tokens[word_idx[i + 2]].to_lowercase();
         let d = &tokens[word_idx[i + 3]].to_lowercase();
-        if a == c && b == d {
+        if a == c && b == d && spaced(i) && spaced(i + 1) && spaced(i + 2) {
             // Drop the duplicate bigram (positions i+2 and i+3)
             drop_word_positions.insert(word_idx[i + 2]);
             drop_word_positions.insert(word_idx[i + 3]);
@@ -168,7 +178,7 @@ fn collapse_repetitions(text: &str) -> String {
         }
         let a = &tokens[word_idx[j]].to_lowercase();
         let b = &tokens[word_idx[j + 1]].to_lowercase();
-        if a == b && !a.is_empty() {
+        if a == b && !a.is_empty() && spaced(j) {
             drop_word_positions.insert(word_idx[j + 1]);
             // Also drop the separator token immediately preceding word j+1
             // (typically a single space).
@@ -197,10 +207,15 @@ fn collapse_repetitions(text: &str) -> String {
 /// Remove standalone filler words (surrounded by whitespace or sentence
 /// boundaries). Does NOT touch "like" / "you know" / "enfin" mid-sentence
 /// where they might carry meaning — that's the polish LLM's job.
+///
+/// "ah" is not on the list: it is an interjection with meaning ("Ah !",
+/// "Ah d'accord"), and removing it left a bare "!" at the start of a sentence.
+/// A trailing ellipsis goes with the filler, so "Euh... Perso." no longer
+/// leaves "..".
 fn remove_standalone_fillers(text: &str) -> String {
     static FILLER_RE: OnceLock<Regex> = OnceLock::new();
     let re = FILLER_RE.get_or_init(|| {
-        Regex::new(r"(?i)\b(uh|um|euh|heu|hum|hmm|er|ah)\b[,.]?\s*").unwrap()
+        Regex::new(r"(?i)\b(uh|um|euh|heu|hum|hmm|er)\b(?:\.{2,}|…|[,.])?\s*").unwrap()
     });
     re.replace_all(text, "").into_owned()
 }
@@ -245,11 +260,13 @@ const PUNCTUATION_COMMANDS: &[(&str, &str)] = &[
     (r"(?i)\bclose bracket\b", "]"),
     (r"(?i)\bopen quote\b", "\""),
     (r"(?i)\bclose quote\b", "\""),
-    // Single-word commands
+    // Single-word commands. No bare "point" or "period": they are ordinary
+    // words far more often than commands — "du point de vue", "le point 5",
+    // "point important" each came out with a "." in the middle (four times in
+    // the maintainer's trace by 2026-09-16), and "a period of time" would too.
+    // The polish model still turns a spoken "point" into punctuation in context.
     (r"(?i)\bvirgule\b", ","),
     (r"(?i)\bcomma\b", ","),
-    (r"(?i)\bpoint\b", "."),
-    (r"(?i)\bperiod\b", "."),
     (r"(?i)\bcolon\b", ":"),
     (r"(?i)\bsemicolon\b", ";"),
 ];
@@ -337,6 +354,52 @@ mod tests {
         let out = cleanup("je vais je vais le faire");
         // Bigram collapse leaves single "je vais"
         assert_eq!(out.to_lowercase(), "je vais le faire");
+    }
+
+    #[test]
+    fn cleanup_keeps_repeated_digits_in_numbers() {
+        // Read aloud on 2026-09-16: every "3.2.2" came out as "3.2".
+        assert_eq!(
+            cleanup("installe la 3.2.2 et le tag v3.2.2"),
+            "installe la 3.2.2 et le tag v3.2.2"
+        );
+        assert_eq!(cleanup("le serveur 192.168.1.1"), "le serveur 192.168.1.1");
+        assert_eq!(cleanup("1,1 million et 2.2.2.2"), "1,1 million et 2.2.2.2");
+        assert_eq!(cleanup("ok/ok et 10:10"), "ok/ok et 10:10");
+    }
+
+    #[test]
+    fn cleanup_keeps_point_as_a_word() {
+        // All four from the maintainer's trace.
+        for raw in [
+            "du point de vue comptable",
+            "je suis d'accord avec le point 5",
+            "juste le point numéro 4",
+            "Par contre, point important",
+            "over a period of time",
+        ] {
+            assert_eq!(cleanup(raw), raw);
+        }
+    }
+
+    #[test]
+    fn cleanup_keeps_ah_and_takes_the_fillers_ellipsis() {
+        assert_eq!(cleanup("Ah ! Excellent"), "Ah ! Excellent");
+        assert_eq!(cleanup("pour les applications... Euh... Perso."), "pour les applications... Perso.");
+        assert_eq!(cleanup("je sais pas Euh... Je sais pas"), "je sais pas Je sais pas");
+    }
+
+    #[test]
+    fn cleanup_keeps_repetition_across_punctuation() {
+        // "moi ? Moi," lost its question; "de % de" lost the percent sign.
+        assert_eq!(cleanup("près de moi ? Moi, je pense"), "près de moi ? Moi, je pense");
+        assert_eq!(cleanup("le moins de % de taxes"), "le moins de % de taxes");
+    }
+
+    #[test]
+    fn cleanup_still_collapses_spoken_repetition_around_numbers() {
+        assert_eq!(cleanup("la la 3.2.2"), "la 3.2.2");
+        assert_eq!(cleanup("version 3 3 sort"), "version 3 sort");
     }
 
     #[test]
