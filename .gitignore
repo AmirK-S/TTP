@@ -38,3 +38,9 @@ assets-export/
 **/* 2.tsx
 **/*.yml.tmp.*
 **/*.rs.tmp.*
+
+# Certificats de signature (jamais versionnes)
+.dev-certs/
+
+# Builds telecharges (dmg, exe)
+builds/
