@@ -1460,6 +1460,39 @@ fn is_hallucination(text: &str) -> bool {
     )
 }
 
+/// A letter French or English never uses: Whisper's auto-detect answered in
+/// another language. Latin-1 letters (é, ç, ñ, ø…) and œ/Œ/Ÿ are ours; the
+/// Turkish dotless ı and ğ, Cyrillic, Greek, CJK are not. Digits and
+/// punctuation say nothing either way.
+pub(crate) fn has_foreign_script(text: &str) -> bool {
+    text.chars().any(|c| {
+        c.is_alphabetic()
+            && !(c.is_ascii_alphabetic()
+                || ('\u{00C0}'..='\u{00FF}').contains(&c)
+                || matches!(c, '\u{0152}' | '\u{0153}' | '\u{0178}'))
+    })
+}
+
+#[cfg(test)]
+mod foreign_script_tests {
+    use super::has_foreign_script;
+
+    #[test]
+    fn french_and_english_are_ours() {
+        assert!(!has_foreign_script("Kellou-Sidhoum, ça va ? Œuvre à 14 h."));
+        assert!(!has_foreign_script("Now let me switch to English for a second."));
+        assert!(!has_foreign_script("Señor Ångström, 3.2.2 — “ok”"));
+        assert!(!has_foreign_script(""));
+    }
+
+    #[test]
+    fn turkish_cyrillic_and_cjk_are_not() {
+        assert!(has_foreign_script("Kırı siduğu."));
+        assert!(has_foreign_script("Привет"));
+        assert!(has_foreign_script("字幕"));
+    }
+}
+
 /// Map a transcription API error message into an analytics category +
 /// the HTTP status code when one is recoverable from the string.
 ///
@@ -3283,6 +3316,38 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             }),
         );
         retried
+    } else {
+        raw_text
+    };
+
+    // Auto-detect on a very short clip picks a language nobody spoke: a
+    // surname dictated alone came back as Turkish, "Kırı siduğu." (0001-0c38,
+    // 2026-09-21), and nothing downstream could recover it — the screen's
+    // "Kellou-Sidhoum" sounds nothing like that. The script gives it away:
+    // French and English never need ı, ğ or Cyrillic. Ask once more with the
+    // language pinned to the one the app runs in. Only in auto mode; a pinned
+    // language cannot produce this.
+    let raw_text = if whisper_lang.is_none() && has_foreign_script(&raw_text) {
+        let pinned = crate::i18n::current_language();
+        trace.stage(
+            "whisper.retry",
+            serde_json::json!({ "reason": "foreign_script", "lang": pinned }),
+        );
+        match transcribe_audio(&api_key, transcription_path, whisper_prompt.as_deref(), Some(pinned)).await {
+            Ok(retried) if !retried.trim().is_empty() => {
+                trace.text_stage(
+                    "whisper.response",
+                    &retried,
+                    serde_json::json!({
+                        "empty_body_retry": false,
+                        "language_retry": pinned,
+                        "ms": whisper_start.elapsed().as_millis() as u64,
+                    }),
+                );
+                retried
+            }
+            _ => raw_text,
+        }
     } else {
         raw_text
     };
