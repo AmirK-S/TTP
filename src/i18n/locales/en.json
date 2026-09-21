@@ -207,8 +207,8 @@
       "screenContextLabel": "Use what's on screen",
       "screenContextDesc": "To spell names right, TTP sends Groq, with your dictation, the names on screen that sound like what you say. Never passwords.",
       "languageLabel": "Transcription language",
-      "languageHint": "Auto-detect: Whisper picks the language, handy if you mix French and English. Pick one if it guesses wrong on very short dictations.",
-      "languageAuto": "Auto-detect",
+      "languageHint": "On auto, Whisper recognises French or English, even mixed in one dictation, and never another language. Pick a single language if it's the only one you speak.",
+      "languageAuto": "French and English (auto)",
       "languageEnglish": "English",
       "languageFrench": "French",
       "keyLabel": "API key"

@@ -288,6 +288,7 @@ const HALLUCINATION_SUBSTRINGS: &[&str] = &[
 use crate::logging::log_error;
 use super::cleanup::cleanup;
 use super::polish::{guard_polish_with_context, polish_text_with_context, GuardVerdict};
+use super::whisper::{is_french_or_english, transcribe_audio_detailed};
 use super::{convert::convert_to_mono_16khz, transcribe_audio};
 
 /// Progress event sent to frontend during transcription pipeline.
@@ -3233,8 +3234,8 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     );
     let whisper_start = std::time::Instant::now();
 
-    let raw_text = match transcribe_audio(&api_key, transcription_path, whisper_prompt.as_deref(), whisper_lang).await {
-        Ok(text) => text,
+    let (raw_text, detected_lang) = match transcribe_audio_detailed(&api_key, transcription_path, whisper_prompt.as_deref(), whisper_lang).await {
+        Ok(t) => (t.text, t.language),
         Err(e) => {
             // AUDI-02: Do NOT delete the original audio on API failure.
             // The backup (and original) remain on disk so the user can inspect or retry.
@@ -3288,6 +3289,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         &raw_text,
         serde_json::json!({
             "empty_body_retry": false,
+            "language": detected_lang,
             "ms": whisper_start.elapsed().as_millis() as u64,
         }),
     );
@@ -3320,18 +3322,27 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
         raw_text
     };
 
-    // Auto-detect on a very short clip picks a language nobody spoke: a
-    // surname dictated alone came back as Turkish, "Kırı siduğu." (0001-0c38,
-    // 2026-09-21), and nothing downstream could recover it — the screen's
-    // "Kellou-Sidhoum" sounds nothing like that. The script gives it away:
-    // French and English never need ı, ğ or Cyrillic. Ask once more with the
-    // language pinned to the one the app runs in. Only in auto mode; a pinned
-    // language cannot produce this.
-    let raw_text = if whisper_lang.is_none() && has_foreign_script(&raw_text) {
+    // "Auto" means French or English, the two languages TTP's users speak,
+    // not any of Whisper's ninety-nine. On a very short clip its detection
+    // guesses: a surname dictated alone came back as Turkish, "Kırı siduğu."
+    // (0001-0c38, 2026-09-21), and nothing downstream could recover it — the
+    // screen's "Kellou-Sidhoum" sounds nothing like that. Whisper names the
+    // language it chose; when it is neither of ours (or it said nothing and
+    // the script is foreign), ask once more with the language pinned to the
+    // one the app runs in. Only in auto mode; a pinned language cannot do this.
+    let wrong_language = whisper_lang.is_none()
+        && detected_lang
+            .as_deref()
+            .map_or_else(|| has_foreign_script(&raw_text), |l| !is_french_or_english(l));
+    let raw_text = if wrong_language {
         let pinned = crate::i18n::current_language();
         trace.stage(
             "whisper.retry",
-            serde_json::json!({ "reason": "foreign_script", "lang": pinned }),
+            serde_json::json!({
+                "reason": "language_not_fr_en",
+                "detected": detected_lang,
+                "lang": pinned,
+            }),
         );
         match transcribe_audio(&api_key, transcription_path, whisper_prompt.as_deref(), Some(pinned)).await {
             Ok(retried) if !retried.trim().is_empty() => {

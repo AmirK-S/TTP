@@ -326,6 +326,36 @@ pub async fn transcribe_audio(
     prompt: Option<&str>,
     language: Option<&str>,
 ) -> Result<String, String> {
+    transcribe_audio_detailed(api_key, audio_path, prompt, language)
+        .await
+        .map(|t| t.text)
+}
+
+/// What Whisper returned: the text, and the language it decided the audio
+/// was in (`verbose_json` carries it; `None` if the field was missing).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Transcript {
+    pub text: String,
+    /// Whisper's own language name, as it wrote it ("French", "en"…). See
+    /// [`is_french_or_english`] before comparing.
+    pub language: Option<String>,
+}
+
+/// Whisper's language field names it in full ("French", "english") or by
+/// code; either way, is it one of the two languages TTP transcribes?
+pub fn is_french_or_english(language: &str) -> bool {
+    matches!(
+        language.trim().to_lowercase().as_str(),
+        "fr" | "french" | "français" | "francais" | "en" | "english" | "anglais"
+    )
+}
+
+pub async fn transcribe_audio_detailed(
+    api_key: &str,
+    audio_path: &str,
+    prompt: Option<&str>,
+    language: Option<&str>,
+) -> Result<Transcript, String> {
     transcribe_with_provider(
         api_key,
         audio_path,
@@ -336,6 +366,21 @@ pub async fn transcribe_audio(
         language,
     )
     .await
+}
+
+/// The `verbose_json` body: only the two fields TTP reads. Falls back to the
+/// body as plain text if it is not JSON, so a provider answering `text`
+/// still works.
+fn parse_transcript_body(body: &str) -> Transcript {
+    #[derive(serde::Deserialize)]
+    struct Body {
+        text: String,
+        language: Option<String>,
+    }
+    match serde_json::from_str::<Body>(body) {
+        Ok(b) => Transcript { text: b.text.trim().to_string(), language: b.language },
+        Err(_) => Transcript { text: body.trim().to_string(), language: None },
+    }
 }
 
 /// Internal function to transcribe audio with a specific provider.
@@ -350,7 +395,7 @@ async fn transcribe_with_provider(
     _provider_name: &str,
     prompt: Option<&str>,
     language: Option<&str>,
-) -> Result<String, String> {
+) -> Result<Transcript, String> {
     // Convert model to owned String for Form::text (requires 'static)
     let model = model.to_string();
 
@@ -404,7 +449,9 @@ async fn transcribe_with_provider(
 
         let mut form = Form::new()
             .text("model", model.clone())
-            .text("response_format", "text")
+            // `verbose_json` adds the language Whisper detected; the
+            // pipeline uses it to refuse a language the user does not speak.
+            .text("response_format", "verbose_json")
             .text("temperature", "0")
             .part("file", file_part);
 
@@ -436,11 +483,10 @@ async fn transcribe_with_provider(
                 let status = response.status();
 
                 if status.is_success() {
-                    // Parse response text
-                    let text = response
+                    let transcript = response
                         .text()
                         .await
-                        .map(|text| text.trim().to_string())
+                        .map(|body| parse_transcript_body(&body))
                         .map_err(|e| format!("Failed to read transcription response: {}", e))?;
                     crate::trace::event(
                         "whisper.attempt",
@@ -454,7 +500,7 @@ async fn transcribe_with_provider(
                             "waited_ms": waited_before_attempt_ms,
                         }),
                     );
-                    return Ok(text);
+                    return Ok(transcript);
                 } else {
                     // Headers before the body: `text()` consumes the response,
                     // and `retry-after` lives in the headers.
@@ -1024,6 +1070,35 @@ mod tests {
         // different costume.
         for base in [0u64, 1, 500, 1000, 1500] {
             assert!(jittered_backoff_ms(base) >= 1, "base {} slept 0ms", base);
+        }
+    }
+}
+
+#[cfg(test)]
+mod transcript_tests {
+    use super::{is_french_or_english, parse_transcript_body};
+
+    #[test]
+    fn verbose_json_gives_text_and_language() {
+        let t = parse_transcript_body(r#"{"task":"transcribe","language":"French","duration":1.2,"text":" Bonjour. ","segments":[]}"#);
+        assert_eq!(t.text, "Bonjour.");
+        assert_eq!(t.language.as_deref(), Some("French"));
+    }
+
+    #[test]
+    fn a_plain_text_body_still_works() {
+        let t = parse_transcript_body("Bonjour.\n");
+        assert_eq!(t.text, "Bonjour.");
+        assert_eq!(t.language, None);
+    }
+
+    #[test]
+    fn only_french_and_english_are_ours() {
+        for ours in ["French", "french", "fr", "English", "en", "anglais"] {
+            assert!(is_french_or_english(ours), "{ours}");
+        }
+        for other in ["Turkish", "tr", "Spanish", "de", ""] {
+            assert!(!is_french_or_english(other), "{other}");
         }
     }
 }
