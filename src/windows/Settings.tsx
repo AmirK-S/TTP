@@ -644,7 +644,7 @@ export function Settings() {
                   ))}
                 </select>
               </Row>
-              <Row label={t('settings.transcription.languageLabel')} htmlFor="transcription-language-select">
+              <Row label={t('settings.transcription.languageLabel')} hint={t('settings.transcription.languageHint')} htmlFor="transcription-language-select">
                 <select
                   id="transcription-language-select"
                   className={SELECT}

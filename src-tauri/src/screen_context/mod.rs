@@ -604,6 +604,66 @@ fn clean_word(raw: &str) -> String {
         .to_string()
 }
 
+// ---- what TTP itself put on screen ------------------------------------------
+
+/// Pasted texts kept, and for how long. A dictation lands on screen and is
+/// read back by the next capture as if a person had written it, so a name
+/// Whisper misheard ("Keloosidum") came back as a "name on screen" beside
+/// the right one and the polish model kept the wrong spelling (0337-0a58,
+/// 2026-09-21). Screen context is what the user did *not* dictate.
+const RECENT_PASTES_MAX: usize = 8;
+const RECENT_PASTES_TTL: Duration = Duration::from_secs(15 * 60);
+
+static RECENT_PASTES: Mutex<Vec<(Instant, String)>> = Mutex::new(Vec::new());
+
+/// Record a text TTP has just pasted.
+pub fn remember_pasted(text: &str) {
+    let Ok(mut recent) = RECENT_PASTES.lock() else {
+        return;
+    };
+    let now = Instant::now();
+    recent.retain(|(at, _)| now.duration_since(*at) < RECENT_PASTES_TTL);
+    if recent.len() >= RECENT_PASTES_MAX {
+        recent.remove(0);
+    }
+    recent.push((now, text.to_string()));
+}
+
+/// Words of the texts TTP pasted recently, lower-cased.
+pub fn recently_pasted_words() -> std::collections::HashSet<String> {
+    let now = Instant::now();
+    RECENT_PASTES
+        .lock()
+        .map(|recent| {
+            recent
+                .iter()
+                .filter(|(at, _)| now.duration_since(*at) < RECENT_PASTES_TTL)
+                .flat_map(|(_, text)| words_of(text))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Drop the terms that only TTP's own recent pastes could have put on
+/// screen. Returns how many went. The dictionary's spellings are added
+/// after this by the pipeline, so a name the user taught TTP still travels.
+pub fn drop_own_terms(ctx: &mut ScreenContext, own: &std::collections::HashSet<String>) -> usize {
+    if own.is_empty() {
+        return 0;
+    }
+    let before = ctx.terms.len();
+    ctx.terms.retain(|term| !words_of(term).iter().all(|w| own.contains(w)));
+    before - ctx.terms.len()
+}
+
+fn words_of(text: &str) -> Vec<String> {
+    text.split_whitespace()
+        .map(clean_word)
+        .filter(|w| !w.is_empty())
+        .map(|w| w.to_lowercase())
+        .collect()
+}
+
 // ---- the slot a capture waits in -------------------------------------------
 
 /// Captures still waiting for their pipeline, keyed by the recording's WAV
@@ -713,6 +773,36 @@ mod tests {
     fn terms_keep_names_that_do_not_open_a_sentence() {
         let terms = extract_terms(&["Demain je vois Kellou et on parle de Tauri."]);
         assert_eq!(terms, vec!["Kellou", "Tauri"]);
+    }
+
+    #[test]
+    fn a_name_ttp_pasted_is_not_a_name_on_screen() {
+        let mut ctx = ScreenContext {
+            terms: vec!["Keloosidum".into(), "Kellou-Sidhoum".into(), "Claude Code".into()],
+            ..Default::default()
+        };
+        let own: std::collections::HashSet<String> =
+            words_of("les noms comme Kempf ou Keloosidum. Now let me switch").into_iter().collect();
+        assert_eq!(drop_own_terms(&mut ctx, &own), 1);
+        assert_eq!(ctx.terms, vec!["Kellou-Sidhoum", "Claude Code"]);
+    }
+
+    #[test]
+    fn a_multi_word_term_goes_only_if_every_word_was_pasted() {
+        let mut ctx = ScreenContext {
+            terms: vec!["Claude Code".into(), "Wispr Flow".into()],
+            ..Default::default()
+        };
+        let own: std::collections::HashSet<String> = words_of("j'ai comparé Groq, Wispr Flow et Claude").into_iter().collect();
+        assert_eq!(drop_own_terms(&mut ctx, &own), 1);
+        assert_eq!(ctx.terms, vec!["Claude Code"]);
+    }
+
+    #[test]
+    fn nothing_pasted_drops_nothing() {
+        let mut ctx = ScreenContext { terms: vec!["Tauri".into()], ..Default::default() };
+        assert_eq!(drop_own_terms(&mut ctx, &Default::default()), 0);
+        assert_eq!(ctx.terms, vec!["Tauri"]);
     }
 
     #[test]

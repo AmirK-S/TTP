@@ -2711,7 +2711,11 @@ async fn take_screen_context(
     let waited_ms = span.ms();
 
     match taken {
-        Taken::Ready(Captured::Context(ctx, stats)) => {
+        Taken::Ready(Captured::Context(mut ctx, stats)) => {
+            // What TTP itself pasted a moment ago is on screen too, and was
+            // read back as names to copy. See `screen_context::remember_pasted`.
+            let own_terms_dropped =
+                crate::screen_context::drop_own_terms(&mut ctx, &crate::screen_context::recently_pasted_words());
             let chars = |t: &Option<String>| t.as_ref().map_or(0, |t| t.chars().count());
             trace.stage(
                 "screen_context",
@@ -2725,6 +2729,7 @@ async fn take_screen_context(
                     "selected_chars": chars(&ctx.selected),
                     "window_title": ctx.window_title.is_some(),
                     "terms": ctx.terms.len(),
+                    "own_terms_dropped": own_terms_dropped,
                     "window_nodes": stats.window_nodes,
                     "window_chars": stats.window_chars,
                     "window_truncated": stats.window_truncated,
@@ -4062,6 +4067,12 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
 
         false
     };
+
+    // The next capture will see this text on screen; it must not read it
+    // back as names to copy.
+    if paste_success {
+        crate::screen_context::remember_pasted(&final_text);
+    }
 
     // Save to history (before completing) — only when user has history enabled
     if settings.history_enabled {

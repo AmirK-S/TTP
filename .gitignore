@@ -44,3 +44,10 @@ assets-export/
 
 # Builds telecharges (dmg, exe)
 builds/
+
+# Local secrets (fal.ai key for the promo video, etc.)
+.env
+.env.*
+
+# Promo video working files (Remotion project, voice takes, renders)
+promo/

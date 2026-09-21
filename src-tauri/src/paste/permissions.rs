@@ -71,6 +71,10 @@ fn check_accessibility_impl(prompt: bool) -> bool {
 /// Returns:
 /// - `true` if accessibility genuinely works
 /// - `false` if the permission is missing or stale
+/// Seconds the probe may wait on the focused app's accessibility server.
+#[cfg(target_os = "macos")]
+const PROBE_TIMEOUT_S: f32 = 0.25;
+
 #[cfg(target_os = "macos")]
 pub fn probe_accessibility() -> bool {
     use core_foundation::base::{CFRelease, CFTypeRef, TCFType};
@@ -89,6 +93,7 @@ pub fn probe_accessibility() -> bool {
             attribute: core_foundation::string::CFStringRef,
             value: *mut CFTypeRef,
         ) -> AXError;
+        fn AXUIElementSetMessagingTimeout(element: AXUIElementRef, timeout: f32) -> AXError;
     }
 
     unsafe {
@@ -96,6 +101,16 @@ pub fn probe_accessibility() -> bool {
         if system_wide.is_null() {
             return false;
         }
+
+        // The answer comes from whichever app has focus, and an Electron app
+        // whose accessibility tree is asleep takes seconds to give it. The
+        // default timeout let that wait land on the main thread every time
+        // the Settings window got focus (`hotkey.timer_stall` of 1.5–3 s,
+        // sampled 2026-09-21: `AXUIElementCopyAttributeValue` under the IPC
+        // handler). The question here is only "is AX enabled for us", which
+        // a timeout answers as well as a value: `kAXErrorCannotComplete` is
+        // not `kAXErrorAPIDisabled`. Same budget as `screen_context::macos`.
+        AXUIElementSetMessagingTimeout(system_wide, PROBE_TIMEOUT_S);
 
         // Try to get the focused application — this will fail with
         // kAXErrorAPIDisabled (-25211) if trust is stale/missing.

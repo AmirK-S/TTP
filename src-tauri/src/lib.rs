@@ -599,7 +599,9 @@ async fn open_keyboard_settings(app: AppHandle) -> Result<(), String> {
 /// nudge once they have. Read via a fresh `defaults` process so we see external
 /// changes immediately (our own process's CFPreferences cache would be stale).
 #[tauri::command]
-fn fn_globe_key_intercepts() -> bool {
+async fn fn_globe_key_intercepts() -> bool {
+    // `async`: the Settings window polls this every 2 s, and spawning
+    // `defaults` from a synchronous command stalls the main thread each time.
     #[cfg(target_os = "macos")]
     {
         match std::process::Command::new("defaults")

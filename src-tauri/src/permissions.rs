@@ -182,8 +182,12 @@ pub fn check_microphone_permission() -> PermissionStatus {
 /// After an app update, the binary hash changes and macOS may show the app as
 /// "enabled" in System Preferences while the actual AX calls fail. The probe
 /// detects this stale state so the UI can guide the user to re-grant access.
+///
+/// `async` so the probe runs on the async runtime, not the main thread: the
+/// Settings window calls this on every focus, and a synchronous command runs
+/// on the main thread, where a slow probe froze every click in the window.
 #[command]
-pub fn check_accessibility_permission() -> PermissionStatus {
+pub async fn check_accessibility_permission() -> PermissionStatus {
     #[cfg(target_os = "macos")]
     {
         let api_says_trusted = crate::paste::check_accessibility();
