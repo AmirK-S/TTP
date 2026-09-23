@@ -2996,6 +2996,8 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                     "min_speech_ms": MIN_SPEECH_MS,
                     "noise_floor": stats.noise_floor,
                     "speech_window_floor": stats.speech_window_floor,
+                    "window_p50": stats.window_p50,
+                    "window_p90": stats.window_p90,
                     "backup_kept": backup_kept,
                 }),
             );
@@ -3020,6 +3022,8 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                     "speech_ms": stats.speech_ms,
                     "noise_floor": stats.noise_floor,
                     "speech_window_floor": stats.speech_window_floor,
+                    "window_p50": stats.window_p50,
+                    "window_p90": stats.window_p90,
                     // True when only the speech windows let this through:
                     // the old average-only gate would have dropped it.
                     "rescued_by_speech": stats.rms_after_silence < SILENCE_RMS_FLOOR,

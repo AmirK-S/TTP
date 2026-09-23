@@ -420,6 +420,19 @@ mod tests {
     }
 
     #[test]
+    fn a_quiet_voice_still_counts_as_speech() {
+        // The 21:51 clip of 2026-09-23: real speech whose 50 ms windows sat
+        // around 0.005, under the first 0.008 floor, dropped as silence.
+        let mut samples = room_noise(16_000, 15.0);
+        samples.extend((0..16_000).map(|i| ((i as f32 * 0.07).sin() * 230.0) as i16));
+        samples.extend(room_noise(16_000, 15.0));
+        let path = write_wav("ttp_test_quiet_voice.wav", &samples);
+        let stats = wav_signal_stats(&path).unwrap();
+        assert!(stats.speech_ms >= 900, "speech_ms was {}", stats.speech_ms);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn room_noise_alone_is_not_speech() {
         let path = write_wav("ttp_test_room.wav", &room_noise(16_000 * 8, 40.0));
         let stats = wav_signal_stats(&path).unwrap();
@@ -630,14 +643,21 @@ pub struct SignalStats {
     /// The level a 50 ms window must exceed to count as speech:
     /// `max(SPEECH_WINDOW_MIN_RMS, SPEECH_OVER_NOISE × noise_floor)`.
     pub speech_window_floor: f32,
+    /// Median and 90th-percentile window RMS, so the thresholds above can be
+    /// calibrated on real voices from the trace rather than guessed.
+    pub window_p50: f32,
+    pub window_p90: f32,
 }
 
 /// Length of one analysis window. 50 ms is shorter than a syllable, so a
 /// single spoken word already spans several windows.
 const SPEECH_WINDOW_MS: u32 = 50;
 /// Absolute floor for a speech window. A quiet MacBook room sits around
-/// 0.001–0.002 per window; quiet speech on the same mic clears 0.01.
-const SPEECH_WINDOW_MIN_RMS: f32 = 0.008;
+/// 0.0003–0.001 per window. 0.008 was too high: on 2026-09-23 a 17 s
+/// dictation full of speech counted only 300 ms above it, and a 3 s clip of
+/// real (quiet) speech was dropped with 150 ms. Amir's voice on the MacBook
+/// mic often sits between 0.004 and 0.008 per window.
+const SPEECH_WINDOW_MIN_RMS: f32 = 0.004;
 /// Relative floor: a window must also stand 4× above the recording's own
 /// background, so a fan or a noisy café does not read as speech.
 const SPEECH_OVER_NOISE: f32 = 4.0;
@@ -749,6 +769,8 @@ pub fn wav_signal_stats(path: &str) -> Result<SignalStats, String> {
             speech_ms: 0,
             noise_floor: 0.0,
             speech_window_floor: SPEECH_WINDOW_MIN_RMS,
+            window_p50: 0.0,
+            window_p90: 0.0,
         });
     }
 
@@ -758,6 +780,12 @@ pub fn wav_signal_stats(path: &str) -> Result<SignalStats, String> {
         windows.push((window_sum / window_count as f64).sqrt() as f32);
     }
     let (speech_ms, noise_floor, speech_window_floor) = speech_in_windows(&windows);
+    let (window_p50, window_p90) = {
+        let mut sorted = windows.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let at = |q: usize| sorted.get(sorted.len() * q / 100).copied().unwrap_or(0.0);
+        (at(50), at(90))
+    };
 
     let rms = (sum / count as f64).sqrt() as f32;
     Ok(SignalStats {
@@ -776,6 +804,8 @@ pub fn wav_signal_stats(path: &str) -> Result<SignalStats, String> {
         speech_ms,
         noise_floor,
         speech_window_floor,
+        window_p50,
+        window_p90,
     })
 }
 
