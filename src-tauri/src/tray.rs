@@ -247,14 +247,12 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 );
             }
             "install_update" => {
-                // The update was already downloaded + installed silently in
-                // the background; the .app bundle on disk is the new version.
-                // All we need to do is relaunch into it. Reuse the same
-                // LaunchServices-based restart path the in-app "Restart Now"
-                // button uses so Gatekeeper doesn't block the relaunch.
+                // The update was downloaded and staged in the background;
+                // install it and relaunch into it now, through the same path
+                // the in-app "Restart Now" button and the idle restart use.
                 let app = app.clone();
                 tauri::async_runtime::spawn_blocking(move || {
-                    let _ = crate::relaunch_app_via_launchservices(app);
+                    let _ = crate::apply_staged_update(app, "tray");
                 });
             }
             _ => {}

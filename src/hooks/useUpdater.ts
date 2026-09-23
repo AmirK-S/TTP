@@ -7,6 +7,7 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
+  AUTO_RESTART_IDLE_MS,
   shouldAutoInstall,
   shouldAutoRestart,
   shouldNotifyUpdate,
@@ -192,7 +193,10 @@ export function useUpdater(options?: UseUpdaterOptions) {
         setProgress(100);
       });
 
-      const installedVersion = await invoke<string>('install_update_with_channel', {
+      // Download and stage only. The bundle on disk is not touched until
+      // applyUpdate() installs and relaunches in one step, so the running
+      // version keeps working in the meantime.
+      const installedVersion = await invoke<string>('download_update_with_channel', {
         useBeta: useBetaChannelRef.current,
       });
 
@@ -260,7 +264,7 @@ export function useUpdater(options?: UseUpdaterOptions) {
     }
   }, [status]);
 
-  const restartApp = useCallback(async () => {
+  const applyUpdate = useCallback(async (trigger: 'button' | 'idle') => {
     // Prefer the Rust-side restart command which uses LaunchServices on
     // macOS (`open -n -a`) — the plugin-process relaunch flow has been
     // silently failing on beta builds: the current process dies but
@@ -268,56 +272,29 @@ export function useUpdater(options?: UseUpdaterOptions) {
     // users with the app simply gone. The custom command sidesteps the
     // exec chain entirely.
     try {
-      await invoke('restart_app_post_update');
+      await invoke('restart_app_post_update', { trigger });
     } catch (e) {
       console.error('[Updater] restart_app_post_update failed, falling back to plugin-process relaunch:', e);
       await relaunch();
     }
   }, []);
 
-  // Once the user has actually used the app this session (started at least
-  // one recording), we lock auto-restart OFF for the rest of the session.
-  // The 60s grace timer in v2.1.6 was naive: it would arm on idle, and a
-  // user who opened TTP, did something else for ~60s, then pressed Fn would
-  // hit the restart firing exactly when they began recording. The fix is to
-  // commit: if the user is using the app, defer the relaunch to the next
-  // natural quit-then-open — they'll pick up the new bundle then. We trust
-  // the tray "Install update (vX.Y.Z)" menu item (set by mark_update_ready)
-  // as the explicit nudge for users who want to relaunch on their own.
-  const hasRecordedSinceReadyRef = useRef(false);
-  useEffect(() => {
-    if (recordingState === 'Recording') {
-      hasRecordedSinceReadyRef.current = true;
-    }
-  }, [recordingState]);
+  // Settings' "Restart now" button. Takes no argument on purpose: it is
+  // wired straight to onClick, which would otherwise pass the click event.
+  const restartApp = useCallback(() => applyUpdate('button'), [applyUpdate]);
 
-  // Auto-relaunch right after a silent install completes. The window
-  // between "install done" and "user clicks Restart" leaves the running
-  // process in a zombie state: old code in RAM, new bundle on disk —
-  // macOS can revoke the mic TCC grant (bundle signature changed under
-  // the process) and the audio plugin's lazy-loaded resources point at
-  // files that no longer match. Symptom users hit: pill shows up on
-  // hotkey press but no audio reaches transcription.
-  //
-  // Two gates before we restart:
-  // 1. recordingState must be Idle (never yank an active recording).
-  // 2. The user must NOT have recorded yet this session. If they have,
-  //    they're actively using the app and any restart we fire is an
-  //    interruption regardless of timing. They'll get the new bundle on
-  //    their next quit/relaunch — that's good enough.
-  //
-  // The 60s timer is kept as a safety net for the genuinely-idle case
-  // (user opened TTP, never used it, walked away). It gets cancelled by
-  // cleanup if anything else fires the effect first.
+  // Install and relaunch once TTP has been Idle for AUTO_RESTART_IDLE_MS
+  // with an update staged. Any recording-state change clears the timer and
+  // re-arms it on the next Idle, so the restart always lands in a pause.
   useEffect(() => {
-    if (!shouldAutoRestart(autoInstall, status, recordingState, hasRecordedSinceReadyRef.current)) {
+    if (!shouldAutoRestart(autoInstall, status, recordingState)) {
       return;
     }
     const timer = setTimeout(() => {
-      restartApp();
-    }, 60_000);
+      applyUpdate('idle');
+    }, AUTO_RESTART_IDLE_MS);
     return () => clearTimeout(timer);
-  }, [autoInstall, status, recordingState, restartApp]);
+  }, [autoInstall, status, recordingState, applyUpdate]);
 
   const dismiss = useCallback(() => {
     setDismissed(true);

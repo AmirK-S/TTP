@@ -591,6 +591,24 @@ outside:
   recording. An already-open cpal stream does not follow it, so it keeps
   reading from a device that has stopped producing audio.
 
+## Self-update
+
+An update is **downloaded and staged, not installed**, the moment it is found.
+The bundle on disk is only replaced when it is applied, and the app relaunches
+in the same step, so the running version is never left running over a
+replaced bundle.
+
+| Event | Meaning |
+|---|---|
+| `update.available` | A check found `version` on the stable or `beta` channel. |
+| `update.downloaded` | The bytes are staged in memory (`bytes`, `ms`). Nothing on disk has changed. |
+| `update.download_failed` | The download failed; the next 4 h check retries. |
+| `update.apply` | Install and relaunch, now. `trigger`: `idle` (2 min with no dictation), `button` (Settings) or `tray`. `staged:false` is a plain relaunch. |
+| `update.install_failed` | The bundle was not replaced; the staged bytes are kept for the next quiet moment. |
+
+The next `app.launched` line should carry the new `build`. An `update.apply`
+with no `app.launched` after it is the app failing to come back.
+
 ## Retention
 
 ~10 MB across four files at 2.5 MB each. The number that matters is not the

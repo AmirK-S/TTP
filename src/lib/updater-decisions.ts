@@ -71,28 +71,35 @@ export function shouldAutoInstall(
 }
 
 /**
- * Should the auto-restart-after-install timer arm?
+ * How long TTP must sit Idle, with an update downloaded, before it installs
+ * it and relaunches itself. Every dictation restarts the count, so the
+ * restart lands in a pause, never mid-sentence.
+ */
+export const AUTO_RESTART_IDLE_MS = 2 * 60 * 1000;
+
+/**
+ * Should the install-and-relaunch timer arm?
  *
- * The v2.1.6 60s idle timer was naive: it would arm on idle and a user
- * who opened TTP, did something else for ~60s, then pressed Fn would hit
- * the restart firing right as they began recording. v2.1.9 added the
- * "user must not have recorded this session" gate.
+ * Until 2026-09 the rule also refused to restart once the user had recorded
+ * in the session — which is every real user — while the bundle had already
+ * been replaced under the running process. TTP then limped on, old code
+ * over a new signature, until the user quit it. The update is now staged
+ * rather than installed, so the running version stays whole, and the
+ * restart only needs a quiet moment: the timer is re-armed on every
+ * recording-state change and fires after AUTO_RESTART_IDLE_MS of Idle.
  *
  * Guards:
  *   1. Auto-install opted in.
- *   2. Install completed (status === 'ready').
+ *   2. Download completed and staged (status === 'ready').
  *   3. Recording state Idle.
- *   4. User has not recorded since the install completed.
  */
 export function shouldAutoRestart(
   autoInstall: boolean,
   status: 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error' | 'up-to-date',
   recordingState: 'Idle' | 'Recording' | 'Processing',
-  hasRecordedSinceReady: boolean,
 ): boolean {
   if (!autoInstall) return false;
   if (status !== 'ready') return false;
   if (recordingState !== 'Idle') return false;
-  if (hasRecordedSinceReady) return false;
   return true;
 }

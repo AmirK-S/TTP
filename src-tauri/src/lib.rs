@@ -305,8 +305,7 @@ fn build_channel_updater(
 #[serde(tag = "kind", rename_all = "kebab-case")]
 enum UpdateCheckResult {
     /// An update is available on the chosen channel. Frontend should prompt
-    /// the user, then call `install_update_with_channel` to actually download
-    /// and install it.
+    /// the user, then call `download_update_with_channel` to stage it.
     Available { version: String, body: Option<String> },
     /// No update available — current build is up-to-date on this channel.
     NoUpdate,
@@ -327,23 +326,46 @@ async fn check_for_updates_with_channel(
     let updater = build_channel_updater(&app, use_beta)?;
 
     match updater.check().await {
-        Ok(Some(update)) => Ok(UpdateCheckResult::Available {
-            version: update.version.clone(),
-            body: update.body.clone(),
-        }),
+        Ok(Some(update)) => {
+            trace::event(
+                "update.available",
+                serde_json::json!({ "version": update.version, "beta": use_beta }),
+            );
+            Ok(UpdateCheckResult::Available {
+                version: update.version.clone(),
+                body: update.body.clone(),
+            })
+        }
         Ok(None) => Ok(UpdateCheckResult::NoUpdate),
-        Err(e) => Err(format!("Update check failed: {}", e)),
+        Err(e) => {
+            trace::event("update.check_failed", serde_json::json!({ "error": e.to_string() }));
+            Err(format!("Update check failed: {}", e))
+        }
     }
 }
 
-/// Channel-aware download + install. Re-runs the manifest check (so we always
-/// install the latest announced version on the chosen channel) and streams
-/// progress to the frontend via `update-progress` / `update-progress-finished`
-/// events so the existing progress bar UI keeps working.
+/// A downloaded update, waiting for a quiet moment to be applied.
 ///
-/// Returns the installed version on success.
+/// Download and install used to be one step, run the moment an update was
+/// found. On macOS that swapped the .app bundle under the running process:
+/// old code in RAM, new signature on disk. macOS could then refuse the mic
+/// or accessibility to the process, and TTP stopped working until the user
+/// quit it — and the auto-restart that was meant to end that state was
+/// disabled for anyone who had dictated once in the session, i.e. everyone.
+///
+/// Now the bytes wait here and the bundle is only touched by
+/// [`apply_staged_update`], which relaunches in the same breath. Until then
+/// the running version is intact and keeps working.
+static STAGED_UPDATE: Mutex<Option<(tauri_plugin_updater::Update, Vec<u8>)>> = Mutex::new(None);
+
+/// Channel-aware download, **without installing**. Re-runs the manifest
+/// check (so we always fetch the latest announced version on the chosen
+/// channel), streams progress to the frontend via `update-progress` /
+/// `update-progress-finished`, and stages the bytes in [`STAGED_UPDATE`].
+///
+/// Returns the downloaded version on success.
 #[tauri::command]
-async fn install_update_with_channel(
+async fn download_update_with_channel(
     app: AppHandle,
     use_beta: bool,
 ) -> Result<String, String> {
@@ -356,9 +378,8 @@ async fn install_update_with_channel(
         .ok_or_else(|| "No update available on this channel".to_string())?;
 
     let version = update.version.clone();
+    let started = std::time::Instant::now();
 
-    // Stream download progress to the frontend so the existing progress
-    // bar in useUpdater.ts can render it.
     let progress_app = app.clone();
     let mut downloaded: u64 = 0;
     let on_chunk = move |chunk_len: usize, content_length: Option<u64>| {
@@ -376,18 +397,66 @@ async fn install_update_with_channel(
         let _ = finish_app.emit("update-progress-finished", ());
     };
 
-    update
-        .download_and_install(on_chunk, on_finish)
-        .await
-        .map_err(|e| format!("Download/install failed: {}", e))?;
+    let bytes = match update.download(on_chunk, on_finish).await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            trace::event(
+                "update.download_failed",
+                serde_json::json!({ "version": version, "error": e.to_string() }),
+            );
+            return Err(format!("Download failed: {}", e));
+        }
+    };
+    trace::event(
+        "update.downloaded",
+        serde_json::json!({
+            "version": version,
+            "bytes": bytes.len(),
+            "ms": started.elapsed().as_millis() as u64,
+        }),
+    );
+    if let Ok(mut staged) = STAGED_UPDATE.lock() {
+        *staged = Some((update, bytes));
+    }
+    Ok(version)
+}
 
-    // Tauri's updater drops the freshly downloaded bundle into the app's
-    // current location, but the new files carry the com.apple.quarantine
-    // attribute. Without stripping it, the subsequent restart() spawns a
-    // binary that macOS Gatekeeper silently blocks — which is why the
-    // "Restart now" button has been doing nothing on every beta update.
-    // Run xattr synchronously here so we know it's done BEFORE the
-    // frontend calls relaunch().
+/// Install the staged update and relaunch into it, in one step.
+///
+/// `trigger` says who asked: `"idle"` (the frontend saw two quiet minutes),
+/// `"button"` (Settings), or `"tray"`. With nothing staged — a build whose
+/// bundle was already replaced some other way — this is a plain relaunch.
+///
+/// On Windows `install` hands over to the NSIS installer, which exits this
+/// process and relaunches the app itself; the relaunch below is not reached.
+pub fn apply_staged_update(app: AppHandle, trigger: &str) -> Result<(), String> {
+    let staged = STAGED_UPDATE.lock().ok().and_then(|mut g| g.take());
+    let Some((update, bytes)) = staged else {
+        trace::event("update.apply", serde_json::json!({ "trigger": trigger, "staged": false }));
+        trace::flush();
+        return relaunch_app_via_launchservices(app);
+    };
+    trace::event(
+        "update.apply",
+        serde_json::json!({ "trigger": trigger, "staged": true, "version": update.version }),
+    );
+    trace::flush();
+
+    if let Err(e) = update.install(&bytes) {
+        // The bundle was not replaced, so the running version still works.
+        // Put the bytes back so the next quiet moment can try again.
+        trace::event(
+            "update.install_failed",
+            serde_json::json!({ "version": update.version, "error": e.to_string() }),
+        );
+        if let Ok(mut g) = STAGED_UPDATE.lock() {
+            *g = Some((update, bytes));
+        }
+        return Err(format!("Install failed: {}", e));
+    }
+
+    // The new bundle carries com.apple.quarantine; without stripping it the
+    // relaunch spawns a binary Gatekeeper silently blocks.
     #[cfg(target_os = "macos")]
     {
         if let Ok(exe) = std::env::current_exe() {
@@ -405,14 +474,13 @@ async fn install_update_with_channel(
         }
     }
 
-    Ok(version)
+    relaunch_app_via_launchservices(app)
 }
 
-/// Called by the JS side after a silent background download + install
-/// completes. The .app bundle on disk has already been replaced; this
-/// command records the version that's waiting so the tray can surface a
-/// blue dot + "Install update (vX.Y.Z)" menu item — the user's only
-/// visible signal that an update is ready to take effect on next relaunch.
+/// Called by the JS side after a silent background download completes. The
+/// update is staged, not installed; this records the version that's waiting
+/// so the tray can surface a blue dot + "Install update (vX.Y.Z)" menu item
+/// for a user who wants it before the next quiet moment applies it.
 #[tauri::command]
 fn mark_update_ready(app: AppHandle, version: String) -> Result<(), String> {
     crate::tray::set_pending_update(Some(version));
@@ -481,8 +549,8 @@ pub fn relaunch_app_via_launchservices(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn restart_app_post_update(app: AppHandle) -> Result<(), String> {
-    relaunch_app_via_launchservices(app)
+fn restart_app_post_update(app: AppHandle, trigger: Option<String>) -> Result<(), String> {
+    apply_staged_update(app, trigger.as_deref().unwrap_or("button"))
 }
 
 /// Tell the UI a permission is missing, and say so if nobody was listening.
@@ -1154,7 +1222,7 @@ pub fn run() {
             reset_to_idle,
             restart_app_post_update,
             check_for_updates_with_channel,
-            install_update_with_channel,
+            download_update_with_channel,
             mark_update_ready,
             get_build_info,
             check_microphone_permission,

@@ -449,9 +449,8 @@ fn emit(mut ev: TraceEvent) {
 /// into any shutdown hook. Tauri's `RunEvent::Exit` fires before the window
 /// server tears the process down, but `panic = "abort"` in the release
 /// profile means the interesting exits do not reach it — draining there would
-/// buy the tidy shutdown and not the untidy one. Left available for whoever
-/// needs it rather than deleted.
-#[allow(dead_code)]
+/// buy the tidy shutdown and not the untidy one. The update path uses it:
+/// `update.apply` must be on disk before the process exits to relaunch.
 pub fn flush() {
     let (tx, rx) = sync_channel::<()>(1);
     if queue().try_send(Msg::Flush(tx)).is_ok() {

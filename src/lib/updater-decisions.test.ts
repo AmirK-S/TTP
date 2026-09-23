@@ -76,26 +76,21 @@ describe('shouldAutoInstall', () => {
 });
 
 describe('shouldAutoRestart', () => {
-  it('fires when ready, idle, and no recording since', () => {
-    expect(shouldAutoRestart(true, 'ready', 'Idle', false)).toBe(true);
+  it('fires when staged and idle', () => {
+    expect(shouldAutoRestart(true, 'ready', 'Idle')).toBe(true);
   });
 
   it('skips when auto-install is opted out', () => {
-    expect(shouldAutoRestart(false, 'ready', 'Idle', false)).toBe(false);
+    expect(shouldAutoRestart(false, 'ready', 'Idle')).toBe(false);
   });
 
-  it('skips before the install completes', () => {
-    expect(shouldAutoRestart(true, 'downloading', 'Idle', false)).toBe(false);
-    expect(shouldAutoRestart(true, 'available', 'Idle', false)).toBe(false);
+  it('skips before the download completes', () => {
+    expect(shouldAutoRestart(true, 'downloading', 'Idle')).toBe(false);
+    expect(shouldAutoRestart(true, 'available', 'Idle')).toBe(false);
   });
 
-  it('skips during active recording', () => {
-    expect(shouldAutoRestart(true, 'ready', 'Recording', false)).toBe(false);
-  });
-
-  it('skips once the user has recorded since install completed', () => {
-    // This is the v2.1.9 fix: an active user must not be yanked out by an
-    // auto-relaunch. They'll pick up the new bundle on their next quit.
-    expect(shouldAutoRestart(true, 'ready', 'Idle', true)).toBe(false);
+  it('skips during a recording or while it is processed', () => {
+    expect(shouldAutoRestart(true, 'ready', 'Recording')).toBe(false);
+    expect(shouldAutoRestart(true, 'ready', 'Processing')).toBe(false);
   });
 });
