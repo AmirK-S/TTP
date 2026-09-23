@@ -2920,6 +2920,13 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // observed. Confirmed empirically on 3-second silent clips and 3-second
     // whispered speech (lowest valid speech sat at ~0.008).
     const SILENCE_RMS_FLOOR: f32 = 0.005;
+    // The average alone is not enough. A long dictation with long pauses
+    // averages its speech against its silence: on 2026-09-23 a 46.7 s
+    // recording peaking at 0.31 — a clear voice — averaged 0.00489 and was
+    // discarded. A recording is only silent when its average is low AND it
+    // holds less than this much speech, counted in 50 ms windows
+    // (`SignalStats::speech_ms`). 300 ms is about one short word.
+    const MIN_SPEECH_MS: u32 = 300;
     match super::backup::wav_signal_stats(&audio_path) {
         // Digital silence — every sample exactly zero. NOT the same as "the
         // user didn't speak": a live microphone in a quiet room always has a
@@ -2954,12 +2961,25 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
             set_state(app, RecordingState::Idle);
             return Err("Microphone delivered no audio".to_string());
         }
-        Ok(stats) if stats.rms_after_silence < SILENCE_RMS_FLOOR => {
+        Ok(stats)
+            if stats.rms_after_silence < SILENCE_RMS_FLOOR
+                && stats.speech_ms < MIN_SPEECH_MS =>
+        {
             crate::logging::log_info(&format!(
                 "Silent recording detected (RMS {:.4} over the audio that arrived, \
-                 {:.4} overall, floor {:.4}), skipping Whisper",
-                stats.rms_after_silence, stats.rms, SILENCE_RMS_FLOOR
+                 {:.4} overall, floor {:.4}; {} ms of speech), skipping Whisper",
+                stats.rms_after_silence, stats.rms, SILENCE_RMS_FLOOR, stats.speech_ms
             ));
+            // Keep the audio. This verdict is a heuristic, and it has been
+            // wrong on real speech: a dropped WAV makes a wrong verdict
+            // permanent. The backup is swept after 24 h like every other.
+            let backup_kept = match super::backup::backup_audio(app, &audio_path) {
+                Ok(_) => true,
+                Err(e) => {
+                    crate::logging::log_warn(&format!("Silent-audio backup failed: {}", e));
+                    false
+                }
+            };
             let _ = std::fs::remove_file(&audio_path);
             emit_progress(app, "error", "error.no_speech", None);
             trace.abort(
@@ -2972,6 +2992,11 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                     "peak": stats.peak,
                     "nonzero_ratio": stats.nonzero_ratio,
                     "floor": SILENCE_RMS_FLOOR,
+                    "speech_ms": stats.speech_ms,
+                    "min_speech_ms": MIN_SPEECH_MS,
+                    "noise_floor": stats.noise_floor,
+                    "speech_window_floor": stats.speech_window_floor,
+                    "backup_kept": backup_kept,
                 }),
             );
             set_state(app, RecordingState::Idle);
@@ -2992,6 +3017,12 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                     "nonzero_ratio": stats.nonzero_ratio,
                     "samples": stats.samples,
                     "floor": SILENCE_RMS_FLOOR,
+                    "speech_ms": stats.speech_ms,
+                    "noise_floor": stats.noise_floor,
+                    "speech_window_floor": stats.speech_window_floor,
+                    // True when only the speech windows let this through:
+                    // the old average-only gate would have dropped it.
+                    "rescued_by_speech": stats.rms_after_silence < SILENCE_RMS_FLOOR,
                 }),
             );
         }

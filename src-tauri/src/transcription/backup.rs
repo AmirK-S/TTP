@@ -394,6 +394,50 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// Deterministic room noise around ±`amp`, so tests do not need a RNG.
+    fn room_noise(len: usize, amp: f32) -> Vec<i16> {
+        (0..len)
+            .map(|i| ((((i * 7919) % 1000) as f32 / 500.0 - 1.0) * amp) as i16)
+            .collect()
+    }
+
+    #[test]
+    fn long_pauses_do_not_hide_speech() {
+        // The 2026-09-23 loss, rebuilt: 46 s at 16 kHz, one second of clear
+        // speech every eight seconds, room noise everywhere else. The
+        // whole-file RMS lands under the 0.005 floor — the old gate dropped
+        // this — while the speech windows plainly add up to seconds.
+        let mut samples = Vec::new();
+        for _ in 0..6 {
+            samples.extend((0..16_000).map(|i| ((i as f32 * 0.07).sin() * 600.0) as i16));
+            samples.extend(room_noise(112_000, 40.0));
+        }
+        let path = write_wav("ttp_test_pauses.wav", &samples);
+        let stats = wav_signal_stats(&path).unwrap();
+        assert!(stats.rms_after_silence < 0.005, "whole-file rms {}", stats.rms_after_silence);
+        assert!(stats.speech_ms >= 5_000, "speech_ms was {}", stats.speech_ms);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn room_noise_alone_is_not_speech() {
+        let path = write_wav("ttp_test_room.wav", &room_noise(16_000 * 8, 40.0));
+        let stats = wav_signal_stats(&path).unwrap();
+        assert_eq!(stats.speech_ms, 0, "noise floor {}", stats.noise_floor);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_loud_room_raises_the_speech_threshold() {
+        // A fan at ~0.01 RMS would clear the absolute floor on its own; the
+        // relative floor keeps it from reading as eight seconds of speech.
+        let path = write_wav("ttp_test_fan.wav", &room_noise(16_000 * 8, 560.0));
+        let stats = wav_signal_stats(&path).unwrap();
+        assert!(stats.speech_window_floor > SPEECH_WINDOW_MIN_RMS);
+        assert_eq!(stats.speech_ms, 0);
+        let _ = std::fs::remove_file(&path);
+    }
+
     #[test]
     fn a_wholly_silent_file_reports_zero_for_both_measures() {
         // The dead-capture branch runs first and must still see a zero, so
@@ -571,7 +615,32 @@ pub struct SignalStats {
     /// exists, rather than the audio plus the silence in front of it, is the
     /// difference between losing the recording and losing the first word.
     pub rms_after_silence: f32,
+    /// How much of the recording sounds like speech, in milliseconds: the
+    /// number of 50 ms windows louder than `speech_window_floor`, times 50.
+    ///
+    /// A whole-file RMS cannot tell "nobody spoke" from "somebody spoke,
+    /// then thought for a long time". On 2026-09-23 a 46.7 s dictation with
+    /// a 0.31 peak — a clear voice — averaged 0.00489 over the whole file
+    /// because of its pauses, and was thrown away as silence. Speech is
+    /// short loud bursts; counting the bursts is what survives the pauses.
+    pub speech_ms: u32,
+    /// The recording's own background level: the 20th-percentile RMS of its
+    /// non-silent 50 ms windows.
+    pub noise_floor: f32,
+    /// The level a 50 ms window must exceed to count as speech:
+    /// `max(SPEECH_WINDOW_MIN_RMS, SPEECH_OVER_NOISE × noise_floor)`.
+    pub speech_window_floor: f32,
 }
+
+/// Length of one analysis window. 50 ms is shorter than a syllable, so a
+/// single spoken word already spans several windows.
+const SPEECH_WINDOW_MS: u32 = 50;
+/// Absolute floor for a speech window. A quiet MacBook room sits around
+/// 0.001–0.002 per window; quiet speech on the same mic clears 0.01.
+const SPEECH_WINDOW_MIN_RMS: f32 = 0.008;
+/// Relative floor: a window must also stand 4× above the recording's own
+/// background, so a fan or a noisy café does not read as speech.
+const SPEECH_OVER_NOISE: f32 = 4.0;
 
 impl SignalStats {
     /// True when the capture device handed us digital silence — every sample
@@ -598,6 +667,13 @@ pub fn wav_signal_stats(path: &str) -> Result<SignalStats, String> {
     let mut reader = WavReader::open(path)
         .map_err(|e| format!("Cannot read WAV: {}", e))?;
     let spec = reader.spec();
+    // Samples per analysis window, counting every channel of a frame.
+    let window_len = ((spec.sample_rate as u64 * SPEECH_WINDOW_MS as u64 / 1000)
+        * spec.channels.max(1) as u64)
+        .max(1);
+    let mut windows: Vec<f32> = Vec::new();
+    let mut window_sum: f64 = 0.0;
+    let mut window_count: u64 = 0;
     let mut sum: f64 = 0.0;
     let mut peak: f64 = 0.0;
     let mut nonzero: u64 = 0;
@@ -627,6 +703,13 @@ pub fn wav_signal_stats(path: &str) -> Result<SignalStats, String> {
             leading_silence += 1;
         }
         count += 1;
+        window_sum += v * v;
+        window_count += 1;
+        if window_count == window_len {
+            windows.push((window_sum / window_count as f64).sqrt() as f32);
+            window_sum = 0.0;
+            window_count = 0;
+        }
     };
 
     match spec.sample_format {
@@ -663,8 +746,18 @@ pub fn wav_signal_stats(path: &str) -> Result<SignalStats, String> {
             samples: 0,
             leading_silence: 0,
             rms_after_silence: 0.0,
+            speech_ms: 0,
+            noise_floor: 0.0,
+            speech_window_floor: SPEECH_WINDOW_MIN_RMS,
         });
     }
+
+    // A trailing partial window counts once it holds half a window: enough
+    // to be a real measurement, and a word said just before release is kept.
+    if window_count * 2 >= window_len {
+        windows.push((window_sum / window_count as f64).sqrt() as f32);
+    }
+    let (speech_ms, noise_floor, speech_window_floor) = speech_in_windows(&windows);
 
     let rms = (sum / count as f64).sqrt() as f32;
     Ok(SignalStats {
@@ -680,5 +773,23 @@ pub fn wav_signal_stats(path: &str) -> Result<SignalStats, String> {
         } else {
             rms
         },
+        speech_ms,
+        noise_floor,
+        speech_window_floor,
     })
+}
+
+/// Speech duration, noise floor and speech threshold for a list of 50 ms
+/// window RMS values. Windows that are exactly zero (a Bluetooth lead-in)
+/// are left out of the noise estimate: they are absence, not background.
+fn speech_in_windows(windows: &[f32]) -> (u32, f32, f32) {
+    let mut heard: Vec<f32> = windows.iter().copied().filter(|v| *v > 0.0).collect();
+    if heard.is_empty() {
+        return (0, 0.0, SPEECH_WINDOW_MIN_RMS);
+    }
+    heard.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let noise_floor = heard[heard.len() / 5];
+    let floor = SPEECH_WINDOW_MIN_RMS.max(SPEECH_OVER_NOISE * noise_floor);
+    let loud = windows.iter().filter(|v| **v > floor).count() as u32;
+    (loud * SPEECH_WINDOW_MS, noise_floor, floor)
 }
