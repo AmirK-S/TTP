@@ -5,9 +5,12 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { relaunch } from '@tauri-apps/plugin-process';
-import { getVersion } from '@tauri-apps/api/app';
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { trackEvent } from '../lib/analytics';
+import {
+  shouldAutoInstall,
+  shouldNotifyUpdate,
+  shouldResetDismissOnVersionChange,
+} from '../lib/updater-decisions';
 import { useRecordingState } from './useRecordingState';
 import { useSettingsStore } from '../stores/settings-store';
 
@@ -32,15 +35,6 @@ interface UpdateInfo {
 }
 
 const UPDATE_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
-
-
-/// Strip user-identifying paths and truncate, so update_failed telemetry stays safe.
-function scrubUpdateError(msg: string): string {
-  return msg
-    .replace(/\/Users\/[^\s/"']+/g, '[USER]')
-    .replace(/\/home\/[^\s/"']+/g, '[USER]')
-    .slice(0, 200);
-}
 
 interface UseUpdaterOptions {
   autoCheck?: boolean;
@@ -111,7 +105,7 @@ export function useUpdater(options?: UseUpdaterOptions) {
   const recordingState = useRecordingState();
 
   // Derived: should we notify the user about the update?
-  const shouldNotify = updateInfo !== null && recordingState === 'Idle' && !dismissed;
+  const shouldNotify = shouldNotifyUpdate(updateInfo !== null, recordingState, dismissed);
 
   const checkForUpdates = useCallback(async () => {
     setStatus('checking');
@@ -130,20 +124,13 @@ export function useUpdater(options?: UseUpdaterOptions) {
         });
         setStatus('available');
 
-        // Reset dismissed state if this is a new version
-        if (lastFoundVersionRef.current !== result.version) {
+        // Reset dismissed state if this is a new version. The pure helper
+        // makes the rule explicit (null previous = always reset) and is
+        // covered by updater-decisions.test.ts.
+        if (shouldResetDismissOnVersionChange(lastFoundVersionRef.current, result.version)) {
           lastFoundVersionRef.current = result.version;
           setDismissed(false);
         }
-
-        getVersion()
-          .then((currentVersion) => {
-            trackEvent('update_prompted', {
-              from_version: currentVersion,
-              to_version: result.version,
-            });
-          })
-          .catch(() => {});
         return true;
       }
 
@@ -154,10 +141,6 @@ export function useUpdater(options?: UseUpdaterOptions) {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('[Updater] Check failed:', msg);
-      trackEvent('update_failed', {
-        stage: 'check',
-        error: scrubUpdateError(msg),
-      });
       setError(msg);
       setStatus('error');
       // Drop back to idle so the user can hit "Check" again — without this
@@ -208,7 +191,10 @@ export function useUpdater(options?: UseUpdaterOptions) {
         setProgress(100);
       });
 
-      const installedVersion = await invoke<string>('install_update_with_channel', {
+      // Download and stage only. The bundle on disk is not touched until
+      // applyUpdate() installs and relaunches in one step, so the running
+      // version keeps working in the meantime.
+      const installedVersion = await invoke<string>('download_update_with_channel', {
         useBeta: useBetaChannelRef.current,
       });
 
@@ -233,15 +219,6 @@ export function useUpdater(options?: UseUpdaterOptions) {
       } catch (e) {
         console.warn('[Updater] mark_update_ready failed:', e);
       }
-
-      getVersion()
-        .then((currentVersion) => {
-          trackEvent('update_completed', {
-            from_version: currentVersion,
-            to_version: installedVersion,
-          });
-        })
-        .catch(() => {});
     } catch (e) {
       // Tear down listeners if the IPC threw mid-flight.
       if (progressUnlistenRef.current) {
@@ -255,10 +232,6 @@ export function useUpdater(options?: UseUpdaterOptions) {
 
       const msg = e instanceof Error ? e.message : String(e);
       console.error('[Updater] Download failed:', msg);
-      trackEvent('update_failed', {
-        stage: 'download',
-        error: scrubUpdateError(msg),
-      });
       setError(msg);
       setStatus('error');
       scheduleIdleReset(5000);
@@ -272,10 +245,9 @@ export function useUpdater(options?: UseUpdaterOptions) {
   // the manifest against the running process, which is still old until
   // the user actually relaunches).
   useEffect(() => {
-    if (!autoInstall) return;
-    if (status !== 'available') return;
-    if (recordingState !== 'Idle') return;
-    if (autoInstalledThisSessionRef.current) return;
+    if (!shouldAutoInstall(autoInstall, status, recordingState, autoInstalledThisSessionRef.current)) {
+      return;
+    }
     autoInstalledThisSessionRef.current = true;
     downloadAndInstall();
   }, [autoInstall, status, recordingState, downloadAndInstall]);
@@ -290,7 +262,7 @@ export function useUpdater(options?: UseUpdaterOptions) {
     }
   }, [status]);
 
-  const restartApp = useCallback(async () => {
+  const applyUpdate = useCallback(async (trigger: 'button') => {
     // Prefer the Rust-side restart command which uses LaunchServices on
     // macOS (`open -n -a`) — the plugin-process relaunch flow has been
     // silently failing on beta builds: the current process dies but
@@ -298,57 +270,19 @@ export function useUpdater(options?: UseUpdaterOptions) {
     // users with the app simply gone. The custom command sidesteps the
     // exec chain entirely.
     try {
-      await invoke('restart_app_post_update');
+      await invoke('restart_app_post_update', { trigger });
     } catch (e) {
       console.error('[Updater] restart_app_post_update failed, falling back to plugin-process relaunch:', e);
       await relaunch();
     }
   }, []);
 
-  // Once the user has actually used the app this session (started at least
-  // one recording), we lock auto-restart OFF for the rest of the session.
-  // The 60s grace timer in v2.1.6 was naive: it would arm on idle, and a
-  // user who opened TTP, did something else for ~60s, then pressed Fn would
-  // hit the restart firing exactly when they began recording. The fix is to
-  // commit: if the user is using the app, defer the relaunch to the next
-  // natural quit-then-open — they'll pick up the new bundle then. We trust
-  // the tray "Install update (vX.Y.Z)" menu item (set by mark_update_ready)
-  // as the explicit nudge for users who want to relaunch on their own.
-  const hasRecordedSinceReadyRef = useRef(false);
-  useEffect(() => {
-    if (recordingState === 'Recording') {
-      hasRecordedSinceReadyRef.current = true;
-    }
-  }, [recordingState]);
+  // Settings' "Restart now" button. Takes no argument on purpose: it is
+  // wired straight to onClick, which would otherwise pass the click event.
+  const restartApp = useCallback(() => applyUpdate('button'), [applyUpdate]);
 
-  // Auto-relaunch right after a silent install completes. The window
-  // between "install done" and "user clicks Restart" leaves the running
-  // process in a zombie state: old code in RAM, new bundle on disk —
-  // macOS can revoke the mic TCC grant (bundle signature changed under
-  // the process) and the audio plugin's lazy-loaded resources point at
-  // files that no longer match. Symptom users hit: pill shows up on
-  // hotkey press but no audio reaches transcription.
-  //
-  // Two gates before we restart:
-  // 1. recordingState must be Idle (never yank an active recording).
-  // 2. The user must NOT have recorded yet this session. If they have,
-  //    they're actively using the app and any restart we fire is an
-  //    interruption regardless of timing. They'll get the new bundle on
-  //    their next quit/relaunch — that's good enough.
-  //
-  // The 60s timer is kept as a safety net for the genuinely-idle case
-  // (user opened TTP, never used it, walked away). It gets cancelled by
-  // cleanup if anything else fires the effect first.
-  useEffect(() => {
-    if (!autoInstall) return;
-    if (status !== 'ready') return;
-    if (recordingState !== 'Idle') return;
-    if (hasRecordedSinceReadyRef.current) return;
-    const timer = setTimeout(() => {
-      restartApp();
-    }, 60_000);
-    return () => clearTimeout(timer);
-  }, [autoInstall, status, recordingState, restartApp]);
+  // The idle install-and-relaunch runs in Rust (`start_idle_applier`), not
+  // here: macOS App Naps TTP, and this hidden window's timers stop with it.
 
   const dismiss = useCallback(() => {
     setDismissed(true);

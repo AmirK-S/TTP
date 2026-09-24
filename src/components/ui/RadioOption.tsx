@@ -23,7 +23,7 @@ export function RadioOption({ selected, onSelect, label, description, trailing, 
       onClick={onSelect}
       disabled={disabled}
       className={cn(
-        'group w-full flex items-center justify-between gap-3 px-4 py-3 text-left',
+        'ttp-radio group w-full flex items-center justify-between gap-3 px-4 py-3 text-left',
         'rounded-app-md border border-app-border bg-app-surface',
         'transition-[background-color,border-color,box-shadow] duration-hover ease-app-out',
         'hover:bg-app-raised hover:border-app-border-strong',

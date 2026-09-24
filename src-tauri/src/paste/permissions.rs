@@ -71,6 +71,10 @@ fn check_accessibility_impl(prompt: bool) -> bool {
 /// Returns:
 /// - `true` if accessibility genuinely works
 /// - `false` if the permission is missing or stale
+/// Seconds the probe may wait on the focused app's accessibility server.
+#[cfg(target_os = "macos")]
+const PROBE_TIMEOUT_S: f32 = 0.25;
+
 #[cfg(target_os = "macos")]
 pub fn probe_accessibility() -> bool {
     use core_foundation::base::{CFRelease, CFTypeRef, TCFType};
@@ -89,6 +93,7 @@ pub fn probe_accessibility() -> bool {
             attribute: core_foundation::string::CFStringRef,
             value: *mut CFTypeRef,
         ) -> AXError;
+        fn AXUIElementSetMessagingTimeout(element: AXUIElementRef, timeout: f32) -> AXError;
     }
 
     unsafe {
@@ -96,6 +101,16 @@ pub fn probe_accessibility() -> bool {
         if system_wide.is_null() {
             return false;
         }
+
+        // The answer comes from whichever app has focus, and an Electron app
+        // whose accessibility tree is asleep takes seconds to give it. The
+        // default timeout let that wait land on the main thread every time
+        // the Settings window got focus (`hotkey.timer_stall` of 1.5–3 s,
+        // sampled 2026-09-21: `AXUIElementCopyAttributeValue` under the IPC
+        // handler). The question here is only "is AX enabled for us", which
+        // a timeout answers as well as a value: `kAXErrorCannotComplete` is
+        // not `kAXErrorAPIDisabled`. Same budget as `screen_context::macos`.
+        AXUIElementSetMessagingTimeout(system_wide, PROBE_TIMEOUT_S);
 
         // Try to get the focused application — this will fail with
         // kAXErrorAPIDisabled (-25211) if trust is stale/missing.
@@ -118,33 +133,86 @@ pub fn probe_accessibility() -> bool {
     }
 }
 
+/// This app's bundle identifier, as `tccutil` needs it. Also spelled in
+/// `credentials.rs` and `keychain.rs` as `KEYCHAIN_SERVICE`; the audit's B1
+/// (one definition per quantity) covers that triplication and is not this
+/// file's to fix.
+#[cfg(target_os = "macos")]
+const BUNDLE_ID: &str = "com.ttp.desktop";
+
 /// Reset the stale TCC accessibility entry for this app.
 ///
 /// When an app update changes the binary, the old TCC entry becomes stale.
 /// This function uses `tccutil` to reset the accessibility entry for this
 /// app's bundle ID, clearing the stale state so the user gets a clean
 /// re-prompt.
+/// This is the most destructive thing TTP does to a user's machine, and it
+/// used to leave a `log_warn` and nothing else. `docs/tracing.md` promises
+/// `paste.accessibility` with `tcc_trusted` vs `ax_probe_ok`, but that line is
+/// written during a dictation — long after a reset that happens at launch. A
+/// user whose granted permission was wiped on startup had nothing in
+/// `ttp-trace.log` explaining why they were suddenly being asked for it again.
+///
+/// So the event is emitted **here**, at the one function that runs `tccutil`,
+/// rather than at the three call sites — the same reasoning as the
+/// `start_recording` / `stop_recording` wrappers in `audio_capture`: tracing
+/// the boundary cannot miss a caller, and a fourth caller added later is
+/// traced by default.
+///
+/// It is emitted **before** the command runs, carrying the two probe values
+/// that justified the decision, so the record exists even if the process does
+/// not survive what happens next. The outcome follows on its own line.
 #[cfg(target_os = "macos")]
 pub fn reset_accessibility_tcc() -> Result<(), String> {
-    // Get the bundle identifier
-    let bundle_id = get_bundle_id().ok_or("Could not determine bundle identifier")?;
+    // Was `get_bundle_id().ok_or("Could not determine bundle identifier")?`,
+    // where `get_bundle_id` was `fn() -> Option<String>` whose entire body was
+    // `Some("com.ttp.desktop".to_string())`. The `?` could not fire and the
+    // error string it carried could never be produced, so the only thing that
+    // arm did was tell the next reader that this call might fail. It cannot.
+    // If TTP ever needs the *real* identifier — read from the running bundle
+    // via `CFBundleGetIdentifier` — that IS fallible, and the handling should
+    // be written then, against the real failure, not left standing in advance.
+    let bundle_id = BUNDLE_ID;
+
+    // The state that led here. Re-probed rather than passed in, so the record
+    // describes the moment of the reset and not the caller's older reading.
+    crate::trace::event(
+        "permission.tcc_reset",
+        serde_json::json!({
+            "bundle_id": bundle_id,
+            "api_trusted": check_accessibility(),
+            "ax_probe_ok": probe_accessibility(),
+            "version": env!("CARGO_PKG_VERSION"),
+        }),
+    );
 
     // Reset TCC entry for this bundle
     let output = std::process::Command::new("tccutil")
         .args(["reset", "Accessibility", &bundle_id])
         .output()
-        .map_err(|e| format!("Failed to run tccutil: {}", e))?;
+        .map_err(|e| {
+            crate::trace::event(
+                "permission.tcc_reset_result",
+                serde_json::json!({ "ok": false, "error": e.to_string() }),
+            );
+            format!("Failed to run tccutil: {}", e)
+        })?;
 
     if output.status.success() {
+        crate::trace::event(
+            "permission.tcc_reset_result",
+            serde_json::json!({ "ok": true }),
+        );
         Ok(())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        crate::trace::event(
+            "permission.tcc_reset_result",
+            // The user's grant is gone either way at this point; whether
+            // tccutil said so matters for telling "reset and re-prompted"
+            // apart from "asked to reset and was refused".
+            serde_json::json!({ "ok": false, "stderr": stderr.trim() }),
+        );
         Err(format!("tccutil failed: {}", stderr))
     }
-}
-
-/// Get the app's bundle identifier
-#[cfg(target_os = "macos")]
-fn get_bundle_id() -> Option<String> {
-    Some("com.ttp.desktop".to_string())
 }

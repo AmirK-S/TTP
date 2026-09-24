@@ -26,3 +26,32 @@ dist-ssr
 .planning/
 .claude/
 assets-export/
+
+# Finder / editor auto-duplicates. macOS Finder creates "<name> 2.<ext>"
+# when paste-copying into a directory that already has the same name;
+# editor crashes can leave "<name>.<ext>.tmp.<pid>.<hex>" files behind.
+# These have shadowed a real workflow file in CI before (a stale
+# "build 2.yml" with rustc 1.85.0 ran instead of build.yml's 1.90.0 pin).
+**/* 2.yml
+**/* 2.rs
+**/* 2.ts
+**/* 2.tsx
+**/*.yml.tmp.*
+**/*.rs.tmp.*
+
+# Certificats de signature (jamais versionnes)
+.dev-certs/
+
+# Builds telecharges (dmg, exe)
+builds/
+
+# Local secrets (fal.ai key for the promo video, etc.)
+.env
+.env.*
+
+# Promo video working files (Remotion project, voice takes, renders)
+promo/
+
+# Python bytecode
+__pycache__/
+*.pyc

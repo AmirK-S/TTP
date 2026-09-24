@@ -1,19 +1,15 @@
 // TTP - Talk To Paste
 // First-launch onboarding wizard.
 //
-// Five steps: Welcome → Permissions → API key → Preferences → Tour. Gating is
-// intentionally soft: only Microphone and the API key are required to advance.
-// Accessibility + Input Monitoring are strong recommendations but skippable.
-// Preferences default to the safe choices; Tour is purely informational.
+// Three steps: Permissions → API key → Try it. Gating is intentionally soft:
+// only Microphone and the API key are required to advance. Accessibility +
+// Input Monitoring are strong recommendations but skippable. The last step
+// is a real dictation into a text box, so the user leaves having seen it work.
 
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useTranslation } from 'react-i18next';
-import {
-  enable as enableAutostart,
-  disable as disableAutostart,
-} from '@tauri-apps/plugin-autostart';
 import {
   Mic,
   Accessibility as AccessibilityIcon,
@@ -23,21 +19,21 @@ import {
   ChevronLeft,
   ExternalLink,
   Sparkles,
-  Search,
-  EyeOff,
-  Power,
-  Bug,
+  ScanText,
+  ShieldCheck,
 } from 'lucide-react';
-import { Button, Card, BrandTile, Toggle, DarkPill } from '../components/ui';
+import { Button, Card, BrandTile, Toggle } from '../components/ui';
 import { ApiKeyForm } from '../components/ApiKeyForm';
-import { useSettingsStore } from '../stores/settings-store';
 import { cn } from '../lib/cn';
+import { useTauriEvent } from '../hooks/useTauriEvent';
+import { TriggerPicker } from '../components/TriggerPicker';
+import { useTrigger } from '../hooks/useTrigger';
 
 type PermissionStatus = 'Granted' | 'Denied' | 'Undetermined';
 type PermKey = 'microphone' | 'accessibility' | 'inputMonitoring';
-type StepIndex = 0 | 1 | 2 | 3 | 4;
+type StepIndex = 0 | 1 | 2 | 3;
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 4;
 const IS_MAC = typeof navigator !== 'undefined' && navigator.platform.startsWith('Mac');
 
 const SETTINGS_COMMAND: Record<PermKey, string> = {
@@ -59,7 +55,7 @@ export default function Onboarding() {
     if (typeof window === 'undefined') return 0;
     const p = new URLSearchParams(window.location.search).get('step');
     const n = p ? Number(p) : NaN;
-    return n >= 0 && n <= 4 ? (n as StepIndex) : 0;
+    return n >= 0 && n <= 3 ? (n as StepIndex) : 0;
   })();
   const [step, setStep] = useState<StepIndex>(initialStep);
   // `?trial=1` forces the post-save success view for screenshots.
@@ -98,6 +94,10 @@ export default function Onboarding() {
 
   useEffect(() => { refreshAll(); }, [refreshAll]);
 
+  // The helper closes itself the moment the permission lands; this is what
+  // ticks the row without waiting for the next poll.
+  useTauriEvent('permission-granted', () => { refreshAll(); });
+
   useEffect(() => {
     try {
       const unlisten = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
@@ -112,7 +112,7 @@ export default function Onboarding() {
   // Permissions step: poll once per second so the user can toggle perms in
   // System Settings and see the wizard update live (Wispr-style seamless flow).
   useEffect(() => {
-    if (step !== 1) return;
+    if (step !== 0) return;
     const id = window.setInterval(refreshAll, 1000);
     return () => window.clearInterval(id);
   }, [step, refreshAll]);
@@ -135,11 +135,16 @@ export default function Onboarding() {
     }
   };
 
+  // Accessibility and Input Monitoring both take the drag panel: the system
+  // prompt first (it puts TTP in the list, unchecked, which is often all that
+  // is needed), then System Settings on the right page with the panel beside
+  // it. `permission_helper` returns without a panel on a dev binary, where
+  // there is no bundle to drag.
   const requestAccessibility = async () => {
     setChecking('accessibility');
     try {
-      if (permStatus.accessibility === 'Denied') await openSettings('accessibility');
-      else await invoke('request_accessibility_permission');
+      if (permStatus.accessibility !== 'Denied') await invoke('request_accessibility_permission');
+      await invoke('show_permission_helper', { kind: 'accessibility' });
     } catch (e) {
       console.log('Accessibility permission result:', e);
     } finally {
@@ -152,7 +157,7 @@ export default function Onboarding() {
     setChecking('inputMonitoring');
     try {
       const granted = await invoke<boolean>('request_input_monitoring_permission');
-      if (!granted) await openSettings('inputMonitoring');
+      if (!granted) await invoke('show_permission_helper', { kind: 'inputMonitoring' });
     } catch (e) {
       console.log('Input Monitoring permission result:', e);
     } finally {
@@ -167,7 +172,7 @@ export default function Onboarding() {
   };
 
   const micGranted = permStatus.microphone === 'Granted';
-  const advance = () => setStep((s) => Math.min(4, s + 1) as StepIndex);
+  const advance = () => setStep((s) => Math.min(3, s + 1) as StepIndex);
   const back = () => setStep((s) => Math.max(0, s - 1) as StepIndex);
 
   return (
@@ -176,8 +181,7 @@ export default function Onboarding() {
         {/* `key={step}` forces a remount so the anim-fade-up entry replays.
             A poor man's crossfade without framer-motion. */}
         <div key={step} className="max-w-xl mx-auto px-8 pt-16 pb-8">
-          {step === 0 && <WelcomeStep />}
-          {step === 1 && (
+          {step === 0 && (
             <PermissionsStep
               permStatus={permStatus}
               checking={checking}
@@ -188,11 +192,11 @@ export default function Onboarding() {
               }}
             />
           )}
-          {step === 2 && (
+          {step === 1 && (
             <ApiKeyStep hasApiKey={hasApiKey} onSaved={() => setHasApiKey(true)} />
           )}
-          {step === 3 && <PreferencesStep />}
-          {step === 4 && <TourStep />}
+          {step === 2 && <ScreenStep onChosen={advance} />}
+          {step === 3 && <TryStep />}
         </div>
       </div>
 
@@ -211,11 +215,6 @@ export default function Onboarding() {
               </Button>
             )}
             {step === 0 && (
-              <Button size="md" rightIcon={<ChevronRight className="size-4" />} onClick={advance}>
-                {t('onboarding.wizard.next')}
-              </Button>
-            )}
-            {step === 1 && (
               <Button
                 size="md"
                 rightIcon={<ChevronRight className="size-4" />}
@@ -226,17 +225,12 @@ export default function Onboarding() {
                 {t('onboarding.wizard.next')}
               </Button>
             )}
-            {step === 2 && hasApiKey && (
+            {step === 1 && hasApiKey && (
               <Button size="md" rightIcon={<ChevronRight className="size-4" />} onClick={advance}>
                 {t('onboarding.wizard.next')}
               </Button>
             )}
             {step === 3 && (
-              <Button size="md" rightIcon={<ChevronRight className="size-4" />} onClick={advance}>
-                {t('onboarding.wizard.next')}
-              </Button>
-            )}
-            {step === 4 && (
               <Button size="md" onClick={finish}>
                 {t('onboarding.wizard.finish')}
               </Button>
@@ -248,41 +242,7 @@ export default function Onboarding() {
   );
 }
 
-/* ----------------------------- Step 0: Welcome ---------------------------- */
-
-function WelcomeStep() {
-  const { t } = useTranslation();
-  return (
-    <section className="anim-fade-up text-center max-w-md mx-auto">
-      <BrandTile size="lg" className="mx-auto mb-7" />
-      <h1 className="text-display-md text-app-text">
-        {t('onboarding.wizard.welcomeTitle')}
-      </h1>
-      <p className="mt-2 text-[13px] text-app-muted leading-relaxed">
-        {t('onboarding.wizard.welcomeSubtitle')}
-      </p>
-
-      <ul className="mt-8 text-left space-y-3.5">
-        {[
-          t('onboarding.wizard.welcomeBullet1'),
-          t('onboarding.wizard.welcomeBullet2'),
-          t('onboarding.wizard.welcomeBullet3'),
-        ].map((bullet, i) => (
-          <li
-            key={i}
-            className="flex items-start gap-3 anim-fade-up"
-            style={{ animationDelay: `${0.08 + i * 0.06}s` }}
-          >
-            <CheckCircle2 className="size-4 mt-0.5 shrink-0 text-app-accent" aria-hidden />
-            <span className="text-[13px] text-app-text leading-relaxed">{bullet}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-/* --------------------------- Step 1: Permissions -------------------------- */
+/* --------------------------- Step 0: Permissions -------------------------- */
 
 interface PermStepProps {
   permStatus: Record<PermKey, PermissionStatus>;
@@ -296,7 +256,8 @@ function PermissionsStep({ permStatus, checking, onRequest }: PermStepProps) {
 
   return (
     <section className="anim-fade-up">
-      <h2 className="text-display-sm text-app-text">{t('onboarding.wizard.permissionsTitle')}</h2>
+      <BrandTile size="md" className="mb-5" />
+      <h1 className="text-display-sm text-app-text">{t('onboarding.wizard.welcomeTitle')}</h1>
       <p className="mt-2 text-[13px] text-app-muted leading-relaxed">{t('onboarding.wizard.permissionsSubtitle')}</p>
 
       <div className="mt-7 space-y-2">
@@ -396,43 +357,7 @@ function PermissionRow({ permKey, status, isChecking, onClick, delay }: PermRowP
   );
 }
 
-/* ---------------------------- Trial countdown ----------------------------- */
-
-function TrialCountdown() {
-  const { t } = useTranslation();
-  const [trialStartedAt, setTrialStartedAt] = useState<number | null>(null);
-  const [now, setNow] = useState(Date.now());
-
-  useEffect(() => {
-    invoke<{ trial_started_at: number | null }>('get_usage_stats')
-      .then((u) => setTrialStartedAt(u.trial_started_at))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 60_000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  if (!trialStartedAt) return null;
-  const endMs = (trialStartedAt + 7 * 86_400) * 1000;
-  const msLeft = Math.max(0, endMs - now);
-  if (msLeft === 0) return null;
-  const days = Math.floor(msLeft / 86_400_000);
-  const hours = Math.floor((msLeft % 86_400_000) / 3_600_000);
-  const minutes = Math.floor((msLeft % 3_600_000) / 60_000);
-
-  return (
-    <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-app-accent-tint border border-app-accent/20">
-      <span className="size-1.5 rounded-full bg-app-accent anim-pulse" aria-hidden />
-      <span className="text-[11px] font-medium text-app-accent tabular-nums">
-        {t('onboarding.trial.timeLeft', { days, hours, minutes })}
-      </span>
-    </div>
-  );
-}
-
-/* ---------------------------- Step 2: API key ----------------------------- */
+/* ---------------------------- Step 1: API key ----------------------------- */
 
 interface ApiKeyStepProps { hasApiKey: boolean; onSaved: () => void; }
 
@@ -445,24 +370,26 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
           <div className="mx-auto size-14 rounded-full bg-app-success-soft grid place-items-center mb-5 shine-sm">
             <CheckCircle2 className="size-7 text-app-success anim-check-pop" aria-hidden />
           </div>
-          <h2 className="text-display-md text-app-text">{t('onboarding.trial.title')}</h2>
-          <p className="mt-2 text-[13px] text-app-muted leading-relaxed">{t('onboarding.trial.subtitle')}</p>
-          <TrialCountdown />
+          <h2 className="text-display-md text-app-text">{t('onboarding.ready.title')}</h2>
+          <p className="mt-2 text-[13px] text-app-muted leading-relaxed">{t('onboarding.ready.subtitle')}</p>
         </div>
 
-        {/* Trial perks recap. */}
+        {/* What the user has — all of it, permanently. This screen used to
+            announce a 4-day Pro trial, caps and a paywall that the product no
+            longer has. No purchase is mentioned here at all: per
+            the TTP Pro design there is exactly one mention, in Settings. */}
         <div className="mt-7 rounded-app-lg border border-app-border bg-app-surface shine-sm p-5">
           <div className="flex items-center gap-2 mb-3">
             <Sparkles className="size-4 text-app-accent" aria-hidden />
             <span className="text-[12px] font-semibold text-app-text uppercase tracking-wide">
-              {t('onboarding.trial.perksHeader')}
+              {t('onboarding.ready.includedHeader')}
             </span>
           </div>
           <ul className="space-y-2.5">
             {[
-              t('onboarding.trial.perkPolish'),
-              t('onboarding.trial.perkDictionary'),
-              t('onboarding.trial.perkHistory'),
+              t('onboarding.ready.perkPolish'),
+              t('onboarding.ready.perkDictionary'),
+              t('onboarding.ready.perkHistory'),
             ].map((perk, i) => (
               <li key={i} className="flex items-start gap-2.5 text-[13px] text-app-text">
                 <CheckCircle2 className="size-3.5 mt-0.5 shrink-0 text-app-success" aria-hidden />
@@ -471,34 +398,6 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
             ))}
           </ul>
         </div>
-
-        <p className="mt-4 text-center text-[11px] text-app-faint">
-          {t('onboarding.trial.fallback')}
-        </p>
-
-        <a
-          href="https://amirks.lemonsqueezy.com/checkout/buy/23ded1c4-c862-4f8c-ada5-0bb3dc2e0060"
-          target="_blank"
-          rel="noopener noreferrer"
-          className={
-            'mt-5 flex items-center justify-between rounded-app-md border border-app-accent/30 ' +
-            'bg-app-accent-tint hover:bg-app-accent-soft px-4 py-3 ' +
-            'transition-colors duration-hover ease-app-out group'
-          }
-        >
-          <div className="min-w-0">
-            <div className="text-[13px] font-medium text-app-text">
-              {t('onboarding.trial.upgradeTitle')}
-            </div>
-            <div className="text-[11px] text-app-muted mt-0.5">
-              {t('onboarding.trial.upgradeSubtitle')}
-            </div>
-          </div>
-          <span className="ml-3 inline-flex items-center gap-1 text-[12px] font-medium text-app-accent shrink-0">
-            {t('onboarding.trial.upgradeCta')}
-            <ExternalLink className="size-3" aria-hidden />
-          </span>
-        </a>
       </section>
     );
   }
@@ -514,239 +413,133 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
   );
 }
 
-/* -------------------------- Step 3: Preferences --------------------------- */
+/* ------------------------------ Step 2: Try it ---------------------------- */
 
 /**
- * Three opt-in toggles surfaced up-front so users don't have to dig into
- * Settings later. Telemetry default OFF (privacy first), autostart default OFF
- * (don't squat in the user's launchd unless they ask), hide-pill default OFF
- * (visible feedback while they're new to the app — they can hide it later).
+ * A real dictation, not a tour. The text box is in this window, so TTP pastes
+ * into itself and the user watches their own words arrive — the one proof
+ * that permissions, key and trigger are all right.
+ */
+/* ------------------------- Step 2: Screen context ------------------------- */
+
+/**
+ * An explicit yes or no, on its own page, before the first dictation.
  *
- * Each toggle persists immediately; no save button. The pattern matches the
- * Settings panel so muscle-memory transfers.
+ * Reading the screen sends some of what is on it to a third party, so it is
+ * off until the user chooses it here (the setting defaults to false) and the
+ * page says what goes, where, and what never does. There is no Next button on
+ * this step: one of the two answers is the way forward. Amir, 2026-09-15:
+ * "on leur demande quand même s'ils veulent ou pas, et on leur explique".
  */
-function PreferencesStep() {
+function ScreenStep({ onChosen }: { onChosen: () => void }) {
   const { t } = useTranslation();
-  // Route through the store so saveSettings merges with the current Settings
-  // object before invoking the Rust command. The Rust `set_settings` expects
-  // the FULL Settings struct; calling it with a partial corrupts the file
-  // and silently fails — which is exactly the bug v2.1.2 shipped with.
-  const {
-    hidePillWhenInactive, telemetryEnabled, autostartEnabled, loadSettings, saveSettings,
-  } = useSettingsStore();
+  const [saving, setSaving] = useState(false);
 
-  // Hydrate from the actual app state so the toggles reflect reality if the
-  // user navigates back to this step after changing something.
-  useEffect(() => {
-    loadSettings();
-  }, [loadSettings]);
-
-  const onHidePill = async (v: boolean) => {
-    try { await saveSettings({ hide_pill_when_inactive: v }); }
-    catch (e) { console.error('Failed to save hide_pill:', e); }
-  };
-
-  const onAutostart = async (v: boolean) => {
-    // Two things have to happen: register/unregister the LaunchAgent
-    // (real OS side-effect) AND persist the user's intent to settings.json
-    // (what Settings UI reads). We can't trust the autostart plugin's
-    // `isEnabled()` on macOS — for product names with spaces it returns
-    // false even when the plist is on disk and loaded. So we cache.
-    try {
-      if (v) await enableAutostart(); else await disableAutostart();
-      await saveSettings({ autostart_enabled: v });
-    } catch (e) {
-      console.error('Failed to toggle autostart:', e);
-    }
-  };
-
-  const onTelemetry = async (v: boolean) => {
-    try { await saveSettings({ telemetry_enabled: v }); }
-    catch (e) { console.error('Failed to save telemetry:', e); }
+  const choose = async (enabled: boolean) => {
+    setSaving(true);
+    try { await invoke('set_settings', { settings: { screen_context_enabled: enabled } }); }
+    catch (e) { console.error('Failed to save screen_context_enabled:', e); }
+    finally { setSaving(false); onChosen(); }
   };
 
   return (
-    <section className="anim-fade-up max-w-md mx-auto">
-      <h2 className="text-display-sm text-app-text">{t('onboarding.wizard.preferencesTitle')}</h2>
-      <p className="mt-2 text-[13px] text-app-muted leading-relaxed">
-        {t('onboarding.wizard.preferencesSubtitle')}
-      </p>
-
-      <div className="mt-7 space-y-2.5">
-        <PrefRow
-          icon={<EyeOff className="size-4" strokeWidth={1.75} />}
-          tile="bg-app-accent-tint text-app-accent"
-          label={t('onboarding.preferences.hidePillLabel')}
-          desc={t('onboarding.preferences.hidePillDesc')}
-          enabled={hidePillWhenInactive}
-          onChange={onHidePill}
-          delay={0}
-        />
-        <PrefRow
-          icon={<Power className="size-4" strokeWidth={1.75} />}
-          tile="bg-app-success-tint text-app-success"
-          label={t('onboarding.preferences.autostartLabel')}
-          desc={t('onboarding.preferences.autostartDesc')}
-          enabled={autostartEnabled}
-          onChange={onAutostart}
-          delay={1}
-        />
-        <PrefRow
-          icon={<Bug className="size-4" strokeWidth={1.75} />}
-          tile="bg-app-warning-tint text-app-warning"
-          label={t('onboarding.preferences.telemetryLabel')}
-          desc={t('onboarding.preferences.telemetryDesc')}
-          enabled={telemetryEnabled}
-          onChange={onTelemetry}
-          delay={2}
-        />
+    <section className="anim-fade-up">
+      <div className="mb-5 size-10 rounded-app-md grid place-items-center bg-app-accent-tint text-app-accent">
+        <ScanText className="size-5" strokeWidth={1.75} aria-hidden />
       </div>
+      <h2 className="text-display-sm text-app-text">{t('onboarding.screen.title')}</h2>
+      <p className="mt-2 text-[13px] text-app-muted leading-relaxed">{t('onboarding.screen.subtitle')}</p>
 
-      <p className="mt-5 text-[11px] text-app-faint text-center">
-        {t('onboarding.preferences.footnote')}
-      </p>
+      <Card elevation="sm" className="mt-6 px-5 py-4">
+        <p className="text-[12px] text-app-muted">{t('onboarding.screen.exampleSaid')}</p>
+        <p className="mt-1 text-[13px] text-app-text">{t('onboarding.screen.exampleResult')}</p>
+      </Card>
+
+      <ul className="mt-5 space-y-2.5 text-[12.5px] leading-relaxed">
+        <li className="text-app-text">
+          <span className="font-medium">{t('onboarding.screen.sentLabel')}</span> {t('onboarding.screen.sentBody')}
+        </li>
+        <li className="flex gap-2 text-app-text">
+          <ShieldCheck className="size-4 mt-0.5 shrink-0 text-app-success" aria-hidden />
+          <span>{t('onboarding.screen.never')}</span>
+        </li>
+        <li className="text-app-muted">{t('onboarding.screen.later')}</li>
+      </ul>
+
+      <div className="mt-7 flex flex-wrap gap-2">
+        <Button size="md" onClick={() => choose(true)} disabled={saving}>
+          {t('onboarding.screen.yes')}
+        </Button>
+        <Button size="md" variant="secondary" onClick={() => choose(false)} disabled={saving}>
+          {t('onboarding.screen.no')}
+        </Button>
+      </div>
     </section>
   );
 }
 
-function PrefRow({
-  icon, tile, label, desc, enabled, onChange, delay,
-}: {
-  icon: React.ReactNode;
-  tile: string;
-  label: string;
-  desc: string;
-  enabled: boolean;
-  onChange: (v: boolean) => void;
-  delay: number;
-}) {
-  return (
-    <Card
-      elevation="sm"
-      className="anim-fade-up flex items-center gap-4 px-5 py-4"
-      style={{ animationDelay: `${0.06 + delay * 0.05}s` }}
-    >
-      <div className={cn('shrink-0 size-9 rounded-app-md grid place-items-center', tile)}>
-        {icon}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-medium text-app-text tracking-[-0.005em]">{label}</p>
-        <p className="mt-1 text-[12px] text-app-muted leading-snug">{desc}</p>
-      </div>
-      <Toggle enabled={enabled} onChange={onChange} />
-    </Card>
-  );
-}
+/* ------------------------------ Step 3: Try ------------------------------- */
 
-/* ----------------------------- Step 4: Tour ------------------------------- */
-
-/**
- * Three illustrated cards walking through the actual usage flow. Replaces the
- * "user finishes the wizard and stares at their desktop wondering what just
- * happened" failure mode. The illustrations are static (an animated kbd glyph,
- * a mini DarkPill mockup, and icons for menu bar + Spotlight) — keeps the
- * bundle tiny and the message clear.
- */
-function TourStep() {
+function TryStep() {
   const { t } = useTranslation();
-  const shortcutKey = IS_MAC ? 'fn' : 'Ctrl';
+  const { label } = useTrigger();
+  const [worked, setWorked] = useState(false);
+  // Asked once, here, and off until the user says yes. Sent as a one-key
+  // payload: `set_settings` merges it, and this window's store was never
+  // loaded, so a full save from it would reset everything else.
+  const [crashReports, setCrashReports] = useState(false);
+  const handleCrashReports = async (enabled: boolean) => {
+    setCrashReports(enabled);
+    try { await invoke('set_settings', { settings: { telemetry_enabled: enabled } }); }
+    catch (e) { console.error('Failed to save telemetry_enabled:', e); setCrashReports(!enabled); }
+  };
+
+  useTauriEvent<{ stage: string }>('transcription-progress', (event) => {
+    if (event.payload.stage === 'complete') setWorked(true);
+  });
+
   return (
-    <section className="anim-fade-up max-w-md mx-auto">
-      <h2 className="text-display-sm text-app-text">{t('onboarding.wizard.tourTitle')}</h2>
+    <section className="anim-fade-up">
+      <h2 className="text-display-sm text-app-text">{t('onboarding.try.title')}</h2>
       <p className="mt-2 text-[13px] text-app-muted leading-relaxed">
-        {t('onboarding.wizard.tourSubtitle')}
+        {t('onboarding.try.subtitle', { key: label || (IS_MAC ? 'fn' : 'Ctrl+Space') })}
       </p>
 
-      <div className="mt-7 space-y-3">
-        <TourCard
-          delay={0}
-          illustration={
-            <div className="flex items-center justify-center gap-2 px-5 py-4 bg-app-raised border border-app-border rounded-app-md">
-              <span className="text-[11px] text-app-muted">{t('onboarding.tour.pressLabel')}</span>
-              <kbd className="inline-flex items-center justify-center min-w-[36px] h-[28px] px-2 rounded-app-sm bg-app-surface border border-app-border-strong text-[12px] font-mono font-semibold text-app-text shadow-[inset_0_-1px_0_var(--border-strong)]">
-                {shortcutKey.toUpperCase()}
-              </kbd>
-            </div>
-          }
-          title={t('onboarding.tour.step1Title')}
-          body={t('onboarding.tour.step1Body')}
-        />
-        <TourCard
-          delay={1}
-          illustration={
-            <div className="flex items-center justify-center px-5 py-4 bg-app-raised border border-app-border rounded-app-md">
-              <DarkPill tone="active" className="flex items-center gap-2 px-3 py-1.5">
-                <span className="flex items-end gap-[2px] h-[12px]">
-                  {[3, 6, 10, 7, 4, 8, 11, 5].map((h, i) => (
-                    <span
-                      key={i}
-                      className="w-[2px] rounded-full bg-white/90 anim-pulse"
-                      style={{ height: `${h}px`, animationDelay: `${i * 0.08}s` }}
-                    />
-                  ))}
-                </span>
-                <span className="text-[10px] font-medium tabular-nums text-white/90">0:03</span>
-              </DarkPill>
-            </div>
-          }
-          title={t('onboarding.tour.step2Title')}
-          body={t('onboarding.tour.step2Body')}
-        />
-        <TourCard
-          delay={2}
-          illustration={
-            <div className="px-5 py-4 bg-app-raised border border-app-border rounded-app-md">
-              {/* Mini macOS menu-bar mockup with the TTP brand mark highlighted.
-                  Way clearer than a microphone glyph, which read as the
-                  keyboard mic key rather than the menu bar location. */}
-              <div className="relative h-7 bg-app-overlay border border-app-border-strong rounded-app-xs flex items-center justify-end gap-2 px-2 shine-sm">
-                <span className="size-1.5 rounded-full bg-app-faint/35" aria-hidden />
-                <span className="size-1.5 rounded-full bg-app-faint/35" aria-hidden />
-                <span className="size-1.5 rounded-full bg-app-faint/35" aria-hidden />
-                <div className="relative size-4 rounded-app-xs bg-app-surface border border-app-accent/40 grid place-items-center">
-                  <span className="text-app-text font-semibold text-[6px] tracking-tighter leading-none">TTP</span>
-                  <span className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-app-accent ring-2 ring-app-overlay" aria-hidden />
-                </div>
-              </div>
-              <div className="mt-2.5 flex items-center justify-center gap-2 text-[10px] text-app-faint">
-                <span aria-hidden>↑</span>
-                <span>{t('onboarding.tour.menuBarHint')}</span>
-                <span aria-hidden className="text-app-faint/40">·</span>
-                <Search className="size-3" aria-hidden />
-                <span>{t('onboarding.tour.spotlightHint')}</span>
-              </div>
-            </div>
-          }
-          title={t('onboarding.tour.step3Title')}
-          body={t('onboarding.tour.step3Body')}
+      {IS_MAC && (
+        <div className="mt-6">
+          <TriggerPicker />
+        </div>
+      )}
+
+      <textarea
+        autoFocus
+        rows={4}
+        placeholder={t('onboarding.try.placeholder')}
+        className="mt-5 w-full resize-none rounded-app-md border border-app-border bg-app-surface px-3.5 py-3 text-[13px] text-app-text placeholder:text-app-faint focus:border-app-accent focus:outline-none"
+      />
+
+      {worked ? (
+        <p className="mt-4 flex items-start gap-2 text-[13px] font-medium text-app-success">
+          <CheckCircle2 className="size-4 mt-0.5 shrink-0" aria-hidden />
+          {t('onboarding.try.worked')}
+        </p>
+      ) : (
+        <p className="mt-4 text-[12px] text-app-muted leading-relaxed">{t('onboarding.try.menuBar')}</p>
+      )}
+
+      <div className="mt-6 flex items-start justify-between gap-4 border-t border-app-border pt-4">
+        <div>
+          <p className="text-[13px] font-medium text-app-text">{t('onboarding.try.crashLabel')}</p>
+          <p className="mt-0.5 text-[12px] text-app-muted leading-relaxed">{t('onboarding.try.crashDesc')}</p>
+        </div>
+        <Toggle
+          size="sm"
+          enabled={crashReports}
+          onChange={handleCrashReports}
+          aria-label={t('onboarding.try.crashLabel')}
         />
       </div>
-
-      <p className="mt-6 text-[12px] text-app-success text-center font-medium">
-        {t('onboarding.tour.closeReassurance')}
-      </p>
     </section>
-  );
-}
-
-function TourCard({
-  illustration, title, body, delay,
-}: {
-  illustration: React.ReactNode;
-  title: string;
-  body: string;
-  delay: number;
-}) {
-  return (
-    <Card
-      elevation="sm"
-      className="anim-fade-up p-4"
-      style={{ animationDelay: `${0.06 + delay * 0.06}s` }}
-    >
-      {illustration}
-      <p className="mt-3 text-[13px] font-medium text-app-text">{title}</p>
-      <p className="mt-1 text-[12px] text-app-muted leading-snug">{body}</p>
-    </Card>
   );
 }
 

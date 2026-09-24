@@ -1,7 +1,6 @@
 // TTP - Talk To Paste
 // System tray setup and management
 
-use crate::settings::get_settings;
 use crate::sounds::{play_start_sound, play_stop_sound};
 use crate::state::{AppState, RecordingState};
 use std::sync::{Mutex, OnceLock};
@@ -151,12 +150,14 @@ pub fn refresh_tray(app: &AppHandle) {
     update_tray_menu(app, is_recording);
 }
 
-/// True when Fn is the active hotkey AND Input Monitoring is missing.
-/// Centralised so the icon picker and the menu builder agree on when to
-/// surface the warning state.
+/// True when Input Monitoring is missing. Every trigger goes through the event
+/// tap on macOS, so every trigger needs it. Centralised so the icon picker and
+/// the menu builder agree on when to surface the warning state.
 #[cfg(target_os = "macos")]
 fn input_monitoring_warning_active() -> bool {
-    get_settings().fn_key_enabled && !crate::fnkey::has_input_monitoring()
+    // A tap this process gave up on is indistinguishable from a missing
+    // permission at the user's end: the trigger does nothing. Same red dot.
+    !crate::fnkey::has_input_monitoring() || crate::fnkey::tap_abandoned()
 }
 #[cfg(not(target_os = "macos"))]
 fn input_monitoring_warning_active() -> bool {
@@ -225,6 +226,9 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             "record" => {
                 toggle_recording(app);
             }
+            "copy_last" => {
+                copy_last_transcription(app);
+            }
             "fix_input_monitoring" => {
                 // Open macOS Privacy & Security → Input Monitoring directly.
                 // Same deep link as the in-Settings button; here we just
@@ -243,14 +247,12 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 );
             }
             "install_update" => {
-                // The update was already downloaded + installed silently in
-                // the background; the .app bundle on disk is the new version.
-                // All we need to do is relaunch into it. Reuse the same
-                // LaunchServices-based restart path the in-app "Restart Now"
-                // button uses so Gatekeeper doesn't block the relaunch.
+                // The update was downloaded and staged in the background;
+                // install it and relaunch into it now, through the same path
+                // the in-app "Restart Now" button and the idle restart use.
                 let app = app.clone();
                 tauri::async_runtime::spawn_blocking(move || {
-                    let _ = crate::relaunch_app_via_launchservices(app);
+                    let _ = crate::apply_staged_update(app, "tray");
                 });
             }
             _ => {}
@@ -258,6 +260,39 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .build(app)?;
 
     Ok(())
+}
+
+/// Minimum wall-clock gap between two tray toggle clicks. Anything tighter
+/// is treated as a spam-click and dropped.
+///
+/// Why this exists: a v3.1.1 user reported the tray button leaving the app
+/// stuck in "Recording" after a burst of rapid clicks. The cause: each
+/// Idle→Recording / Recording→Processing transition emits an event that the
+/// JS side handles ASYNCHRONOUSLY (it invokes start_recording / stop_recording
+/// IPCs). A second click that lands while the first invoke is still in
+/// flight races the audio_capture::STATE lifecycle (the first start hadn't
+/// inserted yet when the second stop tried to take). The follow-up
+/// fs::canonicalize on a zero-byte WAV then errored out, the catch path
+/// reset Rust state to Idle, but the in-flight cpal stream eventually
+/// finished opening and parked itself in STATE — leaving every later
+/// click stuck on "error.recording_already_in_progress".
+///
+/// 300 ms is long enough to absorb the slowest observed start_recording
+/// round-trip (~120 ms on Windows WASAPI cold start) and short enough to
+/// stay invisible during deliberate two-fingered double-tap workflows.
+const TRAY_CLICK_DEBOUNCE_MS: u64 = 300;
+
+/// Wall-clock of the most recent successful tray toggle. Reset to 0 on
+/// startup; written under the AppState lock so concurrent clicks see a
+/// consistent value without an extra mutex.
+static LAST_TRAY_TOGGLE_MS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+fn now_ms_since_epoch() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// Toggle recording state from tray menu
@@ -269,13 +304,31 @@ fn toggle_recording(app: &AppHandle) {
     let next_state = {
         let state = app.state::<Mutex<AppState>>();
         let Ok(mut app_state) = state.try_lock() else {
-            eprintln!("[Tray] Could not acquire state lock");
+            crate::logging::log_warn("[Tray] Could not acquire state lock");
             return;
         };
 
+        // Debounce spam-clicks BEFORE we touch state. See doc on the
+        // const for the full failure mode this guards against.
+        let now = now_ms_since_epoch();
+        let last = LAST_TRAY_TOGGLE_MS.load(std::sync::atomic::Ordering::Relaxed);
+        if now.saturating_sub(last) < TRAY_CLICK_DEBOUNCE_MS {
+            crate::logging::log_warn(&format!(
+                "[Tray] click ignored ({}ms since last toggle, debounce={}ms)",
+                now.saturating_sub(last),
+                TRAY_CLICK_DEBOUNCE_MS
+            ));
+            return;
+        }
+        LAST_TRAY_TOGGLE_MS.store(now, std::sync::atomic::Ordering::Relaxed);
+
         match app_state.recording_state {
             RecordingState::Idle => {
-                app_state.hands_free_mode = true; // Use hands-free mode for tray
+                // Tray "Start recording" entries always launch a hands-free
+                // session — there's no key to release. The session override
+                // clears on the next Idle transition; the persisted setting
+                // stays untouched.
+                app_state.enter_hands_free_session();
                 app_state.set_state(RecordingState::Recording, app);
                 RecordingState::Recording
             }
@@ -301,6 +354,51 @@ fn toggle_recording(app: &AppHandle) {
             update_tray_menu(app, false);
         }
         RecordingState::Idle => {}
+    }
+}
+
+/// Put the newest transcription in history back on the clipboard.
+///
+/// After a paste the pipeline restores whatever the user had on the clipboard
+/// before they spoke, so the text they just dictated is not there to paste a
+/// second time. This gets it back from the menu-bar icon without opening
+/// Settings → History.
+///
+/// Reads history, so with history turned off there is nothing to copy — the
+/// trace says `history_empty` rather than pretending.
+fn copy_last_transcription(app: &AppHandle) {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+
+    let entries = crate::history::get_history();
+    let Some(entry) = crate::history::store::latest_with_text(&entries) else {
+        crate::trace::event(
+            "tray.copy_last",
+            serde_json::json!({ "ok": false, "reason": "history_empty" }),
+        );
+        return;
+    };
+    // PRIVACY: counts and age only — the text is the user's speech.
+    let age_s = (now_ms_since_epoch() as i64 - entry.timestamp).max(0) / 1000;
+    match app.clipboard().write_text(entry.text.as_str()) {
+        Ok(()) => crate::trace::event(
+            "tray.copy_last",
+            serde_json::json!({
+                "ok": true,
+                "chars": entry.text.chars().count(),
+                "age_s": age_s,
+            }),
+        ),
+        Err(e) => {
+            crate::logging::log_warn(&format!("[Tray] copy last transcription failed: {}", e));
+            crate::trace::event(
+                "tray.copy_last",
+                serde_json::json!({
+                    "ok": false,
+                    "reason": "clipboard_write_failed",
+                    "error": e.to_string(),
+                }),
+            );
+        }
     }
 }
 
@@ -334,6 +432,10 @@ fn build_tray_menu(
         crate::i18n::tr("tray.startRecording")
     };
     let record = MenuItem::with_id(app, "record", &record_text, true, None::<&str>)?;
+    // Always enabled. The menu is only rebuilt on tray toggles and settings
+    // changes, not after every dictation, so an "is there anything to copy"
+    // state baked in here would be stale; the click decides instead.
+    let copy_last = MenuItem::with_id(app, "copy_last", crate::i18n::tr("tray.copyLast"), true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
     let settings = MenuItem::with_id(app, "settings", crate::i18n::tr("tray.settings"), true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", crate::i18n::tr("tray.quit"), true, None::<&str>)?;
@@ -395,6 +497,7 @@ fn build_tray_menu(
     if let Some(i) = input_mon_item.as_ref() { refs.push(i); }
     if let Some(s) = perm_sep.as_ref() { refs.push(s); }
     refs.push(&record);
+    refs.push(&copy_last);
     refs.push(&separator);
     refs.push(&settings);
     refs.push(&quit);
@@ -454,74 +557,13 @@ pub fn show_pill(app: &AppHandle) {
     }
 }
 
-/// Hide the pill window
-pub fn hide_pill(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("pill") {
-        let _ = window.hide();
-    }
-}
-
-/// Determine if the pill should be visible based on recording state and settings
-/// - Shows during active recording regardless of setting
-/// - Shows during processing (including errors) regardless of setting
-/// - Shows during idle if hide_pill_when_inactive is false
-/// - Hides during idle if hide_pill_when_inactive is true
-pub fn should_show_pill(app: &AppHandle) -> bool {
-    let state = match app.try_state::<Mutex<AppState>>() {
-        Some(s) => s,
-        None => return true,
-    };
-
-    let Ok(app_state) = state.try_lock() else {
-        // Mutex already locked (called from set_state) — fall back to settings-only check
-        return should_show_pill_for_state(&RecordingState::Idle);
-    };
-
-    should_show_pill_for_state(&app_state.recording_state)
-}
-
-/// Check pill visibility based on a known recording state (no mutex needed).
-/// Called from set_state() where the mutex is already held.
-pub fn should_show_pill_for_state(recording_state: &RecordingState) -> bool {
-    // Show during recording and processing (including errors)
-    if *recording_state == RecordingState::Recording || *recording_state == RecordingState::Processing {
-        return true;
-    }
-
-    // Check setting for idle state
-    let settings = get_settings();
-    !settings.hide_pill_when_inactive
-}
-
-/// Set up listener for settings changes to update pill visibility and hands-free mode
-///
-/// Also rebuilds the tray menu on every settings change so a language switch
-/// retranslates every label and tooltip immediately — without this the tray
-/// menu would only pick up the new locale on the next recording transition.
-/// The rebuild is cheap (it just re-runs `build_tray_menu`), so we don't
-/// bother filtering on which setting actually changed.
+/// Rebuild the tray menu on every settings change, so items that depend on a
+/// setting (the permission warnings) are
+/// current immediately. The rebuild is cheap (it just re-runs
+/// `build_tray_menu`), so we don't bother filtering on which setting changed.
 pub fn setup_settings_listener(app: &AppHandle) {
     let app_handle = app.clone();
     app.listen("settings-changed", move |_event| {
-        // Update pill visibility based on new settings
-        if should_show_pill(&app_handle) {
-            show_pill(&app_handle);
-        } else {
-            hide_pill(&app_handle);
-        }
-
-        // Sync hands_free_mode from settings to AppState
-        let settings = get_settings();
-        if let Some(state) = app_handle.try_state::<Mutex<AppState>>() {
-            if let Ok(mut app_state) = state.try_lock() {
-                // Only update if not currently recording (avoid disrupting active session)
-                if app_state.is_idle() {
-                    app_state.hands_free_mode = settings.hands_free_mode;
-                }
-            }
-        }
-
-        // Rebuild the tray menu so labels reflect the (possibly new) language.
         // Read the current recording state under a try_lock — if we can't get
         // the lock (e.g. mid-transition) we default to is_recording = false,
         // which matches the menu state shown to the user 99% of the time.

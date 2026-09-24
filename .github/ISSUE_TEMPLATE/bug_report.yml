@@ -1,0 +1,44 @@
+name: Bug report
+description: Something did not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. The fastest route is inside the app: **Settings → Advanced → Report a problem** prepares an e-mail with the technical details and nothing you dictated. You can send that, or describe the problem below.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: TTP version
+      description: Shown in the Settings window.
+      placeholder: "3.2.3"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows
+    validations:
+      required: true
+  - type: input
+    id: mic
+    attributes:
+      label: Microphone
+      description: Built-in, AirPods, USB headset…
+  - type: textarea
+    id: report
+    attributes:
+      label: Report or logs
+      description: Anything from the report that helps, if you have it.
+      render: text

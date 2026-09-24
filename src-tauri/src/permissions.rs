@@ -59,12 +59,6 @@ pub fn mark_first_launch_complete() -> Result<(), String> {
         .map_err(|e| format!("Failed to mark first launch complete: {}", e))
 }
 
-/// Tauri command to mark first launch complete
-#[command]
-pub fn mark_first_launch_complete_cmd() -> Result<(), String> {
-    mark_first_launch_complete()
-}
-
 /// Request microphone permission - triggers the native macOS permission prompt
 #[command]
 pub fn request_microphone_permission() -> Result<PermissionStatus, String> {
@@ -175,32 +169,6 @@ pub fn check_microphone_permission() -> PermissionStatus {
     }
 }
 
-/// Return the translation key (not the finished message) for a microphone
-/// permission status. The frontend resolves it via i18next so the surfaced
-/// text is localized; doing translation lookups here would couple the Rust
-/// side to the user's language at command-call time, which is fragile
-/// across language changes.
-pub fn get_permission_message(status: PermissionStatus) -> String {
-    match status {
-        PermissionStatus::Granted => "permission.microphone_granted".to_string(),
-        PermissionStatus::Denied => "permission.microphone_denied".to_string(),
-        PermissionStatus::Undetermined => "permission.microphone_undetermined".to_string(),
-    }
-}
-
-/// Get instructions for enabling microphone permission in System Settings
-pub fn get_permission_instructions(status: &PermissionStatus) -> String {
-    match status {
-        PermissionStatus::Granted => String::new(),
-        PermissionStatus::Denied => {
-            "1. Open System Settings\n2. Go to Privacy & Security\n3. Click on Microphone\n4. Enable TTP (Talk To Paste)".to_string()
-        }
-        PermissionStatus::Undetermined => {
-            "1. Open System Settings\n2. Go to Privacy & Security\n3. Click on Microphone\n4. Enable TTP to allow microphone access".to_string()
-        }
-    }
-}
-
 // ============================================================================
 // Accessibility Permission
 // ============================================================================
@@ -214,8 +182,12 @@ pub fn get_permission_instructions(status: &PermissionStatus) -> String {
 /// After an app update, the binary hash changes and macOS may show the app as
 /// "enabled" in System Preferences while the actual AX calls fail. The probe
 /// detects this stale state so the UI can guide the user to re-grant access.
+///
+/// `async` so the probe runs on the async runtime, not the main thread: the
+/// Settings window calls this on every focus, and a synchronous command runs
+/// on the main thread, where a slow probe froze every click in the window.
 #[command]
-pub fn check_accessibility_permission() -> PermissionStatus {
+pub async fn check_accessibility_permission() -> PermissionStatus {
     #[cfg(target_os = "macos")]
     {
         let api_says_trusted = crate::paste::check_accessibility();
@@ -230,9 +202,9 @@ pub fn check_accessibility_permission() -> PermissionStatus {
         } else {
             // Stale trust entry: TCC says yes, but AX calls fail.
             // Return Denied so the UI prompts the user to fix it.
-            eprintln!(
+            crate::logging::log_warn(
                 "[Permissions] Accessibility trust is stale (TCC says trusted but AX calls fail). \
-                 This typically happens after an app update."
+                 This typically happens after an app update.",
             );
             PermissionStatus::Denied
         }
@@ -259,9 +231,9 @@ pub fn request_accessibility_permission() -> Result<(), String> {
 
         if api_says_trusted && !actually_works {
             // Stale entry detected — reset TCC so the user gets a fresh prompt
-            eprintln!("[Permissions] Resetting stale accessibility TCC entry before re-prompting");
+            crate::logging::log_info("[Permissions] Resetting stale accessibility TCC entry before re-prompting");
             if let Err(e) = crate::paste::reset_accessibility_tcc() {
-                eprintln!("[Permissions] Failed to reset TCC entry: {}. Opening System Settings instead.", e);
+                crate::logging::log_warn(&format!("[Permissions] Failed to reset TCC entry: {}. Opening System Settings instead.", e));
                 // Fall back to opening System Settings
                 std::process::Command::new("open")
                     .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")

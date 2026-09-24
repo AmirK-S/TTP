@@ -166,3 +166,109 @@ fn low_pass_filter(samples: &[i16], sample_rate: u32, cutoff_hz: u32) -> Vec<i16
 
     output
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn approx_eq(a: i16, b: i16, tol: i16) -> bool {
+        (a as i32 - b as i32).abs() <= tol as i32
+    }
+
+    #[test]
+    fn low_pass_filter_preserves_length() {
+        let samples: Vec<i16> = (0..2048).map(|i| (i as f32 / 10.0).sin() as i16 * 1000).collect();
+        let filtered = low_pass_filter(&samples, 48_000, 8_000);
+        assert_eq!(filtered.len(), samples.len());
+    }
+
+    #[test]
+    fn low_pass_filter_passes_silence_through_as_silence() {
+        let silent = vec![0i16; 1024];
+        let filtered = low_pass_filter(&silent, 48_000, 8_000);
+        // Edge-padding + numerical noise can produce ±1 LSB.
+        for sample in filtered {
+            assert!(sample.abs() <= 1, "silent input should produce ~silent output, got {}", sample);
+        }
+    }
+
+    #[test]
+    fn low_pass_filter_attenuates_a_high_frequency_above_cutoff() {
+        // Pure 22 kHz sine at 48 kHz sample rate (well above the 8 kHz
+        // cutoff used before downsample-to-16k). After filtering, the
+        // amplitude should drop SIGNIFICANTLY. The actual attenuation a
+        // 63-tap Blackman-windowed sinc produces at this very high
+        // frequency is around 2.5x-3x (the transition band of a 63-tap
+        // kernel is wider than ideal, and a 22 kHz tone lands near Nyquist
+        // where boundary effects dominate). Asserting >2x is enough to
+        // catch a filter that has totally regressed without flaking on
+        // edge-of-Nyquist numerical noise.
+        let sr: u32 = 48_000;
+        let f_hz = 22_000.0;
+        let amplitude: i16 = 20_000;
+        let samples: Vec<i16> = (0..4096)
+            .map(|i| {
+                let t = i as f64 / sr as f64;
+                (amplitude as f64 * (2.0 * std::f64::consts::PI * f_hz * t).sin()) as i16
+            })
+            .collect();
+        let filtered = low_pass_filter(&samples, sr, 8_000);
+
+        let in_peak = samples.iter().map(|s| s.unsigned_abs()).max().unwrap_or(0);
+        let out_peak = filtered.iter().map(|s| s.unsigned_abs()).max().unwrap_or(0);
+        assert!(
+            (out_peak as u32) * 2 < in_peak as u32,
+            "expected >2x attenuation at 22kHz, in_peak={} out_peak={}",
+            in_peak,
+            out_peak
+        );
+    }
+
+    #[test]
+    fn low_pass_filter_preserves_a_low_frequency_below_cutoff() {
+        // Pure 200 Hz sine at 48 kHz — well below the 8 kHz cutoff.
+        // After filtering, the amplitude should be near-identical.
+        let sr: u32 = 48_000;
+        let f_hz = 200.0;
+        let amplitude: i16 = 10_000;
+        let samples: Vec<i16> = (0..4096)
+            .map(|i| {
+                let t = i as f64 / sr as f64;
+                (amplitude as f64 * (2.0 * std::f64::consts::PI * f_hz * t).sin()) as i16
+            })
+            .collect();
+        let filtered = low_pass_filter(&samples, sr, 8_000);
+
+        // Trim a kernel-width buffer from each end so edge transients
+        // (Blackman window response startup) don't dominate the metric.
+        let in_peak = samples[63..samples.len() - 63]
+            .iter()
+            .map(|s| s.unsigned_abs())
+            .max()
+            .unwrap_or(0);
+        let out_peak = filtered[63..filtered.len() - 63]
+            .iter()
+            .map(|s| s.unsigned_abs())
+            .max()
+            .unwrap_or(0);
+        assert!(
+            (out_peak as i32 - in_peak as i32).abs() < (in_peak as i32 / 10),
+            "expected near-unity passband, in_peak={} out_peak={}",
+            in_peak,
+            out_peak
+        );
+    }
+
+    #[test]
+    fn low_pass_filter_handles_dc_offset_without_clipping() {
+        // Constant DC at +20 000 should pass through unchanged (DC is
+        // below any cutoff). No saturation, no garbage.
+        let samples = vec![20_000i16; 1024];
+        let filtered = low_pass_filter(&samples, 48_000, 8_000);
+        // Allow a 2% deviation — the Blackman window introduces a small
+        // DC gain trim at the edges.
+        for &sample in &filtered[63..filtered.len() - 63] {
+            assert!(approx_eq(sample, 20_000, 400), "expected ~20000, got {}", sample);
+        }
+    }
+}

@@ -1,0 +1,7 @@
+# The root .gitignore has `*.log`, which swallowed every fixture in this
+# directory. docs/trace-invariants.md says "the fixtures are committed, not
+# generated at test time: a test whose input is built by the same file that
+# builds the tool is testing itself" — and they were not committed, so on a
+# fresh clone `test_every_invariant_has_a_fixture_that_violates_it` would fail
+# for all 37 checks. These are synthetic logs, not runtime output.
+!*.log
