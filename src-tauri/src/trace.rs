@@ -589,6 +589,8 @@ impl Trace {
     /// column by hand to find the slow step; now the slow step names itself,
     /// which is what makes `sort -t: -k2 -rn` over a field possible at all.
     pub fn stage(&self, name: &str, fields: Value) {
+        // A dictation stage is activity: the self-update waits for quiet.
+        crate::state::note_activity();
         emit(self.build(name, fields));
     }
 

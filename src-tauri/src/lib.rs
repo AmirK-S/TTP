@@ -429,12 +429,67 @@ async fn download_update_with_channel(
     if let Ok(mut staged) = STAGED_UPDATE.lock() {
         *staged = Some((update, bytes));
     }
+    start_idle_applier(app);
     Ok(version)
+}
+
+/// How long TTP must be quiet, with an update staged, before it installs it
+/// and relaunches itself. Every dictation restarts the count.
+const APPLY_AFTER_QUIET: std::time::Duration = std::time::Duration::from_secs(120);
+static IDLE_APPLIER_RUNNING: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Apply the staged update once TTP has been quiet for [`APPLY_AFTER_QUIET`].
+///
+/// This lives in Rust, not in the webview. The first version ran the timer
+/// in the hidden main window; TTP is an `LSUIElement` agent, macOS App Naps
+/// it, and a hidden webview's timers simply stopped — on 2026-09-24 the beta
+/// was staged at 07:20:50 and nothing applied it (see `crate::activity`).
+///
+/// A napped thread can also wake late, and what wakes a napped process is
+/// usually the user doing something. So a tick that overslept is skipped:
+/// the next one, ten seconds later, sees whatever activity woke us.
+fn start_idle_applier(app: AppHandle) {
+    use std::sync::atomic::Ordering;
+    use std::time::{Duration, Instant};
+    if IDLE_APPLIER_RUNNING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    crate::activity::begin_update_pending();
+    std::thread::spawn(move || {
+        let staged_at = Instant::now();
+        let tick = Duration::from_secs(10);
+        loop {
+            let before = Instant::now();
+            std::thread::sleep(tick);
+            if before.elapsed() > tick + Duration::from_secs(5) {
+                trace::event(
+                    "update.idle_tick_late",
+                    serde_json::json!({ "late_ms": (before.elapsed() - tick).as_millis() as u64 }),
+                );
+                continue;
+            }
+            let staged = STAGED_UPDATE.lock().map(|g| g.is_some()).unwrap_or(false);
+            if !staged {
+                break;
+            }
+            let quiet = state::quiet_for()
+                .map_or(staged_at.elapsed(), |q| q.min(staged_at.elapsed()));
+            if quiet >= APPLY_AFTER_QUIET {
+                if apply_staged_update(app.clone(), "idle").is_err() {
+                    // The bytes were put back; wait before trying again.
+                    std::thread::sleep(Duration::from_secs(600));
+                }
+            }
+        }
+        crate::activity::end_update_pending();
+        IDLE_APPLIER_RUNNING.store(false, Ordering::SeqCst);
+    });
 }
 
 /// Install the staged update and relaunch into it, in one step.
 ///
-/// `trigger` says who asked: `"idle"` (the frontend saw two quiet minutes),
+/// `trigger` says who asked: `"idle"` ([`start_idle_applier`], two quiet minutes),
 /// `"button"` (Settings), or `"tray"`. With nothing staged — a build whose
 /// bundle was already replaced some other way — this is a plain relaunch.
 ///

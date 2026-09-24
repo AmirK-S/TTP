@@ -603,7 +603,8 @@ replaced bundle.
 | `update.available` | A check found `version` on the stable or `beta` channel. |
 | `update.downloaded` | The bytes are staged in memory (`bytes`, `ms`). Nothing on disk has changed. |
 | `update.download_failed` | The download failed; the next 4 h check retries. |
-| `update.apply` | Install and relaunch, now. `trigger`: `idle` (2 min with no dictation), `button` (Settings) or `tray`. `staged:false` is a plain relaunch. |
+| `update.apply` | Install and relaunch, now. `trigger`: `idle` (2 min with no dictation, decided in Rust by `start_idle_applier` — the hidden webview's timers stop under App Nap), `button` (Settings) or `tray`. `staged:false` is a plain relaunch. |
+| `update.idle_tick_late` | The idle applier's 10 s tick woke more than 5 s late (`late_ms`); that tick is skipped so a wake caused by a key press never relaunches. TTP holds an App Nap assertion while an update is staged, so this should be rare. |
 | `update.install_failed` | The bundle was not replaced; the staged bytes are kept for the next quiet moment. |
 
 The next `app.launched` line should carry the new `build`. An `update.apply`

@@ -9,7 +9,8 @@
 
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 /// Mirror of `recording_state == Recording`, readable without the AppState
 /// lock — by the paste injector, which runs on a blocking thread in the middle
@@ -19,6 +20,32 @@ static RECORDING: AtomicBool = AtomicBool::new(false);
 /// Whether a recording is in progress right now.
 pub fn recording_in_progress() -> bool {
     RECORDING.load(Ordering::Relaxed)
+}
+
+/// True outside Idle. Mirrors `recording_state != Idle` without the lock.
+static BUSY: AtomicBool = AtomicBool::new(false);
+/// When the user or a dictation last did anything: every state transition
+/// and every dictation stage (`Trace::stage`) stamps it. The pipeline returns
+/// the state machine to Idle before transcribing, so transitions alone would
+/// call a dictation that is still pasting "quiet".
+static LAST_ACTIVITY: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// Stamp activity now.
+pub fn note_activity() {
+    if let Ok(mut g) = LAST_ACTIVITY.lock() {
+        *g = Some(Instant::now());
+    }
+}
+
+/// How long TTP has been quiet: zero while recording or processing,
+/// otherwise the time since the last activity, or `None` if nothing has
+/// happened since launch. The self-update waits on this so a relaunch never
+/// lands in the middle of a dictation.
+pub fn quiet_for() -> Option<Duration> {
+    if BUSY.load(Ordering::Relaxed) {
+        return Some(Duration::ZERO);
+    }
+    LAST_ACTIVITY.lock().ok().and_then(|g| g.map(|t| t.elapsed()))
 }
 use tauri::{AppHandle, Emitter};
 
@@ -60,6 +87,8 @@ impl AppState {
         let old_state = self.recording_state.clone();
         self.recording_state = state.clone();
         RECORDING.store(state == RecordingState::Recording, Ordering::Relaxed);
+        BUSY.store(state != RecordingState::Idle, Ordering::Relaxed);
+        note_activity();
 
         // The state machine is the thing that gets stuck. `handle_shortcut_pressed`
         // only acts from Idle or Recording, so a session that never leaves

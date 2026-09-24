@@ -7,9 +7,7 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
-  AUTO_RESTART_IDLE_MS,
   shouldAutoInstall,
-  shouldAutoRestart,
   shouldNotifyUpdate,
   shouldResetDismissOnVersionChange,
 } from '../lib/updater-decisions';
@@ -264,7 +262,7 @@ export function useUpdater(options?: UseUpdaterOptions) {
     }
   }, [status]);
 
-  const applyUpdate = useCallback(async (trigger: 'button' | 'idle') => {
+  const applyUpdate = useCallback(async (trigger: 'button') => {
     // Prefer the Rust-side restart command which uses LaunchServices on
     // macOS (`open -n -a`) — the plugin-process relaunch flow has been
     // silently failing on beta builds: the current process dies but
@@ -283,18 +281,8 @@ export function useUpdater(options?: UseUpdaterOptions) {
   // wired straight to onClick, which would otherwise pass the click event.
   const restartApp = useCallback(() => applyUpdate('button'), [applyUpdate]);
 
-  // Install and relaunch once TTP has been Idle for AUTO_RESTART_IDLE_MS
-  // with an update staged. Any recording-state change clears the timer and
-  // re-arms it on the next Idle, so the restart always lands in a pause.
-  useEffect(() => {
-    if (!shouldAutoRestart(autoInstall, status, recordingState)) {
-      return;
-    }
-    const timer = setTimeout(() => {
-      applyUpdate('idle');
-    }, AUTO_RESTART_IDLE_MS);
-    return () => clearTimeout(timer);
-  }, [autoInstall, status, recordingState, applyUpdate]);
+  // The idle install-and-relaunch runs in Rust (`start_idle_applier`), not
+  // here: macOS App Naps TTP, and this hidden window's timers stop with it.
 
   const dismiss = useCallback(() => {
     setDismissed(true);

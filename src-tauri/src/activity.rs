@@ -54,13 +54,16 @@ mod imp {
     /// begin and end from whichever thread drives the state machine. We only
     /// ever pass it straight back to `endActivity:`, never message it
     /// otherwise, so treating it as an opaque handle is sound.
-    static TOKEN: Mutex<Option<usize>> = Mutex::new(None);
+    pub static TOKEN: Mutex<Option<usize>> = Mutex::new(None);
+    /// A second, independent assertion held while a staged update waits for
+    /// a quiet moment. Separate so a dictation ending cannot release it.
+    pub static UPDATE_TOKEN: Mutex<Option<usize>> = Mutex::new(None);
 
     /// Take an activity assertion. Idempotent: a second call while one is
     /// already held is a no-op, so a re-entered Recording state cannot leak
     /// a token.
-    pub fn begin(reason: &str) {
-        let Ok(mut slot) = TOKEN.lock() else { return };
+    pub fn begin(token_slot: &Mutex<Option<usize>>, reason: &str) {
+        let Ok(mut slot) = token_slot.lock() else { return };
         if slot.is_some() {
             return;
         }
@@ -86,8 +89,8 @@ mod imp {
     }
 
     /// Release the activity assertion. Safe to call when none is held.
-    pub fn end() {
-        let Ok(mut slot) = TOKEN.lock() else { return };
+    pub fn end(token_slot: &Mutex<Option<usize>>) {
+        let Ok(mut slot) = token_slot.lock() else { return };
         let Some(raw) = slot.take() else { return };
         unsafe {
             let token = raw as id;
@@ -105,16 +108,34 @@ mod imp {
     // App Nap is a macOS concept. Windows throttles background processes far
     // less aggressively and offers no equivalent per-activity assertion, so
     // there is nothing to hold here.
-    pub fn begin(_reason: &str) {}
-    pub fn end() {}
+    use std::sync::Mutex;
+    pub static TOKEN: Mutex<Option<usize>> = Mutex::new(None);
+    pub static UPDATE_TOKEN: Mutex<Option<usize>> = Mutex::new(None);
+    pub fn begin(_slot: &Mutex<Option<usize>>, _reason: &str) {}
+    pub fn end(_slot: &Mutex<Option<usize>>) {}
 }
 
 /// Begin an activity assertion for the duration of a dictation.
 pub fn begin_dictation() {
-    imp::begin("TTP dictation in flight — the user is waiting for text");
+    imp::begin(&imp::TOKEN, "TTP dictation in flight — the user is waiting for text");
 }
 
 /// End the dictation activity assertion.
 pub fn end_dictation() {
-    imp::end();
+    imp::end(&imp::TOKEN);
+}
+
+/// Stay out of App Nap while a downloaded update waits to be applied.
+///
+/// The idle applier sleeps in ten-second ticks; a napped process wakes them
+/// late or not at all, and the update would wait until the user next pressed
+/// the hotkey — the worst moment to relaunch. Held for the few minutes
+/// between staging and applying; the relaunch ends the process anyway.
+pub fn begin_update_pending() {
+    imp::begin(&imp::UPDATE_TOKEN, "TTP update downloaded — applying at the next quiet moment");
+}
+
+/// Release the update assertion (the staged update is gone).
+pub fn end_update_pending() {
+    imp::end(&imp::UPDATE_TOKEN);
 }

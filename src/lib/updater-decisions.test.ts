@@ -3,7 +3,6 @@ import {
   shouldNotifyUpdate,
   shouldResetDismissOnVersionChange,
   shouldAutoInstall,
-  shouldAutoRestart,
 } from './updater-decisions';
 
 describe('shouldNotifyUpdate', () => {
@@ -72,25 +71,5 @@ describe('shouldAutoInstall', () => {
 
   it('skips when already installed this session (the 4h-cycle re-install guard)', () => {
     expect(shouldAutoInstall(true, 'available', 'Idle', true)).toBe(false);
-  });
-});
-
-describe('shouldAutoRestart', () => {
-  it('fires when staged and idle', () => {
-    expect(shouldAutoRestart(true, 'ready', 'Idle')).toBe(true);
-  });
-
-  it('skips when auto-install is opted out', () => {
-    expect(shouldAutoRestart(false, 'ready', 'Idle')).toBe(false);
-  });
-
-  it('skips before the download completes', () => {
-    expect(shouldAutoRestart(true, 'downloading', 'Idle')).toBe(false);
-    expect(shouldAutoRestart(true, 'available', 'Idle')).toBe(false);
-  });
-
-  it('skips during a recording or while it is processed', () => {
-    expect(shouldAutoRestart(true, 'ready', 'Recording')).toBe(false);
-    expect(shouldAutoRestart(true, 'ready', 'Processing')).toBe(false);
   });
 });

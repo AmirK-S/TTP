@@ -185,28 +185,17 @@ describe('useUpdater', () => {
     expect(relaunch).toHaveBeenCalled();
   });
 
-  it('stages the update, then installs and relaunches after two quiet minutes even if the user dictated', async () => {
+  it('stages the update without installing it, and leaves the relaunch to Rust', async () => {
     mockInvokeFn.mockImplementation(async (cmd: string) => {
       if (cmd === 'check_for_updates_with_channel') return { kind: 'available', version: '9.9.9', body: null };
       if (cmd === 'download_update_with_channel') return '9.9.9';
       return undefined;
     });
-    const { result, rerender } = renderHook(() => useUpdater({ autoCheck: true, autoInstall: true }));
+    const { result } = renderHook(() => useUpdater({ autoCheck: true, autoInstall: true }));
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     expect(result.current.status).toBe('ready');
-    expect(mockInvokeFn).not.toHaveBeenCalledWith('install_update_with_channel', expect.anything());
-
-    // A dictation one minute in re-arms the timer: no restart mid-use.
-    act(() => { vi.advanceTimersByTime(60_000); });
-    mockRecordingState.mockReturnValue('Recording');
-    rerender();
-    mockRecordingState.mockReturnValue('Idle');
-    rerender();
-    act(() => { vi.advanceTimersByTime(119_000); });
+    act(() => { vi.advanceTimersByTime(10 * 60_000); });
     expect(mockInvokeFn).not.toHaveBeenCalledWith('restart_app_post_update', expect.anything());
-
-    await act(async () => { vi.advanceTimersByTime(1_000); });
-    expect(mockInvokeFn).toHaveBeenCalledWith('restart_app_post_update', { trigger: 'idle' });
   });
 });
