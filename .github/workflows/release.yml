@@ -522,6 +522,33 @@ jobs:
           gh release upload "$STABLE_TAG" _channel/latest-beta.json \
             --clobber --repo "${{ github.repository }}"
 
+      # Release notes. Every release used to say only "See the assets below
+      # for downloadable installers." The app already carries a What's New
+      # note per version (whatsNew.notes in en.json); the release page now
+      # says the same thing. Stable tags only, and never fatal: a version
+      # without a note keeps the default body.
+      - name: Checkout release-notes source
+        if: steps.beta-check.outputs.is_beta == 'false'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          sparse-checkout: |
+            scripts/release_notes.py
+            src/i18n/locales/en.json
+          sparse-checkout-cone-mode: false
+
+      - name: Write release notes from the What's New note
+        if: steps.beta-check.outputs.is_beta == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          if python3 scripts/release_notes.py "${TAG#v}" > notes.md; then
+            gh release edit "$TAG" --notes-file notes.md --repo "${{ github.repository }}"
+          else
+            echo "::warning::No What's New note for ${TAG#v}; keeping the default release body."
+          fi
+
       # Flip the GitHub Release from draft to published. The release-matrix job
       # creates it as a draft on purpose (so tauri-action's per-platform retry
       # attempts are idempotent against the same draft), and historically there
