@@ -5,7 +5,7 @@
 // Finder, or hunting for the "+" button. Instead, System Settings opens on the
 // right page and a small panel sits on its bottom edge with TTP's icon, which
 // the user drags into the list. Research and the pitfalls this code avoids are
-// in `docs/permission-drag-research.md`.
+// in the drag-to-authorize research notes.
 //
 // Pieces:
 //   * `show_permission_helper` opens the pane, creates the panel window

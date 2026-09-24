@@ -1,7 +1,7 @@
 // TTP - Talk To Paste
 // What's New: the changelog now comes from the locale files, not from Rust.
 //
-// Debt item 3 in docs/overhaul-status.md. `whatsnew.rs` used to hand this
+// Debt item 3 of the overhaul. `whatsnew.rs` used to hand this
 // component a finished string built from ~500 lines of prose compiled into the
 // binary, with its own hand-rolled French dispatcher. `check_whats_new` now
 // returns a version and nothing else; the text is a translation like every

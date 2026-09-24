@@ -20,7 +20,7 @@ table.
     python3 scripts/synth_sounds.py            # generate + verify
     python3 scripts/synth_sounds.py --verify   # verify existing files only
 
-Design constraints (see docs/ttp-pro-design.md, "1. A voice -- sound packs"):
+Design constraints (sound packs: one voice, short start/stop pairs):
 
   * 44100 Hz, 16-bit signed, mono -- same as the built-in start.wav/stop.wav.
   * Under 400 ms. These fire on every dictation; length is the enemy.

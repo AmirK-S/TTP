@@ -377,7 +377,7 @@ function ApiKeyStep({ hasApiKey, onSaved }: ApiKeyStepProps) {
         {/* What the user has — all of it, permanently. This screen used to
             announce a 4-day Pro trial, caps and a paywall that the product no
             longer has. No purchase is mentioned here at all: per
-            docs/ttp-pro-design.md there is exactly one mention, in Settings. */}
+            the TTP Pro design there is exactly one mention, in Settings. */}
         <div className="mt-7 rounded-app-lg border border-app-border bg-app-surface shine-sm p-5">
           <div className="flex items-center gap-2 mb-3">
             <Sparkles className="size-4 text-app-accent" aria-hidden />

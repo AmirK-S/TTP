@@ -182,7 +182,7 @@ Useful prefixes:
 | `state.transition` | Is the state machine parked in `Processing`? |
 | `degraded` | Every place a failure was swallowed and replaced with a default. |
 | `keychain.` | The latency class that once wedged the app for 7.6 s. |
-| `companion.` | The face survival test — see `docs/companion-faces-design.md` §2. |
+| `companion.` | The face survival test (the companion face was evaluated for 14 days and cut). |
 | `vad.` | Was the recording cut short by auto-stop rather than by the user? |
 | `permission.` | Was the user's Accessibility grant destroyed by a `tccutil reset`, and was the UI ever told a permission was missing? |
 

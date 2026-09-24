@@ -15,7 +15,7 @@ defects earlier.
 
 ## 0. How to read this
 
-Every claim carries how well I know it. The bar is `fun-purchase-research.md`:
+Every claim carries how well I know it. The bar is the product research notes:
 a confident sentence that is wrong is worse than a hedged one that is right.
 
 - **[PROVEN]** — I read the cited lines, or I ran the command and have the
@@ -344,7 +344,7 @@ row, which is what produced three misuses in three days.
    called `ui/` is an invitation; `settings/` is not.
 3. Keep the escape hatch the commit already established: when the content is a
    sentence or contains a control, write the row. This is already in
-   `overhaul-brief.md` §4 — it belongs next to the component too, as a doc
+   the overhaul brief §4 — it belongs next to the component too, as a doc
    comment the next reader will actually see.
 
 **Shape three: four copies of one `useEffect`.** Covered in §1.1 —

@@ -717,7 +717,7 @@ mod payload_merge_tests {
     #[test]
     fn a_field_the_struct_does_not_know_survives_the_round_trip() {
         // The scenario is ordinary here: an installed 3.1.7 build and a dev
-        // build share one settings.json (see docs/overhaul-status.md on the
+        // build share one settings.json (see the overhaul notes on the
         // lost-newline defect — "an installed build alongside a dev build is
         // the normal state"). The older binary must not eat the newer one's
         // settings.

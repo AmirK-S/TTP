@@ -1,7 +1,6 @@
 # Sound packs
 
-Cosmetic start/stop pairs for TTP (see `docs/ttp-pro-design.md`, "1. A voice --
-sound packs"). Every file here is synthesised from scratch -- no samples, no
+Cosmetic start/stop pairs for TTP. Every file here is synthesised from scratch -- no samples, no
 downloads -- by `scripts/synth_sounds.py`.
 
 | Pack | Character |

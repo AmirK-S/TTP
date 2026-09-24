@@ -3,7 +3,7 @@
 // The seam between the licence layer and the only things a licence is
 // allowed to affect: which sound plays and what the pill looks like.
 //
-// The rule this module exists to enforce, from docs/ttp-pro-design.md:
+// The rule this module exists to enforce, from the TTP Pro design decision:
 // **nothing here may change what TTP does.** Every feature that makes a
 // transcription happen is free and uncapped. A locked install and an unlocked
 // install take an identical path through a dictation; the only difference is
