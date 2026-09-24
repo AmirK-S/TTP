@@ -82,6 +82,7 @@
   },
   "notification": {
     "appName": "TTP",
+    "selfUpdated": "TTP s'est mis à jour en v{{version}}. Les nouveautés t'attendent dans les Réglages.",
     "recordingTooLong": "Enregistrement trop long. Max ~14 minutes.",
     "transcriptionFailed": "Échec de la transcription",
     "noSpeech": "Je n'ai rien capté",

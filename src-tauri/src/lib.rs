@@ -433,6 +433,54 @@ async fn download_update_with_channel(
     Ok(version)
 }
 
+fn self_update_marker_path(app: &AppHandle) -> Option<std::path::PathBuf> {
+    app.path().app_data_dir().ok().map(|d| d.join("self-update.json"))
+}
+
+/// Set at launch when this process was started by an idle self-update.
+static QUIET_SELF_UPDATE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Read and consume the marker `apply_staged_update` left. Traces
+/// `update.completed` (the proof an update came back), and after an *idle*
+/// update — one the user did not ask for — replaces the What's New window
+/// with a notification: on 2026-09-24 the first idle update popped that
+/// window "from nowhere" in the middle of Amir's work.
+fn consume_self_update_marker(app: &AppHandle) {
+    let Some(path) = self_update_marker_path(app) else { return };
+    let Ok(raw) = std::fs::read_to_string(&path) else { return };
+    let _ = std::fs::remove_file(&path);
+    let marker: serde_json::Value = serde_json::from_str(&raw).unwrap_or_default();
+    let trigger = marker["trigger"].as_str().unwrap_or("unknown").to_string();
+    let now = env!("CARGO_PKG_VERSION");
+    trace::event(
+        "update.completed",
+        serde_json::json!({
+            "trigger": trigger,
+            "from": marker["from"],
+            "expected": marker["to"],
+            "now": now,
+            "landed": marker["to"].as_str() == Some(now),
+        }),
+    );
+    if trigger == "idle" {
+        QUIET_SELF_UPDATE.store(true, std::sync::atomic::Ordering::SeqCst);
+        use tauri_plugin_notification::NotificationExt;
+        let _ = app
+            .notification()
+            .builder()
+            .title(crate::i18n::tr("notification.appName"))
+            .body(crate::i18n::tr_with("notification.selfUpdated", &[("version", now)]))
+            .show();
+    }
+}
+
+/// True when this launch came from an idle self-update: the frontend then
+/// leaves What's New for the next time Settings is opened.
+#[tauri::command]
+fn launched_by_quiet_update() -> bool {
+    QUIET_SELF_UPDATE.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 /// How long TTP must be quiet, with an update staged, before it installs it
 /// and relaunches itself. Every dictation restarts the count.
 const APPLY_AFTER_QUIET: std::time::Duration = std::time::Duration::from_secs(120);
@@ -508,7 +556,26 @@ pub fn apply_staged_update(app: AppHandle, trigger: &str) -> Result<(), String> 
     );
     trace::flush();
 
+    // Leave a note for the process that comes back, so it knows it was
+    // relaunched by an update and by what. Written before install because
+    // on Windows install() ends this process.
+    let marker = self_update_marker_path(&app);
+    if let Some(path) = &marker {
+        let _ = std::fs::write(
+            path,
+            serde_json::json!({
+                "trigger": trigger,
+                "from": env!("CARGO_PKG_VERSION"),
+                "to": update.version,
+            })
+            .to_string(),
+        );
+    }
+
     if let Err(e) = update.install(&bytes) {
+        if let Some(path) = &marker {
+            let _ = std::fs::remove_file(path);
+        }
         // The bundle was not replaced, so the running version still works.
         // Put the bytes back so the next quiet moment can try again.
         trace::event(
@@ -1037,6 +1104,7 @@ pub fn run() {
                     "arch": std::env::consts::ARCH,
                 }),
             );
+            consume_self_update_marker(app.handle());
 
             // Pay the keychain's one-time ACL evaluation now, on a blocking
             // thread nobody waits on, rather than during the first dictation
@@ -1293,6 +1361,7 @@ pub fn run() {
             get_build_info,
             check_microphone_permission,
             is_first_launch_cmd,
+            launched_by_quiet_update,
             permissions::request_microphone_permission,
             check_accessibility_permission,
             request_accessibility_permission,

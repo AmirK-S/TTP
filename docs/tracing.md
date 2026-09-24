@@ -606,6 +606,7 @@ replaced bundle.
 | `update.apply` | Install and relaunch, now. `trigger`: `idle` (2 min with no dictation, decided in Rust by `start_idle_applier` — the hidden webview's timers stop under App Nap), `button` (Settings) or `tray`. `staged:false` is a plain relaunch. |
 | `update.idle_tick_late` | The idle applier's 10 s tick woke more than 5 s late (`late_ms`); that tick is skipped so a wake caused by a key press never relaunches. TTP holds an App Nap assertion while an update is staged, so this should be rare. |
 | `update.install_failed` | The bundle was not replaced; the staged bytes are kept for the next quiet moment. |
+| `update.completed` | First thing after `app.launched` in a process started by an update: `from`, `expected`, `now`, and `landed` (did the new version actually start). After an `idle` update the What's New window is replaced by a notification. |
 
 The next `app.launched` line should carry the new `build`. An `update.apply`
 with no `app.launched` after it is the app failing to come back.

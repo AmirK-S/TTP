@@ -44,6 +44,10 @@ function App() {
         // but the annotation was still describing the old tuple.
         const unseenVersion = await safeInvoke<string | null>('check_whats_new');
         if (!unseenVersion) return;
+        // TTP updated itself during a pause: a notification already said so,
+        // and the note waits in Settings. Opening a window unasked, mid-work,
+        // is what this avoids.
+        if (await safeInvoke<boolean>('launched_by_quiet_update')) return;
         const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
         const settingsWindow = await WebviewWindow.getByLabel('settings');
         if (settingsWindow) {

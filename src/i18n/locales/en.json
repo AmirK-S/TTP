@@ -82,6 +82,7 @@
   },
   "notification": {
     "appName": "TTP",
+    "selfUpdated": "TTP updated itself to v{{version}}. What's new is waiting in Settings.",
     "recordingTooLong": "Recording too long. Max ~14 minutes.",
     "transcriptionFailed": "Transcription failed",
     "noSpeech": "Didn't catch anything",
