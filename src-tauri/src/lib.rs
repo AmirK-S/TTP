@@ -284,10 +284,18 @@ fn channel_manifest_url(use_beta: bool) -> &'static str {
 }
 
 /// Build a channel-aware Updater that targets either the stable or beta manifest.
+///
+/// The saved setting wins over the caller's flag. The background checker
+/// runs in the main window, which never loads settings, so it always passed
+/// `false`: a beta subscriber's automatic checks read the stable manifest
+/// and never saw a beta (found 2026-09-24 while testing v3.2.3-1). Reading
+/// the setting here makes the channel a property of the install, not of
+/// whichever window happened to ask.
 fn build_channel_updater(
     app: &AppHandle,
     use_beta: bool,
 ) -> Result<tauri_plugin_updater::Updater, String> {
+    let use_beta = use_beta || settings::get_settings().use_beta_channel;
     let endpoint = channel_manifest_url(use_beta)
         .parse::<url::Url>()
         .map_err(|e| format!("Failed to parse update endpoint: {}", e))?;
@@ -329,7 +337,10 @@ async fn check_for_updates_with_channel(
         Ok(Some(update)) => {
             trace::event(
                 "update.available",
-                serde_json::json!({ "version": update.version, "beta": use_beta }),
+                serde_json::json!({
+                    "version": update.version,
+                    "beta": use_beta || settings::get_settings().use_beta_channel,
+                }),
             );
             Ok(UpdateCheckResult::Available {
                 version: update.version.clone(),
