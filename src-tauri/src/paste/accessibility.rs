@@ -551,15 +551,20 @@ unsafe fn read_ax_string_for_range(element: AXUIElementRef, count: usize) -> Opt
     }
 }
 
+/// How long `select_focused_range` waits for the field to report the new
+/// selection. Blocking: call it from a blocking thread.
+#[cfg(target_os = "macos")]
+const SELECTION_CONFIRM_MS: u64 = 150;
+
 /// Select `len` UTF-16 units from `start` in the focused field, and confirm by
 /// reading the selection back.
 ///
 /// The repair's first half: the garbled landing is selected, then retyped
-/// over. Returns `false` — and the repair does not type — unless the field
-/// reports exactly the requested range afterwards. Typing over a selection we
+/// over. Returns an error slug — and the repair does not type — unless the
+/// field reports exactly the requested range afterwards. Typing over a selection we
 /// did not verify could overwrite text the user wrote.
 #[cfg(target_os = "macos")]
-pub fn select_focused_range(start: usize, len: usize) -> bool {
+pub fn select_focused_range(start: usize, len: usize) -> Result<(), &'static str> {
     #[repr(C)]
     #[derive(Default, PartialEq, Debug)]
     struct CFRange {
@@ -570,14 +575,14 @@ pub fn select_focused_range(start: usize, len: usize) -> bool {
     unsafe {
         let system_wide = AXUIElementCreateSystemWide();
         if system_wide.is_null() {
-            return false;
+            return Err("no_focus");
         }
         let focused_attr = CFString::new("AXFocusedUIElement");
         let mut focused: CFTypeRef = std::ptr::null_mut();
         let err = AXUIElementCopyAttributeValue(system_wide, focused_attr.as_concrete_TypeRef(), &mut focused);
         CFRelease(system_wide as CFTypeRef);
         if err != AX_ERROR_SUCCESS || focused.is_null() {
-            return false;
+            return Err("no_focus");
         }
         let element = focused as AXUIElementRef;
 
@@ -585,31 +590,46 @@ pub fn select_focused_range(start: usize, len: usize) -> bool {
         let value = AXValueCreate(K_AX_VALUE_TYPE_CF_RANGE, &wanted as *const _ as *const c_void);
         if value.is_null() {
             CFRelease(focused);
-            return false;
+            return Err("set_failed");
         }
         let attr = CFString::new("AXSelectedTextRange");
         let set_err = AXUIElementSetAttributeValue(element, attr.as_concrete_TypeRef(), value);
         CFRelease(value);
+        if set_err != AX_ERROR_SUCCESS {
+            CFRelease(focused);
+            return Err("set_refused");
+        }
 
-        let mut back: CFTypeRef = std::ptr::null_mut();
-        let read_err = AXUIElementCopyAttributeValue(element, attr.as_concrete_TypeRef(), &mut back);
-        CFRelease(focused);
-        if set_err != AX_ERROR_SUCCESS || read_err != AX_ERROR_SUCCESS || back.is_null() {
-            if !back.is_null() {
+        // Chromium applies the selection in the renderer, asynchronously: a
+        // read straight after the set still answers the old caret. That is
+        // what made the first live test (0000-1f28, 2026-09-26) give up with
+        // `skipped_no_selection` on a selection that would have taken.
+        let started = std::time::Instant::now();
+        let mut confirmed = false;
+        while started.elapsed() < std::time::Duration::from_millis(SELECTION_CONFIRM_MS) {
+            let mut back: CFTypeRef = std::ptr::null_mut();
+            let read_err = AXUIElementCopyAttributeValue(element, attr.as_concrete_TypeRef(), &mut back);
+            if read_err == AX_ERROR_SUCCESS && !back.is_null() {
+                let mut got = CFRange::default();
+                let ok = AXValueGetValue(back, K_AX_VALUE_TYPE_CF_RANGE, &mut got as *mut _ as *mut c_void);
+                CFRelease(back);
+                if ok && got == wanted {
+                    confirmed = true;
+                    break;
+                }
+            } else if !back.is_null() {
                 CFRelease(back);
             }
-            return false;
+            std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        let mut got = CFRange::default();
-        let ok = AXValueGetValue(back, K_AX_VALUE_TYPE_CF_RANGE, &mut got as *mut _ as *mut c_void);
-        CFRelease(back);
-        ok && got == wanted
+        CFRelease(focused);
+        if confirmed { Ok(()) } else { Err("not_confirmed") }
     }
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn select_focused_range(_start: usize, _len: usize) -> bool {
-    false
+pub fn select_focused_range(_start: usize, _len: usize) -> Result<(), &'static str> {
+    Err("unsupported")
 }
 
 /// No equivalent read exists on Windows, so every paste there is unverified

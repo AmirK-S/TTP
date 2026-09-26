@@ -227,7 +227,8 @@ held the whole text. When scraps sit unchanged for 80 ms, a `paste.repair` line
 follows: the verifier selected the scraps (AX range, read back to confirm) and
 retyped the text over them. Its `outcome` is `repaired`, `late_complete` (a slow field finished on its own), `repair_failed` or
 `skipped_<why>` (`recording`, `app_changed`, `field_changed`: the user edited
-or sent it, `no_selection`); `landed` carries the scraps when diagnostics are
+or sent it, `selection_no_focus` / `selection_refused` / `selection_unconfirmed`:
+the AX selection could not be placed or confirmed); `landed` carries the scraps when diagnostics are
 on. `repaired` and `late_complete` give `observed` with that `reason`; any
 other outcome gives `verdict:"partial"`, puts the full text on the clipboard
 (`clipboard.recovery`) and the pill says ⌘V. Seen 2026-09-26 (`0024-8368`): 156

@@ -4669,8 +4669,15 @@ async fn repair_partial_landing(
         }
         return "skipped_field_changed";
     }
-    if !crate::paste::select_focused_range(range.0, range.1) {
-        return "skipped_no_selection";
+    let selected = tauri::async_runtime::spawn_blocking(move || crate::paste::select_focused_range(range.0, range.1))
+        .await
+        .unwrap_or(Err("join_failed"));
+    match selected {
+        Ok(()) => {}
+        Err("no_focus") => return "skipped_selection_no_focus",
+        Err("set_refused") => return "skipped_selection_refused",
+        Err("not_confirmed") => return "skipped_selection_unconfirmed",
+        Err(_) => return "skipped_no_selection",
     }
     let text = expected.to_string();
     match tauri::async_runtime::spawn_blocking(move || simulate_typing(&text)).await {
