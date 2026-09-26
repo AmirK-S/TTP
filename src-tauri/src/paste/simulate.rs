@@ -382,6 +382,19 @@ pub fn simulate_paste() -> Result<(), String> {
     Ok(())
 }
 
+/// Fault injection for the partial-landing repair, off unless
+/// `TTP_FAULT_GARBLE=<n>` is in the environment: the first `n` typing
+/// injections of the process land the way 0024-8368 did (2026-09-26), so the
+/// verifier and the repair can be exercised on a real build and a real
+/// target. Set it with `launchctl setenv` before launching; unset after.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn fault_garble_this_injection() -> bool {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static USED: AtomicU64 = AtomicU64::new(0);
+    let budget: u64 = std::env::var("TTP_FAULT_GARBLE").ok().and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+    budget > 0 && USED.fetch_add(1, Ordering::Relaxed) < budget
+}
+
 /// Type `text` directly into the focused application via synthetic keystrokes.
 ///
 /// On macOS this goes through `CGEventKeyboardSetUnicodeString`, so:
@@ -404,7 +417,17 @@ pub fn simulate_typing(text: &str) -> Result<(), String> {
         let source = CGEventSource::new(CGEventSourceStateID::Private)
             .map_err(|_| "Failed to create event source")?;
 
-        for chunk in mac::injection_chunks(text, mac::chunk_budget()) {
+        let chunks = mac::injection_chunks(text, mac::chunk_budget());
+        let garble = fault_garble_this_injection();
+        let last = chunks.len().saturating_sub(1);
+        for (i, chunk) in chunks.into_iter().enumerate() {
+            // Fault injection: reproduce 0024-8368 — only the last character
+            // of each chunk, then the whole last chunk.
+            let chunk = if garble && i < last {
+                chunk.chars().last().map(String::from).unwrap_or_default()
+            } else {
+                chunk
+            };
             // keycode 0 + a unicode string is the layout-independent "insert
             // this text" event; the keycode itself is ignored by the target.
             let event = CGEvent::new_keyboard_event(source.clone(), 0, true)

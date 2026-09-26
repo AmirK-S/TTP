@@ -402,6 +402,8 @@
       "arrivedAnnouncement": "The text arrived.",
       "swallowed": "Not pasted · find it in History",
       "swallowedAnnouncement": "The text could not be pasted. You can find it in Settings, History.",
+      "partial": "Incomplete · ⌘V pastes it in full",
+      "partialAnnouncement": "Only part of the text arrived. The full text is on your clipboard — press Cmd+V to paste it.",
       "clipboard": "Not inserted — the text is on your clipboard",
       "clipboardAnnouncement": "The text was not inserted. It is on your clipboard — press Cmd+V to paste it."
     }

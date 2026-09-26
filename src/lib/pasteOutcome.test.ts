@@ -35,7 +35,7 @@ function leaf(locale: unknown, dotted: string): unknown {
 }
 
 describe('the outcome vocabulary', () => {
-  it('is exactly the four slugs Rust can finish with', () => {
+  it('is exactly the slugs Rust can finish with', () => {
     // `finish_outcome` in src-tauri/src/paste/outcome.rs. `aborted` is not
     // here on purpose: a dictation that produced no text never reaches a
     // paste, and the pill shows an error for it.
@@ -43,6 +43,7 @@ describe('the outcome vocabulary', () => {
       'pasted',
       'pasted_unverified',
       'paste_swallowed',
+      'paste_partial',
       'clipboard_fallback',
     ]);
   });

@@ -155,6 +155,11 @@ pub enum PasteVerdict {
     /// We could not look. **Not** evidence of failure, and not evidence of
     /// success either.
     Unverified,
+    /// The field changed and what arrived is not the text: some of it, or
+    /// scraps of it. See `landing::assess`. Seen 2026-09-26 in the Claude
+    /// desktop app — 21 of 156 characters, reported as `Observed` because
+    /// the field had grown.
+    Partial,
 }
 
 impl PasteVerdict {
@@ -163,6 +168,7 @@ impl PasteVerdict {
             PasteVerdict::Observed => "observed",
             PasteVerdict::Swallowed => "swallowed",
             PasteVerdict::Unverified => "unverified",
+            PasteVerdict::Partial => "partial",
         }
     }
 }
@@ -306,6 +312,12 @@ extern "C" {
         result: *mut CFTypeRef,
     ) -> AXError;
     fn AXValueCreate(value_type: u32, value_ptr: *const c_void) -> CFTypeRef;
+    fn AXValueGetValue(value: CFTypeRef, value_type: u32, value_ptr: *mut c_void) -> bool;
+    fn AXUIElementSetAttributeValue(
+        element: AXUIElementRef,
+        attribute: CFStringRef,
+        value: CFTypeRef,
+    ) -> AXError;
 }
 
 /// Read the focused UI element, reporting *how* the read went.
@@ -537,6 +549,67 @@ unsafe fn read_ax_string_for_range(element: AXUIElementRef, count: usize) -> Opt
         CFRelease(string_ref);
         None
     }
+}
+
+/// Select `len` UTF-16 units from `start` in the focused field, and confirm by
+/// reading the selection back.
+///
+/// The repair's first half: the garbled landing is selected, then retyped
+/// over. Returns `false` — and the repair does not type — unless the field
+/// reports exactly the requested range afterwards. Typing over a selection we
+/// did not verify could overwrite text the user wrote.
+#[cfg(target_os = "macos")]
+pub fn select_focused_range(start: usize, len: usize) -> bool {
+    #[repr(C)]
+    #[derive(Default, PartialEq, Debug)]
+    struct CFRange {
+        location: i64,
+        length: i64,
+    }
+
+    unsafe {
+        let system_wide = AXUIElementCreateSystemWide();
+        if system_wide.is_null() {
+            return false;
+        }
+        let focused_attr = CFString::new("AXFocusedUIElement");
+        let mut focused: CFTypeRef = std::ptr::null_mut();
+        let err = AXUIElementCopyAttributeValue(system_wide, focused_attr.as_concrete_TypeRef(), &mut focused);
+        CFRelease(system_wide as CFTypeRef);
+        if err != AX_ERROR_SUCCESS || focused.is_null() {
+            return false;
+        }
+        let element = focused as AXUIElementRef;
+
+        let wanted = CFRange { location: start as i64, length: len as i64 };
+        let value = AXValueCreate(K_AX_VALUE_TYPE_CF_RANGE, &wanted as *const _ as *const c_void);
+        if value.is_null() {
+            CFRelease(focused);
+            return false;
+        }
+        let attr = CFString::new("AXSelectedTextRange");
+        let set_err = AXUIElementSetAttributeValue(element, attr.as_concrete_TypeRef(), value);
+        CFRelease(value);
+
+        let mut back: CFTypeRef = std::ptr::null_mut();
+        let read_err = AXUIElementCopyAttributeValue(element, attr.as_concrete_TypeRef(), &mut back);
+        CFRelease(focused);
+        if set_err != AX_ERROR_SUCCESS || read_err != AX_ERROR_SUCCESS || back.is_null() {
+            if !back.is_null() {
+                CFRelease(back);
+            }
+            return false;
+        }
+        let mut got = CFRange::default();
+        let ok = AXValueGetValue(back, K_AX_VALUE_TYPE_CF_RANGE, &mut got as *mut _ as *mut c_void);
+        CFRelease(back);
+        ok && got == wanted
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn select_focused_range(_start: usize, _len: usize) -> bool {
+    false
 }
 
 /// No equivalent read exists on Windows, so every paste there is unverified

@@ -131,6 +131,8 @@ const KCG_EVENT_TAP_DISABLED_BY_TIMEOUT: u32 = 0xFFFF_FFFE;
 /// kCGEventTapDisabledByUserInput — same consequence, different trigger.
 const KCG_EVENT_TAP_DISABLED_BY_USER_INPUT: u32 = 0xFFFF_FFFF;
 const KCG_KEYBOARD_EVENT_KEYCODE: u32 = 9;
+/// `kCGEventSourceUnixProcessID`: 0 for hardware, the poster's pid otherwise.
+const KCG_EVENT_SOURCE_UNIX_PROCESS_ID: u32 = 41;
 const KCG_KEYBOARD_EVENT_AUTOREPEAT: u32 = 8;
 const KCG_MOUSE_EVENT_BUTTON_NUMBER: u32 = 3;
 const KCG_SESSION_EVENT_TAP: u32 = 1;
@@ -910,6 +912,11 @@ unsafe extern "C" fn fkey_tap_callback(
 
     let raw = raw_event(event_type, event);
     let keycode = raw.keycode;
+
+    if event_type == KCG_EVENT_KEY_DOWN {
+        let pid = CGEventGetIntegerValueField(event, KCG_EVENT_SOURCE_UNIX_PROCESS_ID);
+        crate::paste::input_marks::note_key_down(pid, keycode);
+    }
 
     // Choosing a new trigger: the press belongs to the capture, and must not
     // also start a recording with the old one.

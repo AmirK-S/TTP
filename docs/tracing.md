@@ -221,6 +221,27 @@ anything from a missing launch line.
 
 ## `paste.verify` is the important one
 
+Where the field reads back as text, the verifier also compares *what* arrived
+with what was typed (`paste/landing.rs`). `text_complete` says whether any read
+held the whole text. When scraps sit unchanged for 80 ms, a `paste.repair` line
+follows: the verifier selected the scraps (AX range, read back to confirm) and
+retyped the text over them. Its `outcome` is `repaired`, `late_complete` (a slow field finished on its own), `repair_failed` or
+`skipped_<why>` (`recording`, `app_changed`, `field_changed`: the user edited
+or sent it, `no_selection`); `landed` carries the scraps when diagnostics are
+on. `repaired` and `late_complete` give `observed` with that `reason`; any
+other outcome gives `verdict:"partial"`, puts the full text on the clipboard
+(`clipboard.recovery`) and the pill says ⌘V. Seen 2026-09-26 (`0024-8368`): 156
+characters typed into the Claude composer, 21 arrived, the last character of
+each 16-character chunk and then the whole last chunk. Before this, that read
+as `observed`.
+
+`user_keys`, `foreign_keys` and `user_return_ms` count the key-downs that
+reached the HID tap between injection and the verdict: from the hardware
+(Karabiner's virtual keyboard counts as hardware), from another process, and
+how long after injection began the user pressed Return. Counts only, never
+which key. They are there to test whether something interleaved with the
+injection.
+
 `verdict: "observed"` with `reason: "cleared_after_landing"` means the field grew (`peak_delta_chars` > 0) and then went back to how it started — a chat app that sent or queued the message as soon as it arrived. Before 2026-09-14 that read as `swallowed` and the pill claimed nothing had been pasted.
 
 `paste.result {"ok":true}` only means the events were handed to the window
@@ -304,6 +325,7 @@ later on the `paste.verify` line with the same trace id.
 | --- | --- |
 | `observed` | Someone read the target and it changed. |
 | `swallowed` | Someone read the target and it did not. |
+| `partial` | Someone read the target and only scraps of the text were there, and the repair could not fix it. |
 | `ax_unreadable` | There was no baseline, so no evidence was ever going to arrive. |
 | `pending` | The verifier has not concluded yet. Grep the trace id for `paste.verify`. |
 | `inconclusive` | The verifier looked at both sides and still could not tell. |
@@ -316,6 +338,7 @@ later on the `paste.verify` line with the same trace id.
 | `pasted` | **Observed.** Changed meaning in Polaris: it used to mean only that the events were posted, which is what let 219 blind pastes across the corpus — including `0112-bf80`, the one dictation where `Fn/Globe` was demonstrably held at injection — report themselves as successes. |
 | `pasted_unverified` | Posted, nobody saw it land. `verification` says whether the evidence is still in flight (`pending`) or was never coming (`ax_unreadable`). Not a failure: the text very probably went in. |
 | `paste_swallowed` | Observed *not* to have landed. |
+| `paste_partial` | Observed to have landed incomplete or garbled. The full text is on the clipboard. Usually only on the `paste-verified` event, since `dictation.finish` is written before the verdict. |
 | `clipboard_fallback` | The injection did not happen. The text is on the clipboard. |
 | `aborted` | No text was produced at all. See below. |
 
@@ -398,6 +421,9 @@ grep '"outcome":"aborted"' ttp-trace.log
 
 # Every dictation whose keystrokes were verifiably swallowed
 grep 'paste.verify' ttp-trace.log | grep '"verdict":"swallowed"'
+
+# Every dictation that landed as scraps, and what the repair did
+grep -E 'paste.repair|"verdict":"partial"' ttp-trace.log
 
 # Every dictation we could not verify at all, and why
 grep 'paste.verify' ttp-trace.log | grep '"verdict":"unverified"'

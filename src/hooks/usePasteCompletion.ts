@@ -31,7 +31,7 @@
 // itself half a second later is a flicker that tells the user nothing they can
 // act on.
 //
-// `paste_swallowed` is the exception, in both directions: it may arrive after
+// `paste_swallowed` and `paste_partial` are the exception, in both directions: it may arrive after
 // the frame has committed, and it may arrive after the frame has closed
 // entirely, and in both cases it re-opens the pill. The asymmetry is the whole
 // point. An upgrade from "did not see it" to "saw it" changes nothing for the
@@ -56,6 +56,10 @@ import { asPasteOutcome, treatmentFor, type PasteOutcome } from '../lib/pasteOut
  * after the hold, which is exactly what the trace line says at that instant.
  */
 export const PASTE_VERIFIED_EVENT = 'paste-verified';
+
+/** Verdicts that re-open the pill after it committed or closed: the user's
+ *  text is not (all) on screen and they need to know where it is. */
+const BAD_NEWS: ReadonlySet<PasteOutcome> = new Set(['paste_swallowed', 'paste_partial']);
 
 /** How long to wait for a settled verdict before drawing. */
 export const SETTLE_MS = 140;
@@ -157,7 +161,7 @@ export function usePasteCompletion(
 
     // Past the hold, only the bad news gets through — and it gets through even
     // if the frame had already closed.
-    if (outcome === 'paste_swallowed' && shownRef.current !== 'paste_swallowed') {
+    if (BAD_NEWS.has(outcome) && shownRef.current !== outcome) {
       commit(outcome);
     }
   });

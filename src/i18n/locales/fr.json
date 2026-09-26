@@ -402,6 +402,8 @@
       "arrivedAnnouncement": "Le texte est arrivé.",
       "swallowed": "Pas collé · retrouve-le dans l'historique",
       "swallowedAnnouncement": "Le texte n'a pas pu être collé. Tu le retrouves dans Réglages, Historique.",
+      "partial": "Texte incomplet · ⌘V le colle en entier",
+      "partialAnnouncement": "Le texte n'est arrivé qu'en partie. Il est en entier dans ton presse-papiers ; fais Cmd+V pour le coller.",
       "clipboard": "Rien n'a été inséré — le texte est dans ton presse-papiers",
       "clipboardAnnouncement": "Le texte n'a pas été inséré. Il est dans ton presse-papiers ; fais Cmd+V pour le coller."
     }
