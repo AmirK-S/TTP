@@ -263,9 +263,9 @@ to fire, and what grade that evidence supports. Where a check emits more than
 one severity, the row says which evidence produces which — that is the
 difference between a tool that reports rule trips and one that reports harm.
 
-Three checks — `capture-arbiter-left-live`, `keychain-not-single-flighted`
-and `writer-newline-lost` — are a different kind from the rest. Every other
-check asserts the *absence* of a failure that has happened. Those three assert
+Four checks — `capture-arbiter-left-live`, `capture-mic-still-live`,
+`keychain-not-single-flighted` and `writer-newline-lost` — are a different kind from the rest. Every other
+check asserts the *absence* of a failure that has happened. Those four assert
 that a fix which has shipped is still engaged, so a hit means a regression
 rather than a historical scar. They are marked **(regression)** below.
 
@@ -278,6 +278,7 @@ rather than a historical scar. They are marked **(regression)** below.
 | `capture-handoff-missing` | Every `capture.stop` is followed by a `dictation.start`. **`tracing.md`'s "one shape the trace can only bound, not explain".** | Scoped by *event order*, never by a time window, so a long dictation is never mistaken for an orphan. Graded on how long the capture was held, because that is the only measurement of what was lost: under 0.7 s is a stray tap discarded by a minimum-length guard — an instrumentation gap, WARN; at or above it a real recording vanished with no reason line, ERROR. The 36-hit regrade that set the precedent for this whole document. |
 | `capture-stop-missing` | Every `capture.start` is followed by a `capture.stop` — or by one of the arbiter's closes (`capture.orphan_prevented`, `capture.orphan_reclaimed`, `capture.stale_dropped`). | Two branches, two grades. Terminated by the **next `capture.start` in the same process**: the stream was demonstrably live across that whole span — ERROR, and this is the 11-hour-microphone shape. Terminated by **`app.launched`**: the process exited, and macOS reclaims a capture device when its owner dies, so the trace cannot say how long the microphone was live — WARN, stating that limit rather than asserting the duration. |
 | `capture-arbiter-left-live` | **(regression)** When the arbiter refuses or reclaims a stream, the microphone actually goes off. | The Rust drops the cpal stream *before* writing the line, so the line existing means the mic is off. Only three log shapes contradict that, all of them explicit records rather than inferences; each is ERROR. See below. |
+| `capture-mic-still-live` | **(regression)** When TTP drops a capture stream, CoreAudio stops running its input. | `capture.mic_still_live` is CoreAudio's answer, not an inference: after 2 s TTP's process still had input running and no newer capture had started. ERROR. It exists because `capture-arbiter-left-live` reads TTP's own bookkeeping and stayed silent through the 2026-09-27 cpal leak. |
 | `capture-stop-without-start` | `capture.stop` only fires against an open capture. | An explicit `capture.stop_failed` record with its own error string — the app saying so, not the analyser inferring it. WARN: it means bookkeeping disagreed, not that a user lost anything. |
 | `paste-result-missing` | Every `paste.decision` is followed by a `paste.result`. | Both carry the dictation id. The signature audit item A4 names for a panic under `panic = "abort"`, where `catch_unwind` cannot run. ERROR: the user's text went nowhere and nothing recorded why. In-flight-at-EOF dictations are exempt. |
 | `paste-verify-missing` | Every successful `paste.result` is followed by a `paste.verify`. | Exact attribution, but the claim is only "landing unproven" — `paste.result` means the events reached the window server, which is not the same as arriving. WARN, because absence of proof is not proof of loss. |

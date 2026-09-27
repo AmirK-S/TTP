@@ -119,6 +119,9 @@ KNOWN_STAGES = {
     "capture.orphan_prevented", "capture.orphan_reclaimed",
     "capture.stale_dropped", "capture.stop_waited_for_start",
     "capture.dead_input_detected",
+    # 2026-09-27: CoreAudio's own answer to "did the microphone go off?",
+    # written after every stream drop. `capture-mic-still-live` keys off it.
+    "capture.mic_released", "capture.mic_still_live",
     "permission.tcc_reset", "permission.tcc_reset_result",
     "permission.notify", "permission.notify_failed",
     # Reconciled against the emitting source rather than added one at a time,
@@ -831,6 +834,32 @@ def check_arbiter_left_live(corpus: Corpus):
                 f"stop gave up waiting for an in-flight start after "
                 f"{e.get('ms')} ms (timed_out) — the settle window is the "
                 f"hole the arbiter now has to cover alone",
+                ts=str(e.ts), index=e.index, detail=dict(e.payload),
+            )
+
+
+@invariant(
+    "capture-mic-still-live", ERROR,
+    "When TTP drops a capture stream, CoreAudio stops running its input",
+    "capture-arbiter-left-live reads TTP's bookkeeping, so it can only say "
+    "the stream was dropped. On 2026-09-27 that was not the same as the "
+    "microphone going off: cpal 0.15.3 kept every stream opened on a device "
+    "picked by name alive through a reference cycle, and eight clean "
+    "capture.start/capture.stop pairs sat over a microphone that never "
+    "closed. src-tauri/src/mic_release.rs now asks CoreAudio, 0.3 s and "
+    "again 2 s after each drop, whether this process still has input "
+    "running, and writes capture.mic_still_live when it does and no newer "
+    "capture explains it. Every such line is the orange dot staying on "
+    "after the user let go.",
+)
+def check_mic_still_live(corpus: Corpus):
+    for e in corpus.events:
+        if e.stage == "capture.mic_still_live":
+            yield Finding(
+                "capture-mic-still-live", ERROR,
+                f"microphone {e.get('device')} still live "
+                f"{e.get('after_ms')} ms after {e.get('site')} dropped the "
+                f"stream — it leaked below TTP",
                 ts=str(e.ts), index=e.index, detail=dict(e.payload),
             )
 

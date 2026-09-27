@@ -23,6 +23,7 @@ mod http_client;
 mod i18n;
 mod keychain;
 mod licensing;
+mod mic_release;
 // crate-type = ["staticlib", "cdylib", "rlib"] means anything `pub` is
 // visible to downstream linkers. `logging` and `transcription` are internal
 // implementation details; `pub(crate)` makes their visibility match their

@@ -754,6 +754,16 @@ def broken():
     out["capture-arbiter-left-live"] = log
 
     log = new()
+    # The 2026-09-27 shape: a clean start/stop pair on a pinned microphone,
+    # and CoreAudio still running TTP's input two seconds later.
+    hotkey_cycle(log)
+    log.free("capture.mic_still_live",
+             {"after_ms": 2000, "device": "MacBook Air Microphone",
+              "site": "stop"}, ms=2000)
+    tail(log, from_state=None)
+    out["capture-mic-still-live"] = log
+
+    log = new()
     # Eight sequential secret_reads of one account in one session, none of
     # which waited on another. This is the pre-fix ladder, in milliseconds.
     for ms in (62304, 13612, 397600, 97407, 157, 56037, 106, 86):

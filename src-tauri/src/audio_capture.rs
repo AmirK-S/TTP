@@ -549,7 +549,7 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
         ));
         // Read before this start re-arms it for the new capture.
         let sample_cap_hit = SAMPLE_CAP_HIT.load(Ordering::SeqCst);
-        let discarded = close_and_discard(stale);
+        let discarded = close_and_discard(stale, "stale_dropped");
         // A stale capture reaching here means a previous cycle ended with
         // the microphone still open. It used to leave a `log_warn` in a
         // file that is filtered to Warn in release and read by nobody.
@@ -648,6 +648,7 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
     // Armed before the stream exists, so the callback never runs uncapped.
     SAMPLE_LIMIT.store(sample_limit, Ordering::SeqCst);
     SAMPLE_CAP_HIT.store(false, Ordering::SeqCst);
+    crate::mic_release::note_stream_built();
     let stream = build_stream(&device, &supported_config, &writer_handle, &samples_written, &app)?;
     stream
         .play()
@@ -670,6 +671,7 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
         // this is the microphone going off, and it must happen before we
         // return.
         drop(stream);
+        crate::mic_release::verify_after_drop("orphan_prevented");
         reset_rms();
         disarm_dead_input_watch();
         if let Ok(mut w) = writer_handle.lock() {
@@ -807,7 +809,7 @@ pub fn reclaim_orphaned_capture() {
     };
     drop(guard);
 
-    let discarded = close_and_discard(orphan);
+    let discarded = close_and_discard(orphan, "orphan_reclaimed");
     ARBITER.mark_reclaimed();
 
     log_warn(&format!(
@@ -840,11 +842,12 @@ struct Discarded {
 /// Shared by the two paths that find one — the Idle backstop and a start that
 /// finds a stale capture still in STATE — so they cannot drift apart again.
 /// They had: this one deleted its WAV, the stale path left its WAV on disk.
-fn close_and_discard(capture: RecordingState) -> Discarded {
+fn close_and_discard(capture: RecordingState, site: &'static str) -> Discarded {
     let samples = capture.samples_written.load(Ordering::SeqCst);
     // Dropping the stream closes the cpal callback. This is the line that
     // turns the microphone off.
     drop(capture.stream);
+    crate::mic_release::verify_after_drop(site);
     reset_rms();
     disarm_dead_input_watch();
     let finalised = match capture.writer.lock() {
@@ -981,6 +984,7 @@ async fn stop_recording_inner() -> Result<PathBuf, String> {
     // briefly) before this drop completes; that's the correct behaviour —
     // we want every sample the device gave us.
     drop(state.stream);
+    crate::mic_release::verify_after_drop("stop");
     // The pill subscribes to RMS via current_rms(); reset it now so it
     // doesn't briefly render the last captured frame after the stream ends.
     reset_rms();
