@@ -195,7 +195,8 @@
       "vadAutoStopDesc": "End the recording automatically once you've stopped speaking. Useful when you forget to release the hotkey.",
       "vadSilenceSecsLabel": "Silence before auto-stop",
       "audioDeviceLabel": "Input device",
-      "audioDeviceDefault": "System default",
+      "audioDeviceDefault": "Automatic",
+      "audioDeviceHint": "With Bluetooth headphones, TTP records from the Mac's microphone so your headphones keep full sound quality.",
       "audioDeviceDefaultSuffix": "(default)",
       "launchStartupLabel": "Launch at startup"
     },

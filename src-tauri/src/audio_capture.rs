@@ -103,32 +103,57 @@ fn enumerate_input_devices() -> Result<Vec<AudioInputDeviceInfo>, String> {
     Ok(out)
 }
 
-/// Resolve the cpal input device to record from. When `preferred_name` is
-/// Some, walk the device list and match by name. Falls back to the system
-/// default if not found (logged as info — common on hot-unplug events).
+/// Resolve the cpal input device to record from, and say why.
+///
+/// A device the user picked in Settings wins, matched by name; when it is not
+/// connected (AirPods put away since) the default stands in. With no pick,
+/// `input_route` decides: the OS default, unless that is a Bluetooth headset
+/// and the Mac has a microphone of its own — see that module for why.
 fn resolve_input_device(
     host: &cpal::Host,
     preferred_name: &Option<String>,
-) -> Result<cpal::Device, String> {
-    if let Some(name) = preferred_name.as_deref().filter(|s| !s.is_empty()) {
-        if let Ok(devices) = host.input_devices() {
-            for device in devices {
-                // cpal's `Device::name()` returns `Result<String, DeviceNameError>`;
-                // unwrap the success arm explicitly and compare strings rather
-                // than relying on Result comparison (which fails to compile
-                // because the error arms aren't PartialEq-compatible).
-                if device.name().ok().as_deref() == Some(name) {
-                    return Ok(device);
-                }
-            }
+) -> Result<(cpal::Device, crate::input_route::Route), String> {
+    use crate::input_route::Route;
+    let pinned = preferred_name.as_deref().filter(|s| !s.is_empty());
+    let route = if let Some(name) = pinned {
+        if let Some(device) = input_device_named(host, name) {
+            return Ok((device, Route::Pinned));
         }
         log_info(&format!(
             "[AudioCapture] preferred input device '{}' not found, falling back to default",
             name
         ));
-    }
+        Route::PinnedMissing
+    } else {
+        let scene = crate::input_route::scene();
+        match crate::input_route::choose(&scene) {
+            (route, Some(name)) => match input_device_named(host, name) {
+                Some(device) => return Ok((device, route)),
+                None => {
+                    // CoreAudio named a built-in microphone cpal cannot find.
+                    // Recording from the headset is the old behaviour, so say
+                    // so and carry on.
+                    crate::trace::degraded(
+                        "capture.input_route",
+                        serde_json::json!({ "wanted": name, "error": "not in cpal's device list" }),
+                    );
+                    Route::SystemDefault
+                }
+            },
+            (route, None) => route,
+        }
+    };
     host.default_input_device()
+        .map(|d| (d, route))
         .ok_or_else(|| "No default input device available".to_string())
+}
+
+fn input_device_named(host: &cpal::Host, name: &str) -> Option<cpal::Device> {
+    // cpal's `Device::name()` returns `Result<String, DeviceNameError>`;
+    // compare the success arm rather than the Results.
+    host.input_devices()
+        .ok()?
+        .find(|device| device.name().ok().as_deref() == Some(name))
 }
 
 /// Name of the input device that served the most recent recording.
@@ -140,6 +165,10 @@ fn resolve_input_device(
 /// the device name is what separates them. Without it, both land in the trace
 /// as an identical `dead_capture` line and the user is back to guessing.
 static LAST_CAPTURE_DEVICE: Mutex<Option<String>> = Mutex::new(None);
+
+/// The OS-default input when the most recent recording started, so the stop
+/// can tell whether it moved while the user was talking.
+static DEFAULT_AT_START: Mutex<Option<String>> = Mutex::new(None);
 
 /// The input device used for the most recent recording, if one has run.
 pub fn last_capture_device() -> Option<String> {
@@ -592,7 +621,7 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
     //    device would surface as a generic "no device available" error
     //    that the user wouldn't know how to fix.
     let host = cpal::default_host();
-    let device = resolve_input_device(&host, &crate::settings::get_settings().audio_device_name)?;
+    let (device, route) = resolve_input_device(&host, &crate::settings::get_settings().audio_device_name)?;
     let supported_config = device
         .default_input_config()
         .map_err(|e| format!("No default input config: {}", e))?;
@@ -622,6 +651,9 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
     if let Ok(mut slot) = LAST_CAPTURE_DEVICE.lock() {
         *slot = Some(device_name.clone());
     }
+    if let Ok(mut slot) = DEFAULT_AT_START.lock() {
+        *slot = default_name.clone();
+    }
 
     let sample_limit = sample_limit_for(config.sample_rate().0, config.channels());
 
@@ -631,6 +663,9 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
             "device": device_name,
             "is_os_default": default_name.as_deref() == Some(device_name.as_str()),
             "preferred": preferred,
+            // Why this device: pinned, the OS default, or the Mac's own
+            // microphone standing in for a Bluetooth headset.
+            "route": route.slug(),
             "rate": config.sample_rate().0,
             "channels": config.channels(),
             "format": format!("{:?}", config.sample_format()),
@@ -1011,15 +1046,21 @@ async fn stop_recording_inner() -> Result<PathBuf, String> {
         state.save_path.display()
     ));
 
-    // Re-read the OS default now. If it no longer matches the device we
-    // opened, something moved the default while the user was talking — a
-    // Bluetooth headset connecting, or going to sleep and handing input back
-    // to the built-in mic. That switch is invisible to an already-open cpal
-    // stream, which keeps happily delivering buffers from a device that has
-    // stopped producing audio.
+    // Re-read the OS default now. If it no longer matches the default at
+    // start, something moved it while the user was talking — a Bluetooth
+    // headset connecting, or going to sleep and handing input back to the
+    // built-in mic. That switch is invisible to an already-open cpal stream,
+    // which keeps happily delivering buffers from a device that has stopped
+    // producing audio.
+    //
+    // Compared with the default at start, not with the device opened: those
+    // differ on purpose whenever the user pinned a device or the Mac's own
+    // microphone stood in for a headset, and comparing them reported
+    // `device_changed:true` on every such dictation.
     let opened = last_capture_device();
+    let default_at_start = DEFAULT_AT_START.lock().ok().and_then(|g| g.clone());
     let default_now = current_default_input_name();
-    let device_changed = match (&opened, &default_now) {
+    let device_changed = match (&default_at_start, &default_now) {
         (Some(a), Some(b)) => a != b,
         _ => false,
     };
@@ -1028,6 +1069,7 @@ async fn stop_recording_inner() -> Result<PathBuf, String> {
         "capture.stop",
         serde_json::json!({
             "device": opened,
+            "default_at_start": default_at_start,
             "default_now": default_now,
             "device_changed": device_changed,
             // Samples the callback actually delivered. Zero means the stream

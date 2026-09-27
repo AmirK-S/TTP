@@ -627,7 +627,7 @@ export function Settings() {
             </Group>
 
             <Group title={t('settings.groups.recording')}>
-              <Row label={t('settings.recordingMode.audioDeviceLabel')} htmlFor="audio-device-select">
+              <Row label={t('settings.recordingMode.audioDeviceLabel')} hint={t('settings.recordingMode.audioDeviceHint')} htmlFor="audio-device-select">
                 <select
                   id="audio-device-select"
                   className={SELECT}

@@ -21,6 +21,7 @@ mod fnkey_fsm;
 mod history;
 mod http_client;
 mod i18n;
+mod input_route;
 mod keychain;
 mod licensing;
 mod mic_release;

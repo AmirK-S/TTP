@@ -195,7 +195,8 @@
       "vadAutoStopDesc": "Termine l'enregistrement automatiquement quand tu as fini de parler. Pratique quand tu oublies de relâcher le raccourci.",
       "vadSilenceSecsLabel": "Silence avant arrêt auto",
       "audioDeviceLabel": "Source audio",
-      "audioDeviceDefault": "Source système",
+      "audioDeviceDefault": "Automatique",
+      "audioDeviceHint": "Avec des écouteurs Bluetooth, TTP enregistre avec le micro du Mac : le son dans les écouteurs garde sa qualité.",
       "audioDeviceDefaultSuffix": "(par défaut)",
       "launchStartupLabel": "Lancer au démarrage"
     },
