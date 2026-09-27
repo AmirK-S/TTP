@@ -144,6 +144,18 @@ describe('usePasteCompletion', () => {
     expect(result.current).toBe('paste_swallowed');
   });
 
+  /* 0024-8368: scraps landed and were sent. The verdict comes after the
+     frame, and the user has to learn that ⌘V holds the whole text. */
+  it('re-opens for a partial landing that arrives after the frame closed', async () => {
+    const { result, rerender } = mount();
+    await settleSubscription();
+    rerender({ stage: 'complete', params: { outcome: 'pasted_unverified' } });
+    act(() => { vi.advanceTimersByTime(SETTLE_MS + 1500); });
+    expect(result.current).toBeNull();
+    verify('paste_partial');
+    expect(result.current).toBe('paste_partial');
+  });
+
   it('does not re-open twice for the same swallow', async () => {
     const { result, rerender } = mount();
     await settleSubscription();

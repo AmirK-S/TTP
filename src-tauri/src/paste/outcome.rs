@@ -65,6 +65,8 @@ pub fn read_verdict(slot: &PasteVerdictSlot) -> Option<Verification> {
 ///   the same trace id, in `paste.verify`.
 /// * `inconclusive` — the verifier looked at both sides and still could not
 ///   tell (`read_back_failed`, `length_unchanged`, `shape_changed`).
+/// * `partial` — the field changed and what arrived is not the text (see
+///   `landing::assess`), and the repair could not put it right.
 /// * `not_pasted` — the injection failed or was skipped. Nothing to verify.
 ///
 /// `verifiable` is the pre-injection answer to "is there a baseline at all",
@@ -84,6 +86,7 @@ pub fn describe_verification(
         return match v.verdict {
             PasteVerdict::Observed => "observed",
             PasteVerdict::Swallowed => "swallowed",
+            PasteVerdict::Partial => "partial",
             // "we could not look" and "we looked and it was ambiguous" need
             // different fixes, so they are not the same word.
             PasteVerdict::Unverified => {
@@ -113,6 +116,8 @@ pub fn describe_verification(
 ///
 /// * `pasted` — observed. Someone read the target and it changed.
 /// * `paste_swallowed` — observed *not* to have landed.
+/// * `paste_partial` — observed to have landed incomplete or garbled; the full
+///   text has been put on the clipboard.
 /// * `pasted_unverified` — posted, not observed. Covers both "the evidence is
 ///   still in flight" and "there was never going to be any".
 /// * `clipboard_fallback` — the injection itself did not happen. Unchanged
@@ -124,6 +129,7 @@ pub fn finish_outcome(paste_success: bool, verification: &str) -> &'static str {
     match verification {
         "observed" => "pasted",
         "swallowed" => "paste_swallowed",
+        "partial" => "paste_partial",
         // `pending`, `ax_unreadable`, `inconclusive`. All three mean the same
         // thing to a reader of the terminal line: nobody saw it land *yet*.
         // `verification` on the same line says which.
@@ -199,6 +205,15 @@ mod tests {
         assert_eq!(finish_outcome(true, v), "paste_swallowed");
     }
 
+    /// 0024-8368: 21 of 156 characters is not "pasted".
+    #[test]
+    fn a_partial_landing_is_not_pasted() {
+        let partial = Some(verified(PasteVerdict::Partial, "text", "incomplete"));
+        let v = describe_verification(true, true, partial);
+        assert_eq!(v, "partial");
+        assert_eq!(finish_outcome(true, v), "paste_partial");
+    }
+
     /// A settled verdict overrides the pre-injection guess, in both directions.
     #[test]
     fn evidence_beats_the_pre_injection_guess() {
@@ -238,6 +253,7 @@ mod tests {
         assert_eq!(describe_verification(false, false, None), "not_pasted");
         assert_eq!(finish_outcome(true, "observed"), "pasted");
         assert_eq!(finish_outcome(true, "swallowed"), "paste_swallowed");
+        assert_eq!(finish_outcome(true, "partial"), "paste_partial");
         assert_eq!(finish_outcome(true, "pending"), "pasted_unverified");
         assert_eq!(finish_outcome(false, "anything"), "clipboard_fallback");
     }

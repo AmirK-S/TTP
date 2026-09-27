@@ -95,6 +95,15 @@ const PASTE_VERIFY_POLL_MS: u64 = 25;
 /// probes in a 600 ms window would be hammering; six is a retry.
 const PASTE_VERIFY_RETRY_MS: u64 = 100;
 
+/// How long a partial landing must sit unchanged before the verifier treats it
+/// as the result rather than a field still filling up.
+///
+/// Chromium consumes a whole injection in one burst — the bench saw every
+/// change land within ~50 ms of the first — so 80 ms of stillness means the
+/// events are spent. Kept short because it is on the clock: in 0024-8368 the
+/// scraps sat for ~140 ms before the user's Return sent them.
+const PASTE_PARTIAL_QUIET_MS: u64 = 80;
+
 /// How long to wait after Cmd+V before restoring the user's pre-record
 /// clipboard, when we have to use the clipboard path (text > DIRECT_TYPING_MAX_CHARS).
 /// Slow Electron apps (Slack, Notion, Mail, Discord) can take 200–600 ms to
@@ -4040,6 +4049,7 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
     // session before an `app.launched`, *is* a mid-injection abort. See
     // "Aborted dictations" in `docs/tracing.md`.
     let paste_span = crate::trace::Span::start();
+    let input_mark = crate::paste::input_marks::mark();
     let paste_success = if has_accessibility {
         let paste_result = if use_direct_typing {
             let text_for_typing = paste_text.clone();
@@ -4104,7 +4114,9 @@ pub async fn process_recording(app: &AppHandle, audio_path: String) -> Result<St
                     app.clone(),
                     trace.clone(),
                     focused_before.clone(),
-                    paste_text.chars().count(),
+                    paste_text.clone(),
+                    target_app.clone(),
+                    input_mark,
                     verdict_slot.clone(),
                 );
 
@@ -4402,16 +4414,27 @@ fn spawn_paste_verification(
     app: AppHandle,
     trace: crate::trace::Trace,
     focused_before: FocusSnapshot,
-    expected_chars: usize,
+    expected_text: String,
+    target_app: Option<String>,
+    input_mark: crate::paste::input_marks::InputMark,
     slot: crate::paste::PasteVerdictSlot,
 ) {
     tauri::async_runtime::spawn(async move {
         let started = std::time::Instant::now();
         let timeout = Duration::from_millis(PASTE_VERIFY_TIMEOUT_MS);
+        let expected_chars = expected_text.chars().count();
 
         let delta_of = |after: &FocusSnapshot| -> Option<i64> {
             match (focused_before.chars, after.chars) {
                 (Some(b), Some(a)) => Some(a as i64 - b as i64),
+                _ => None,
+            }
+        };
+        // What the field holds against what we typed. Only when both reads
+        // carry text: a length cannot tell 21 right characters from 21 wrong.
+        let landing_of = |after: &FocusSnapshot| -> Option<crate::paste::Landing> {
+            match (&focused_before.text, &after.text) {
+                (Some(b), Some(a)) => Some(crate::paste::assess(&expected_text, b, a)),
                 _ => None,
             }
         };
@@ -4425,24 +4448,42 @@ fn spawn_paste_verification(
         let mut peak_delta: Option<i64> = None;
         let mut reads: u32 = 0;
         let mut retries: u32 = 0;
+        // Any read held the whole text.
+        let mut seen_complete = false;
+        // A partial landing the field held, unchanged, for PASTE_PARTIAL_QUIET_MS.
+        let mut stable_partial: Option<(String, (usize, usize))> = None;
+        let mut last_change = std::time::Instant::now();
 
         if focused_before.observable() {
             let mut snapshot = crate::paste::probe_focused_text();
             reads += 1;
             peak_delta = delta_of(&snapshot);
+            seen_complete |= matches!(landing_of(&snapshot), Some(crate::paste::Landing::Complete));
 
             // Poll until the target has consumed everything we sent, not until
             // it first reacts. We inject in chunks, so the first read after the
             // first chunk lands shows a delta of exactly one chunk — stopping
             // there reported "16 characters arrived" for a 500-character paste,
             // which reads as a truncation bug that is not happening. Keep
-            // watching until the delta covers what we sent, or the window
-            // closes.
+            // watching until the text is there, or the window closes.
             while started.elapsed() < timeout {
-                if snapshot.observable()
+                if seen_complete {
+                    break;
+                }
+                if focused_before.text.is_none()
+                    && snapshot.observable()
                     && delta_of(&snapshot).is_some_and(|d| d >= expected_chars as i64)
                 {
                     break;
+                }
+                // Scraps that have stopped moving are the result, not a field
+                // still filling up. Stop here rather than at the timeout: the
+                // repair below races the user's Return key.
+                if last_change.elapsed() >= Duration::from_millis(PASTE_PARTIAL_QUIET_MS) {
+                    if let Some(crate::paste::Landing::Partial { landed, range }) = landing_of(&snapshot) {
+                        stable_partial = Some((landed, range));
+                        break;
+                    }
                 }
 
                 // The second means of verification, and the reason this loop no
@@ -4467,9 +4508,11 @@ fn spawn_paste_verification(
                 if let Some(d) = delta_of(&next) {
                     peak_delta = Some(peak_delta.map_or(d, |p| p.max(d)));
                 }
+                seen_complete |= matches!(landing_of(&next), Some(crate::paste::Landing::Complete));
                 if next != snapshot {
                     settled_ms = started.elapsed().as_millis() as u64;
                     first_change_ms.get_or_insert(settled_ms);
+                    last_change = std::time::Instant::now();
                     snapshot = next;
                 }
             }
@@ -4480,10 +4523,49 @@ fn spawn_paste_verification(
         // returns `no_baseline` before it looks at it — so passing the
         // baseline itself is honest rather than clever: it says "there was
         // never a pair here".
-        let verification = crate::paste::account_for_cleared_field(
+        let mut verification = crate::paste::account_for_cleared_field(
             crate::paste::classify(&focused_before, after.as_ref().unwrap_or(&focused_before)),
             peak_delta,
         );
+
+        // Scraps held still: put the text right if nothing else has touched
+        // the field, and say so plainly if we cannot.
+        let mut repair: Option<serde_json::Value> = None;
+        if let (Some((landed, range)), Some(settled)) = (&stable_partial, &after) {
+            let outcome = repair_partial_landing(&expected_text, &focused_before, settled, *range, target_app.as_deref()).await;
+            verification = if outcome == "repaired" || outcome == "late_complete" {
+                crate::paste::Verification {
+                    verdict: crate::paste::PasteVerdict::Observed,
+                    evidence: "text",
+                    reason: outcome,
+                }
+            } else {
+                crate::paste::Verification {
+                    verdict: crate::paste::PasteVerdict::Partial,
+                    evidence: "text",
+                    reason: "incomplete",
+                }
+            };
+            let mut fields = serde_json::json!({
+                "outcome": outcome,
+                "landed_chars": landed.chars().count(),
+                "expected_chars": expected_chars,
+                "range": [range.0, range.1],
+            });
+            if crate::trace::verbose_enabled() {
+                fields["landed"] = serde_json::Value::String(landed.clone());
+            }
+            repair = Some(fields);
+        }
+
+        if verification.verdict == crate::paste::PasteVerdict::Partial {
+            // The clipboard was restored to the user's own contents right
+            // after injection. Their text is the thing they need now, and the
+            // pill tells them it is there.
+            use tauri_plugin_clipboard_manager::ClipboardExt;
+            let ok = app.clipboard().write_text(&expected_text).is_ok();
+            trace.stage("clipboard.recovery", serde_json::json!({ "ok": ok }));
+        }
         crate::paste::record_verdict(&slot, verification);
 
         // The verdict lands a median 44 ms after `dictation.finish`, so the
@@ -4500,48 +4582,121 @@ fn spawn_paste_verification(
         )
         .ok();
 
-        trace.stage(
-            "paste.verify",
-            serde_json::json!({
-                // The verdict, and the kind of evidence it rests on. There is
-                // deliberately no `changed` boolean any more: it was computed
-                // by comparing `Option<String>`s, so an unreadable before plus
-                // a readable after rendered as `changed:true` — a self-report
-                // wearing an observation's clothes.
-                "verdict": verification.verdict.as_str(),
-                "evidence": verification.evidence,
-                "reason": verification.reason,
-                // Which read strategy answered, on each side. One boolean used
-                // to collapse four different failures — no focused element, an
-                // app that does not serve AX at all, an element with no
-                // readable attribute, and not-macOS — into `ax_readable:false`,
-                // and they need four different fixes.
-                "ax_before": focused_before.source.as_str(),
-                "ax_before_err": focused_before.ax_err,
-                "ax_after": after.as_ref().map(|a| a.source.as_str()),
-                "ax_after_err": after.as_ref().map(|a| a.ax_err),
-                // Kept: same meaning it always had, so a year of corpus stays
-                // comparable.
-                "ax_readable": after.as_ref().is_some_and(|a| a.observable()),
-                "before_chars": focused_before.chars,
-                "after_chars": after.as_ref().and_then(|a| a.chars),
-                "delta_chars": after.as_ref().and_then(delta_of),
-                "peak_delta_chars": peak_delta,
-                "expected_chars": expected_chars,
-                // How fast the target reacted at all, vs when it stopped
-                // changing. A large gap between them means a slow consumer;
-                // first_change absent means it never reacted.
-                "first_change_ms": first_change_ms,
-                "settled_ms": settled_ms,
-                // What the observation cost, and how much of it was spent on a
-                // target that was not answering. `reads:1` with a decided
-                // verdict is the cheap happy path; a high `retries` names the
-                // apps worth a third read strategy.
-                "reads": reads,
-                "retries": retries,
-            }),
-        );
+        if let Some(fields) = repair {
+            trace.stage("paste.repair", fields);
+        }
+
+        let mut fields = serde_json::json!({
+            // The verdict, and the kind of evidence it rests on. There is
+            // deliberately no `changed` boolean any more: it was computed
+            // by comparing `Option<String>`s, so an unreadable before plus
+            // a readable after rendered as `changed:true` — a self-report
+            // wearing an observation's clothes.
+            "verdict": verification.verdict.as_str(),
+            "evidence": verification.evidence,
+            "reason": verification.reason,
+            // Which read strategy answered, on each side. One boolean used
+            // to collapse four different failures — no focused element, an
+            // app that does not serve AX at all, an element with no
+            // readable attribute, and not-macOS — into `ax_readable:false`,
+            // and they need four different fixes.
+            "ax_before": focused_before.source.as_str(),
+            "ax_before_err": focused_before.ax_err,
+            "ax_after": after.as_ref().map(|a| a.source.as_str()),
+            "ax_after_err": after.as_ref().map(|a| a.ax_err),
+            // Kept: same meaning it always had, so a year of corpus stays
+            // comparable.
+            "ax_readable": after.as_ref().is_some_and(|a| a.observable()),
+            "before_chars": focused_before.chars,
+            "after_chars": after.as_ref().and_then(|a| a.chars),
+            "delta_chars": after.as_ref().and_then(delta_of),
+            "peak_delta_chars": peak_delta,
+            "expected_chars": expected_chars,
+            // Whether any read held the whole text. `null` when the target
+            // only ever gave us lengths.
+            "text_complete": focused_before.text.is_some().then_some(seen_complete),
+            // How fast the target reacted at all, vs when it stopped
+            // changing. A large gap between them means a slow consumer;
+            // first_change absent means it never reacted.
+            "first_change_ms": first_change_ms,
+            "settled_ms": settled_ms,
+            // What the observation cost, and how much of it was spent on a
+            // target that was not answering. `reads:1` with a decided
+            // verdict is the cheap happy path; a high `retries` names the
+            // apps worth a third read strategy.
+            "reads": reads,
+            "retries": retries,
+        });
+        // Keys from anyone but us between injection and now: the user's own
+        // (and when they hit Return), or another program injecting.
+        if let (Some(map), serde_json::Value::Object(extra)) = (fields.as_object_mut(), input_mark.since()) {
+            map.extend(extra);
+        }
+        trace.stage("paste.verify", fields);
     });
+}
+
+/// Replace a partial landing with the text, once, if it is still ours to fix.
+///
+/// Returns the trace slug: `repaired`, `late_complete` (the field finished
+/// filling on its own), `repair_failed`, or `skipped_<why>`.
+/// Every guard is a way the field could now hold something that is not ours:
+/// the user moved to another app, started the next dictation, or edited (or
+/// sent) the message. In each case the scraps stay, the clipboard gets the
+/// text, and the pill says so — retyping over somebody's edit would be worse
+/// than the bug.
+async fn repair_partial_landing(
+    expected: &str,
+    before: &FocusSnapshot,
+    settled: &FocusSnapshot,
+    range: (usize, usize),
+    target_app: Option<&str>,
+) -> &'static str {
+    if crate::state::recording_in_progress() {
+        return "skipped_recording";
+    }
+    if target_app.is_some() && crate::paste::frontmost_bundle_id().as_deref() != target_app {
+        return "skipped_app_changed";
+    }
+    let now = crate::paste::probe_focused_text();
+    if &now != settled {
+        // A slow consumer that paused past the quiet window and then finished
+        // is not a partial landing at all.
+        if let (Some(b), Some(a)) = (before.text.as_deref(), now.text.as_deref()) {
+            if crate::paste::assess(expected, b, a) == crate::paste::Landing::Complete {
+                return "late_complete";
+            }
+        }
+        return "skipped_field_changed";
+    }
+    let selected = tauri::async_runtime::spawn_blocking(move || crate::paste::select_focused_range(range.0, range.1))
+        .await
+        .unwrap_or(Err("join_failed"));
+    match selected {
+        Ok(()) => {}
+        Err("no_focus") => return "skipped_selection_no_focus",
+        Err("set_refused") => return "skipped_selection_refused",
+        Err("not_confirmed") => return "skipped_selection_unconfirmed",
+        Err(_) => return "skipped_no_selection",
+    }
+    let text = expected.to_string();
+    match tauri::async_runtime::spawn_blocking(move || simulate_typing(&text)).await {
+        Ok(Ok(())) => {}
+        _ => return "repair_failed",
+    }
+    let Some(before_text) = before.text.as_deref() else {
+        return "repair_failed";
+    };
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_millis(PASTE_VERIFY_TIMEOUT_MS) {
+        sleep(Duration::from_millis(PASTE_VERIFY_POLL_MS)).await;
+        if let Some(now) = crate::paste::probe_focused_text().text {
+            if crate::paste::assess(expected, before_text, &now) == crate::paste::Landing::Complete {
+                return "repaired";
+            }
+        }
+    }
+    "repair_failed"
 }
 
 /// Tauri command to process a completed recording

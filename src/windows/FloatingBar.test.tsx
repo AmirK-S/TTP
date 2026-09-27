@@ -234,6 +234,13 @@ describeSuite('the pill at the end of a dictation', () => {
     expectFrame(container.querySelector('.bg-app-danger\\/95')).toBeNull();
   });
 
+  itFrame('says ⌘V holds the whole text when only part of it landed', async () => {
+    const { container } = await mountBar();
+    completeWith('paste_partial');
+    expectFrame(screen.getByText('Incomplete · ⌘V pastes it in full')).toBeInTheDocument();
+    expectFrame(container.querySelector('.bg-app-danger\\/95')).toBeNull();
+  });
+
   itFrame('speaks French', async () => {
     setLanguage('fr');
     await mountBar();

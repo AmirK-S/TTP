@@ -4,15 +4,18 @@
 pub mod accessibility;
 pub mod clipboard;
 pub mod frontmost;
+pub mod input_marks;
+pub mod landing;
 pub mod outcome;
 pub mod permissions;
 pub mod simulate;
 
 pub use accessibility::{
-    account_for_cleared_field, classify, probe_focused_text, read_focused_text, FocusSnapshot, FocusSource, PasteVerdict,
+    account_for_cleared_field, classify, probe_focused_text, read_focused_text, select_focused_range, FocusSnapshot, FocusSource, PasteVerdict,
     Verification,
 };
 pub use frontmost::frontmost_bundle_id;
+pub use landing::{assess, Landing};
 pub use outcome::{
     describe_verification, finish_outcome, read_verdict, record_verdict, PasteVerdictSlot,
 };

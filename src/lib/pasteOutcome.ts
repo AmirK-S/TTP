@@ -38,6 +38,10 @@
 //     History. Calm: no red, no tremble, a short line saying where to find
 //     them. Amir, 2026-09-15: "il ne faut pas faire peur aux gens", just tell
 //     them they can get it back.
+//   * `paste_partial` — scraps of the text arrived and the automatic repair
+//     could not put it right (2026-09-26: 21 of 156 characters, sent like
+//     that). The full text is on the clipboard; the line says ⌘V. Same calm
+//     treatment as a swallow.
 //   * `clipboard_fallback` — unchanged in meaning: the injection never
 //     happened and the text is on the clipboard.
 //
@@ -57,6 +61,7 @@ export const PASTE_OUTCOMES = [
   'pasted',
   'pasted_unverified',
   'paste_swallowed',
+  'paste_partial',
   'clipboard_fallback',
 ] as const;
 
@@ -137,6 +142,15 @@ const TREATMENTS: Record<PasteOutcome, OutcomeTreatment> = {
     announcement: 'floatingBar.outcome.swallowedAnnouncement',
     tone: 'active',
     holdMs: 3000,
+  },
+  // The field holds scraps; the whole text is on the clipboard. 4 s: the
+  // line is an instruction, and it has to outlast a glance at the field.
+  paste_partial: {
+    mark: 'history',
+    line: 'floatingBar.outcome.partial',
+    announcement: 'floatingBar.outcome.partialAnnouncement',
+    tone: 'active',
+    holdMs: 4000,
   },
   // Reached through the `error` stage in practice — Rust routes a failed
   // injection there with `error.paste_failed` — but kept total over the four

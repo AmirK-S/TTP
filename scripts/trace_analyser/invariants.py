@@ -53,7 +53,7 @@ DOCUMENTED_ABORT_REASONS = {
 # `pasted` need names of their own, and both are documented.
 DOCUMENTED_OUTCOMES = {
     "pasted", "aborted", "clipboard_fallback",
-    "pasted_unverified", "paste_swallowed",
+    "pasted_unverified", "paste_swallowed", "paste_partial",
 }
 
 # The `PasteVerdict` vocabulary being added to `paste.verify` alongside this
@@ -65,6 +65,7 @@ DOCUMENTED_OUTCOMES = {
 PASTE_VERDICT_OBSERVED = "observed"      # the text was seen to land
 PASTE_VERDICT_SWALLOWED = "swallowed"    # it was readable, and it did not
 PASTE_VERDICT_UNVERIFIED = "unverified"  # the target could not be read at all
+PASTE_VERDICT_PARTIAL = "partial"        # scraps landed, the repair failed
 
 # `paste.verify`'s other two new fields, named for the same reason. `verdict`
 # is the answer, `evidence` is what it was read off ("text" or "length") and
@@ -1699,13 +1700,17 @@ def check_paste_swallowed(corpus: Corpus):
         verdict = v.get("verdict")
         if verdict is not None:
             if verdict not in (PASTE_VERDICT_SWALLOWED,
-                               PASTE_VERDICT_UNVERIFIED):
+                               PASTE_VERDICT_UNVERIFIED,
+                               PASTE_VERDICT_PARTIAL):
                 continue  # observed, or vocabulary this file does not know
-            sev = (ERROR if verdict == PASTE_VERDICT_SWALLOWED else WARN)
-            gloss = ("target unchanged after injection"
-                     if verdict == PASTE_VERDICT_SWALLOWED else
-                     "the target could not be read, so the landing is "
-                     "unproven — this is not evidence the text was lost")
+            sev = (WARN if verdict == PASTE_VERDICT_UNVERIFIED else ERROR)
+            gloss = {
+                PASTE_VERDICT_SWALLOWED: "target unchanged after injection",
+                PASTE_VERDICT_PARTIAL: "only part of it landed and the "
+                                       "repair could not fix it (see "
+                                       "paste.repair)",
+            }.get(verdict, "the target could not be read, so the landing is "
+                           "unproven — this is not evidence the text was lost")
         elif v.get("ax_readable") is True and v.get("changed") is False:
             # The pre-verdict shape. Same claim, weaker instrument.
             sev, gloss = ERROR, "target unchanged"
