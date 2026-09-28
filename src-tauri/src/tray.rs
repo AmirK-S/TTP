@@ -211,7 +211,20 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .icon(tray_icon)
         .icon_as_template(false)
         .menu(&menu)
-        .show_menu_on_left_click(true) // Left-click or right-click for menu
+        // macOS: TTP opens the menu itself, under the menu bar — see
+        // `anchored_menu`. Elsewhere the library does it on either button.
+        .show_menu_on_left_click(cfg!(not(target_os = "macos")))
+        .on_tray_icon_event(|_tray, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::tray::TrayIconEvent::Click {
+                button: tauri::tray::MouseButton::Left | tauri::tray::MouseButton::Right,
+                button_state: tauri::tray::MouseButtonState::Down,
+                ..
+            } = _event
+            {
+                anchored_menu::pop_up(_tray);
+            }
+        })
         .tooltip(crate::i18n::tr("tray.tooltip"))
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quit" => {
@@ -259,7 +272,97 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         })
         .build(app)?;
 
+    #[cfg(target_os = "macos")]
+    if let Some(tray) = app.tray_by_id("main") {
+        anchored_menu::detach(&tray);
+    }
+
     Ok(())
+}
+
+/// The tray menu, opened by TTP directly under the menu bar.
+///
+/// On macOS 27 a status item's window is 57 pt tall against a 33 pt menu bar
+/// (measured 2026-09-28 on Amir's MacBook Air), and AppKit opens an attached
+/// menu below that window: TTP's menu floated 25 pt under the bar while
+/// Control Center's panels sit against it. A bare AppKit status item with a
+/// plain NSMenu opens at the same 58 pt, so this is the system, not tauri.
+///
+/// So the NSMenu is taken off the status item — AppKit no longer opens it —
+/// and `pop_up` opens it at the bottom edge of the menu bar, left-aligned
+/// with the icon. `detach` runs after every `set_menu`, which re-attaches.
+#[cfg(target_os = "macos")]
+mod anchored_menu {
+    use cocoa::base::{id, nil};
+    use cocoa::foundation::{NSPoint, NSRect};
+    use objc::{class, msg_send, sel, sel_impl};
+    use std::sync::atomic::{AtomicPtr, Ordering};
+
+    /// The detached menu, retained (+1) by us.
+    static MENU: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
+
+    fn status_item(tray: &tauri::tray::TrayIcon) -> Option<usize> {
+        tray.with_inner_tray_icon(|inner| inner.ns_status_item().map(|item| &*item as *const _ as usize))
+            .ok()
+            .flatten()
+    }
+
+    /// Take the status item's menu into `MENU`, leaving the item without one.
+    unsafe fn take(item: id) {
+        let menu: id = msg_send![item, menu];
+        if menu == nil {
+            return;
+        }
+        let _: id = msg_send![menu, retain];
+        let old = MENU.swap(menu as *mut std::ffi::c_void, Ordering::SeqCst) as id;
+        if old != nil {
+            let _: () = msg_send![old, release];
+        }
+        let _: () = msg_send![item, setMenu: nil];
+    }
+
+    pub fn detach(tray: &tauri::tray::TrayIcon) {
+        if let Some(item) = status_item(tray) {
+            unsafe { take(item as id) };
+        }
+    }
+
+    pub fn pop_up(tray: &tauri::tray::TrayIcon) {
+        let Some(item) = status_item(tray) else { return };
+        unsafe {
+            let item = item as id;
+            take(item);
+            let menu = MENU.load(Ordering::SeqCst) as id;
+            let button: id = msg_send![item, button];
+            if menu == nil || button == nil {
+                return;
+            }
+            let window: id = msg_send![button, window];
+            if window == nil {
+                return;
+            }
+            let frame: NSRect = msg_send![window, frame];
+            let mut screen: id = msg_send![window, screen];
+            if screen == nil {
+                screen = msg_send![class!(NSScreen), mainScreen];
+            }
+            let screen_frame: NSRect = msg_send![screen, frame];
+            let visible: NSRect = msg_send![screen, visibleFrame];
+            let screen_top = screen_frame.origin.y + screen_frame.size.height;
+            let mut bar_bottom = visible.origin.y + visible.size.height;
+            if bar_bottom >= screen_top {
+                // The menu bar is hidden (full screen, auto-hide): it is
+                // showing because the pointer is on it, at its usual height.
+                let bar: id = msg_send![class!(NSStatusBar), systemStatusBar];
+                let thickness: f64 = msg_send![bar, thickness];
+                bar_bottom = screen_top - thickness;
+            }
+            let at = NSPoint::new(frame.origin.x, bar_bottom);
+            let _: () = msg_send![button, highlight: true];
+            let _: bool = msg_send![menu, popUpMenuPositioningItem: nil atLocation: at inView: nil];
+            let _: () = msg_send![button, highlight: false];
+        }
+    }
 }
 
 /// Minimum wall-clock gap between two tray toggle clicks. Anything tighter
@@ -414,6 +517,8 @@ fn update_tray_menu(app: &AppHandle, is_recording: bool) {
     if let Some(tray) = app.tray_by_id("main") {
         if let Ok(menu) = build_tray_menu(app, is_recording) {
             let _ = tray.set_menu(Some(menu));
+            #[cfg(target_os = "macos")]
+            anchored_menu::detach(&tray);
         }
     }
 }
