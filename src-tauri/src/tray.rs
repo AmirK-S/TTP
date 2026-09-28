@@ -328,6 +328,70 @@ mod anchored_menu {
         crate::trace::event("tray.menu_detached", serde_json::json!({ "status_item": found.is_some(), "had_menu": found }));
     }
 
+    /// Which way to open the menu, from `defaults write com.ttp.desktop
+    /// TTPTrayMenuMode <mode>`: `plain` (default), `nodelegate`, `inview`,
+    /// `move`. Temporary: on 2026-09-28 the plain popUp landed at 34 pt until
+    /// the first menu rebuild and at 58 pt after it, which a stand-alone
+    /// tray-icon + muda lab does not reproduce. The modes let each fix be
+    /// tried on the installed build without another CI round.
+    unsafe fn mode() -> String {
+        use cocoa::foundation::NSString;
+        let defaults: id = msg_send![class!(NSUserDefaults), standardUserDefaults];
+        let key = NSString::alloc(nil).init_str("TTPTrayMenuMode");
+        let value: id = msg_send![defaults, stringForKey: key];
+        if value == nil {
+            return "plain".into();
+        }
+        let utf8: *const std::ffi::c_char = msg_send![value, UTF8String];
+        std::ffi::CStr::from_ptr(utf8).to_string_lossy().into_owned()
+    }
+
+    /// Runs once the menu is on screen (the run loop is in its tracking
+    /// mode by then, hence the common modes): reports where the menu window
+    /// really is, and in `move` mode puts its top edge on `bar_bottom`.
+    unsafe fn after_open(bar_bottom: f64, screen_top: f64, mode: String) {
+        use block::ConcreteBlock;
+        let block = ConcreteBlock::new(move |_timer: id| {
+            let app: id = msg_send![class!(NSApplication), sharedApplication];
+            let windows: id = msg_send![app, windows];
+            let count: usize = msg_send![windows, count];
+            for i in 0..count {
+                let w: id = msg_send![windows, objectAtIndex: i];
+                let visible: bool = msg_send![w, isVisible];
+                let level: i64 = msg_send![w, level];
+                if !visible || level < 100 {
+                    continue;
+                }
+                let mut frame: NSRect = msg_send![w, frame];
+                let top_before = screen_top - (frame.origin.y + frame.size.height);
+                // AppKit itself leaves 1 pt under the bar; only a menu that
+                // has drifted further than that is moved, and to there.
+                if mode == "move" && top_before > (screen_top - bar_bottom) + 2.0 {
+                    frame.origin.y = bar_bottom - 1.0 - frame.size.height;
+                    let _: () = msg_send![w, setFrame: frame display: true];
+                }
+                let after: NSRect = msg_send![w, frame];
+                crate::trace::event(
+                    "tray.menu_shown",
+                    serde_json::json!({
+                        "mode": mode,
+                        "top_from_top": top_before,
+                        "top_after": screen_top - (after.origin.y + after.size.height),
+                        "height": frame.size.height,
+                        "level": level,
+                    }),
+                );
+            }
+        });
+        let block = block.copy();
+        let timer: id = msg_send![class!(NSTimer), timerWithTimeInterval: 0.0f64 repeats: false block: &*block];
+        let run_loop: id = msg_send![class!(NSRunLoop), mainRunLoop];
+        // NSRunLoopCommonModes is this string.
+        let common = <id as cocoa::foundation::NSString>::init_str(msg_send![class!(NSString), alloc], "kCFRunLoopCommonModes");
+        let _: () = msg_send![run_loop, addTimer: timer forMode: common];
+        std::mem::forget(block);
+    }
+
     pub fn pop_up(tray: &tauri::tray::TrayIcon) {
         let item = status_item(tray);
         // Before any early return: no `tray.menu_opened` after this line
@@ -362,13 +426,20 @@ mod anchored_menu {
                 let thickness: f64 = msg_send![bar, thickness];
                 bar_bottom = screen_top - thickness;
             }
+            let mode = mode();
+            let delegate: id = msg_send![menu, delegate];
+            if mode == "nodelegate" {
+                let _: () = msg_send![menu, setDelegate: nil];
+            }
             let at = NSPoint::new(frame.origin.x, bar_bottom);
             // Every number the position depends on, in points from the top
             // of the screen, so a menu in the wrong place says why.
             crate::trace::event(
                 "tray.menu_opened",
                 serde_json::json!({
+                    "mode": mode,
                     "was_attached": was_attached,
+                    "had_delegate": delegate != nil,
                     "at_x": at.x,
                     "at_from_top": screen_top - at.y,
                     "icon_window_x": frame.origin.x,
@@ -377,8 +448,15 @@ mod anchored_menu {
                     "screen_h": screen_frame.size.height,
                 }),
             );
+            after_open(bar_bottom, screen_top, mode.clone());
             let _: () = msg_send![button, highlight: true];
-            let _: bool = msg_send![menu, popUpMenuPositioningItem: nil atLocation: at inView: nil];
+            if mode == "inview" {
+                let in_window: NSPoint = msg_send![window, convertPointFromScreen: at];
+                let in_button: NSPoint = msg_send![button, convertPoint: in_window fromView: nil];
+                let _: bool = msg_send![menu, popUpMenuPositioningItem: nil atLocation: in_button inView: button];
+            } else {
+                let _: bool = msg_send![menu, popUpMenuPositioningItem: nil atLocation: at inView: nil];
+            }
             let _: () = msg_send![button, highlight: false];
         }
     }
