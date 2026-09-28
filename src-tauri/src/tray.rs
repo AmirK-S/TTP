@@ -308,10 +308,11 @@ mod anchored_menu {
     }
 
     /// Take the status item's menu into `MENU`, leaving the item without one.
-    unsafe fn take(item: id) {
+    /// Returns whether the item still had a menu attached.
+    unsafe fn take(item: id) -> bool {
         let menu: id = msg_send![item, menu];
         if menu == nil {
-            return;
+            return false;
         }
         let _: id = msg_send![menu, retain];
         let old = MENU.swap(menu as *mut std::ffi::c_void, Ordering::SeqCst) as id;
@@ -319,19 +320,23 @@ mod anchored_menu {
             let _: () = msg_send![old, release];
         }
         let _: () = msg_send![item, setMenu: nil];
+        true
     }
 
     pub fn detach(tray: &tauri::tray::TrayIcon) {
-        if let Some(item) = status_item(tray) {
-            unsafe { take(item as id) };
-        }
+        let found = status_item(tray).map(|item| unsafe { take(item as id) });
+        crate::trace::event("tray.menu_detached", serde_json::json!({ "status_item": found.is_some(), "had_menu": found }));
     }
 
     pub fn pop_up(tray: &tauri::tray::TrayIcon) {
-        let Some(item) = status_item(tray) else { return };
+        let item = status_item(tray);
+        // Before any early return: no `tray.menu_opened` after this line
+        // means the menu was not opened by TTP.
+        crate::trace::event("tray.clicked", serde_json::json!({ "status_item": item.is_some() }));
+        let Some(item) = item else { return };
         unsafe {
             let item = item as id;
-            take(item);
+            let was_attached = take(item);
             let menu = MENU.load(Ordering::SeqCst) as id;
             let button: id = msg_send![item, button];
             if menu == nil || button == nil {
@@ -358,6 +363,20 @@ mod anchored_menu {
                 bar_bottom = screen_top - thickness;
             }
             let at = NSPoint::new(frame.origin.x, bar_bottom);
+            // Every number the position depends on, in points from the top
+            // of the screen, so a menu in the wrong place says why.
+            crate::trace::event(
+                "tray.menu_opened",
+                serde_json::json!({
+                    "was_attached": was_attached,
+                    "at_x": at.x,
+                    "at_from_top": screen_top - at.y,
+                    "icon_window_x": frame.origin.x,
+                    "icon_window_bottom_from_top": screen_top - frame.origin.y,
+                    "visible_top_from_top": screen_top - (visible.origin.y + visible.size.height),
+                    "screen_h": screen_frame.size.height,
+                }),
+            );
             let _: () = msg_send![button, highlight: true];
             let _: bool = msg_send![menu, popUpMenuPositioningItem: nil atLocation: at inView: nil];
             let _: () = msg_send![button, highlight: false];
