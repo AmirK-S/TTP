@@ -88,14 +88,14 @@ fn enumerate_input_devices() -> Result<Vec<AudioInputDeviceInfo>, String> {
     let host = cpal::default_host();
     let default_name = host
         .default_input_device()
-        .and_then(|d| d.name().ok());
+        .and_then(|d| device_name(&d));
 
     let mut out = Vec::new();
     let devices = host
         .input_devices()
         .map_err(|e| format!("Failed to list input devices: {}", e))?;
     for device in devices {
-        if let Ok(name) = device.name() {
+        if let Some(name) = device_name(&device) {
             let is_default = default_name.as_deref() == Some(name.as_str());
             out.push(AudioInputDeviceInfo { name, is_default });
         }
@@ -148,12 +148,18 @@ fn resolve_input_device(
         .ok_or_else(|| "No default input device available".to_string())
 }
 
+/// The device's name as CoreAudio reports it — the key Settings persists.
+///
+/// cpal 0.17 deprecated `name()` for `description()`; the name inside is the
+/// same string, so a device saved under 0.15 still matches.
+fn device_name(device: &cpal::Device) -> Option<String> {
+    device.description().ok().map(|d| d.name().to_string())
+}
+
 fn input_device_named(host: &cpal::Host, name: &str) -> Option<cpal::Device> {
-    // cpal's `Device::name()` returns `Result<String, DeviceNameError>`;
-    // compare the success arm rather than the Results.
     host.input_devices()
         .ok()?
-        .find(|device| device.name().ok().as_deref() == Some(name))
+        .find(|device| device_name(device).as_deref() == Some(name))
 }
 
 /// Name of the input device that served the most recent recording.
@@ -183,7 +189,7 @@ pub fn last_capture_device() -> Option<String> {
 fn current_default_input_name() -> Option<String> {
     cpal::default_host()
         .default_input_device()
-        .and_then(|d| d.name().ok())
+        .and_then(|d| device_name(&d))
 }
 
 type WavWriterHandle = Arc<Mutex<Option<WavWriter<std::io::BufWriter<std::fs::File>>>>>;
@@ -635,14 +641,14 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
             .map_err(|e| format!("Failed to create WAV writer: {}", e))?,
     )));
 
-    let device_name = device.name().unwrap_or_else(|_| "<unknown>".into());
+    let device_name = device_name(&device).unwrap_or_else(|| "<unknown>".into());
     let preferred = crate::settings::get_settings().audio_device_name;
     let default_name = current_default_input_name();
 
     log_info(&format!(
         "[AudioCapture] starting: device={:?} rate={} ch={} fmt={:?} → {}",
         device_name,
-        config.sample_rate().0,
+        config.sample_rate(),
         config.channels(),
         config.sample_format(),
         save_path.display()
@@ -655,7 +661,7 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
         *slot = default_name.clone();
     }
 
-    let sample_limit = sample_limit_for(config.sample_rate().0, config.channels());
+    let sample_limit = sample_limit_for(config.sample_rate(), config.channels());
 
     crate::trace::event(
         "capture.start",
@@ -666,7 +672,7 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
             // Why this device: pinned, the OS default, or the Mac's own
             // microphone standing in for a Bluetooth headset.
             "route": route.slug(),
-            "rate": config.sample_rate().0,
+            "rate": config.sample_rate(),
             "channels": config.channels(),
             "format": format!("{:?}", config.sample_format()),
             "sample_limit": sample_limit,
@@ -689,7 +695,7 @@ async fn start_recording_inner<R: tauri::Runtime>(app: AppHandle<R>) -> Result<(
         .play()
         .map_err(|e| format!("Failed to start audio stream: {}", e))?;
     let started_at = std::time::Instant::now();
-    let samples_per_sec = config.sample_rate().0 as u64 * config.channels() as u64;
+    let samples_per_sec = config.sample_rate() as u64 * config.channels() as u64;
 
     // 6. Ask permission, then stash everything in shared state for
     //    stop_recording to pick up.
@@ -1262,7 +1268,7 @@ fn wav_spec_from_config(config: &cpal::SupportedStreamConfig) -> WavSpec {
     };
     WavSpec {
         channels: config.channels(),
-        sample_rate: config.sample_rate().0,
+        sample_rate: config.sample_rate(),
         bits_per_sample: (config.sample_format().sample_size() * 8) as u16,
         sample_format,
     }
