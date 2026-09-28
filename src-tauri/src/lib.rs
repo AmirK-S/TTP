@@ -382,15 +382,39 @@ async fn download_update_with_channel(
     app: AppHandle,
     use_beta: bool,
 ) -> Result<String, String> {
-    let updater = build_channel_updater(&app, use_beta)?;
+    stage_latest_update(&app, use_beta)
+        .await?
+        .ok_or_else(|| "No update available on this channel".to_string())
+}
 
-    let update = updater
+/// Check the channel and, when there is something newer, download and stage
+/// it for [`start_idle_applier`]. `Ok(None)` means up to date.
+///
+/// Shared by the Settings button, the webview's launch check and
+/// [`start_background_update_checks`]. A version already staged is not
+/// downloaded again: before this, each path fetched its own copy.
+async fn stage_latest_update(app: &AppHandle, use_beta: bool) -> Result<Option<String>, String> {
+    let updater = build_channel_updater(app, use_beta)?;
+
+    let update = match updater
         .check()
         .await
         .map_err(|e| format!("Update check failed: {}", e))?
-        .ok_or_else(|| "No update available on this channel".to_string())?;
+    {
+        Some(update) => update,
+        None => return Ok(None),
+    };
 
     let version = update.version.clone();
+    let already_staged = STAGED_UPDATE
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(|(u, _)| u.version == version))
+        .unwrap_or(false);
+    if already_staged {
+        start_idle_applier(app.clone());
+        return Ok(Some(version));
+    }
     let started = std::time::Instant::now();
 
     let progress_app = app.clone();
@@ -431,8 +455,56 @@ async fn download_update_with_channel(
     if let Ok(mut staged) = STAGED_UPDATE.lock() {
         *staged = Some((update, bytes));
     }
-    start_idle_applier(app);
-    Ok(version)
+    start_idle_applier(app.clone());
+    Ok(Some(version))
+}
+
+/// How often TTP looks for an update on its own.
+const BACKGROUND_CHECK_EVERY: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+/// The first background check, a little after launch: the webview checks at
+/// launch too, and the staged-version guard makes the overlap free.
+const BACKGROUND_FIRST_CHECK_AFTER: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+
+/// Look for updates every hour, from Rust, and stage whatever is found.
+///
+/// The periodic check used to be a 4-hour `setInterval` in the hidden main
+/// window. macOS App Naps that window and its timers stop (the idle applier
+/// learnt this on 2026-09-24), so in practice TTP checked once, at launch.
+/// On 2026-09-27 3.2.4 was out all afternoon and the session running since
+/// 10:17 never heard of it; Amir found it only by pressing "Check" at 16:37.
+///
+/// Wall-clock based: a thread's sleep does not advance while the Mac sleeps,
+/// so it wakes every minute and compares real time. Staging hands over to
+/// [`start_idle_applier`], which installs after two quiet minutes — the user
+/// is never asked and never interrupted mid-dictation.
+fn start_background_update_checks(app: AppHandle) {
+    std::thread::Builder::new()
+        .name("ttp-update-checks".into())
+        .spawn(move || {
+            let mut next = std::time::SystemTime::now() + BACKGROUND_FIRST_CHECK_AFTER;
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(60));
+                if std::time::SystemTime::now() < next {
+                    continue;
+                }
+                next = std::time::SystemTime::now() + BACKGROUND_CHECK_EVERY;
+                let staged = STAGED_UPDATE.lock().map(|g| g.is_some()).unwrap_or(false);
+                if staged {
+                    continue;
+                }
+                let outcome = tauri::async_runtime::block_on(stage_latest_update(&app, false));
+                trace::event(
+                    "update.checked",
+                    match outcome {
+                        Ok(Some(version)) => serde_json::json!({ "trigger": "background", "staged": version }),
+                        Ok(None) => serde_json::json!({ "trigger": "background", "up_to_date": true }),
+                        Err(e) => serde_json::json!({ "trigger": "background", "error": e }),
+                    },
+                );
+            }
+        })
+        .map_err(|e| trace::degraded("update.background_checks", serde_json::json!({ "error": e.to_string() })))
+        .ok();
 }
 
 fn self_update_marker_path(app: &AppHandle) -> Option<std::path::PathBuf> {
@@ -1107,6 +1179,7 @@ pub fn run() {
                 }),
             );
             consume_self_update_marker(app.handle());
+            start_background_update_checks(app.handle().clone());
 
             // Pay the keychain's one-time ACL evaluation now, on a blocking
             // thread nobody waits on, rather than during the first dictation
