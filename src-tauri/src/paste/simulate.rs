@@ -359,9 +359,11 @@ pub fn simulate_paste() -> Result<(), String> {
         key_up.set_flags(flags);
 
         // Post the events to the annotated session (current user session)
+        super::input_marks::note_injection();
         key_down.post(CGEventTapLocation::AnnotatedSession);
         thread::sleep(Duration::from_millis(10));
         key_up.post(CGEventTapLocation::AnnotatedSession);
+        super::input_marks::note_injection();
     }
 
     #[cfg(target_os = "windows")]
@@ -417,6 +419,7 @@ pub fn simulate_typing(text: &str) -> Result<(), String> {
         let source = CGEventSource::new(CGEventSourceStateID::Private)
             .map_err(|_| "Failed to create event source")?;
 
+        super::input_marks::note_injection();
         let chunks = mac::injection_chunks(text, mac::chunk_budget());
         let garble = fault_garble_this_injection();
         let last = chunks.len().saturating_sub(1);
@@ -440,6 +443,7 @@ pub fn simulate_typing(text: &str) -> Result<(), String> {
         // Matches enigo's trailing pause — gives the target's input queue a
         // moment to drain before the caller restores the clipboard.
         thread::sleep(Duration::from_millis(2));
+        super::input_marks::note_injection();
     }
 
     #[cfg(not(target_os = "macos"))]

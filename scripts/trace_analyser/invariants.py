@@ -95,6 +95,7 @@ KNOWN_STAGES = {
     "capture.start_failed", "capture.stop_failed", "dictation.rejected",
     "hotkey.tap_armed", "hotkey.tap_rearmed", "hotkey.tap_rebuilt",
     "hotkey.tap_abandoned", "hotkey.tap_create_failed", "hotkey.tap_health",
+    "hotkey.tap_deaf", "hotkey.secure_input", "update.checked",
     "hotkey.stale_fn_cleared", "hotkey.timer_stall", "capture.start",
     "capture.stop", "audio.duration", "audio.signal", "audio.rms",
     "audio.convert", "whisper.request", "whisper.response", "whisper.retry",

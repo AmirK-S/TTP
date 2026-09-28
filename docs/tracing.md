@@ -213,6 +213,8 @@ anything from a missing launch line.
 | `history.saved` | Now also emitted when history is **off**, as `{"skipped":"history_disabled"}`. |
 | `correction_window.started` | Carries `armed`. It used to be written unconditionally, including on the path that skipped arming. |
 | `vad.armed` / `vad.fired` / `vad.disarmed` | The auto-stop watchdog: when it started, whether it cut the recording, and whether the stop that ended it was its own or the user's. |
+| `hotkey.tap_deaf` | **The tap is enabled and hears nothing.** The hardware's own last-keyboard-event clock (`CGEventSourceSecondsSinceLastEventType`, HID state) is `missed_ms` ahead of the last key event the tap delivered, on two watchdog passes in a row. `rebuilt:true` means a fresh tap was installed (at most every 30 s, never abandoned). Every other health line calls such a tap healthy: on 2026-09-27 no key reached TTP from 16:22 to 16:37 under `tap_health {"enabled":true}`, and only the relaunch of an update brought it back. Not raised while secure input is on, nor within 2 s of TTP's own injected keystrokes. |
+| `hotkey.secure_input` | Secure input turned `on` or off, and `owner`, the bundle id holding it. While it is on no tap receives keystrokes — a password field, or an app that forgot to release it — so presses going nowhere have a cause outside TTP. |
 | `hotkey.tap_health` | **The event tap is alive.** Every five minutes while healthy, and immediately after a recovery. The absence of `hotkey.tap_*` lines used to be ambiguous between "fine" and "not running"; this settles it and bounds any outage to five minutes. |
 | `permission.helper_shown` / `permission.helper_granted` / `permission.helper_closed` | The drag-to-authorize panel: which permission, whether TTP is running from a bundle at all (`bundle:false` is a dev binary — nothing to drag), whether that bundle is translocated or on a DMG (a grant there does not follow the app), how long the grant took, and why the panel went away. |
 | `permission.tcc_reset` | **We are about to destroy the user's granted Accessibility permission.** `tccutil reset` is run when a stale-TCC state is detected, and until Polaris it left one `log_warn` and no trace line at all — so a user who was suddenly re-prompted had nothing explaining why. Emitted *before* the command runs, from the one function that runs it, carrying the two probe values that justified the decision (`api_trusted`, `ax_probe_ok`) plus the `bundle_id` and `version`. |
@@ -632,7 +634,8 @@ replaced bundle.
 |---|---|
 | `update.available` | A check found `version` on the stable or `beta` channel. |
 | `update.downloaded` | The bytes are staged in memory (`bytes`, `ms`). Nothing on disk has changed. |
-| `update.download_failed` | The download failed; the next 4 h check retries. |
+| `update.download_failed` | The download failed; the next hourly check retries. |
+| `update.checked` | An hourly background check from Rust (first one 5 min after launch): `staged` (the version now waiting for a quiet moment), `up_to_date`, or `error`. It replaced a 4 h timer in the hidden webview that App Nap froze, so TTP only ever checked at launch. |
 | `update.apply` | Install and relaunch, now. `trigger`: `idle` (2 min with no dictation, decided in Rust by `start_idle_applier` — the hidden webview's timers stop under App Nap), `button` (Settings) or `tray`. `staged:false` is a plain relaunch. |
 | `update.idle_tick_late` | The idle applier's 10 s tick woke more than 5 s late (`late_ms`); that tick is skipped so a wake caused by a key press never relaunches. TTP holds an App Nap assertion while an update is staged, so this should be rare. |
 | `update.install_failed` | The bundle was not replaced; the staged bytes are kept for the next quiet moment. |
