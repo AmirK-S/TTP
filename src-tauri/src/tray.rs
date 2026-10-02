@@ -211,20 +211,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .icon(tray_icon)
         .icon_as_template(false)
         .menu(&menu)
-        // macOS: TTP opens the menu itself, under the menu bar — see
-        // `anchored_menu`. Elsewhere the library does it on either button.
-        .show_menu_on_left_click(cfg!(not(target_os = "macos")))
-        .on_tray_icon_event(|_tray, _event| {
-            #[cfg(target_os = "macos")]
-            if let tauri::tray::TrayIconEvent::Click {
-                button: tauri::tray::MouseButton::Left | tauri::tray::MouseButton::Right,
-                button_state: tauri::tray::MouseButtonState::Down,
-                ..
-            } = _event
-            {
-                anchored_menu::pop_up(_tray);
-            }
-        })
+        .show_menu_on_left_click(true) // Left-click or right-click for menu
         .tooltip(crate::i18n::tr("tray.tooltip"))
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quit" => {
@@ -272,194 +259,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         })
         .build(app)?;
 
-    #[cfg(target_os = "macos")]
-    if let Some(tray) = app.tray_by_id("main") {
-        anchored_menu::detach(&tray);
-    }
-
     Ok(())
-}
-
-/// The tray menu, opened by TTP directly under the menu bar.
-///
-/// On macOS 27 a status item's window is 57 pt tall against a 33 pt menu bar
-/// (measured 2026-09-28 on Amir's MacBook Air), and AppKit opens an attached
-/// menu below that window: TTP's menu floated 25 pt under the bar while
-/// Control Center's panels sit against it. A bare AppKit status item with a
-/// plain NSMenu opens at the same 58 pt, so this is the system, not tauri.
-///
-/// So the NSMenu is taken off the status item — AppKit no longer opens it —
-/// and `pop_up` opens it at the bottom edge of the menu bar, left-aligned
-/// with the icon. `detach` runs after every `set_menu`, which re-attaches.
-#[cfg(target_os = "macos")]
-mod anchored_menu {
-    use cocoa::base::{id, nil};
-    use cocoa::foundation::{NSPoint, NSRect};
-    use objc::{class, msg_send, sel, sel_impl};
-    use std::sync::atomic::{AtomicPtr, Ordering};
-
-    /// The detached menu, retained (+1) by us.
-    static MENU: AtomicPtr<std::ffi::c_void> = AtomicPtr::new(std::ptr::null_mut());
-
-    fn status_item(tray: &tauri::tray::TrayIcon) -> Option<usize> {
-        tray.with_inner_tray_icon(|inner| inner.ns_status_item().map(|item| &*item as *const _ as usize))
-            .ok()
-            .flatten()
-    }
-
-    /// Take the status item's menu into `MENU`, leaving the item without one.
-    /// Returns whether the item still had a menu attached.
-    unsafe fn take(item: id) -> bool {
-        let menu: id = msg_send![item, menu];
-        if menu == nil {
-            return false;
-        }
-        let _: id = msg_send![menu, retain];
-        let old = MENU.swap(menu as *mut std::ffi::c_void, Ordering::SeqCst) as id;
-        if old != nil {
-            let _: () = msg_send![old, release];
-        }
-        let _: () = msg_send![item, setMenu: nil];
-        true
-    }
-
-    pub fn detach(tray: &tauri::tray::TrayIcon) {
-        let found = status_item(tray).map(|item| unsafe { take(item as id) });
-        crate::trace::event("tray.menu_detached", serde_json::json!({ "status_item": found.is_some(), "had_menu": found }));
-    }
-
-    /// Which way to open the menu, from `defaults write com.ttp.desktop
-    /// TTPTrayMenuMode <mode>`: `plain` (default), `nodelegate`, `inview`,
-    /// `move`. Temporary: on 2026-09-28 the plain popUp landed at 34 pt until
-    /// the first menu rebuild and at 58 pt after it, which a stand-alone
-    /// tray-icon + muda lab does not reproduce. The modes let each fix be
-    /// tried on the installed build without another CI round.
-    unsafe fn mode() -> String {
-        use cocoa::foundation::NSString;
-        let defaults: id = msg_send![class!(NSUserDefaults), standardUserDefaults];
-        let key = NSString::alloc(nil).init_str("TTPTrayMenuMode");
-        let value: id = msg_send![defaults, stringForKey: key];
-        if value == nil {
-            return "plain".into();
-        }
-        let utf8: *const std::ffi::c_char = msg_send![value, UTF8String];
-        std::ffi::CStr::from_ptr(utf8).to_string_lossy().into_owned()
-    }
-
-    /// Runs once the menu is on screen (the run loop is in its tracking
-    /// mode by then, hence the common modes): reports where the menu window
-    /// really is, and in `move` mode puts its top edge on `bar_bottom`.
-    unsafe fn after_open(bar_bottom: f64, screen_top: f64, mode: String) {
-        use block::ConcreteBlock;
-        let block = ConcreteBlock::new(move |_timer: id| {
-            let app: id = msg_send![class!(NSApplication), sharedApplication];
-            let windows: id = msg_send![app, windows];
-            let count: usize = msg_send![windows, count];
-            for i in 0..count {
-                let w: id = msg_send![windows, objectAtIndex: i];
-                let visible: bool = msg_send![w, isVisible];
-                let level: i64 = msg_send![w, level];
-                if !visible || level < 100 {
-                    continue;
-                }
-                let mut frame: NSRect = msg_send![w, frame];
-                let top_before = screen_top - (frame.origin.y + frame.size.height);
-                // AppKit itself leaves 1 pt under the bar; only a menu that
-                // has drifted further than that is moved, and to there.
-                if mode == "move" && top_before > (screen_top - bar_bottom) + 2.0 {
-                    frame.origin.y = bar_bottom - 1.0 - frame.size.height;
-                    let _: () = msg_send![w, setFrame: frame display: true];
-                }
-                let after: NSRect = msg_send![w, frame];
-                crate::trace::event(
-                    "tray.menu_shown",
-                    serde_json::json!({
-                        "mode": mode,
-                        "top_from_top": top_before,
-                        "top_after": screen_top - (after.origin.y + after.size.height),
-                        "height": frame.size.height,
-                        "level": level,
-                    }),
-                );
-            }
-        });
-        let block = block.copy();
-        let timer: id = msg_send![class!(NSTimer), timerWithTimeInterval: 0.0f64 repeats: false block: &*block];
-        let run_loop: id = msg_send![class!(NSRunLoop), mainRunLoop];
-        // NSRunLoopCommonModes is this string.
-        let common = <id as cocoa::foundation::NSString>::init_str(msg_send![class!(NSString), alloc], "kCFRunLoopCommonModes");
-        let _: () = msg_send![run_loop, addTimer: timer forMode: common];
-        std::mem::forget(block);
-    }
-
-    pub fn pop_up(tray: &tauri::tray::TrayIcon) {
-        let item = status_item(tray);
-        // Before any early return: no `tray.menu_opened` after this line
-        // means the menu was not opened by TTP.
-        crate::trace::event("tray.clicked", serde_json::json!({ "status_item": item.is_some() }));
-        let Some(item) = item else { return };
-        unsafe {
-            let item = item as id;
-            let was_attached = take(item);
-            let menu = MENU.load(Ordering::SeqCst) as id;
-            let button: id = msg_send![item, button];
-            if menu == nil || button == nil {
-                return;
-            }
-            let window: id = msg_send![button, window];
-            if window == nil {
-                return;
-            }
-            let frame: NSRect = msg_send![window, frame];
-            let mut screen: id = msg_send![window, screen];
-            if screen == nil {
-                screen = msg_send![class!(NSScreen), mainScreen];
-            }
-            let screen_frame: NSRect = msg_send![screen, frame];
-            let visible: NSRect = msg_send![screen, visibleFrame];
-            let screen_top = screen_frame.origin.y + screen_frame.size.height;
-            let mut bar_bottom = visible.origin.y + visible.size.height;
-            if bar_bottom >= screen_top {
-                // The menu bar is hidden (full screen, auto-hide): it is
-                // showing because the pointer is on it, at its usual height.
-                let bar: id = msg_send![class!(NSStatusBar), systemStatusBar];
-                let thickness: f64 = msg_send![bar, thickness];
-                bar_bottom = screen_top - thickness;
-            }
-            let mode = mode();
-            let delegate: id = msg_send![menu, delegate];
-            if mode == "nodelegate" {
-                let _: () = msg_send![menu, setDelegate: nil];
-            }
-            let at = NSPoint::new(frame.origin.x, bar_bottom);
-            // Every number the position depends on, in points from the top
-            // of the screen, so a menu in the wrong place says why.
-            crate::trace::event(
-                "tray.menu_opened",
-                serde_json::json!({
-                    "mode": mode,
-                    "was_attached": was_attached,
-                    "had_delegate": delegate != nil,
-                    "at_x": at.x,
-                    "at_from_top": screen_top - at.y,
-                    "icon_window_x": frame.origin.x,
-                    "icon_window_bottom_from_top": screen_top - frame.origin.y,
-                    "visible_top_from_top": screen_top - (visible.origin.y + visible.size.height),
-                    "screen_h": screen_frame.size.height,
-                }),
-            );
-            after_open(bar_bottom, screen_top, mode.clone());
-            let _: () = msg_send![button, highlight: true];
-            if mode == "inview" {
-                let in_window: NSPoint = msg_send![window, convertPointFromScreen: at];
-                let in_button: NSPoint = msg_send![button, convertPoint: in_window fromView: nil];
-                let _: bool = msg_send![menu, popUpMenuPositioningItem: nil atLocation: in_button inView: button];
-            } else {
-                let _: bool = msg_send![menu, popUpMenuPositioningItem: nil atLocation: at inView: nil];
-            }
-            let _: () = msg_send![button, highlight: false];
-        }
-    }
 }
 
 /// Minimum wall-clock gap between two tray toggle clicks. Anything tighter
@@ -614,8 +414,6 @@ fn update_tray_menu(app: &AppHandle, is_recording: bool) {
     if let Some(tray) = app.tray_by_id("main") {
         if let Ok(menu) = build_tray_menu(app, is_recording) {
             let _ = tray.set_menu(Some(menu));
-            #[cfg(target_os = "macos")]
-            anchored_menu::detach(&tray);
         }
     }
 }
