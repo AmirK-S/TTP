@@ -1,6 +1,6 @@
 [package]
 name = "ttp"
-version = "3.2.4"
+version = "3.2.5"
 description = "Talk To Paste - Voice to text transcription"
 authors = ["TTP Team"]
 edition = "2021"
@@ -23,7 +23,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rodio = { version = "0.19", default-features = false, features = ["wav"] }
 hound = "3.5"
-cpal = "0.15"
+cpal = "0.17"
 tauri-plugin-http = "2"
 reqwest = { version = "0.12", default-features = false, features = ["multipart", "json", "rustls-tls"] }
 chrono = "0.4"

@@ -2735,7 +2735,7 @@ mod hallucination_tests {
 ///
 /// Orchestrates the flow:
 /// 1. Transcribe audio via Groq Whisper
-/// 2. Polish text via Groq LLM (llama-3.3-70b-versatile)
+/// 2. Polish text via Groq LLM (see `polish::MODEL`)
 /// 3. Paste into active app (or clipboard fallback)
 ///
 /// Emits progress events throughout for frontend updates.

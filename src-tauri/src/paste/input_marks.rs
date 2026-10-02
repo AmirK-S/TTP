@@ -45,6 +45,22 @@ pub fn note_key_down(source_pid: i64, keycode: u16) {
     }
 }
 
+/// Wall-clock ms at which TTP last posted synthetic input. Set as each
+/// injection starts and again as it ends, so it covers the whole of it. The
+/// hotkey's deaf-tap check leaves this window out: an event TTP posted can
+/// reach the hardware's last-event clock by a path the tap does not sit on.
+static LAST_INJECTION_MS: AtomicU64 = AtomicU64::new(0);
+
+/// Called by `simulate` around every post.
+pub fn note_injection() {
+    LAST_INJECTION_MS.store(now_ms(), Ordering::Relaxed);
+}
+
+/// When TTP last posted input, 0 if it never has.
+pub fn last_injection_ms() -> u64 {
+    LAST_INJECTION_MS.load(Ordering::Relaxed)
+}
+
 /// A point to measure from: take one before injecting, diff it afterwards.
 #[derive(Debug, Clone, Copy)]
 pub struct InputMark {

@@ -22,7 +22,8 @@
 // and to filter out brief F-key presses.
 
 use crate::fnkey_fsm::{
-    fn_decide, fn_stale_check, FnAction, FnFsmState, FN_DEBOUNCE_MS, FN_STALE_RESYNC_TICKS,
+    deaf_check, fn_decide, fn_stale_check, FnAction, FnFsmState, FN_DEBOUNCE_MS,
+    FN_STALE_RESYNC_TICKS,
 };
 // DOUBLE_TAP_THRESHOLD_MS / HANDS_FREE_STOP_GRACE_MS are referenced via the
 // FSM module's internal logic; we don't need them here. FN_DEBOUNCE_MS is
@@ -104,7 +105,14 @@ extern "C" {
         buf: *mut u16,
     );
     fn CFRunLoopRun();
+    fn CGEventSourceSecondsSinceLastEventType(state: i32, event_type: u32) -> f64;
+    fn CGSessionCopyCurrentDictionary() -> *const std::ffi::c_void;
     static kCFRunLoopCommonModes: CFStringRef;
+}
+
+#[link(name = "Carbon", kind = "framework")]
+extern "C" {
+    fn IsSecureEventInputEnabled() -> u8;
 }
 
 const KCG_HID_EVENT_TAP: u32 = 0;
@@ -294,6 +302,19 @@ const TAP_REBUILD_AFTER_FAILED_REARMS: u64 = 5;
 /// dozen identical lines. We log the first, then at most one line per
 /// interval, carrying the streak count so the flapping is still visible.
 const REARM_LOG_INTERVAL_MS: u64 = 30_000;
+
+/// Wall-clock ms of the last keyboard event the tap delivered — or of the
+/// tap's installation, so a key typed before it existed is not "missed".
+static LAST_TAP_KEY_EVENT_MS: AtomicU64 = AtomicU64::new(0);
+/// The previous watchdog pass suspected the tap of missing a key.
+static DEAF_SUSPECT: AtomicBool = AtomicBool::new(false);
+/// When a deaf tap was last rebuilt, to space rebuilds out.
+static LAST_DEAF_REBUILD_MS: AtomicU64 = AtomicU64::new(0);
+/// Rebuilding a deaf tap at most this often. Unlike the re-arm ladder this
+/// never gives up: a deaf tap loses every press, and a rebuild is cheap.
+const DEAF_REBUILD_MIN_GAP_MS: u64 = 30_000;
+/// Whether secure input was on at the previous watchdog pass.
+static SECURE_INPUT_ON: AtomicBool = AtomicBool::new(false);
 
 /// Wall-clock time of the previous timer tick, for stall detection.
 static LAST_TICK_MS: AtomicU64 = AtomicU64::new(0);
@@ -503,6 +524,8 @@ unsafe fn install_tap(reason: &str) -> bool {
     TAP_PORT.store(tap as *mut std::ffi::c_void, Ordering::Relaxed);
     TAP_SOURCE.store(source as *mut std::ffi::c_void, Ordering::Relaxed);
     REARM_STREAK.store(0, Ordering::Relaxed);
+    LAST_TAP_KEY_EVENT_MS.store(now_ms(), Ordering::Relaxed);
+    DEAF_SUSPECT.store(false, Ordering::Relaxed);
 
     fnlog!("[FnKey] CGEventTap armed at HID level ({})", reason);
     crate::trace::event(
@@ -612,6 +635,100 @@ fn re_arm_tap(reason: &str) {
     );
 }
 
+/// Wall-clock ms of the last keyboard event the hardware produced, read from
+/// the HID system state — a clock no tap can go deaf to.
+unsafe fn hid_last_key_event_ms(now: u64) -> u64 {
+    let age = [KCG_EVENT_KEY_DOWN, KCG_EVENT_KEY_UP, KCG_EVENT_FLAGS_CHANGED]
+        .iter()
+        .map(|&t| CGEventSourceSecondsSinceLastEventType(KCG_EVENT_SOURCE_STATE_HID, t))
+        .filter(|a| a.is_finite() && *a >= 0.0)
+        .fold(f64::INFINITY, f64::min);
+    if !age.is_finite() {
+        return 0;
+    }
+    now.saturating_sub((age * 1000.0) as u64)
+}
+
+/// Bundle id of the app holding secure input, when macOS says which.
+unsafe fn secure_input_owner() -> Option<String> {
+    use core_foundation::base::TCFType;
+    use core_foundation::dictionary::CFDictionary;
+    use core_foundation::number::CFNumber;
+    use core_foundation::string::CFString;
+    let raw = CGSessionCopyCurrentDictionary();
+    if raw.is_null() {
+        return None;
+    }
+    let dict: CFDictionary<CFString, core_foundation::base::CFType> =
+        CFDictionary::wrap_under_create_rule(raw as _);
+    let pid = dict
+        .find(CFString::from_static_string("kCGSSessionSecureInputPID"))?
+        .downcast::<CFNumber>()?
+        .to_i32()?;
+    let app: id = msg_send![class!(NSRunningApplication), runningApplicationWithProcessIdentifier: pid];
+    if app.is_null() {
+        return Some(format!("pid {}", pid));
+    }
+    let bundle: id = msg_send![app, bundleIdentifier];
+    if bundle.is_null() {
+        return Some(format!("pid {}", pid));
+    }
+    let utf8: *const std::ffi::c_char = msg_send![bundle, UTF8String];
+    Some(std::ffi::CStr::from_ptr(utf8).to_string_lossy().into_owned())
+}
+
+/// One watchdog pass of the deaf-tap check. See `fnkey_fsm::deaf_check`.
+///
+/// Also says when secure input turns on or off, and who turned it on: while
+/// it is on no tap receives keys, so "TTP ignored my key" has a second,
+/// entirely different cause that must be told apart from a deaf tap.
+unsafe fn check_for_deaf_tap(now: u64) {
+    let secure = IsSecureEventInputEnabled() != 0;
+    if SECURE_INPUT_ON.swap(secure, Ordering::Relaxed) != secure {
+        crate::trace::event(
+            "hotkey.secure_input",
+            serde_json::json!({ "on": secure, "owner": if secure { secure_input_owner() } else { None } }),
+        );
+    }
+
+    let hid_last = hid_last_key_event_ms(now);
+    let tap_last = LAST_TAP_KEY_EVENT_MS.load(Ordering::Relaxed);
+    let verdict = deaf_check(
+        hid_last,
+        tap_last,
+        crate::paste::input_marks::last_injection_ms(),
+        now,
+        DEAF_SUSPECT.load(Ordering::Relaxed),
+        secure,
+    );
+    DEAF_SUSPECT.store(verdict.suspect && !verdict.deaf, Ordering::Relaxed);
+    if !verdict.deaf {
+        return;
+    }
+
+    let since_rebuild = now.saturating_sub(LAST_DEAF_REBUILD_MS.load(Ordering::Relaxed));
+    let rebuild = since_rebuild >= DEAF_REBUILD_MIN_GAP_MS;
+    crate::logging::log_warn(&format!(
+        "[FnKey] Event tap is enabled but deaf: the keyboard produced an event {} ms after \
+         the last one the tap delivered.{}",
+        verdict.missed_ms,
+        if rebuild { " Rebuilding it." } else { " Rebuilt recently; waiting." }
+    ));
+    crate::trace::event(
+        "hotkey.tap_deaf",
+        serde_json::json!({
+            "missed_ms": verdict.missed_ms,
+            "hid_age_ms": now.saturating_sub(hid_last),
+            "rebuilt": rebuild,
+        }),
+    );
+    if rebuild {
+        LAST_DEAF_REBUILD_MS.store(now, Ordering::Relaxed);
+        teardown_tap();
+        install_tap("deaf");
+    }
+}
+
 /// Start Fn key monitoring using NSTimer on the main run loop.
 /// Must be called from the main thread (during app setup).
 pub fn start_fn_key_monitor(app: &AppHandle) {
@@ -650,9 +767,11 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
             // to do nothing interesting.
             let tick_now = now_ms();
             let prev_tick = LAST_TICK_MS.swap(tick_now, Ordering::Relaxed);
+            let mut stalled = false;
             if prev_tick != 0 {
                 let gap_ms = tick_now.saturating_sub(prev_tick);
                 if gap_ms >= TIMER_STALL_THRESHOLD_MS {
+                    stalled = true;
                     crate::trace::event(
                         "hotkey.timer_stall",
                         serde_json::json!({ "gap_ms": gap_ms }),
@@ -716,6 +835,11 @@ pub fn start_fn_key_monitor(app: &AppHandle) {
                                 "ticks": tick,
                             }),
                         );
+                    }
+                    // Enabled is not the same as hearing. A stalled main
+                    // thread holds its events in the queue, so skip that pass.
+                    if !stalled {
+                        check_for_deaf_tap(tick_now);
                     }
                 } else if REARM_STREAK.load(Ordering::Relaxed) >= TAP_REBUILD_AFTER_FAILED_REARMS {
                     // Re-enabling has demonstrably stopped working. Stop
@@ -908,6 +1032,10 @@ unsafe extern "C" fn fkey_tap_callback(
         };
         re_arm_tap(reason);
         return event;
+    }
+
+    if matches!(event_type, KCG_EVENT_KEY_DOWN | KCG_EVENT_KEY_UP | KCG_EVENT_FLAGS_CHANGED) {
+        LAST_TAP_KEY_EVENT_MS.store(now_ms(), Ordering::Relaxed);
     }
 
     let raw = raw_event(event_type, event);

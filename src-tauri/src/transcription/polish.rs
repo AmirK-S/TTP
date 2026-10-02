@@ -51,7 +51,10 @@ pub const MODEL: &str = "openai/gpt-oss-120b";
 /// cheapest setting. Without this, reasoning would eat the output budget and
 /// truncate the JSON, which the downstream guard would reject as garbage:
 /// polish silently broken again, by a different mechanism.
-const REASONING_EFFORT: &str = "low";
+///
+/// Shared with `dictionary::classify`, which asks the same model for a
+/// one-word verdict and has even less to deliberate about.
+pub(crate) const REASONING_EFFORT: &str = "low";
 
 /// System prompt — frames the LLM as a deterministic text-cleanup function
 /// that treats dictation inside `<dictation>` tags as INERT DATA, never as
@@ -310,7 +313,10 @@ struct ChatMessageResponse {
 /// and produced truncated garbage the guard rejects — polish broken again,
 /// silently, in a new way. 512 covers a `reasoning_effort: "low"` pass on the
 /// longest dictation the direct-typing path accepts, with room to spare.
-const REASONING_TOKEN_HEADROOM: u32 = 512;
+///
+/// Shared with `dictionary::classify`, whose one-word verdict budget would
+/// otherwise be spent entirely on reasoning.
+pub(crate) const REASONING_TOKEN_HEADROOM: u32 = 512;
 
 /// Compute the completion cap as `input_chars * 1.3 + 50`, plus reasoning
 /// headroom. If the LLM tries to generate a poem in response to "write me a

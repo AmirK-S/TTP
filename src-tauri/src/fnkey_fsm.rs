@@ -122,6 +122,63 @@ pub fn fn_stale_check(tap_says_held: bool, nsevent_fn_set: bool, ticks: u64) -> 
     }
 }
 
+/// How much later than the tap's last event the hardware must have seen a
+/// keyboard event before the tap is suspected of missing it.
+pub const DEAF_MARGIN_MS: u64 = 500;
+/// How old that hardware event must be, so a tap merely a few milliseconds
+/// behind — the event is queued on the main run loop — is not accused.
+pub const DEAF_SETTLE_MS: u64 = 300;
+/// TTP's own injected keystrokes are left out: an event it posted itself can
+/// reach the HID clock by a path the tap does not sit on.
+pub const DEAF_INJECTION_GRACE_MS: u64 = 2_000;
+
+/// Outcome of one deaf-tap check.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeafCheck {
+    /// The hardware saw a keyboard event the tap has not delivered.
+    pub suspect: bool,
+    /// Suspected on two passes in a row: the tap is deaf.
+    pub deaf: bool,
+    /// How far the tap's last event lags the hardware's, in ms.
+    pub missed_ms: u64,
+}
+
+/// Decide whether the tap has stopped receiving key events while macOS still
+/// calls it enabled.
+///
+/// On 2026-09-27 Amir could not dictate from anywhere between 16:22 and 16:37:
+/// the trace holds no `hotkey.press`, `ignored` or `event_dropped` in that
+/// span, and every `tap_health` says `enabled:true`. Installing an update
+/// relaunched TTP and it worked again. A tap that is enabled but receives
+/// nothing is, to every existing check, indistinguishable from nobody
+/// pressing anything — the watchdog comment says as much.
+///
+/// The hardware keeps its own clock of the last keyboard event
+/// (`CGEventSourceSecondsSinceLastEventType` on the HID state), independent of
+/// any tap. `hid_last_ms` is that event's wall time, `tap_last_ms` the last
+/// event the tap delivered (or when it was installed). A hardware event the
+/// tap has not seen for a whole watchdog pass is a missed event; seen on two
+/// passes in a row, the tap is deaf.
+///
+/// Not accused: while secure input is on (a password field — keys reach no
+/// tap by design), or when the gap sits inside TTP's own injection
+/// (`injection_end_ms`, 0 when there has been none).
+pub fn deaf_check(
+    hid_last_ms: u64,
+    tap_last_ms: u64,
+    injection_end_ms: u64,
+    now_ms: u64,
+    was_suspect: bool,
+    secure_input: bool,
+) -> DeafCheck {
+    let missed_ms = hid_last_ms.saturating_sub(tap_last_ms);
+    let settled = now_ms.saturating_sub(hid_last_ms) >= DEAF_SETTLE_MS;
+    let ours = injection_end_ms != 0
+        && hid_last_ms <= injection_end_ms.saturating_add(DEAF_INJECTION_GRACE_MS);
+    let suspect = !secure_input && !ours && settled && missed_ms >= DEAF_MARGIN_MS;
+    DeafCheck { suspect, deaf: suspect && was_suspect, missed_ms }
+}
+
 /// Snapshot of every piece of state the Fn timer needs to make a decision.
 /// The wrapper in `fnkey.rs` builds this from atomics on every tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -294,6 +351,47 @@ pub fn fn_decide(state: FnFsmState, fn_held_now: bool, now_ms: u64) -> FnDecisio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── Deaf tap: enabled, receiving nothing ─────────────────────────────
+
+    #[test]
+    fn a_tap_that_saw_the_last_key_is_not_deaf() {
+        let c = deaf_check(10_000, 10_000, 0, 12_000, true, false);
+        assert!(!c.suspect && !c.deaf);
+    }
+
+    #[test]
+    fn a_missed_key_is_suspected_then_deaf_on_the_next_pass() {
+        let first = deaf_check(10_000, 4_000, 0, 12_000, false, false);
+        assert!(first.suspect && !first.deaf);
+        assert_eq!(first.missed_ms, 6_000);
+        let second = deaf_check(10_000, 4_000, 0, 14_000, first.suspect, false);
+        assert!(second.deaf);
+    }
+
+    #[test]
+    fn a_key_still_in_flight_is_not_accused() {
+        // The hardware saw it 100 ms ago; the run loop has not delivered it yet.
+        assert!(!deaf_check(10_000, 4_000, 0, 10_100, true, false).suspect);
+    }
+
+    #[test]
+    fn a_tap_that_caught_up_clears_the_suspicion() {
+        let c = deaf_check(10_000, 10_050, 0, 14_000, true, false);
+        assert!(!c.suspect && !c.deaf);
+    }
+
+    #[test]
+    fn secure_input_is_not_deafness() {
+        assert!(!deaf_check(10_000, 4_000, 0, 14_000, true, true).suspect);
+    }
+
+    #[test]
+    fn our_own_injection_is_not_a_missed_key() {
+        assert!(!deaf_check(10_000, 4_000, 9_000, 14_000, true, false).suspect);
+        // Well after the injection, the same gap counts again.
+        assert!(deaf_check(20_000, 4_000, 9_000, 24_000, true, false).deaf);
+    }
 
     fn st(fn_was_held: bool, recording_active: bool) -> FnFsmState {
         FnFsmState {
