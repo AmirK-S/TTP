@@ -6,7 +6,7 @@ use crate::state::{AppState, RecordingState};
 use std::sync::{Mutex, OnceLock};
 use tauri::{
     image::Image,
-    menu::{Menu, MenuItem, PredefinedMenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     AppHandle, Listener, Manager,
 };
@@ -229,6 +229,16 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             "copy_last" => {
                 copy_last_transcription(app);
             }
+            "mute_sounds" => {
+                // Goes through set_settings like a Settings toggle would, so
+                // the change is persisted, traced and broadcast; the
+                // settings-changed listener then rebuilds this menu.
+                let muted = crate::settings::get_settings().sounds_muted;
+                let _ = crate::settings::set_settings(
+                    serde_json::json!({ "sounds_muted": !muted }),
+                    app.clone(),
+                );
+            }
             "fix_input_monitoring" => {
                 // Open macOS Privacy & Security → Input Monitoring directly.
                 // Same deep link as the in-Settings button; here we just
@@ -436,6 +446,14 @@ fn build_tray_menu(
     // changes, not after every dictation, so an "is there anything to copy"
     // state baked in here would be stale; the click decides instead.
     let copy_last = MenuItem::with_id(app, "copy_last", crate::i18n::tr("tray.copyLast"), true, None::<&str>)?;
+    let mute = CheckMenuItem::with_id(
+        app,
+        "mute_sounds",
+        crate::i18n::tr("tray.muteSounds"),
+        true,
+        crate::settings::get_settings().sounds_muted,
+        None::<&str>,
+    )?;
     let separator = PredefinedMenuItem::separator(app)?;
     let settings = MenuItem::with_id(app, "settings", crate::i18n::tr("tray.settings"), true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", crate::i18n::tr("tray.quit"), true, None::<&str>)?;
@@ -498,6 +516,7 @@ fn build_tray_menu(
     if let Some(s) = perm_sep.as_ref() { refs.push(s); }
     refs.push(&record);
     refs.push(&copy_last);
+    refs.push(&mute);
     refs.push(&separator);
     refs.push(&settings);
     refs.push(&quit);

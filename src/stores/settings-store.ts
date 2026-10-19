@@ -47,6 +47,8 @@ export interface Settings {
   diagnostics_enabled: boolean;
   /** Start/stop sound set id. null or a locked id plays the house sounds. */
   sound_pack: string | null;
+  /** Play no start/stop sound. Also toggled from the tray. Default false. */
+  sounds_muted: boolean;
 }
 
 /** License info returned by Rust backend */
@@ -84,6 +86,7 @@ interface SettingsStore {
   transcriptionLanguage: string;
   diagnosticsEnabled: boolean;
   soundPack: string;
+  soundsMuted: boolean;
   dictionary: DictionaryEntry[];
   history: HistoryEntry[];
   loading: boolean;
@@ -146,6 +149,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   transcriptionLanguage: 'auto',
   diagnosticsEnabled: false,
   soundPack: 'default',
+  soundsMuted: false,
   dictionary: [],
   history: [],
   loading: false,
@@ -183,6 +187,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         transcriptionLanguage: settings.transcription_language ?? 'auto',
         diagnosticsEnabled: settings.diagnostics_enabled ?? false,
         soundPack: settings.sound_pack ?? 'default',
+        soundsMuted: settings.sounds_muted ?? false,
       });
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -209,6 +214,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         transcription_language: get().transcriptionLanguage === 'auto' ? null : get().transcriptionLanguage,
         diagnostics_enabled: get().diagnosticsEnabled,
         sound_pack: get().soundPack,
+        sounds_muted: get().soundsMuted,
       };
 
       const newSettings: Settings = {
@@ -234,6 +240,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         transcriptionLanguage: newSettings.transcription_language ?? 'auto',
         diagnosticsEnabled: newSettings.diagnostics_enabled ?? false,
         soundPack: newSettings.sound_pack ?? 'default',
+        soundsMuted: newSettings.sounds_muted ?? false,
       });
     } catch (error) {
       console.error('Failed to save settings:', error);
@@ -260,6 +267,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         transcriptionLanguage: 'auto',
         diagnosticsEnabled: false,
         soundPack: 'default',
+        soundsMuted: false,
       }); // Default values
     } catch (error) {
       console.error('Failed to reset settings:', error);

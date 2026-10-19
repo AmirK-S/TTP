@@ -78,7 +78,8 @@
     "fixAccessibility": "Corriger la permission Accessibilité",
     "fixInputMonitoring": "Corriger la permission Surveillance des entrées",
     "installUpdate": "Installer la mise à jour (v{{version}})",
-    "tooltip": "TTP by AmirKS · Talk To Paste"
+    "tooltip": "TTP by AmirKS · Talk To Paste",
+    "muteSounds": "Silencieux"
   },
   "notification": {
     "appName": "TTP",
@@ -198,7 +199,9 @@
       "audioDeviceDefault": "Automatique",
       "audioDeviceHint": "Avec des écouteurs Bluetooth, TTP enregistre avec le micro du Mac : le son dans les écouteurs garde sa qualité.",
       "audioDeviceDefaultSuffix": "(par défaut)",
-      "launchStartupLabel": "Lancer au démarrage"
+      "launchStartupLabel": "Lancer au démarrage",
+      "mutedLabel": "Silencieux",
+      "mutedDesc": "Aucun son au début ni à la fin d'une dictée. Pour dicter en réunion ou en entretien sans te faire entendre. Aussi dans le menu de la barre des menus."
     },
     "transcription": {
       "groqLabel": "Clé API Groq",

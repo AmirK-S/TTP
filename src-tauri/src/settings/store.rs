@@ -98,6 +98,12 @@ pub struct Settings {
     /// resolves to the house sounds — see `cosmetics::effective_sound_pack`.
     #[serde(default)]
     pub sound_pack: Option<String>,
+    /// Play no start/stop sound at all. Separate from `sound_pack` rather
+    /// than a "silent" pack because silence is not a cosmetic: it is what
+    /// someone needs when dictating in an interview or a meeting, so it sits
+    /// in the Dictation page and the tray, not behind Support TTP.
+    #[serde(default)]
+    pub sounds_muted: bool,
     /// Every key in `settings.json` that this build has no field for.
     ///
     /// Not decoration — see the `payload_merge_tests` module for the failure
@@ -155,6 +161,7 @@ impl Default for Settings {
             transcription_language: None,
             diagnostics_enabled: false,
             sound_pack: None,
+            sounds_muted: false,
             unknown: serde_json::Map::new(),
         }
     }

@@ -78,7 +78,8 @@
     "fixAccessibility": "Fix Accessibility permission",
     "fixInputMonitoring": "Fix Input Monitoring permission",
     "installUpdate": "Install update (v{{version}})",
-    "tooltip": "TTP by AmirKS · Talk To Paste"
+    "tooltip": "TTP by AmirKS · Talk To Paste",
+    "muteSounds": "Silent"
   },
   "notification": {
     "appName": "TTP",
@@ -198,7 +199,9 @@
       "audioDeviceDefault": "Automatic",
       "audioDeviceHint": "With Bluetooth headphones, TTP records from the Mac's microphone so your headphones keep full sound quality.",
       "audioDeviceDefaultSuffix": "(default)",
-      "launchStartupLabel": "Launch at startup"
+      "launchStartupLabel": "Launch at startup",
+      "mutedLabel": "Silent",
+      "mutedDesc": "No sound when a dictation starts or ends. For dictating in a meeting or an interview without being heard. Also in the menu bar menu."
     },
     "transcription": {
       "groqLabel": "Groq API key",
