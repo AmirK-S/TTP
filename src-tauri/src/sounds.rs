@@ -72,13 +72,19 @@ fn play_sound_bytes(sound_data: &'static [u8]) {
     });
 }
 
-/// Play the recording start sound
+/// Play the recording start sound, unless the user muted TTP.
 pub fn play_start_sound(_app: &AppHandle) {
+    if crate::settings::get_settings().sounds_muted {
+        return;
+    }
     play_sound_bytes(active_pair().0);
 }
 
-/// Play the recording stop sound
+/// Play the recording stop sound, unless the user muted TTP.
 pub fn play_stop_sound(_app: &AppHandle) {
+    if crate::settings::get_settings().sounds_muted {
+        return;
+    }
     play_sound_bytes(active_pair().1);
 }
 

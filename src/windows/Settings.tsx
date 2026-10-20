@@ -239,7 +239,7 @@ export function Settings() {
     autostartEnabled, historyEnabled, vadAutoStopEnabled, vadSilenceSecs, audioDeviceName,
     transcriptionLanguage, diagnosticsEnabled, dictionary, history, loading, isPro, licenseKey,
     licenseStatus, licenseExpiresAt,
-    licenseLoading, licenseError, soundPack,
+    licenseLoading, licenseError, soundPack, soundsMuted,
     loadSettings, saveSettings, resetSettings, loadDictionary, deleteEntry,
     clearDictionary, loadHistory, clearHistory, loadLicense, activateLicense,
     deactivateLicense, validateLicense, loadUsage,
@@ -337,7 +337,7 @@ export function Settings() {
 
   /* ---- Generic toggle factory: cuts 7 near-identical handlers down to 1 --- */
   const makeToggle = useCallback(
-    <K extends 'ai_polish_enabled' | 'screen_context_enabled' | 'telemetry_enabled' | 'history_enabled' | 'vad_auto_stop_enabled' | 'diagnostics_enabled'>(
+    <K extends 'ai_polish_enabled' | 'screen_context_enabled' | 'telemetry_enabled' | 'history_enabled' | 'vad_auto_stop_enabled' | 'diagnostics_enabled' | 'sounds_muted'>(
       key: K,
       sideEffect?: () => void,
     ) => async (enabled: boolean) => {
@@ -351,6 +351,7 @@ export function Settings() {
 
   const handlePolishToggle = makeToggle('ai_polish_enabled');
   const handleScreenContextToggle = makeToggle('screen_context_enabled');
+  const handleSoundsMutedToggle = makeToggle('sounds_muted');
 
   /* Report a problem: a text file in Downloads plus a pre-addressed e-mail,
      built by `problem_report.rs`. The line under the button says where the
@@ -677,6 +678,13 @@ export function Settings() {
                   disabled={loading}
                 />
               )}
+              <ToggleRow
+                label={t('settings.recordingMode.mutedLabel')}
+                hint={t('settings.recordingMode.mutedDesc')}
+                enabled={soundsMuted}
+                onChange={handleSoundsMutedToggle}
+                disabled={loading}
+              />
               {shortcutError && <p className="px-3.5 py-2 text-[12px] text-app-danger">{showShortcutError}</p>}
               {shortcutSuccess && <p className="px-3.5 py-2 text-[12px] text-app-success">{t('settings.recordingTrigger.successUpdated')}</p>}
             </Group>

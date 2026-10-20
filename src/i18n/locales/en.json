@@ -78,7 +78,8 @@
     "fixAccessibility": "Fix Accessibility permission",
     "fixInputMonitoring": "Fix Input Monitoring permission",
     "installUpdate": "Install update (v{{version}})",
-    "tooltip": "TTP by AmirKS · Talk To Paste"
+    "tooltip": "TTP by AmirKS · Talk To Paste",
+    "muteSounds": "Silent"
   },
   "notification": {
     "appName": "TTP",
@@ -198,7 +199,9 @@
       "audioDeviceDefault": "Automatic",
       "audioDeviceHint": "With Bluetooth headphones, TTP records from the Mac's microphone so your headphones keep full sound quality.",
       "audioDeviceDefaultSuffix": "(default)",
-      "launchStartupLabel": "Launch at startup"
+      "launchStartupLabel": "Launch at startup",
+      "mutedLabel": "Silent",
+      "mutedDesc": "No sound when a dictation starts or ends. For dictating in a meeting or an interview without being heard. Also in the menu bar menu."
     },
     "transcription": {
       "groqLabel": "Groq API key",
@@ -418,6 +421,7 @@
     "subtitle": "TTP has been updated.",
     "dismiss": "Got it",
     "notes": {
+      "3-2-6": "TTP can go silent.\n• New “Silent” switch: no sound when a dictation starts or ends, so you can dictate in a meeting or an interview without being heard. One click in the menu bar menu, or Settings → Dictation → “Silent”.",
       "3-2-5": "TTP looks after itself: microphone, shortcut and updates.\n• The microphone really turns off after each dictation: the orange dot no longer stays on.\n• With AirPods or another Bluetooth headset, TTP records from the Mac's microphone: your music keeps its quality and recording starts instantly. Settings → Dictation → Input device → “Automatic”.\n• If macOS stops passing your keys to TTP, TTP notices and repairs its shortcut on its own.\n• Updates arrive by themselves: TTP checks every hour, without you opening it.\n• The dictionary learns again: Groq had retired the model it used.",
       "3-2-4": "TTP now checks that your text arrived whole.\n• If only part of a dictation lands in the app, TTP notices and retypes the full text over it, usually before you have time to press Return.\n• If it cannot fix it, the full text is on your clipboard and the pill says so: ⌘V pastes it in full.",
       "3-2-3": "TTP no longer loses your dictations in the pauses.\n• Long dictations with pauses, or spoken quietly, are no longer mistaken for silence and thrown away.\n• If TTP still judges a recording silent, it keeps it for 24 h instead of deleting it.\n• Updates without interruption: TTP downloads the new version in the background, then relaunches itself during a two-minute pause.\n• “Auto” means French or English, never a third language.\n• Settings no longer freeze.",

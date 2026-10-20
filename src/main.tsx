@@ -70,6 +70,7 @@ function main() {
       history_enabled?: boolean;
       use_beta_channel?: boolean;
       shortcut?: string;
+      sounds_muted?: boolean;
     }>('settings-changed', (event) => {
       const p = event.payload;
       // Mirror the full payload into the Zustand store so toggles UI in
@@ -83,6 +84,7 @@ function main() {
         ...(p?.history_enabled !== undefined && { historyEnabled: p.history_enabled }),
         ...(p?.use_beta_channel !== undefined && { useBetaChannel: p.use_beta_channel }),
         ...(p?.shortcut !== undefined && { shortcut: p.shortcut }),
+        ...(p?.sounds_muted !== undefined && { soundsMuted: p.sounds_muted }),
       });
     }).catch(() => {});
 
